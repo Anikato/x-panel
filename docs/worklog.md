@@ -4,6 +4,59 @@
 
 ---
 
+## 2026-02-08 — Session #17：HTTPS 默认启用 + 安全入口 + 自定义端口
+
+### 完成内容
+
+#### 后端：HTTPS 支持
+- [x] `global.go` 新增 `SSLConfig` 结构体（enable, cert_path, key_path）
+- [x] `server.go` 根据配置选择 `r.RunTLS()` 或 `r.Run()` 启动
+- [x] `viper.go` 添加 SSL 默认配置
+- [x] `config.yaml` 新增 `ssl` 配置节
+
+#### 后端：安全入口中间件
+- [x] 新增 `middleware/security_entrance.go`
+  - 从数据库读取 `SecurityEntrance` 配置
+  - 未配置时不生效，直接放行
+  - 配置后：访问 `/{entrance}` 设置 cookie 并重定向到首页
+  - 后续访问检查 cookie，无效则返回 404
+  - API 路由 (`/api/*`) 不受限制（由 JWT 保护）
+- [x] `router.go` 全局挂载安全入口中间件
+
+#### 前端：设置页面
+- [x] 面板设置增加安全入口输入框
+- [x] 保存时同步更新 `SecurityEntrance` 配置
+- [x] 新增 i18n 翻译
+
+#### 安装脚本增强
+- [x] `--port, -p <端口>` 自定义面板端口
+- [x] `--entrance, -e <路径>` 配置安全入口
+- [x] `--ssl` / `--no-ssl` 控制 HTTPS（默认启用）
+- [x] 安装时自动生成 10 年有效期的自签名 SSL 证书
+- [x] 安全入口通过 `sqlite3` 写入数据库
+- [x] 完成信息显示正确的协议 / 端口 / 入口路径
+
+#### 仓库公开化
+- [x] GitHub 仓库设为公开
+- [x] 移除代码中的 GitHub Token（Push Protection）
+- [x] 简化 README 安装命令
+- [x] 更新 cursor rules
+
+### 关键决策
+- SSL 采用自签名证书方案：安装简单、无需域名，用户可后续替换为正式证书
+- 安全入口基于 cookie 机制：首次访问入口路径设 cookie，后续检查 cookie
+- API 请求不受安全入口限制，避免影响 JWT 认证流程
+
+### 新增文件
+- `backend/middleware/security_entrance.go`
+
+### 下一步计划
+- 网站管理（Nginx 站点 CRUD）
+- 数据库管理（MySQL/PostgreSQL）
+- 面板 SSL 证书支持 Let's Encrypt 替换自签名
+
+---
+
 ## 2026-02-08 — Session #16：GitHub CI/CD 自动构建 + 升级系统重写
 
 ### 完成内容
