@@ -46,6 +46,7 @@ log_step()  { echo -e "${BLUE}>>>${NC} $*"; }
 VERSION=""
 UNINSTALL=false
 GITHUB_TOKEN=""
+YES=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -61,6 +62,10 @@ while [[ $# -gt 0 ]]; do
             UNINSTALL=true
             shift
             ;;
+        --yes|-y)
+            YES=true
+            shift
+            ;;
         --help|-h)
             echo "X-Panel 安装脚本"
             echo ""
@@ -71,6 +76,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --version, -v <版本>  安装指定版本 (如 v1.0.0)"
             echo "  --token, -t <TOKEN>   GitHub Personal Access Token（私有仓库必须）"
             echo "  --uninstall           卸载 X-Panel"
+            echo "  --yes, -y             跳过确认提示（用于管道/脚本执行）"
             echo "  --help, -h            显示帮助"
             exit 0
             ;;
@@ -113,10 +119,19 @@ do_uninstall() {
     echo -e "==============================${NC}"
     echo ""
 
-    read -p "确定要卸载 X-Panel 吗？数据目录将被保留。(y/N): " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        log_info "取消卸载"
-        exit 0
+    if [ "$YES" != true ]; then
+        # 从 /dev/tty 读取，支持 curl | bash 管道模式
+        if [ -t 0 ]; then
+            read -p "确定要卸载 X-Panel 吗？数据目录将被保留。(y/N): " confirm
+        else
+            read -p "确定要卸载 X-Panel 吗？数据目录将被保留。(y/N): " confirm < /dev/tty
+        fi
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            log_info "取消卸载"
+            exit 0
+        fi
+    else
+        log_info "跳过确认（--yes）"
     fi
 
     log_step "停止服务..."

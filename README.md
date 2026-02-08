@@ -37,7 +37,7 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 卸载：
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --uninstall
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --uninstall --yes
 ```
 
 > **系统要求**：Linux (amd64 / arm64)，安装后访问 `http://服务器IP:9999`
