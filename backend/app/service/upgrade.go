@@ -150,13 +150,23 @@ func (s *UpgradeService) checkUpdateFromGitHub(repoURL string) (*dto.UpgradeInfo
 	arch := runtime.GOARCH
 	downloadURL := ""
 	checksumURL := ""
+	hasToken := s.getGitHubToken() != ""
 	for _, asset := range release.Assets {
 		if strings.Contains(asset.Name, "linux-"+arch) {
 			if strings.HasSuffix(asset.Name, ".tar.gz") && !strings.HasSuffix(asset.Name, ".sha256") {
-				downloadURL = asset.BrowserDownloadURL
+				if hasToken && asset.URL != "" {
+					// 私有仓库: 使用 API 资产 URL（browser_download_url 不支持 Token 认证）
+					downloadURL = asset.URL
+				} else {
+					downloadURL = asset.BrowserDownloadURL
+				}
 			}
 			if strings.HasSuffix(asset.Name, ".sha256") {
-				checksumURL = asset.BrowserDownloadURL
+				if hasToken && asset.URL != "" {
+					checksumURL = asset.URL
+				} else {
+					checksumURL = asset.BrowserDownloadURL
+				}
 			}
 		}
 	}
@@ -412,10 +422,11 @@ func downloadFile(url, dst string, githubToken string) error {
 	// 为 GitHub 下载添加 Token 认证（私有仓库必须）
 	if githubToken != "" && (strings.Contains(url, "github.com") || strings.Contains(url, "githubusercontent.com")) {
 		req.Header.Set("Authorization", "token "+githubToken)
-		// GitHub Release 资产下载需要 Accept: application/octet-stream
-		if strings.Contains(url, "/releases/download/") {
-			req.Header.Set("Accept", "application/octet-stream")
-		}
+	}
+	// GitHub API 资产端点下载需要 Accept: application/octet-stream
+	// 私有仓库必须通过 API URL (api.github.com/repos/.../releases/assets/ID) 下载
+	if strings.Contains(url, "api.github.com") && strings.Contains(url, "/releases/assets/") {
+		req.Header.Set("Accept", "application/octet-stream")
 	}
 
 	resp, err := client.Do(req)

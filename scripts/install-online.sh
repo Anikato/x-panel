@@ -206,80 +206,148 @@ fi
 # ==================== 获取版本信息 ====================
 log_step "获取版本信息..."
 
+# 始终从 API 获取 Release 信息（私有仓库需要解析资产 API URL）
 if [ -z "$VERSION" ]; then
-    # 获取最新版本
-    RELEASE_INFO=$(github_curl "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null)
-    if [ $? -ne 0 ] || [ -z "$RELEASE_INFO" ]; then
-        log_error "无法连接到 GitHub，请检查网络连接"
-        if [ -z "$GITHUB_TOKEN" ]; then
-            log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
-        fi
-        exit 1
-    fi
+    RELEASE_API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+else
+    RELEASE_API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$VERSION"
+fi
 
-    VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-    if [ -z "$VERSION" ]; then
-        # 检查是否是认证问题
-        if echo "$RELEASE_INFO" | grep -q '"message".*Not Found\|"message".*Bad credentials'; then
-            log_error "GitHub API 返回错误（可能是私有仓库或 Token 无效）"
-            log_info "请使用 --token 参数提供有效的 GitHub Personal Access Token"
-        else
-            log_error "无法获取最新版本号，请确认仓库已发布 Release"
-        fi
-        log_info "仓库地址: https://github.com/$GITHUB_REPO/releases"
-        exit 1
+RELEASE_INFO=$(github_curl "$RELEASE_API_URL" 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$RELEASE_INFO" ]; then
+    log_error "无法连接到 GitHub，请检查网络连接"
+    if [ -z "$GITHUB_TOKEN" ]; then
+        log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
     fi
+    exit 1
+fi
+
+# 检查 API 响应是否有效
+if echo "$RELEASE_INFO" | grep -q '"message"'; then
+    API_MSG=$(echo "$RELEASE_INFO" | grep '"message"' | head -1 | sed 's/.*"message": *"\([^"]*\)".*/\1/')
+    log_error "GitHub API 错误: $API_MSG"
+    if [ -z "$GITHUB_TOKEN" ]; then
+        log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
+    fi
+    exit 1
+fi
+
+VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+if [ -z "$VERSION" ]; then
+    log_error "无法获取版本号，请确认仓库已发布 Release"
+    log_info "仓库地址: https://github.com/$GITHUB_REPO/releases"
+    exit 1
 fi
 
 log_info "目标版本: ${BOLD}$VERSION${NC}"
 
 # ==================== 下载 ====================
 PKG_NAME="xpanel-${VERSION}-linux-${ARCH}"
-DOWNLOAD_URL="https://github.com/$GITHUB_REPO/releases/download/$VERSION/${PKG_NAME}.tar.gz"
-CHECKSUM_URL="https://github.com/$GITHUB_REPO/releases/download/$VERSION/${PKG_NAME}.tar.gz.sha256"
 
 TMP_DIR=$(mktemp -d)
 trap "rm -rf $TMP_DIR" EXIT
 
-log_step "下载安装包..."
-echo "  URL: $DOWNLOAD_URL"
+if [ -n "$GITHUB_TOKEN" ]; then
+    # ===== 私有仓库：通过 GitHub API 资产端点下载 =====
+    # 私有仓库的 browser_download_url 不支持 Token 头认证（302 到 S3 会丢弃 Auth 头）
+    # 必须用 API 资产 URL + Accept: application/octet-stream 下载
+    log_step "解析 Release 资产..."
 
-if [ -n "$AUTH_HEADER" ]; then
-    HTTP_CODE=$(curl -sL -H "$AUTH_HEADER" -H "Accept: application/octet-stream" -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
-else
-    HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
-fi
-if [ "$HTTP_CODE" != "200" ]; then
-    log_error "下载失败 (HTTP $HTTP_CODE)"
-    if [ "$HTTP_CODE" = "404" ] && [ -z "$GITHUB_TOKEN" ]; then
-        log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
-    fi
-    log_info "请检查版本号是否正确: $VERSION"
-    log_info "可用版本: https://github.com/$GITHUB_REPO/releases"
-    exit 1
-fi
+    # 从 Release JSON 中提取资产的 API URL
+    # JSON 结构: "url": "https://api.github.com/.../assets/ID", ... "name": "xpanel-xxx.tar.gz"
+    DOWNLOAD_API_URL=$(echo "$RELEASE_INFO" | grep -B5 "\"name\": \"${PKG_NAME}.tar.gz\"" | grep '"url":.*api.github.com.*/assets/' | head -1 | sed 's/.*"url": *"\([^"]*\)".*/\1/')
+    CHECKSUM_API_URL=$(echo "$RELEASE_INFO" | grep -B5 "\"name\": \"${PKG_NAME}.tar.gz.sha256\"" | grep '"url":.*api.github.com.*/assets/' | head -1 | sed 's/.*"url": *"\([^"]*\)".*/\1/')
 
-DOWNLOAD_SIZE=$(du -h "$TMP_DIR/xpanel.tar.gz" | cut -f1)
-log_info "下载完成 (${DOWNLOAD_SIZE})"
-
-# ==================== 校验 ====================
-log_step "校验文件完整性..."
-
-if github_curl -o "$TMP_DIR/checksum.sha256" "$CHECKSUM_URL" 2>/dev/null; then
-    EXPECTED_HASH=$(awk '{print $1}' "$TMP_DIR/checksum.sha256")
-    ACTUAL_HASH=$(sha256sum "$TMP_DIR/xpanel.tar.gz" | awk '{print $1}')
-
-    if [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
-        log_info "SHA256 校验通过 ✓"
-    else
-        log_error "SHA256 校验失败！"
-        log_error "  期望: $EXPECTED_HASH"
-        log_error "  实际: $ACTUAL_HASH"
-        log_error "文件可能已损坏，请重新下载"
+    if [ -z "$DOWNLOAD_API_URL" ]; then
+        log_error "未在 Release 中找到 ${PKG_NAME}.tar.gz 资产"
+        log_info "可能原因: CI 构建尚未完成或构建失败"
+        log_info "请检查: https://github.com/$GITHUB_REPO/actions"
         exit 1
     fi
+
+    log_step "下载安装包 (通过 GitHub API)..."
+    echo "  资产: ${PKG_NAME}.tar.gz"
+
+    HTTP_CODE=$(curl -sL \
+        -H "Authorization: token $GITHUB_TOKEN" \
+        -H "Accept: application/octet-stream" \
+        -w "%{http_code}" \
+        -o "$TMP_DIR/xpanel.tar.gz" \
+        "$DOWNLOAD_API_URL" 2>/dev/null)
+
+    if [ "$HTTP_CODE" != "200" ]; then
+        log_error "下载失败 (HTTP $HTTP_CODE)"
+        log_info "请检查 Token 权限是否包含 repo 范围"
+        exit 1
+    fi
+
+    DOWNLOAD_SIZE=$(du -h "$TMP_DIR/xpanel.tar.gz" | cut -f1)
+    log_info "下载完成 (${DOWNLOAD_SIZE})"
+
+    # 下载并校验 checksum
+    log_step "校验文件完整性..."
+    if [ -n "$CHECKSUM_API_URL" ]; then
+        curl -sL \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            -o "$TMP_DIR/checksum.sha256" \
+            "$CHECKSUM_API_URL" 2>/dev/null
+
+        if [ -f "$TMP_DIR/checksum.sha256" ] && [ -s "$TMP_DIR/checksum.sha256" ]; then
+            EXPECTED_HASH=$(awk '{print $1}' "$TMP_DIR/checksum.sha256")
+            ACTUAL_HASH=$(sha256sum "$TMP_DIR/xpanel.tar.gz" | awk '{print $1}')
+            if [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
+                log_info "SHA256 校验通过 ✓"
+            else
+                log_error "SHA256 校验失败！"
+                log_error "  期望: $EXPECTED_HASH"
+                log_error "  实际: $ACTUAL_HASH"
+                exit 1
+            fi
+        else
+            log_warn "校验文件下载失败，跳过校验"
+        fi
+    else
+        log_warn "未找到校验文件资产，跳过校验"
+    fi
+
 else
-    log_warn "未找到校验文件，跳过 SHA256 校验"
+    # ===== 公开仓库：直接下载 =====
+    DOWNLOAD_URL="https://github.com/$GITHUB_REPO/releases/download/$VERSION/${PKG_NAME}.tar.gz"
+    CHECKSUM_URL="https://github.com/$GITHUB_REPO/releases/download/$VERSION/${PKG_NAME}.tar.gz.sha256"
+
+    log_step "下载安装包..."
+    echo "  URL: $DOWNLOAD_URL"
+
+    HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
+    if [ "$HTTP_CODE" != "200" ]; then
+        log_error "下载失败 (HTTP $HTTP_CODE)"
+        if [ "$HTTP_CODE" = "404" ]; then
+            log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
+        fi
+        log_info "请检查版本号是否正确: $VERSION"
+        exit 1
+    fi
+
+    DOWNLOAD_SIZE=$(du -h "$TMP_DIR/xpanel.tar.gz" | cut -f1)
+    log_info "下载完成 (${DOWNLOAD_SIZE})"
+
+    # 校验
+    log_step "校验文件完整性..."
+    if curl -sL -o "$TMP_DIR/checksum.sha256" "$CHECKSUM_URL" 2>/dev/null; then
+        EXPECTED_HASH=$(awk '{print $1}' "$TMP_DIR/checksum.sha256")
+        ACTUAL_HASH=$(sha256sum "$TMP_DIR/xpanel.tar.gz" | awk '{print $1}')
+        if [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
+            log_info "SHA256 校验通过 ✓"
+        else
+            log_error "SHA256 校验失败！"
+            log_error "  期望: $EXPECTED_HASH"
+            log_error "  实际: $ACTUAL_HASH"
+            exit 1
+        fi
+    else
+        log_warn "未找到校验文件，跳过 SHA256 校验"
+    fi
 fi
 
 # ==================== 解压 ====================

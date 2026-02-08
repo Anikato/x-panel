@@ -46,8 +46,9 @@ type GitHubRelease struct {
 
 // GitHubAsset GitHub Release 附件
 type GitHubAsset struct {
+	URL                string `json:"url"`                  // API URL (用于私有仓库下载)
 	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
+	BrowserDownloadURL string `json:"browser_download_url"` // 直接下载 URL (仅公开仓库)
 	Size               int64  `json:"size"`
 	ContentType        string `json:"content_type"`
 }
