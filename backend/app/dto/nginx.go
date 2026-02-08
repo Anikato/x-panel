@@ -21,9 +21,17 @@ type NginxInstallReq struct {
 }
 
 type NginxInstallProgress struct {
-	Phase   string `json:"phase"`   // 当前阶段: deps/download/configure/compile/install/done/error
+	Phase   string `json:"phase"`   // 当前阶段: download/verify/install/done/error
 	Message string `json:"message"` // 阶段描述
 	Percent int    `json:"percent"` // 总体进度百分比 0-100
+}
+
+// ---- Nginx 可用版本 ----
+
+type NginxVersionInfo struct {
+	Version     string `json:"version"`     // 版本号 (如 "1.26.2")
+	Tag         string `json:"tag"`         // Git 标签 (如 "v1.26.2")
+	PublishedAt string `json:"publishedAt"` // 发布时间
 }
 
 // ---- Nginx 操作 ----

@@ -33,6 +33,9 @@ func Init() {
 	v.SetDefault("log.max_size", 100)
 	v.SetDefault("log.max_age", 30)
 	v.SetDefault("log.compress", true)
+	v.SetDefault("nginx.install_dir", "/opt/xpanel/nginx")
+	v.SetDefault("nginx.version", "")
+	v.SetDefault("nginx.build_repo", "Anikato/nginx-build")
 
 	if err := v.ReadInConfig(); err != nil {
 		fmt.Printf("Using default config, config file not found: %v\n", err)

@@ -48,7 +48,7 @@ func (api *NginxAPI) TestNginxConfig(c *gin.Context) {
 	helper.SuccessWithData(c, result)
 }
 
-// InstallNginx 安装 Nginx（从源码编译）
+// InstallNginx 从预编译仓库安装 Nginx
 func (api *NginxAPI) InstallNginx(c *gin.Context) {
 	var req dto.NginxInstallReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -76,15 +76,12 @@ func (api *NginxAPI) UninstallNginx(c *gin.Context) {
 	helper.SuccessWithData(c, nil)
 }
 
-// CheckNginxDeps 检查 Nginx 编译依赖
-func (api *NginxAPI) CheckNginxDeps(c *gin.Context) {
-	missing, err := nginxInstallService.CheckDeps()
+// ListNginxVersions 获取可用的 Nginx 预编译版本列表
+func (api *NginxAPI) ListNginxVersions(c *gin.Context) {
+	versions, err := nginxInstallService.ListVersions()
 	if err != nil {
 		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	helper.SuccessWithData(c, map[string]interface{}{
-		"allSatisfied": len(missing) == 0,
-		"missing":      missing,
-	})
+	helper.SuccessWithData(c, versions)
 }

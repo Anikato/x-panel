@@ -56,6 +56,7 @@ type LogConfig struct {
 type NginxConfig struct {
 	InstallDir string `mapstructure:"install_dir"` // Nginx 安装根目录
 	Version    string `mapstructure:"version"`     // 当前 Nginx 版本
+	BuildRepo  string `mapstructure:"build_repo"`  // 预编译仓库 (如 "Anikato/nginx-build")
 }
 
 // GetBinary 返回 Nginx 二进制路径

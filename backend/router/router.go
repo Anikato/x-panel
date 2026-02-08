@@ -171,7 +171,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/nginx/install", api.InstallNginx)
 		privateGroup.GET("/nginx/install/progress", api.GetInstallProgress)
 		privateGroup.POST("/nginx/uninstall", api.UninstallNginx)
-		privateGroup.GET("/nginx/deps", api.CheckNginxDeps)
+		privateGroup.GET("/nginx/versions", api.ListNginxVersions)
 	}
 
 	// WebSocket

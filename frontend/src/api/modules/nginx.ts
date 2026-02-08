@@ -15,7 +15,7 @@ export const testNginxConfig = () => {
   return http.get('/nginx/config-test')
 }
 
-// --- 安装 Nginx ---
+// --- 安装 Nginx（从预编译仓库下载）---
 export const installNginx = (version: string) => {
   return http.post('/nginx/install', { version })
 }
@@ -30,7 +30,7 @@ export const uninstallNginx = () => {
   return http.post('/nginx/uninstall')
 }
 
-// --- 检查编译依赖 ---
-export const checkNginxDeps = () => {
-  return http.get('/nginx/deps')
+// --- 获取可用的预编译版本列表 ---
+export const listNginxVersions = () => {
+  return http.get('/nginx/versions')
 }

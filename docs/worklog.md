@@ -4,6 +4,65 @@
 
 ---
 
+## 2026-02-09 — Session #18：Nginx 预编译仓库 + 下载安装模式
+
+### 完成内容
+
+#### 新建 nginx-build 预编译仓库 (`/data/nginx-build/`)
+- [x] `.github/workflows/build.yml`：GitHub Actions 自动编译工作流
+  - 支持 `v*` tag 触发和 `workflow_dispatch` 手动触发
+  - 为 amd64 (原生编译) 和 arm64 (QEMU/Docker) 编译
+  - 产物发布为 GitHub Release（tar.gz + sha256 校验）
+- [x] `build.sh`：Nginx 编译脚本
+  - 使用 `--prefix=/opt/xpanel/nginx` 作为编译前缀
+  - 包含模块: http_ssl, http_v2, http_realip, http_gzip_static, http_stub_status, stream, stream_ssl, pcre
+  - 使用 `DESTDIR` 分阶段安装，自动创建 conf.d/ssl/temp 等目录
+- [x] `README.md`：仓库使用说明
+
+#### 后端改造 (X-Panel)
+- [x] `backend/app/service/nginx_install.go` — **完全重写**
+  - `Install()`: 改为从 GitHub Release 下载预编译 Nginx
+  - `doInstall()`: 下载 → SHA256 校验 → 解压安装 → 创建目录结构 → 更新配置
+  - `ListVersions()`: 新增，从 GitHub API 获取可用版本列表
+  - `Uninstall()`: 保留，调整为使用 `-p installDir` 停止 Nginx
+  - 移除 `CheckDeps()`: 预编译模式不再需要编译依赖检查
+- [x] `backend/app/service/nginx.go` — 所有 nginx 命令增加 `-p installDir` 参数
+  - `start()`, `reload()`, `signal()`, `TestConfig()`, `GetStatus()` 全部传 `-p`
+  - 确保预编译二进制在任何安装目录下都能正确找到配置和日志
+- [x] `backend/app/dto/nginx.go` — 新增 `NginxVersionInfo` DTO（version, tag, publishedAt）
+- [x] `backend/app/api/v1/nginx.go` — 新增 `ListNginxVersions` handler，移除 `CheckNginxDeps`
+- [x] `backend/router/router.go` — 路由 `/nginx/deps` 替换为 `/nginx/versions`
+- [x] `backend/global/global.go` — `NginxConfig` 新增 `BuildRepo` 字段
+- [x] `backend/init/viper/viper.go` — 默认值 `nginx.build_repo: Anikato/nginx-build`
+- [x] `backend/configs/config.yaml` — 新增 `build_repo` 配置
+
+#### 前端改造
+- [x] `frontend/src/views/website/nginx/index.vue` — 重写安装 UI
+  - 移除"检查依赖"按钮和依赖检查结果展示
+  - 安装对话框改为版本下拉选择（从后端获取可用版本列表）
+  - 无可用版本时显示警告并允许手动输入
+  - 进度状态移除 configure/compile，新增 verify（校验）
+- [x] `frontend/src/api/modules/nginx.ts` — 移除 `checkNginxDeps`，新增 `listNginxVersions`
+- [x] `frontend/src/i18n/zh.ts` — 更新翻译
+  - 移除编译相关（checkDeps, depsOk, depsMissing, phaseConfigure, phaseCompile）
+  - 新增预编译相关（selectVersion, noVersions, phaseVerify）
+  - 修改安装确认文案
+
+### 关键决策
+1. **预编译仓库独立于 X-Panel**：`Anikato/nginx-build` 独立管理，tag = Nginx 版本号
+2. **编译前缀固定为 `/opt/xpanel/nginx`**：匹配 X-Panel 默认安装目录
+3. **运行时 `-p` 参数**：所有 nginx 命令传 `-p installDir`，确保在不同安装目录下也能工作
+4. **arm64 使用 QEMU/Docker 编译**：GitHub Actions runner 原生 amd64，arm64 通过 Docker 交叉编译
+
+### 遗留问题
+- nginx-build 仓库需要用户在 GitHub 上创建并推送
+
+### 下一步计划
+- 创建 `Anikato/nginx-build` GitHub 仓库并推送编译配置
+- 发布第一个 Nginx 预编译版本 (v1.26.2)
+
+---
+
 ## 2026-02-08 — Session #17：HTTPS 默认启用 + 安全入口 + 自定义端口
 
 ### 完成内容

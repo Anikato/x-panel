@@ -19,4 +19,5 @@ log:
 
 nginx:
   install_dir: "./nginx"    # Nginx 自包含安装目录（相对于面板安装目录）
-  version: "1.26.2"         # 当前安装的 Nginx 版本
+  version: ""               # 当前安装的 Nginx 版本（安装后自动填充）
+  build_repo: "Anikato/nginx-build"  # 预编译 Nginx 的 GitHub 仓库

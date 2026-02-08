@@ -38,7 +38,7 @@ func (s *NginxService) GetStatus() (*dto.NginxStatus, error) {
 	}
 
 	// 获取版本
-	version, err := cmd.ExecWithOutput(nc.GetBinary(), "-v")
+	version, err := cmd.ExecWithOutput(nc.GetBinary(), "-p", nc.InstallDir, "-v")
 	if err == nil {
 		// nginx -v 输出到 stderr: "nginx version: nginx/1.26.2"
 		status.Version = parseNginxVersion(version)
@@ -98,7 +98,7 @@ func (s *NginxService) TestConfig() (*dto.NginxConfigTestResult, error) {
 		return nil, buserr.New(constant.ErrNginxNotInstalled)
 	}
 
-	output, err := cmd.ExecWithOutput(nc.GetBinary(), "-t")
+	output, err := cmd.ExecWithOutput(nc.GetBinary(), "-p", nc.InstallDir, "-t")
 	if err != nil {
 		// nginx -t 的输出通常在 stderr
 		errMsg := output
@@ -133,7 +133,8 @@ func (s *NginxService) start(nginxBin string) error {
 		return buserr.WithDetail(constant.ErrNginxConfigTest, testResult.Output, nil)
 	}
 
-	output, err := cmd.ExecWithOutput(nginxBin)
+	installDir := global.CONF.Nginx.InstallDir
+	output, err := cmd.ExecWithOutput(nginxBin, "-p", installDir)
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer,
 			fmt.Sprintf("start failed: %s %v", output, err), err)
@@ -158,7 +159,8 @@ func (s *NginxService) reload(nginxBin string) error {
 		return buserr.WithDetail(constant.ErrNginxConfigTest, testResult.Output, nil)
 	}
 
-	output, err := cmd.ExecWithOutput(nginxBin, "-s", "reload")
+	installDir := global.CONF.Nginx.InstallDir
+	output, err := cmd.ExecWithOutput(nginxBin, "-p", installDir, "-s", "reload")
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer,
 			fmt.Sprintf("reload failed: %s %v", output, err), err)
@@ -174,7 +176,8 @@ func (s *NginxService) signal(nginxBin, sig string) error {
 		return buserr.New(constant.ErrNginxNotRunning)
 	}
 
-	output, err := cmd.ExecWithOutput(nginxBin, "-s", sig)
+	installDir := global.CONF.Nginx.InstallDir
+	output, err := cmd.ExecWithOutput(nginxBin, "-p", installDir, "-s", sig)
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer,
 			fmt.Sprintf("signal %s failed: %s %v", sig, output, err), err)

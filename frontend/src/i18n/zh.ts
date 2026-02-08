@@ -416,7 +416,7 @@ export default {
     configInvalid: '配置异常',
     running: '运行中',
     stopped: '已停止',
-    notInstalled: '未安装',
+    notInstalled: 'Nginx 尚未安装，点击下方按钮从预编译仓库安装。',
     // 操作
     start: '启动',
     stop: '停止',
@@ -429,13 +429,11 @@ export default {
     uninstall: '卸载 Nginx',
     installVersion: '安装版本',
     installVersionPlaceholder: '例如: 1.26.2',
+    selectVersion: '选择版本',
+    noVersions: '未找到可用版本，请确认预编译仓库已发布 Release，或手动输入版本号。',
     installProgress: '安装进度',
-    installConfirm: '确定要从源码编译安装 Nginx {version} 吗？这可能需要几分钟时间。',
+    installConfirm: '确定要安装 Nginx {version} 吗？将从预编译仓库下载安装包。',
     uninstallConfirm: '确定要卸载 Nginx 吗？安装目录将被完全删除，此操作不可恢复。',
-    // 依赖检查
-    checkDeps: '检查依赖',
-    depsOk: '所有编译依赖已满足',
-    depsMissing: '缺少以下编译依赖',
     // 配置测试
     testConfig: '测试配置',
     testSuccess: '配置测试通过',
@@ -444,8 +442,7 @@ export default {
     // 状态短语
     phaseIdle: '空闲',
     phaseDownload: '下载中',
-    phaseConfigure: '配置中',
-    phaseCompile: '编译中',
+    phaseVerify: '校验中',
     phaseInstall: '安装中',
     phaseDone: '已完成',
     phaseError: '出错',

@@ -15,31 +15,11 @@
             <el-icon :size="64" color="var(--xp-text-muted)"><Box /></el-icon>
           </template>
           <div class="install-actions">
-            <el-button type="primary" @click="showInstallDialog = true">
+            <el-button type="primary" @click="handleShowInstall">
               {{ $t('nginx.install') }}
-            </el-button>
-            <el-button @click="handleCheckDeps">
-              {{ $t('nginx.checkDeps') }}
             </el-button>
           </div>
         </el-empty>
-      </el-card>
-
-      <!-- 依赖检查结果 -->
-      <el-card v-if="depsChecked" shadow="never" class="deps-card">
-        <template #header>
-          <span>{{ $t('nginx.checkDeps') }}</span>
-        </template>
-        <el-result v-if="depsAllSatisfied" icon="success" :title="$t('nginx.depsOk')" />
-        <div v-else>
-          <el-alert :title="$t('nginx.depsMissing')" type="warning" :closable="false" show-icon>
-            <template #default>
-              <ul class="deps-list">
-                <li v-for="dep in depsMissing" :key="dep">{{ dep }}</li>
-              </ul>
-            </template>
-          </el-alert>
-        </div>
       </el-card>
     </template>
 
@@ -152,15 +132,37 @@
     </template>
 
     <!-- 安装对话框 -->
-    <el-dialog v-model="showInstallDialog" :title="$t('nginx.install')" width="460px" :close-on-click-modal="false">
+    <el-dialog v-model="showInstallDialog" :title="$t('nginx.install')" width="500px" :close-on-click-modal="false">
       <el-form :model="installForm" label-width="100px">
         <el-form-item :label="$t('nginx.installVersion')">
-          <el-input v-model="installForm.version" :placeholder="$t('nginx.installVersionPlaceholder')" />
+          <el-select
+            v-model="installForm.version"
+            :placeholder="$t('nginx.selectVersion')"
+            :loading="versionsLoading"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="v in availableVersions"
+              :key="v.version"
+              :label="v.version"
+              :value="v.version"
+            >
+              <div class="version-option">
+                <span>{{ v.version }}</span>
+                <span class="version-date">{{ formatDate(v.publishedAt) }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="availableVersions.length === 0 && !versionsLoading">
+          <el-alert :title="$t('nginx.noVersions')" type="warning" :closable="false" show-icon />
+          <el-input v-model="installForm.version" :placeholder="$t('nginx.installVersionPlaceholder')" style="margin-top: 8px" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showInstallDialog = false">{{ $t('commons.cancel') }}</el-button>
-        <el-button type="primary" @click="handleInstall" :loading="installLoading">{{ $t('commons.confirm') }}</el-button>
+        <el-button type="primary" @click="handleInstall" :loading="installLoading" :disabled="!installForm.version">{{ $t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -181,7 +183,7 @@ import {
   installNginx,
   getInstallProgress,
   uninstallNginx,
-  checkNginxDeps,
+  listNginxVersions,
 } from '@/api/modules/nginx'
 
 const { t } = useI18n()
@@ -201,13 +203,12 @@ const installProgress = ref<any>({ phase: 'idle', message: '', percent: 0 })
 let progressTimer: ReturnType<typeof setInterval> | null = null
 
 const installForm = reactive({
-  version: '1.26.2',
+  version: '',
 })
 
-// 依赖检查
-const depsChecked = ref(false)
-const depsAllSatisfied = ref(false)
-const depsMissing = ref<string[]>([])
+// 可用版本列表
+const availableVersions = ref<any[]>([])
+const versionsLoading = ref(false)
 
 // 加载状态
 const loadStatus = async () => {
@@ -217,6 +218,20 @@ const loadStatus = async () => {
     status.value = res.data || {}
   } catch { /* handled by interceptor */ }
   finally { loading.value = false }
+}
+
+// 获取可用版本
+const loadVersions = async () => {
+  versionsLoading.value = true
+  try {
+    const res = await listNginxVersions()
+    availableVersions.value = res.data || []
+    // 默认选择第一个版本
+    if (availableVersions.value.length > 0 && !installForm.version) {
+      installForm.version = availableVersions.value[0].version
+    }
+  } catch { /* handled */ }
+  finally { versionsLoading.value = false }
 }
 
 // 操作 Nginx
@@ -245,20 +260,16 @@ const handleTestConfig = async () => {
   finally { testLoading.value = false }
 }
 
-// 检查依赖
-const handleCheckDeps = async () => {
-  try {
-    const res = await checkNginxDeps()
-    depsChecked.value = true
-    depsAllSatisfied.value = res.data?.allSatisfied || false
-    depsMissing.value = res.data?.missing || []
-  } catch { /* handled */ }
+// 显示安装对话框（同时加载版本列表）
+const handleShowInstall = () => {
+  showInstallDialog.value = true
+  loadVersions()
 }
 
 // 安装 Nginx
 const handleInstall = async () => {
   if (!installForm.version) {
-    ElMessage.warning(t('nginx.installVersionPlaceholder'))
+    ElMessage.warning(t('nginx.selectVersion'))
     return
   }
   try {
@@ -335,7 +346,7 @@ const phaseTagType = computed(() => {
   const phase = installProgress.value?.phase
   if (phase === 'done') return 'success'
   if (phase === 'error') return 'danger'
-  if (phase === 'compile') return 'warning'
+  if (phase === 'verify') return 'warning'
   return 'info'
 })
 
@@ -343,8 +354,7 @@ const phaseLabel = computed(() => {
   const map: Record<string, string> = {
     idle: t('nginx.phaseIdle'),
     download: t('nginx.phaseDownload'),
-    configure: t('nginx.phaseConfigure'),
-    compile: t('nginx.phaseCompile'),
+    verify: t('nginx.phaseVerify'),
     install: t('nginx.phaseInstall'),
     done: t('nginx.phaseDone'),
     error: t('nginx.phaseError'),
@@ -360,6 +370,15 @@ const formatTime = (timeStr?: string) => {
     if (isNaN(d.getTime())) return '-'
     return d.toLocaleString('zh-CN', { hour12: false })
   } catch { return '-' }
+}
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return ''
+    return d.toLocaleDateString('zh-CN')
+  } catch { return '' }
 }
 
 onMounted(() => loadStatus())
@@ -458,20 +477,6 @@ onUnmounted(() => stopProgressPolling())
   }
 }
 
-.deps-card {
-  margin-bottom: 16px;
-
-  .deps-list {
-    margin: 8px 0 0;
-    padding-left: 20px;
-
-    li {
-      line-height: 1.8;
-      color: var(--xp-text-secondary);
-    }
-  }
-}
-
 .progress-card {
   margin-bottom: 16px;
 }
@@ -490,5 +495,17 @@ onUnmounted(() => stopProgressPolling())
     color: var(--xp-text-secondary);
     font-size: 13px;
   }
+}
+
+.version-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.version-date {
+  font-size: 12px;
+  color: var(--xp-text-muted, #666);
 }
 </style>
