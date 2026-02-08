@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+build/
+backend/xpanel
+backend/cmd/server/web/assets/
+!backend/cmd/server/web/assets/index.html
+
+# Backend data (local dev)
+backend/data/
+
+# IDE
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# 1Panel reference (submodule or copy)
+1Panel/
+
+# Environment
+*.env.local
+
+# SSH keys (never commit!)
+main_id_rsa
+*.pem
+*.key
+id_rsa
+id_rsa.pub

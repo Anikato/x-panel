@@ -1,0 +1,82 @@
+---
+name: x-panel
+description: X-Panel 服务器管理面板 - 全 AI 辅助开发项目的全局规则
+globs:
+alwaysApply: true
+---
+
+# X-Panel 项目规则
+
+## 项目身份
+
+- X-Panel 是一个 Linux 服务器管理面板，参考 1Panel 重新实现
+- **核心差异：Nginx 基于本地安装管理，不使用 Docker**
+- 参考源码：`1Panel/` 目录（只读参考，禁止修改）
+- 详细设计文档：`docs/development-guide.md`
+
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| 后端 | Go 1.24+ / Gin / GORM / SQLite (glebarez/sqlite) |
+| 配置 | Viper (YAML) |
+| 前端 | Vue 3 + TypeScript / Element Plus / Pinia / Vite |
+| 终端 | xterm.js + gorilla/websocket |
+| 容器 | Docker SDK (docker/docker) |
+| SSL | go-acme/lego/v4 |
+| 监控 | shirou/gopsutil/v4 / ECharts 5 |
+
+## 架构约束
+
+### 分层规则
+严格单向依赖：`Router → API(Handler) → Service → Repo → Model`
+- API 层：参数校验 + 调用 Service + 统一响应，不含业务逻辑
+- Service 层：业务逻辑，不直接操作 HTTP 上下文
+- Repo 层：纯数据库 CRUD
+- Model 层：GORM 模型定义，不含业务方法
+
+### 目录结构
+后端 `backend/`：`cmd/server/` | `server/` | `app/{api/v1, dto, model, repo, service}` | `router/` | `middleware/` | `global/` | `constant/` | `utils/` | `i18n/` | `init/` | `cron/`
+
+前端 `frontend/src/`：`api/` | `components/` | `hooks/` | `layout/` | `routers/modules/` | `store/` | `views/{website,database,container,host,terminal,cronjob,toolbox,log,setting}` | `utils/`
+
+### 初始化顺序
+Viper → Logger → DB → Migration → Cache → I18n → Cron → Firewall → Router
+
+## 关键约束 ⚠️
+
+1. **Nginx 必须本地管理**：systemctl 管控，配置在 `/etc/nginx/`，禁止 Docker 化
+2. **Nginx 变更安全模式**：修改配置 → `nginx -t` 测试 → 失败回滚 → 成功才 `nginx -s reload`
+3. **不实现的功能**：应用商店、Runtime 管理、系统快照、备份账号管理
+4. **1Panel 代码仅参考**：禁止直接复制，需去除 Docker Nginx 依赖后重写
+5. **所有用户可见文本必须走 i18n**：不硬编码中英文
+
+## 编码规范
+
+### Go 后端
+- 文件名 `snake_case.go`，接口 `IXxxService`，实现 `XxxService`
+- 所有 model 继承 `BaseModel{ID, CreatedAt, UpdatedAt}`
+- 统一响应 `Response{Code, Message, Data}` + 分页 `PageResult{Total, Items}`
+- 业务错误用 `buserr.New("ErrKey")` 包装，支持 i18n
+- 每个 Service 定义接口 + 私有实现 + `NewIXxxService()` 工厂函数
+
+### Vue 前端
+- 组件使用 `<script setup lang="ts">`，Props 用 TypeScript 接口
+- 路由按模块拆分：`routers/modules/{website,database,...}.ts`
+- API 按模块封装，Axios 实例自动附加 JWT、401 跳登录
+- 状态管理用 Pinia，需要持久化的 store 启用 `persist: true`
+
+## 工作日志 📋
+
+- **日志文件**：`docs/worklog.md`
+- **更新时机**：每次会话完成实质性工作后，必须在日志中追加记录
+- **记录内容**：日期、完成内容（checklist）、关键决策、遗留问题、下一步计划
+- **格式**：按日期倒序，最新记录在最前面（目录之后）
+
+## 参考 1Panel 源码导航
+
+- Agent 端（实际执行层）：`1Panel/agent/app/service/` — 网站/数据库/容器/系统/工具箱
+- Core 端（管控层）：`1Panel/core/app/service/` — 认证/设置/日志/多机管理
+- Nginx 解析器：`1Panel/agent/utils/nginx/` — 可移植的纯 Go 实现
+- SSL 工具：`1Panel/agent/utils/ssl/` — 可移植的 ACME 客户端
+- 前端页面：`1Panel/frontend/src/views/` — UI 结构参考

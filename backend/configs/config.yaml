@@ -1,0 +1,18 @@
+system:
+  port: "9999"
+  mode: "debug"             # debug / release
+  data_dir: "./data"        # 开发环境使用相对路径
+  db_path: "db/xpanel.db"   # 相对于 data_dir
+  jwt_secret: "dev-secret-change-in-production"
+  session_timeout: 86400    # 24h
+
+log:
+  level: "debug"
+  path: "log"               # 相对于 data_dir
+  max_size: 100             # MB
+  max_age: 30               # days
+  compress: false
+
+nginx:
+  install_dir: "./nginx"    # Nginx 自包含安装目录（相对于面板安装目录）
+  version: "1.26.2"         # 当前安装的 Nginx 版本

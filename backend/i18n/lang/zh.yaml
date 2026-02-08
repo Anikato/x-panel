@@ -1,0 +1,75 @@
+# 通用错误
+ErrInternalServer:
+  other: "服务器内部错误: {{.detail}}"
+ErrInvalidParams:
+  other: "请求参数不合法: {{.detail}}"
+ErrRecordNotFound:
+  other: "记录不存在"
+ErrRecordExist:
+  other: "记录已存在"
+
+# 认证错误
+ErrAuth:
+  other: "用户名或密码错误"
+ErrTokenInvalid:
+  other: "令牌无效"
+ErrTokenExpired:
+  other: "令牌已过期"
+ErrNotLogin:
+  other: "请先登录"
+ErrPasswordWrong:
+  other: "密码错误"
+ErrUserNotFound:
+  other: "用户不存在"
+ErrInitialPassword:
+  other: "请先设置初始密码"
+
+# 文件管理错误
+ErrFileNotExist:
+  other: "文件或目录不存在"
+ErrFileNotDir:
+  other: "目标不是目录"
+ErrFileIsDir:
+  other: "目标是目录，不能读取内容"
+ErrFileTooLarge:
+  other: "文件过大，无法在线编辑（上限 10MB）"
+ErrFileDeleteProtected:
+  other: "系统关键目录不允许删除"
+ErrFileInvalidChar:
+  other: "文件名包含非法字符"
+ErrFileChown:
+  other: "修改文件所有者失败: {{.detail}}"
+
+# SSL 证书错误
+ErrSSLAcmeRegister:
+  other: "ACME 账户注册失败: {{.detail}}"
+ErrSSLApply:
+  other: "证书申请失败: {{.detail}}"
+ErrSSLRenew:
+  other: "证书续签失败: {{.detail}}"
+
+# Nginx 错误
+ErrNginxNotInstalled:
+  other: "Nginx 尚未安装"
+ErrNginxAlreadyRunning:
+  other: "Nginx 已在运行中"
+ErrNginxNotRunning:
+  other: "Nginx 未运行"
+ErrNginxConfigTest:
+  other: "Nginx 配置测试失败: {{.detail}}"
+ErrNginxInstall:
+  other: "Nginx 安装失败: {{.detail}}"
+ErrNginxBuildDeps:
+  other: "缺少编译依赖: {{.detail}}"
+
+# 操作消息
+MsgLoginSuccess:
+  other: "登录成功"
+MsgLogoutSuccess:
+  other: "注销成功"
+MsgUpdateSuccess:
+  other: "更新成功"
+MsgCreateSuccess:
+  other: "创建成功"
+MsgDeleteSuccess:
+  other: "删除成功"

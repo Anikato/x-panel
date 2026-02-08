@@ -1,0 +1,122 @@
+---
+name: frontend
+description: Vue 3 前端开发规则 - Element Plus + TypeScript + Pinia 模式
+globs: frontend/**
+---
+
+# 前端开发规则
+
+## 组件模式
+
+### 页面组件模板
+```vue
+<template>
+  <div>
+    <el-card>
+      <!-- 搜索栏 -->
+      <!-- 数据表格 -->
+      <!-- 分页 -->
+    </el-card>
+    <!-- 弹窗组件 -->
+    <XxxDialog ref="dialogRef" @search="search" />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { xxxApi } from '@/api/modules/xxx'
+import type { XxxType } from '@/api/interface/xxx'
+
+const loading = ref(false)
+const data = ref<XxxType[]>([])
+const paginationConfig = reactive({ page: 1, pageSize: 20, total: 0 })
+
+const search = async () => {
+  loading.value = true
+  try {
+    const res = await xxxApi.page({ ...paginationConfig })
+    data.value = res.data.items
+    paginationConfig.total = res.data.total
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => search())
+</script>
+```
+
+### 弹窗组件模板
+```vue
+<script setup lang="ts">
+import { ref, reactive } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
+
+const emit = defineEmits<{ search: [] }>()
+const open = ref(false)
+const formRef = ref<FormInstance>()
+const form = reactive({ /* fields */ })
+const rules = reactive<FormRules>({ /* validation rules */ })
+
+const acceptParams = (params?: any) => {
+  // 初始化表单
+  open.value = true
+}
+
+const onSubmit = async () => {
+  await formRef.value?.validate()
+  // 调用 API
+  emit('search')
+  open.value = false
+}
+
+defineExpose({ acceptParams })
+</script>
+```
+
+## API 封装规则
+- 每个模块一个文件：`api/modules/{website,database,container,...}.ts`
+- 类型定义：`api/interface/{module}.ts`
+- 请求使用全局 Axios 实例（自动附加 JWT、处理 401）
+- 分页请求统一用 POST，非分页查询用 GET
+
+```typescript
+// api/modules/website.ts
+import http from '@/api'
+
+export const websiteApi = {
+  page: (params: Website.SearchReq) => http.post<ResPage<Website.WebsiteDTO>>('/websites/search', params),
+  create: (params: Website.CreateReq) => http.post('/websites', params),
+  update: (id: number, params: Website.UpdateReq) => http.put(`/websites/${id}`, params),
+  delete: (params: { ids: number[] }) => http.post('/websites/del', params),
+}
+```
+
+## 路由规则
+- 路由文件按模块拆分到 `routers/modules/`
+- 页面级路由使用懒加载：`component: () => import('@/views/xxx/index.vue')`
+- meta 中声明 `title`（i18n key）和 `icon`
+- 需要权限的路由加 `meta.requiresAuth: true`
+
+## UI/UX 规则
+- 使用 Element Plus 组件，不自造轮子
+- 表格操作按钮：查看/编辑/删除，删除需二次确认 (`ElMessageBox.confirm`)
+- 表单验证使用 Element Plus FormRules
+- 加载状态用 `v-loading`，空状态用 `el-empty`
+- 成功提示用 `ElMessage.success`，错误用 `ElMessage.error`
+
+## 状态管理规则
+- 全局状态（主题/语言/用户信息/当前节点）放 Pinia store
+- 页面级状态放组件内 `ref/reactive`
+- 需持久化的 store 启用 `persist: true`
+
+## 样式规则
+- 全局样式在 `styles/` 目录
+- 组件样式用 `<style scoped lang="scss">`
+- 主题变量通过 CSS Variables / Element Plus 主题系统
+- 响应式布局使用 Element Plus Grid (`el-row/el-col`)
+
+## 国际化
+- 所有文本使用 `$t('key')` 或 `t('key')`
+- 语言文件按模块组织：`i18n/modules/{website,database,...}`
+- 新增文本同时提供 `zh` 和 `en` 翻译
