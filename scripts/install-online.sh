@@ -8,6 +8,9 @@
 # 自定义端口和安全入口:
 #   curl -sSL ... | bash -s -- --port 8443 --entrance mySecret123
 #
+# 自定义安装路径:
+#   curl -sSL ... | bash -s -- --path /usr/local/xpanel
+#
 # 禁用 HTTPS（默认启用自签证书）:
 #   curl -sSL ... | bash -s -- --no-ssl
 #
@@ -22,10 +25,10 @@ set -e
 
 # ==================== 配置 ====================
 GITHUB_REPO="Anikato/x-panel"
-INSTALL_DIR="/opt/xpanel"
+DEFAULT_INSTALL_DIR="/opt/xpanel"
+INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 SERVICE_NAME="xpanel"
-CONFIG_FILE="$INSTALL_DIR/config.yaml"
-DEFAULT_PORT="9999"
+DEFAULT_PORT="7777"
 
 # ==================== 颜色 ====================
 RED='\033[0;31m'
@@ -41,12 +44,29 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 log_step()  { echo -e "${BLUE}>>>${NC} $*"; }
 
+# 交互式读取（支持 curl | bash 管道模式）
+read_input() {
+    local prompt="$1"
+    local var_name="$2"
+    local default_val="$3"
+    if [ -t 0 ]; then
+        read -p "$prompt" "$var_name"
+    else
+        read -p "$prompt" "$var_name" < /dev/tty
+    fi
+    # 如果为空，使用默认值
+    if [ -z "${!var_name}" ] && [ -n "$default_val" ]; then
+        eval "$var_name='$default_val'"
+    fi
+}
+
 # ==================== 参数解析 ====================
 VERSION=""
 UNINSTALL=false
 GITHUB_TOKEN=""
 YES=false
 CUSTOM_PORT=""
+CUSTOM_PATH=""
 ENTRANCE=""
 ENABLE_SSL=true
 
@@ -62,6 +82,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --port|-p)
             CUSTOM_PORT="$2"
+            shift 2
+            ;;
+        --path)
+            CUSTOM_PATH="$2"
             shift 2
             ;;
         --entrance|-e)
@@ -91,7 +115,8 @@ while [[ $# -gt 0 ]]; do
             echo "  bash install-online.sh [选项]"
             echo ""
             echo "选项:"
-            echo "  --port, -p <端口>     自定义面板端口 (默认: 9999)"
+            echo "  --port, -p <端口>     自定义面板端口 (默认: $DEFAULT_PORT)"
+            echo "  --path <路径>         自定义安装路径 (默认: $DEFAULT_INSTALL_DIR)"
             echo "  --entrance, -e <路径> 安全入口路径 (如 mySecret123)"
             echo "  --ssl                 启用 HTTPS 自签证书 (默认)"
             echo "  --no-ssl              禁用 HTTPS，使用 HTTP"
@@ -108,6 +133,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# 应用自定义安装路径
+if [ -n "$CUSTOM_PATH" ]; then
+    INSTALL_DIR="$CUSTOM_PATH"
+fi
+CONFIG_FILE="$INSTALL_DIR/config.yaml"
 
 # 构建 curl 认证头
 AUTH_HEADER=""
@@ -142,12 +173,7 @@ do_uninstall() {
     echo ""
 
     if [ "$YES" != true ]; then
-        # 从 /dev/tty 读取，支持 curl | bash 管道模式
-        if [ -t 0 ]; then
-            read -p "确定要卸载 X-Panel 吗？数据目录将被保留。(y/N): " confirm
-        else
-            read -p "确定要卸载 X-Panel 吗？数据目录将被保留。(y/N): " confirm < /dev/tty
-        fi
+        read_input "确定要卸载 X-Panel 吗？数据目录将被保留。(y/N): " confirm ""
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
             log_info "取消卸载"
             exit 0
@@ -222,6 +248,7 @@ case $ARCH in
         ;;
 esac
 log_info "系统架构: ${BOLD}$ARCH${NC}"
+log_info "安装路径: ${BOLD}$INSTALL_DIR${NC}"
 
 # 检查必要工具
 for cmd in curl tar sha256sum; do
@@ -231,6 +258,71 @@ for cmd in curl tar sha256sum; do
         exit 1
     fi
 done
+
+# ==================== 检测并安装 sqlite3 ====================
+check_and_install_sqlite3() {
+    if command -v sqlite3 &>/dev/null; then
+        log_info "sqlite3 已安装 ✓"
+        return 0
+    fi
+
+    log_warn "未检测到 sqlite3（用于配置安全入口等功能）"
+
+    # 检测包管理器并尝试自动安装
+    if command -v apt-get &>/dev/null; then
+        PKG_MGR="apt-get"
+        PKG_NAME="sqlite3"
+    elif command -v yum &>/dev/null; then
+        PKG_MGR="yum"
+        PKG_NAME="sqlite"
+    elif command -v dnf &>/dev/null; then
+        PKG_MGR="dnf"
+        PKG_NAME="sqlite"
+    elif command -v apk &>/dev/null; then
+        PKG_MGR="apk add"
+        PKG_NAME="sqlite"
+    elif command -v pacman &>/dev/null; then
+        PKG_MGR="pacman -S --noconfirm"
+        PKG_NAME="sqlite"
+    else
+        log_warn "未识别的包管理器，无法自动安装 sqlite3"
+        log_info "请手动安装 sqlite3 后重试"
+        if [ "$YES" = true ]; then
+            log_warn "继续安装，但安全入口等功能可能无法通过命令行配置"
+            return 1
+        fi
+        read_input "是否继续安装？（安全入口需在面板中手动配置）(Y/n): " cont "Y"
+        if [[ "$cont" == "n" || "$cont" == "N" ]]; then
+            log_info "安装已取消，请先安装 sqlite3"
+            exit 0
+        fi
+        return 1
+    fi
+
+    log_step "正在自动安装 sqlite3..."
+    if $PKG_MGR install -y $PKG_NAME &>/dev/null 2>&1 || $PKG_MGR $PKG_NAME &>/dev/null 2>&1; then
+        if command -v sqlite3 &>/dev/null; then
+            log_info "sqlite3 安装成功 ✓"
+            return 0
+        fi
+    fi
+
+    log_warn "sqlite3 自动安装失败"
+    if [ "$YES" = true ]; then
+        log_warn "继续安装，但安全入口等功能可能无法通过命令行配置"
+        return 1
+    fi
+    read_input "是否继续安装？（安全入口需在面板中手动配置）(Y/n): " cont "Y"
+    if [[ "$cont" == "n" || "$cont" == "N" ]]; then
+        log_info "安装已取消"
+        log_info "请手动安装: $PKG_MGR install -y $PKG_NAME"
+        exit 0
+    fi
+    return 1
+}
+
+SQLITE3_AVAILABLE=true
+check_and_install_sqlite3 || SQLITE3_AVAILABLE=false
 
 # 检查是否已安装
 IS_UPGRADE=false
@@ -406,7 +498,7 @@ if [ "$IS_UPGRADE" = true ]; then
 fi
 
 # 创建目录结构
-log_step "创建安装目录..."
+log_step "创建安装目录: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data/db"
 mkdir -p "$INSTALL_DIR/data/log"
@@ -483,6 +575,7 @@ log:
 nginx:
   install_dir: "${INSTALL_DIR}/nginx"
   version: ""
+  build_repo: "Anikato/nginx-build"
 YAML
 
     log_info "配置文件已生成: $CONFIG_FILE"
@@ -593,7 +686,11 @@ if [ "$IS_UPGRADE" = false ]; then
     echo ""
 fi
 echo -e "  ${BOLD}卸载命令:${NC}"
-echo "    curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall --yes"
+UNINSTALL_CMD="curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall --yes"
+if [ "$INSTALL_DIR" != "$DEFAULT_INSTALL_DIR" ]; then
+    UNINSTALL_CMD="$UNINSTALL_CMD --path $INSTALL_DIR"
+fi
+echo "    $UNINSTALL_CMD"
 echo ""
 
 # ==================== 安全入口写入数据库 ====================
@@ -601,7 +698,7 @@ echo ""
 if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
     sleep 3  # 等待服务初始化数据库
     DB_PATH="$INSTALL_DIR/data/db/xpanel.db"
-    if command -v sqlite3 &>/dev/null && [ -f "$DB_PATH" ]; then
+    if [ "$SQLITE3_AVAILABLE" = true ] && command -v sqlite3 &>/dev/null && [ -f "$DB_PATH" ]; then
         sqlite3 "$DB_PATH" "UPDATE settings SET value='${ENTRANCE}' WHERE key='SecurityEntrance';" 2>/dev/null
         if [ $? -eq 0 ]; then
             log_info "安全入口已配置: /${ENTRANCE}"
@@ -609,7 +706,7 @@ if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
             log_warn "安全入口写入失败，请在面板设置中手动配置"
         fi
     else
-        log_warn "sqlite3 未安装，安全入口需在面板设置中手动配置"
-        log_info "安装 sqlite3: apt install -y sqlite3 或 yum install -y sqlite"
+        log_warn "sqlite3 不可用或数据库未创建，安全入口需在面板设置中手动配置"
+        log_info "面板启动后，进入 设置 → 安全入口 中配置"
     fi
 fi

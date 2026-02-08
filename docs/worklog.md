@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-02-09 — Session #19：安装脚本增强
+
+### 完成内容
+
+#### 1. 自定义安装路径
+- **`scripts/install-online.sh`**: 新增 `--path <路径>` 参数，允许用户指定 X-Panel 安装路径（默认 `/opt/xpanel`）
+- 所有路径引用（配置文件、数据目录、Nginx 目录、SSL 证书、systemd 服务）均基于自定义路径动态生成
+- 卸载命令自动附带 `--path` 参数（当使用非默认路径时）
+
+#### 2. SQLite3 依赖自动检测与安装
+- 安装脚本在安装前自动检测 `sqlite3` 是否可用
+- 支持 apt-get / yum / dnf / apk / pacman 多种包管理器自动安装
+- 自动安装失败时交互式询问用户是否继续（`--yes` 模式自动跳过并继续）
+- 无 sqlite3 时安全入口需在面板 Web 界面中手动配置
+
+#### 3. 默认端口改为 7777
+- **`scripts/install-online.sh`**: `DEFAULT_PORT` 从 `9999` 改为 `7777`
+- **`backend/init/viper/viper.go`**: 默认端口改为 `7777`
+- **`backend/configs/config.yaml`**: 开发配置端口改为 `7777`
+- **`frontend/vite.config.ts`**: 代理目标端口改为 `7777`
+- **`scripts/install.sh`**: 本地安装脚本端口改为 `7777`
+- **`README.md`**: 更新所有端口引用和参数说明，新增 `--path` 参数文档
+- **`docs/quick-start.md`**: 更新所有端口引用
+- **`docs/development-guide.md`**: 更新配置示例端口
+
+### 关键决策
+- 默认端口选择 7777：避免与常见服务端口冲突，且易于记忆
+- sqlite3 采用"尽力自动安装 + 优雅降级"策略：不阻塞面板安装，仅影响命令行配置安全入口
+
+### 遗留问题
+- 暂无
+
+### 下一步计划
+- 暂无
+
+---
+
 ## 2026-02-09 — Session #18：Nginx 预编译仓库 + 下载安装模式
 
 ### 完成内容

@@ -43,11 +43,11 @@ time="..." level=info msg="Logger initialized"
 time="..." level=info msg="Database initialized"
 time="..." level=info msg="Database migration completed"
 time="..." level=info msg="i18n initialized (zh)"
-time="..." level=info msg="X-Panel server starting on :9999"
-[GIN-debug] Listening and serving HTTP on :9999
+time="..." level=info msg="X-Panel server starting on :7777"
+[GIN-debug] Listening and serving HTTP on :7777
 ```
 
-后端默认监听 **http://localhost:9999**。
+后端默认监听 **http://localhost:7777**。
 
 ### 后端配置
 
@@ -55,7 +55,7 @@ time="..." level=info msg="X-Panel server starting on :9999"
 
 ```yaml
 system:
-  port: "9999"          # 服务端口
+  port: "7777"          # 服务端口
   mode: "debug"         # debug（开发） / release（生产）
   data_dir: "./data"    # 数据目录
   db_path: "db/xpanel.db"
@@ -88,7 +88,7 @@ VITE v6.x.x  ready in xxx ms
   ➜  Network: use --host to expose
 ```
 
-前端默认运行在 **http://localhost:5173**，自动将 `/api` 请求代理到后端 `http://localhost:9999`。
+前端默认运行在 **http://localhost:5173**，自动将 `/api` 请求代理到后端 `http://localhost:7777`。
 
 ## 三、访问面板
 
@@ -123,11 +123,11 @@ Vite 支持 HMR，修改前端代码后浏览器会自动刷新，无需手动�
 ### 端口被占用
 
 ```bash
-# 查看占用 9999 端口的进程
-lsof -i :9999
+# 查看占用 7777 端口的进程
+lsof -i :7777
 
 # 强制结束占用进程
-kill $(lsof -t -i:9999)
+kill $(lsof -t -i:7777)
 ```
 
 ### 前端显示"服务器错误"

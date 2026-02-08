@@ -28,7 +28,7 @@
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
 ```
 
-默认启用 HTTPS（自签名证书），安装后访问 `https://服务器IP:9999`。
+默认启用 HTTPS（自签名证书），安装后访问 `https://服务器IP:7777`。
 
 ### 自定义安装
 
@@ -36,6 +36,10 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 # 自定义端口 + 安全入口（推荐）
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
   | bash -s -- --port 8443 --entrance mySecret123
+
+# 自定义安装路径
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
+  | bash -s -- --path /usr/local/xpanel
 
 # 禁用 HTTPS（使用 HTTP）
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
@@ -48,7 +52,8 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 
 | 参数 | 说明 |
 |------|------|
-| `--port, -p <端口>` | 自定义面板端口（默认 9999） |
+| `--port, -p <端口>` | 自定义面板端口（默认 7777） |
+| `--path <路径>` | 自定义安装路径（默认 /opt/xpanel） |
 | `--entrance, -e <路径>` | 安全入口路径，防止面板被扫描到 |
 | `--ssl` / `--no-ssl` | 启用/禁用 HTTPS（默认启用） |
 | `--version, -v <版本>` | 安装指定版本 |
@@ -131,7 +136,7 @@ cd build && sudo tar -xzf xpanel-*.tar.gz && sudo bash install.sh
 ### 开发模式
 
 ```bash
-# 后端（端口 9999）
+# 后端（端口 7777）
 cd backend
 go run cmd/server/main.go
 

@@ -19,7 +19,7 @@ func Init() {
 	v.AddConfigPath(".")
 
 	// 设置默认值
-	v.SetDefault("system.port", "9999")
+	v.SetDefault("system.port", "7777")
 	v.SetDefault("system.mode", "debug")
 	v.SetDefault("system.data_dir", "/opt/xpanel")
 	v.SetDefault("system.db_path", "/opt/xpanel/db/xpanel.db")

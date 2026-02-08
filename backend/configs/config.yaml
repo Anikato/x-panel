@@ -1,5 +1,5 @@
 system:
-  port: "9999"
+  port: "7777"
   mode: "debug"             # debug / release
   data_dir: "./data"        # 开发环境使用相对路径
   db_path: "db/xpanel.db"   # 相对于 data_dir

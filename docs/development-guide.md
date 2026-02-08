@@ -2417,7 +2417,7 @@ github.com/google/uuid               // UUID
 
 ```yaml
 system:
-  port: 9999
+  port: 7777
   mode: release          # debug/release
   data_dir: /opt/x-panel/data
   cache: /opt/x-panel/cache
