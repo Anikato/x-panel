@@ -22,38 +22,25 @@
 
 ## 🚀 一键安装
 
-> **注意**：本项目为私有仓库，安装需要 [GitHub Personal Access Token](https://github.com/settings/tokens)（需 `repo` 权限）
-
 在 Linux 服务器上以 root 用户执行：
 
 ```bash
-# 设置你的 GitHub Token
-export GITHUB_TOKEN="ghp_your_token_here"
-
-# 下载并执行安装脚本
-curl -sSL -H "Authorization: token $GITHUB_TOKEN" \
-  https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
-  | bash -s -- --token $GITHUB_TOKEN
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
 ```
 
 安装指定版本：
 
 ```bash
-curl -sSL -H "Authorization: token $GITHUB_TOKEN" \
-  https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
-  | bash -s -- --token $GITHUB_TOKEN --version v1.0.0
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --version v1.0.0
 ```
 
 卸载：
 
 ```bash
-bash /opt/xpanel/install.sh --uninstall
-# 或重新下载脚本执行
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --uninstall
 ```
 
 > **系统要求**：Linux (amd64 / arm64)，安装后访问 `http://服务器IP:9999`
-> 
-> 安装时 Token 会自动保存到面板配置中，后续可在面板设置页面检查更新和一键升级
 
 ## 🏗️ 架构
 
