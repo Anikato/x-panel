@@ -2,21 +2,20 @@
 #
 # X-Panel 一键安装脚本
 #
-# 公开仓库用法:
+# 用法:
 #   curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
 #
-# 私有仓库用法（需要 GitHub Personal Access Token）:
-#   curl -sSL -H "Authorization: token <YOUR_TOKEN>" https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --token <YOUR_TOKEN>
+# 自定义端口和安全入口:
+#   curl -sSL ... | bash -s -- --port 8443 --entrance mySecret123
 #
-# 或先下载脚本再执行:
-#   wget -O install.sh https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh
-#   bash install.sh --token <YOUR_TOKEN>
+# 禁用 HTTPS（默认启用自签证书）:
+#   curl -sSL ... | bash -s -- --no-ssl
 #
 # 安装指定版本:
-#   bash install.sh --version v1.0.0 --token <YOUR_TOKEN>
+#   curl -sSL ... | bash -s -- --version v1.0.0
 #
 # 卸载:
-#   bash install.sh --uninstall
+#   curl -sSL ... | bash -s -- --uninstall --yes
 #
 
 set -e
@@ -47,6 +46,9 @@ VERSION=""
 UNINSTALL=false
 GITHUB_TOKEN=""
 YES=false
+CUSTOM_PORT=""
+ENTRANCE=""
+ENABLE_SSL=true
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -57,6 +59,22 @@ while [[ $# -gt 0 ]]; do
         --token|-t)
             GITHUB_TOKEN="$2"
             shift 2
+            ;;
+        --port|-p)
+            CUSTOM_PORT="$2"
+            shift 2
+            ;;
+        --entrance|-e)
+            ENTRANCE="$2"
+            shift 2
+            ;;
+        --ssl)
+            ENABLE_SSL=true
+            shift
+            ;;
+        --no-ssl)
+            ENABLE_SSL=false
+            shift
             ;;
         --uninstall)
             UNINSTALL=true
@@ -73,10 +91,14 @@ while [[ $# -gt 0 ]]; do
             echo "  bash install-online.sh [选项]"
             echo ""
             echo "选项:"
+            echo "  --port, -p <端口>     自定义面板端口 (默认: 9999)"
+            echo "  --entrance, -e <路径> 安全入口路径 (如 mySecret123)"
+            echo "  --ssl                 启用 HTTPS 自签证书 (默认)"
+            echo "  --no-ssl              禁用 HTTPS，使用 HTTP"
             echo "  --version, -v <版本>  安装指定版本 (如 v1.0.0)"
-            echo "  --token, -t <TOKEN>   GitHub Personal Access Token（私有仓库必须）"
+            echo "  --token, -t <TOKEN>   GitHub Token（私有仓库）"
             echo "  --uninstall           卸载 X-Panel"
-            echo "  --yes, -y             跳过确认提示（用于管道/脚本执行）"
+            echo "  --yes, -y             跳过确认提示"
             echo "  --help, -h            显示帮助"
             exit 0
             ;;
@@ -399,21 +421,57 @@ if [ -f "$0" ] && [ "$0" != "bash" ] && [ "$0" != "/dev/stdin" ]; then
     cp -f "$0" "$INSTALL_DIR/install.sh" 2>/dev/null || true
 fi
 
+# 确定端口
+PANEL_PORT="${CUSTOM_PORT:-$DEFAULT_PORT}"
+
+# ==================== SSL 证书 ====================
+SSL_CERT_PATH="$INSTALL_DIR/data/ssl/server.crt"
+SSL_KEY_PATH="$INSTALL_DIR/data/ssl/server.key"
+SSL_ENABLED=false
+
+if [ "$ENABLE_SSL" = true ]; then
+    if command -v openssl &>/dev/null; then
+        if [ ! -f "$SSL_CERT_PATH" ] || [ ! -f "$SSL_KEY_PATH" ]; then
+            log_step "生成自签名 SSL 证书..."
+            mkdir -p "$INSTALL_DIR/data/ssl"
+            openssl req -x509 -nodes -newkey rsa:2048 \
+                -keyout "$SSL_KEY_PATH" \
+                -out "$SSL_CERT_PATH" \
+                -days 3650 \
+                -subj "/C=CN/ST=Server/L=Server/O=X-Panel/CN=xpanel.local" \
+                2>/dev/null
+            if [ $? -eq 0 ]; then
+                log_info "自签名证书已生成（有效期 10 年）"
+                SSL_ENABLED=true
+            else
+                log_warn "证书生成失败，将使用 HTTP"
+            fi
+        else
+            log_info "SSL 证书已存在，跳过生成"
+            SSL_ENABLED=true
+        fi
+    else
+        log_warn "未找到 openssl，将使用 HTTP"
+    fi
+fi
+
 # 首次安装：创建配置文件
 if [ ! -f "$CONFIG_FILE" ]; then
     log_step "创建配置文件..."
-    if [ -f "$TMP_DIR/extract/config.yaml.example" ]; then
-        cp "$TMP_DIR/extract/config.yaml.example" "$CONFIG_FILE"
-    else
-        # 内联生成默认配置
-        cat > "$CONFIG_FILE" << 'YAML'
+    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | xxd -p | head -c 64)
+
+    cat > "$CONFIG_FILE" << YAML
 system:
-  port: "9999"
+  port: "${PANEL_PORT}"
   mode: "release"
-  data_dir: "/opt/xpanel/data"
+  data_dir: "${INSTALL_DIR}/data"
   db_path: "db/xpanel.db"
-  jwt_secret: "PLACEHOLDER_JWT_SECRET"
+  jwt_secret: "${JWT_SECRET}"
   session_timeout: 86400
+  ssl:
+    enable: ${SSL_ENABLED}
+    cert_path: "${SSL_CERT_PATH}"
+    key_path: "${SSL_KEY_PATH}"
 
 log:
   level: "info"
@@ -423,23 +481,18 @@ log:
   compress: true
 
 nginx:
-  install_dir: "/opt/xpanel/nginx"
+  install_dir: "${INSTALL_DIR}/nginx"
   version: ""
 YAML
-    fi
-
-    # 生成随机 JWT Secret
-    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | xxd -p | head -c 64)
-    sed -i "s/dev-secret-change-in-production/$JWT_SECRET/" "$CONFIG_FILE"
-    sed -i "s/PLACEHOLDER_JWT_SECRET/$JWT_SECRET/" "$CONFIG_FILE"
-    # 确保生产模式
-    sed -i 's/mode: "debug"/mode: "release"/' "$CONFIG_FILE"
-    # 确保绝对路径
-    sed -i "s|data_dir: \"./data\"|data_dir: \"$INSTALL_DIR/data\"|" "$CONFIG_FILE"
 
     log_info "配置文件已生成: $CONFIG_FILE"
 else
     log_info "配置文件已存在，跳过生成"
+    # 升级时如果指定了新端口，更新配置
+    if [ -n "$CUSTOM_PORT" ]; then
+        sed -i "s/port: \"[0-9]*\"/port: \"${CUSTOM_PORT}\"/" "$CONFIG_FILE"
+        log_info "已更新端口为 ${CUSTOM_PORT}"
+    fi
 fi
 
 # 安装 systemd 服务
@@ -480,19 +533,24 @@ else
     log_info "请稍后检查: systemctl status $SERVICE_NAME"
 fi
 
+# ==================== 安全入口 ====================
+if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
+    log_step "配置安全入口: /${ENTRANCE}"
+    # 安全入口存储在数据库中，首次启动后通过 migration 初始化
+    # 这里在启动后通过 SQLite 直接写入
+fi
+
 # ==================== 获取访问信息 ====================
-# 尝试获取服务器 IP（不需要 GitHub Token）
 SERVER_IP=$(curl -s4 --connect-timeout 3 https://ifconfig.me 2>/dev/null \
     || curl -s4 --connect-timeout 3 https://api.ipify.org 2>/dev/null \
     || hostname -I 2>/dev/null | awk '{print $1}' \
     || echo "<服务器IP>")
 
-PORT=$DEFAULT_PORT
-if [ -f "$CONFIG_FILE" ]; then
-    CONFIG_PORT=$(grep -E '^\s+port:' "$CONFIG_FILE" | head -1 | sed 's/.*"\([0-9]*\)".*/\1/')
-    if [ -n "$CONFIG_PORT" ]; then
-        PORT=$CONFIG_PORT
-    fi
+PORT=$PANEL_PORT
+if [ "$SSL_ENABLED" = true ]; then
+    PROTOCOL="https"
+else
+    PROTOCOL="http"
 fi
 
 # ==================== 完成 ====================
@@ -506,8 +564,21 @@ echo ""
 echo -e "  ${BOLD}版本:${NC}     $VERSION"
 echo -e "  ${BOLD}安装目录:${NC} $INSTALL_DIR"
 echo -e "  ${BOLD}配置文件:${NC} $CONFIG_FILE"
+if [ "$SSL_ENABLED" = true ]; then
+echo -e "  ${BOLD}SSL:${NC}      ${GREEN}已启用（自签名证书）${NC}"
+else
+echo -e "  ${BOLD}SSL:${NC}      ${YELLOW}未启用${NC}"
+fi
 echo ""
-echo -e "  ${BOLD}访问面板:${NC} ${CYAN}http://${SERVER_IP}:${PORT}${NC}"
+if [ -n "$ENTRANCE" ]; then
+echo -e "  ${BOLD}访问面板:${NC} ${CYAN}${PROTOCOL}://${SERVER_IP}:${PORT}/${ENTRANCE}${NC}"
+echo -e "  ${YELLOW}  ⚠ 必须通过安全入口路径访问，直接访问根路径会返回 404${NC}"
+else
+echo -e "  ${BOLD}访问面板:${NC} ${CYAN}${PROTOCOL}://${SERVER_IP}:${PORT}${NC}"
+fi
+if [ "$SSL_ENABLED" = true ]; then
+echo -e "  ${YELLOW}  (自签名证书，浏览器会提示不安全，点击继续访问即可)${NC}"
+fi
 echo ""
 echo -e "  ${BOLD}常用命令:${NC}"
 echo "    systemctl start $SERVICE_NAME     # 启动"
@@ -522,19 +593,23 @@ if [ "$IS_UPGRADE" = false ]; then
     echo ""
 fi
 echo -e "  ${BOLD}卸载命令:${NC}"
-if [ -n "$GITHUB_TOKEN" ]; then
-    echo "    curl -sSL -H 'Authorization: token <TOKEN>' https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall"
-else
-    echo "    curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall"
-fi
+echo "    curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall --yes"
 echo ""
 
-# 将 token 保存到配置中，以便面板自动更新使用
-if [ -n "$GITHUB_TOKEN" ] && [ -f "$CONFIG_FILE" ]; then
-    if ! grep -q "github_token" "$CONFIG_FILE"; then
-        log_step "保存 GitHub Token 到面板配置..."
-        echo "" >> "$CONFIG_FILE"
-        echo "# GitHub Token for private repo updates" >> "$CONFIG_FILE"
-        echo "github_token: \"$GITHUB_TOKEN\"" >> "$CONFIG_FILE"
+# ==================== 安全入口写入数据库 ====================
+# 等服务启动后写入安全入口（SQLite 数据库在服务首次启动时创建）
+if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
+    sleep 3  # 等待服务初始化数据库
+    DB_PATH="$INSTALL_DIR/data/db/xpanel.db"
+    if command -v sqlite3 &>/dev/null && [ -f "$DB_PATH" ]; then
+        sqlite3 "$DB_PATH" "UPDATE settings SET value='${ENTRANCE}' WHERE key='SecurityEntrance';" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            log_info "安全入口已配置: /${ENTRANCE}"
+        else
+            log_warn "安全入口写入失败，请在面板设置中手动配置"
+        fi
+    else
+        log_warn "sqlite3 未安装，安全入口需在面板设置中手动配置"
+        log_info "安装 sqlite3: apt install -y sqlite3 或 yum install -y sqlite"
     fi
 fi

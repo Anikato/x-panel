@@ -19,6 +19,7 @@ func Setup(mode string) *gin.Engine {
 
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
+	r.Use(middleware.SecurityEntrance())
 
 	api := v1.ApiGroupApp
 

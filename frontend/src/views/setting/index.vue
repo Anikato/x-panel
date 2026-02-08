@@ -139,12 +139,26 @@
           </div>
         </div>
       </template>
-      <el-form :model="form" label-width="140px" style="max-width: 560px">
+      <el-form :model="form" label-width="140px" style="max-width: 600px">
         <el-form-item :label="t('setting.panelName')">
           <el-input v-model="form.panelName" />
         </el-form-item>
         <el-form-item :label="t('setting.sessionTimeout')">
           <el-input-number v-model="form.sessionTimeout" :min="3600" :step="3600" />
+        </el-form-item>
+        <el-form-item :label="t('setting.securityEntrance')">
+          <el-input
+            v-model="form.securityEntrance"
+            :placeholder="t('setting.securityEntrancePlaceholder')"
+            clearable
+          >
+            <template #prepend>/</template>
+          </el-input>
+          <div style="margin-top: 4px">
+            <el-text type="info" size="small">
+              {{ t('setting.securityEntranceHint') }}
+            </el-text>
+          </div>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="saving" @click="handleSave">
@@ -171,7 +185,7 @@ const globalStore = useGlobalStore()
 // 面板设置
 const loading = ref(false)
 const saving = ref(false)
-const form = reactive({ panelName: 'X-Panel', sessionTimeout: 86400 })
+const form = reactive({ panelName: 'X-Panel', sessionTimeout: 86400, securityEntrance: '' })
 
 // 版本与升级
 const versionInfo = reactive({
@@ -282,6 +296,7 @@ const fetchSettings = async () => {
     if (res.data) {
       form.panelName = res.data.panelName || 'X-Panel'
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
+      form.securityEntrance = res.data.securityEntrance || ''
       githubToken.value = res.data.githubToken || ''
     }
   } catch { /* */ } finally { loading.value = false }
@@ -292,6 +307,7 @@ const handleSave = async () => {
   try {
     await updateSetting({ key: 'PanelName', value: form.panelName })
     await updateSetting({ key: 'SessionTimeout', value: String(form.sessionTimeout) })
+    await updateSetting({ key: 'SecurityEntrance', value: form.securityEntrance })
     globalStore.setPanelName(form.panelName)
     ElMessage.success(t('commons.success'))
   } catch { /* */ } finally { saving.value = false }

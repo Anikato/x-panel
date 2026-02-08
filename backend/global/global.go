@@ -27,12 +27,20 @@ type ServerConfig struct {
 
 // SystemConfig 系统配置
 type SystemConfig struct {
-	Port           string `mapstructure:"port"`
-	Mode           string `mapstructure:"mode"`
-	DataDir        string `mapstructure:"data_dir"`
-	DbPath         string `mapstructure:"db_path"`
-	JwtSecret      string `mapstructure:"jwt_secret"`
-	SessionTimeout int    `mapstructure:"session_timeout"`
+	Port           string    `mapstructure:"port"`
+	Mode           string    `mapstructure:"mode"`
+	DataDir        string    `mapstructure:"data_dir"`
+	DbPath         string    `mapstructure:"db_path"`
+	JwtSecret      string    `mapstructure:"jwt_secret"`
+	SessionTimeout int       `mapstructure:"session_timeout"`
+	SSL            SSLConfig `mapstructure:"ssl"`
+}
+
+// SSLConfig 面板 SSL/TLS 配置
+type SSLConfig struct {
+	Enable   bool   `mapstructure:"enable"`
+	CertPath string `mapstructure:"cert_path"`
+	KeyPath  string `mapstructure:"key_path"`
 }
 
 // LogConfig 日志配置

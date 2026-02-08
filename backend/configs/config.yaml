@@ -5,6 +5,10 @@ system:
   db_path: "db/xpanel.db"   # 相对于 data_dir
   jwt_secret: "dev-secret-change-in-production"
   session_timeout: 86400    # 24h
+  ssl:
+    enable: false            # 是否启用 HTTPS
+    cert_path: ""            # 证书文件路径
+    key_path: ""             # 私钥文件路径
 
 log:
   level: "debug"

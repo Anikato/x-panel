@@ -29,12 +29,21 @@ func Start() {
 	// 5. i18n 国际化
 	i18n.Init()
 
-	// 6. 初始化路由并启动 HTTP 服务
+	// 6. 初始化路由并启动服务
 	r := router.Setup(global.CONF.System.Mode)
 
 	port := global.CONF.System.Port
-	global.LOG.Infof("X-Panel server starting on :%s", port)
-	if err := r.Run(":" + port); err != nil {
-		panic(fmt.Sprintf("Server failed to start: %v", err))
+	sslConf := global.CONF.System.SSL
+
+	if sslConf.Enable && sslConf.CertPath != "" && sslConf.KeyPath != "" {
+		global.LOG.Infof("X-Panel server starting on HTTPS :%s", port)
+		if err := r.RunTLS(":"+port, sslConf.CertPath, sslConf.KeyPath); err != nil {
+			panic(fmt.Sprintf("Server failed to start with TLS: %v", err))
+		}
+	} else {
+		global.LOG.Infof("X-Panel server starting on HTTP :%s", port)
+		if err := r.Run(":" + port); err != nil {
+			panic(fmt.Sprintf("Server failed to start: %v", err))
+		}
 	}
 }

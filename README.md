@@ -28,19 +28,40 @@
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
 ```
 
-安装指定版本：
+默认启用 HTTPS（自签名证书），安装后访问 `https://服务器IP:9999`。
+
+### 自定义安装
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --version v1.0.0
+# 自定义端口 + 安全入口（推荐）
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
+  | bash -s -- --port 8443 --entrance mySecret123
+
+# 禁用 HTTPS（使用 HTTP）
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
+  | bash -s -- --no-ssl
+
+# 安装指定版本
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
+  | bash -s -- --version v1.0.0
 ```
 
-卸载：
+| 参数 | 说明 |
+|------|------|
+| `--port, -p <端口>` | 自定义面板端口（默认 9999） |
+| `--entrance, -e <路径>` | 安全入口路径，防止面板被扫描到 |
+| `--ssl` / `--no-ssl` | 启用/禁用 HTTPS（默认启用） |
+| `--version, -v <版本>` | 安装指定版本 |
+
+### 卸载
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --uninstall --yes
 ```
 
-> **系统要求**：Linux (amd64 / arm64)，安装后访问 `http://服务器IP:9999`
+> **系统要求**：Linux (amd64 / arm64)
+> 
+> **安全入口**：设置后面板只能通过 `https://IP:端口/入口路径` 访问，直接访问根路径返回 404
 
 ## 🏗️ 架构
 
