@@ -1,6 +1,6 @@
 [Unit]
 Description=X-Panel Server Management Panel
-Documentation=https://github.com/xpanel/xpanel
+Documentation=https://github.com/Anikato/x-panel
 After=network.target
 
 [Service]

@@ -37,6 +37,7 @@ func initDefaultSettings() {
 		{Key: "MFAStatus", Value: "Disable"},
 		{Key: "MFASecret", Value: ""},
 		{Key: "SSLDir", Value: ""},
+		{Key: "UpgradeURL", Value: ""},
 	}
 
 	for _, s := range defaults {

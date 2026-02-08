@@ -98,6 +98,8 @@ package: build
 	fi
 	# 打包
 	cd $(BUILD_PATH) && tar -czf xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz -C release .
+	# 生成 SHA256 校验和
+	cd $(BUILD_PATH) && sha256sum xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz > xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz.sha256
 	rm -rf $(BUILD_PATH)/release
 	@echo ">>> 打包完成: $(BUILD_PATH)/xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz"
 	@ls -lh $(BUILD_PATH)/xpanel-*.tar.gz

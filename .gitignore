@@ -11,6 +11,9 @@ backend/cmd/server/web/assets/
 # Backend data (local dev)
 backend/data/
 
+# Cache
+.cache/
+
 # IDE
 .idea/
 *.swp

@@ -35,4 +35,7 @@ const (
 	ErrNginxConfigTest     = "ErrNginxConfigTest"
 	ErrNginxInstall        = "ErrNginxInstall"
 	ErrNginxBuildDeps      = "ErrNginxBuildDeps"
+
+	// 升级
+	ErrUpgradeInProgress = "ErrUpgradeInProgress"
 )

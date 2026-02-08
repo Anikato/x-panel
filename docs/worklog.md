@@ -4,6 +4,120 @@
 
 ---
 
+## 2026-02-08 — Session #16：GitHub CI/CD 自动构建 + 升级系统重写
+
+### 完成内容
+
+#### GitHub Actions 自动构建发布
+- [x] 新增 `.github/workflows/release.yml`：
+  - Tag 推送（`v*`）自动触发构建
+  - 矩阵构建 linux/amd64 + linux/arm64 双架构
+  - 自动构建前端（npm ci）→ 嵌入后端 → 交叉编译 Go
+  - 生成 tar.gz 安装包 + SHA256 校验文件
+  - 自动创建 GitHub Release 并上传产物
+  - 支持 pre-release 标记（beta/rc/alpha 标签自动识别）
+
+#### 后端：升级服务完全重写 (`service/upgrade.go`)
+- [x] **GitHub Releases API 集成**：默认从 `Anikato/x-panel` 的 GitHub Releases 检查更新
+  - 解析 GitHub Release 响应，自动匹配当前架构的下载文件
+  - 兼容保留自建服务器 `version.json` 模式
+  - 自动识别 GitHub URL vs 自定义 URL
+- [x] **语义化版本比较** (`compareVersions`)：
+  - 支持 `v` 前缀、三段版本号、pre-release 标识（beta/rc）
+  - `dev` 版本视为最低版本
+  - 不再使用简单 `!=` 比较，避免降级误判
+- [x] **升级互斥锁**：`sync.Mutex` 防止并发升级
+- [x] **原子二进制替换**：先 copy 到 `.new` 文件再 `os.Rename`，失败回退 `copyFile`
+- [x] **SHA256 校验**：下载后验证文件完整性，防止篡改或传输损坏
+- [x] 新增错误常量 `ErrUpgradeInProgress`
+
+#### DTO 更新 (`dto/upgrade.go`)
+- [x] 新增 `GitHubRelease` / `GitHubAsset` 结构体，对应 GitHub API 响应
+- [x] `UpgradeInfo` 新增 `ChecksumURL` 字段
+- [x] `UpgradeReq` 新增 `ChecksumURL` 字段
+- [x] 保留 `RemoteVersionInfo` 兼容自建服务器
+
+#### 数据迁移
+- [x] `migration.go` 新增 `UpgradeURL` 默认设置项
+
+#### 前端更新
+- [x] `api/modules/upgrade.ts`：`doUpgrade` 新增 `checksumUrl` 参数
+- [x] `views/setting/index.vue`：
+  - 更新源输入框默认留空（自动使用 GitHub）
+  - 添加提示说明文字
+  - 升级请求传递 `checksumUrl`
+  - 添加 `onUnmounted` 清理定时器
+  - 修复模板中缺失的 `<el-alert>` 标签
+- [x] `i18n/zh.ts`：新增 `upgradeUrlHint` 翻译
+
+#### Makefile 更新
+- [x] `package` 目标新增 SHA256 校验和生成
+
+### 关键技术决策
+
+1. **更新源选择 GitHub Releases**：
+   - 无需自建更新服务器
+   - GitHub Actions 推送 tag 自动构建发布
+   - 用户只需 `git tag v1.0.0 && git push --tags` 即可发布新版
+   - GitHub API 60次/小时免认证限额足够日常检查
+
+2. **双模式兼容**：
+   - 默认 GitHub Releases（留空或 GitHub URL）
+   - 自定义 URL 走旧版 `version.json` 协议
+   - 用户可在面板设置中覆盖更新源
+
+3. **安全加固**：
+   - SHA256 checksum 校验下载完整性
+   - `os.Rename` 原子替换减少损坏窗口
+   - 互斥锁防止并发升级
+
+### 新增/修改文件
+- `NEW` `.github/workflows/release.yml`
+- `MOD` `backend/app/service/upgrade.go`（完全重写）
+- `MOD` `backend/app/dto/upgrade.go`
+- `MOD` `backend/constant/errs.go`
+- `MOD` `backend/init/migration/migration.go`
+- `MOD` `frontend/src/api/modules/upgrade.ts`
+- `MOD` `frontend/src/views/setting/index.vue`
+- `MOD` `frontend/src/i18n/zh.ts`
+- `MOD` `Makefile`
+
+### 发布流程（使用方法）
+```bash
+# 1. 确保代码已推送到 GitHub
+git push origin main
+
+# 2. 创建版本标签并推送
+git tag v1.0.0
+git push origin v1.0.0
+
+# 3. GitHub Actions 自动执行：
+#    构建前端 → 编译后端(amd64+arm64) → 打包 → 创建 Release
+
+# 4. 面板自动从 GitHub Releases 检查更新
+#    用户在设置页点击"检查更新" → 发现新版本 → 确认升级
+```
+
+#### 一键安装脚本 (`scripts/install-online.sh`)
+- [x] 基于 GitHub Releases 的在线一键安装脚本
+  - 自动检测系统架构（amd64/arm64）
+  - 从 GitHub Releases 下载最新版本
+  - SHA256 校验文件完整性
+  - 自动生成配置文件（随机 JWT Secret、生产模式）
+  - 自动配置 systemd 服务并启动
+  - 支持 `--version` 指定版本安装
+  - 支持 `--uninstall` 卸载
+  - 自动检测升级模式（已安装时停止、备份、替换）
+  - 安装完成显示访问地址和常用命令
+
+### 遗留与下一步
+- [ ] 添加下载进度反馈（百分比）
+- [ ] 升级历史记录（数据库模型 + 回滚 API）
+- [ ] 自动定期检查更新（后台 cron + 全局通知）
+- [ ] GitHub Release 代理加速（国内用户场景）
+
+---
+
 ## 2026-02-06 — Session #15：构建系统与自更新发布功能
 
 ### 完成内容

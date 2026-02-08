@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Vue Version](https://img.shields.io/badge/vue-3.4+-4FC08D?style=flat&logo=vue.js)](https://vuejs.org/)
+[![Build](https://github.com/Anikato/x-panel/actions/workflows/release.yml/badge.svg)](https://github.com/Anikato/x-panel/actions)
 
 ## ✨ 特性
 
@@ -16,7 +17,30 @@
 - 📊 **系统监控**：CPU/内存/磁盘/网络实时监控
 - 🔥 **防火墙管理**：ufw 端口/IP 规则管理
 - 🛠️ **系统工具**：SSH 配置、进程管理、磁盘管理
+- 🔄 **自动更新**：GitHub Releases 自动检查更新，一键升级
 - 🎨 **暗色主题**：科技风 UI 设计
+
+## 🚀 一键安装
+
+在 Linux 服务器上以 root 用户执行：
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
+```
+
+安装指定版本：
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --version v1.0.0
+```
+
+卸载：
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --uninstall
+```
+
+> **系统要求**：Linux (amd64 / arm64)，安装后访问 `http://服务器IP:9999`
 
 ## 🏗️ 架构
 
@@ -48,7 +72,17 @@
 └──────────────────────────────────────────┘
 ```
 
-## 🚀 快速开始
+## 🔧 常用命令
+
+```bash
+systemctl start xpanel       # 启动
+systemctl stop xpanel        # 停止
+systemctl restart xpanel     # 重启
+systemctl status xpanel      # 查看状态
+journalctl -u xpanel -f      # 查看日志
+```
+
+## 📦 从源码构建
 
 ### 前置要求
 
@@ -56,18 +90,21 @@
 - Node.js 18+
 - Linux 系统（推荐 Debian/Ubuntu）
 
-### 安装
+### 构建
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/x-panel.git
+git clone https://github.com/Anikato/x-panel.git
 cd x-panel
 
-# 构建项目
+# 完整构建（前端 + 后端）
 make build
 
+# 打包发布
+make package
+
 # 安装
-sudo ./scripts/install.sh
+cd build && sudo tar -xzf xpanel-*.tar.gz && sudo bash install.sh
 ```
 
 ### 开发模式
@@ -83,26 +120,9 @@ npm install
 npm run dev
 ```
 
-## 📦 构建
-
-```bash
-# 完整构建（前端 + 后端）
-make build
-
-# 仅构建前端
-make build_frontend
-
-# 仅构建后端
-make build_backend
-
-# 打包发布
-make package
-```
-
 ## 📚 文档
 
 - [开发指南](docs/development-guide.md) - 详细的架构设计和开发规范
-- [快速开始](docs/quick-start.md) - 安装和配置指南
 - [工作日志](docs/worklog.md) - 开发进度记录
 - [进度分析](docs/progress-analysis.md) - 项目完成度分析
 
@@ -120,7 +140,8 @@ make package
 - [x] 进程/磁盘管理
 - [x] Nginx 管理（安装/状态/操作）
 - [x] 主机管理 + 快速命令
-- [x] 构建系统 + 自更新
+- [x] 构建系统 + 自更新（GitHub Releases）
+- [x] 一键安装脚本
 
 ### 🚧 开发中
 
@@ -167,10 +188,6 @@ make package
 ## 🙏 致谢
 
 本项目参考了 [1Panel](https://github.com/1Panel-dev/1Panel) 的设计和实现，在此表示感谢。
-
-## 📝 更新日志
-
-详见 [工作日志](docs/worklog.md)
 
 ---
 

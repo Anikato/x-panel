@@ -11,7 +11,7 @@ export const checkUpdate = (data?: { releaseUrl?: string }) => {
 }
 
 /** 执行升级 */
-export const doUpgrade = (data: { version: string; downloadUrl: string }) => {
+export const doUpgrade = (data: { version: string; downloadUrl: string; checksumUrl?: string }) => {
   return http.post('/upgrade/do', data)
 }
 

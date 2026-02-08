@@ -36,7 +36,7 @@
           <el-alert :title="t('setting.devTip')" type="info" show-icon :closable="false" />
         </div>
         <template v-else>
-          <!-- 更新源输入 -->
+          <!-- 更新源配置 -->
           <div class="update-url-row">
             <el-input
               v-model="upgradeUrl"
@@ -54,6 +54,11 @@
             >
               {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
             </el-button>
+          </div>
+          <div class="update-url-hint">
+            <el-text type="info" size="small">
+              {{ t('setting.upgradeUrlHint') }}
+            </el-text>
           </div>
 
           <!-- 更新结果 -->
@@ -75,7 +80,7 @@
                 </el-text>
               </div>
               <div v-if="upgradeInfo.releaseNote" class="release-note">
-                <el-text tag="p">{{ upgradeInfo.releaseNote }}</el-text>
+                <el-text tag="p" style="white-space: pre-wrap">{{ upgradeInfo.releaseNote }}</el-text>
               </div>
               <el-button
                 type="danger"
@@ -133,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting, InfoFilled } from '@element-plus/icons-vue'
 import { getSettingInfo, updateSetting } from '@/api/modules/setting'
@@ -207,6 +212,7 @@ const handleUpgrade = async () => {
     await doUpgrade({
       version: upgradeInfo.value.latestVersion,
       downloadUrl: upgradeInfo.value.downloadUrl,
+      checksumUrl: upgradeInfo.value.checksumUrl || undefined,
     })
     ElMessage.success(t('setting.upgradeStarted'))
 
@@ -264,6 +270,10 @@ onMounted(() => {
   fetchVersion()
   fetchSettings()
 })
+
+onUnmounted(() => {
+  if (logTimer) clearInterval(logTimer)
+})
 </script>
 
 <style scoped>
@@ -296,7 +306,12 @@ onMounted(() => {
 .update-url-row {
   display: flex;
   align-items: center;
+  margin-bottom: 4px;
+}
+
+.update-url-hint {
   margin-bottom: 16px;
+  font-size: 12px;
 }
 
 .update-result {
@@ -319,7 +334,8 @@ onMounted(() => {
   padding: 12px;
   background: var(--el-fill-color-light);
   border-radius: 4px;
-  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .upgrade-log-section {

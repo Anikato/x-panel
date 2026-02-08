@@ -1,0 +1,114 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Copy frontend assets
+        run: |
+          rm -rf backend/cmd/server/web/assets
+          cp -r frontend/dist backend/cmd/server/web/assets
+
+      - name: Build backend
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          GO_VERSION=$(go version | awk '{print $3}')
+
+          cd backend
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X 'xpanel/app/version.Version=${VERSION}' \
+              -X 'xpanel/app/version.CommitHash=${COMMIT_HASH}' \
+              -X 'xpanel/app/version.BuildTime=${BUILD_TIME}' \
+              -X 'xpanel/app/version.GoVersion=${GO_VERSION}'" \
+            -o ../build/xpanel ./cmd/server/
+
+      - name: Package
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          ARCH=${{ matrix.arch }}
+          RELEASE_DIR=build/release
+          PKG_NAME=xpanel-${VERSION}-linux-${ARCH}
+
+          mkdir -p ${RELEASE_DIR}
+          cp build/xpanel ${RELEASE_DIR}/
+          cp backend/configs/config.yaml ${RELEASE_DIR}/config.yaml.example
+          [ -f scripts/install.sh ] && cp scripts/install.sh ${RELEASE_DIR}/ || true
+          [ -f scripts/xpanel.service ] && cp scripts/xpanel.service ${RELEASE_DIR}/ || true
+
+          cd build
+          tar -czf ${PKG_NAME}.tar.gz -C release .
+
+          # Generate SHA256 checksum
+          sha256sum ${PKG_NAME}.tar.gz > ${PKG_NAME}.tar.gz.sha256
+
+          rm -rf release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xpanel-linux-${{ matrix.arch }}
+          path: |
+            build/xpanel-*.tar.gz
+            build/xpanel-*.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') }}
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.sha256
