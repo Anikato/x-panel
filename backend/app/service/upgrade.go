@@ -80,6 +80,29 @@ func (s *UpgradeService) CheckUpdate(req dto.UpgradeCheckReq) (*dto.UpgradeInfo,
 	return s.checkUpdateFromGitHub(releaseURL)
 }
 
+// getGitHubToken 获取 GitHub Token（用于私有仓库认证）
+func (s *UpgradeService) getGitHubToken() string {
+	token, _ := settingRepo.GetValueByKey("GitHubToken")
+	return token
+}
+
+// newGitHubRequest 创建带认证的 GitHub API 请求
+func (s *UpgradeService) newGitHubRequest(method, url string) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "X-Panel/"+version.Version)
+
+	// 添加 Token 认证（私有仓库必须）
+	token := s.getGitHubToken()
+	if token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+	return req, nil
+}
+
 // checkUpdateFromGitHub 从 GitHub Releases API 检查更新
 func (s *UpgradeService) checkUpdateFromGitHub(repoURL string) (*dto.UpgradeInfo, error) {
 	repo := DefaultGitHubRepo
@@ -94,9 +117,7 @@ func (s *UpgradeService) checkUpdateFromGitHub(repoURL string) (*dto.UpgradeInfo
 	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", GitHubAPIBase, repo)
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	req, _ := http.NewRequest("GET", apiURL, nil)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "X-Panel/"+version.Version)
+	req, _ := s.newGitHubRequest("GET", apiURL)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -217,6 +238,7 @@ func (s *UpgradeService) DoUpgrade(req dto.UpgradeReq) error {
 
 	global.LOG.Infof("Starting upgrade from %s to %s, download: %s", version.Version, req.Version, req.DownloadURL)
 	logFile := s.getLogPath()
+	githubToken := s.getGitHubToken()
 
 	// 在后台执行升级
 	go func() {
@@ -225,7 +247,7 @@ func (s *UpgradeService) DoUpgrade(req dto.UpgradeReq) error {
 			upgrading = false
 			upgradeMu.Unlock()
 		}()
-		s.doUpgradeAsync(req.DownloadURL, req.ChecksumURL, req.Version, logFile)
+		s.doUpgradeAsync(req.DownloadURL, req.ChecksumURL, req.Version, logFile, githubToken)
 	}()
 
 	return nil
@@ -249,7 +271,7 @@ func (s *UpgradeService) getLogPath() string {
 	return filepath.Join(dataDir, "log", "upgrade.log")
 }
 
-func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, logFile string) {
+func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, logFile, githubToken string) {
 	logger := s.openLog(logFile)
 	defer logger.Close()
 
@@ -281,7 +303,7 @@ func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, lo
 	// 3. 下载新版本
 	writeLog("正在下载: %s", downloadURL)
 	tarball := filepath.Join(tmpDir, "xpanel-update.tar.gz")
-	if err := downloadFile(downloadURL, tarball); err != nil {
+	if err := downloadFile(downloadURL, tarball, githubToken); err != nil {
 		writeLog("错误：下载失败: %v", err)
 		return
 	}
@@ -291,7 +313,7 @@ func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, lo
 	if checksumURL != "" {
 		writeLog("正在验证 SHA256 校验和...")
 		checksumFile := filepath.Join(tmpDir, "checksum.sha256")
-		if err := downloadFile(checksumURL, checksumFile); err != nil {
+		if err := downloadFile(checksumURL, checksumFile, githubToken); err != nil {
 			writeLog("警告：下载校验文件失败: %v，跳过校验", err)
 		} else {
 			if err := verifySHA256(tarball, checksumFile); err != nil {
@@ -378,14 +400,23 @@ func (s *UpgradeService) openLog(logFile string) *os.File {
 
 // --------- 工具函数 ---------
 
-// downloadFile 下载文件
-func downloadFile(url, dst string) error {
+// downloadFile 下载文件（支持 GitHub Token 认证）
+func downloadFile(url, dst string, githubToken string) error {
 	client := &http.Client{Timeout: 10 * time.Minute}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "X-Panel/"+version.Version)
+
+	// 为 GitHub 下载添加 Token 认证（私有仓库必须）
+	if githubToken != "" && (strings.Contains(url, "github.com") || strings.Contains(url, "githubusercontent.com")) {
+		req.Header.Set("Authorization", "token "+githubToken)
+		// GitHub Release 资产下载需要 Accept: application/octet-stream
+		if strings.Contains(url, "/releases/download/") {
+			req.Header.Set("Accept", "application/octet-stream")
+		}
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

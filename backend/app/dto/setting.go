@@ -9,6 +9,7 @@ type SettingInfo struct {
 	Theme            string `json:"theme"`
 	SecurityEntrance string `json:"securityEntrance"`
 	MFAStatus        string `json:"mfaStatus"`
+	GitHubToken      string `json:"githubToken"`
 }
 
 // SettingUpdate 设置更新请求

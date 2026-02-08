@@ -2,14 +2,21 @@
 #
 # X-Panel 一键安装脚本
 #
-# 用法:
+# 公开仓库用法:
 #   curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
 #
-# 或指定版本:
-#   curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --version v1.0.0
+# 私有仓库用法（需要 GitHub Personal Access Token）:
+#   curl -sSL -H "Authorization: token <YOUR_TOKEN>" https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --token <YOUR_TOKEN>
+#
+# 或先下载脚本再执行:
+#   wget -O install.sh https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh
+#   bash install.sh --token <YOUR_TOKEN>
+#
+# 安装指定版本:
+#   bash install.sh --version v1.0.0 --token <YOUR_TOKEN>
 #
 # 卸载:
-#   curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash -s -- --uninstall
+#   bash install.sh --uninstall
 #
 
 set -e
@@ -38,11 +45,16 @@ log_step()  { echo -e "${BLUE}>>>${NC} $*"; }
 # ==================== 参数解析 ====================
 VERSION=""
 UNINSTALL=false
+GITHUB_TOKEN=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --version|-v)
             VERSION="$2"
+            shift 2
+            ;;
+        --token|-t)
+            GITHUB_TOKEN="$2"
             shift 2
             ;;
         --uninstall)
@@ -57,6 +69,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "选项:"
             echo "  --version, -v <版本>  安装指定版本 (如 v1.0.0)"
+            echo "  --token, -t <TOKEN>   GitHub Personal Access Token（私有仓库必须）"
             echo "  --uninstall           卸载 X-Panel"
             echo "  --help, -h            显示帮助"
             exit 0
@@ -67,6 +80,30 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# 构建 curl 认证头
+AUTH_HEADER=""
+if [ -n "$GITHUB_TOKEN" ]; then
+    AUTH_HEADER="Authorization: token $GITHUB_TOKEN"
+    log_info "已配置 GitHub Token 认证"
+fi
+
+# 封装带认证的 curl 请求
+github_curl() {
+    if [ -n "$AUTH_HEADER" ]; then
+        curl -sL -H "$AUTH_HEADER" "$@"
+    else
+        curl -sL "$@"
+    fi
+}
+
+github_curl_with_code() {
+    if [ -n "$AUTH_HEADER" ]; then
+        curl -sL -H "$AUTH_HEADER" "$@"
+    else
+        curl -sL "$@"
+    fi
+}
 
 # ==================== 卸载 ====================
 do_uninstall() {
@@ -171,15 +208,24 @@ log_step "获取版本信息..."
 
 if [ -z "$VERSION" ]; then
     # 获取最新版本
-    RELEASE_INFO=$(curl -sL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null)
+    RELEASE_INFO=$(github_curl "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null)
     if [ $? -ne 0 ] || [ -z "$RELEASE_INFO" ]; then
         log_error "无法连接到 GitHub，请检查网络连接"
+        if [ -z "$GITHUB_TOKEN" ]; then
+            log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
+        fi
         exit 1
     fi
 
     VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
     if [ -z "$VERSION" ]; then
-        log_error "无法获取最新版本号，请确认仓库已发布 Release"
+        # 检查是否是认证问题
+        if echo "$RELEASE_INFO" | grep -q '"message".*Not Found\|"message".*Bad credentials'; then
+            log_error "GitHub API 返回错误（可能是私有仓库或 Token 无效）"
+            log_info "请使用 --token 参数提供有效的 GitHub Personal Access Token"
+        else
+            log_error "无法获取最新版本号，请确认仓库已发布 Release"
+        fi
         log_info "仓库地址: https://github.com/$GITHUB_REPO/releases"
         exit 1
     fi
@@ -198,9 +244,16 @@ trap "rm -rf $TMP_DIR" EXIT
 log_step "下载安装包..."
 echo "  URL: $DOWNLOAD_URL"
 
-HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
+if [ -n "$AUTH_HEADER" ]; then
+    HTTP_CODE=$(curl -sL -H "$AUTH_HEADER" -H "Accept: application/octet-stream" -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
+else
+    HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
+fi
 if [ "$HTTP_CODE" != "200" ]; then
     log_error "下载失败 (HTTP $HTTP_CODE)"
+    if [ "$HTTP_CODE" = "404" ] && [ -z "$GITHUB_TOKEN" ]; then
+        log_info "如果是私有仓库，请使用 --token 参数提供 GitHub Token"
+    fi
     log_info "请检查版本号是否正确: $VERSION"
     log_info "可用版本: https://github.com/$GITHUB_REPO/releases"
     exit 1
@@ -212,7 +265,7 @@ log_info "下载完成 (${DOWNLOAD_SIZE})"
 # ==================== 校验 ====================
 log_step "校验文件完整性..."
 
-if curl -sL -o "$TMP_DIR/checksum.sha256" "$CHECKSUM_URL" 2>/dev/null; then
+if github_curl -o "$TMP_DIR/checksum.sha256" "$CHECKSUM_URL" 2>/dev/null; then
     EXPECTED_HASH=$(awk '{print $1}' "$TMP_DIR/checksum.sha256")
     ACTUAL_HASH=$(sha256sum "$TMP_DIR/xpanel.tar.gz" | awk '{print $1}')
 
@@ -257,6 +310,11 @@ mkdir -p "$INSTALL_DIR/data/log"
 log_step "安装主程序..."
 cp -f "$TMP_DIR/extract/xpanel" "$INSTALL_DIR/xpanel"
 chmod +x "$INSTALL_DIR/xpanel"
+
+# 保存安装脚本副本（方便后续卸载/升级）
+if [ -f "$0" ] && [ "$0" != "bash" ] && [ "$0" != "/dev/stdin" ]; then
+    cp -f "$0" "$INSTALL_DIR/install.sh" 2>/dev/null || true
+fi
 
 # 首次安装：创建配置文件
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -340,7 +398,7 @@ else
 fi
 
 # ==================== 获取访问信息 ====================
-# 尝试获取服务器 IP
+# 尝试获取服务器 IP（不需要 GitHub Token）
 SERVER_IP=$(curl -s4 --connect-timeout 3 https://ifconfig.me 2>/dev/null \
     || curl -s4 --connect-timeout 3 https://api.ipify.org 2>/dev/null \
     || hostname -I 2>/dev/null | awk '{print $1}' \
@@ -381,5 +439,19 @@ if [ "$IS_UPGRADE" = false ]; then
     echo ""
 fi
 echo -e "  ${BOLD}卸载命令:${NC}"
-echo "    curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall"
+if [ -n "$GITHUB_TOKEN" ]; then
+    echo "    curl -sSL -H 'Authorization: token <TOKEN>' https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall"
+else
+    echo "    curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall"
+fi
 echo ""
+
+# 将 token 保存到配置中，以便面板自动更新使用
+if [ -n "$GITHUB_TOKEN" ] && [ -f "$CONFIG_FILE" ]; then
+    if ! grep -q "github_token" "$CONFIG_FILE"; then
+        log_step "保存 GitHub Token 到面板配置..."
+        echo "" >> "$CONFIG_FILE"
+        echo "# GitHub Token for private repo updates" >> "$CONFIG_FILE"
+        echo "github_token: \"$GITHUB_TOKEN\"" >> "$CONFIG_FILE"
+    fi
+fi

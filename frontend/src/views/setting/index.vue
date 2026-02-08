@@ -55,9 +55,28 @@
               {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
             </el-button>
           </div>
+
+          <!-- GitHub Token（私有仓库必须） -->
+          <div class="update-url-row" style="margin-top: 8px">
+            <el-input
+              v-model="githubToken"
+              :placeholder="t('setting.githubTokenPlaceholder')"
+              clearable
+              show-password
+              style="flex: 1; margin-right: 12px"
+            >
+              <template #prepend>{{ t('setting.githubToken') }}</template>
+            </el-input>
+            <el-button
+              :loading="savingToken"
+              @click="handleSaveToken"
+            >
+              {{ t('setting.save') }}
+            </el-button>
+          </div>
           <div class="update-url-hint">
             <el-text type="info" size="small">
-              {{ t('setting.upgradeUrlHint') }}
+              {{ t('setting.upgradeUrlHint') }}。{{ t('setting.githubTokenHint') }}
             </el-text>
           </div>
 
@@ -162,6 +181,8 @@ const versionInfo = reactive({
   goVersion: '',
 })
 const upgradeUrl = ref('')
+const githubToken = ref('')
+const savingToken = ref(false)
 const checking = ref(false)
 const upgrading = ref(false)
 const upgradeInfo = ref<any>(null)
@@ -244,6 +265,15 @@ const pollUpgradeLog = () => {
   }, 2000)
 }
 
+// 保存 GitHub Token
+const handleSaveToken = async () => {
+  savingToken.value = true
+  try {
+    await updateSetting({ key: 'GitHubToken', value: githubToken.value })
+    ElMessage.success(t('commons.success'))
+  } catch { /* */ } finally { savingToken.value = false }
+}
+
 // 面板设置相关
 const fetchSettings = async () => {
   loading.value = true
@@ -252,6 +282,7 @@ const fetchSettings = async () => {
     if (res.data) {
       form.panelName = res.data.panelName || 'X-Panel'
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
+      githubToken.value = res.data.githubToken || ''
     }
   } catch { /* */ } finally { loading.value = false }
 }

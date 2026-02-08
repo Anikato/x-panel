@@ -39,6 +39,7 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		Theme:            settingMap["Theme"],
 		SecurityEntrance: settingMap["SecurityEntrance"],
 		MFAStatus:        settingMap["MFAStatus"],
+		GitHubToken:      settingMap["GitHubToken"],
 	}, nil
 }
 
@@ -47,7 +48,7 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 	allowedKeys := map[string]bool{
 		"Language": true, "SessionTimeout": true,
 		"PanelName": true, "Theme": true,
-		"SecurityEntrance": true,
+		"SecurityEntrance": true, "GitHubToken": true,
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)

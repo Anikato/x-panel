@@ -38,6 +38,7 @@ func initDefaultSettings() {
 		{Key: "MFASecret", Value: ""},
 		{Key: "SSLDir", Value: ""},
 		{Key: "UpgradeURL", Value: ""},
+		{Key: "GitHubToken", Value: ""},
 	}
 
 	for _, s := range defaults {
