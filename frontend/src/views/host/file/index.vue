@@ -216,35 +216,37 @@
       </el-table-column>
       <el-table-column :label="t('commons.operate')" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="canEdit(row)" link type="primary" size="small" @click.stop="openEditor(row)">
-            {{ t('file.edit') }}
-          </el-button>
-          <el-button v-if="!row.isDir" link type="primary" size="small" @click.stop="handleDownload(row)">
-            {{ t('commons.download') }}
-          </el-button>
-          <el-button link type="info" size="small" @click.stop="openDetail(row)">
-            {{ t('file.detail') }}
-          </el-button>
-          <el-dropdown trigger="click" @command="(cmd: string) => handleMoreAction(cmd, row)">
-            <el-button link type="primary" size="small" @click.stop>
-              {{ t('file.more') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          <div class="operate-btns">
+            <el-button v-if="canEdit(row)" link type="primary" size="small" @click.stop="openEditor(row)">
+              {{ t('file.edit') }}
             </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="rename">{{ t('file.rename') }}</el-dropdown-item>
-                <el-dropdown-item command="copyPath">{{ t('file.copyPath') }}</el-dropdown-item>
-                <el-dropdown-item command="copy">{{ t('file.copyTo') }}</el-dropdown-item>
-                <el-dropdown-item command="cut">{{ t('file.moveTo') }}</el-dropdown-item>
-                <el-dropdown-item command="permission">{{ t('file.changePermission') }}</el-dropdown-item>
-                <el-dropdown-item command="chown">{{ t('file.changeOwner') }}</el-dropdown-item>
-                <el-dropdown-item v-if="isCompressFile(row)" command="decompress">{{ t('file.decompress') }}</el-dropdown-item>
-                <el-dropdown-item command="compress">{{ t('file.compress') }}</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>
-                  <span style="color: var(--el-color-danger)">{{ t('file.delete') }}</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+            <el-button v-if="!row.isDir" link type="primary" size="small" @click.stop="handleDownload(row)">
+              {{ t('commons.download') }}
+            </el-button>
+            <el-button link type="info" size="small" @click.stop="openDetail(row)">
+              {{ t('file.detail') }}
+            </el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => handleMoreAction(cmd, row)">
+              <el-button link type="primary" size="small" @click.stop>
+                {{ t('file.more') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="rename">{{ t('file.rename') }}</el-dropdown-item>
+                  <el-dropdown-item command="copyPath">{{ t('file.copyPath') }}</el-dropdown-item>
+                  <el-dropdown-item command="copy">{{ t('file.copyTo') }}</el-dropdown-item>
+                  <el-dropdown-item command="cut">{{ t('file.moveTo') }}</el-dropdown-item>
+                  <el-dropdown-item command="permission">{{ t('file.changePermission') }}</el-dropdown-item>
+                  <el-dropdown-item command="chown">{{ t('file.changeOwner') }}</el-dropdown-item>
+                  <el-dropdown-item v-if="isCompressFile(row)" command="decompress">{{ t('file.decompress') }}</el-dropdown-item>
+                  <el-dropdown-item command="compress">{{ t('file.compress') }}</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>
+                    <span style="color: var(--el-color-danger)">{{ t('file.delete') }}</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -1087,6 +1089,18 @@ onBeforeUnmount(() => {
       font-style: italic;
       color: var(--xp-accent-secondary);
     }
+  }
+}
+
+.operate-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+
+  :deep(.el-dropdown) {
+    display: inline-flex;
+    align-items: center;
   }
 }
 
