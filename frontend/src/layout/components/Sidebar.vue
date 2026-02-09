@@ -42,15 +42,18 @@
     </el-scrollbar>
 
     <div class="sidebar-footer">
-      <div class="sidebar-version" v-if="!globalStore.menuCollapse">v0.1.0</div>
+      <div class="sidebar-version" v-if="!globalStore.menuCollapse">
+        {{ globalStore.version || '...' }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useGlobalStore } from '@/store/modules/global'
+import { getCurrentVersion } from '@/api/modules/upgrade'
 import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
@@ -58,6 +61,18 @@ const globalStore = useGlobalStore()
 const { t } = useI18n()
 
 const activeMenu = computed(() => route.path)
+
+// 如果 global store 中还没有版本号，就去获取
+onMounted(async () => {
+  if (!globalStore.version) {
+    try {
+      const res: any = await getCurrentVersion()
+      if (res.data) {
+        globalStore.setVersion(res.data.version === 'dev' ? 'dev' : res.data.version)
+      }
+    } catch { /* ignore */ }
+  }
+})
 
 const menuList = computed(() => [
   { path: '/home', title: t('menu.home'), icon: 'HomeFilled' },

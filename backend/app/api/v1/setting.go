@@ -40,3 +40,19 @@ func (s *SettingAPI) Update(c *gin.Context) {
 
 	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
 }
+
+// UpdatePort 更新面板监听端口
+func (s *SettingAPI) UpdatePort(c *gin.Context) {
+	var req dto.PortUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := settingService.UpdatePort(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+
+	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
+}

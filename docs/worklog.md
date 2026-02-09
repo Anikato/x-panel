@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-02-09 — Session #21：设置页完善 + 侧边栏版本号动态化 (v0.3.1)
+
+### 完成内容
+
+#### 1. 侧边栏版本号动态化
+- **`frontend/src/layout/components/Sidebar.vue`**: 硬编码的 `v0.1.0` 改为从后端 API 动态获取
+- **`frontend/src/store/modules/global.ts`**: 新增 `version` 字段和 `setVersion` action
+- **`frontend/src/views/home/index.vue`**: 获取版本后同步到 global store
+
+#### 2. 设置页新增端口/用户名/密码修改
+- **`frontend/src/views/setting/index.vue`**: 新增"端口设置"、"用户名与密码"两个卡片
+- **`backend/app/service/setting.go`**: 新增 `UpdatePort` 方法（写入 config.yaml），`UserName` 加入可更新 key
+- **`backend/app/api/v1/setting.go`**: 新增 `UpdatePort` handler
+- **`backend/app/dto/setting.go`**: 新增 `PortUpdate` DTO，`SettingInfo` 增加 `serverPort` 字段
+- **`backend/router/router.go`**: 新增 `POST /settings/port/update` 路由
+- **`frontend/src/api/modules/setting.ts`**: 新增 `updatePort` API
+- **`frontend/src/layout/components/Header.vue`**: 修改密码按钮改为跳转到设置页
+
+#### 3. 版本号规则写入项目规则
+- **`.cursor/rules/x-panel.mdc`**: 新增"版本号规则"章节，明确语义化版本递增策略
+
+#### 4. i18n 翻译补充
+- **`frontend/src/i18n/zh.ts`**: 新增端口设置、用户名密码相关翻译 key
+
+### 关键决策
+- 端口修改写入 config.yaml，需要重启服务才能生效（前端提示用户）
+- 用户名修改直接更新数据库 Setting 表
+- 密码修改复用已有 `/auth/password` API
+- 版本号采用 PATCH 递增策略，每次发布 +0.0.1
+
+### 遗留问题
+- 端口修改后需要手动重启服务（暂不做自动重启，避免意外）
+
+### 下一步计划
+- 测试 v0.3.1 自动更新功能
+
+---
+
 ## 2026-02-09 — Session #20：概览页面（Dashboard）重做
 
 ### 完成内容

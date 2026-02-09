@@ -82,6 +82,22 @@ Viper → Logger → DB → Migration → Cache → I18n → Cron → Firewall �
 - **CI/CD**：GitHub Actions 自动构建（`.github/workflows/release.yml`），推送 `v*` tag 触发
 - **一键安装**：`scripts/install-online.sh`，公开仓库直接 curl 执行即可
 
+## 版本号规则 📌
+
+- **格式**：语义化版本 `vMAJOR.MINOR.PATCH`（如 `v0.3.1`）
+- **发布方式**：推送 Git tag 触发 GitHub Actions 自动构建和发布
+- **版本递增策略**：
+  - 每次发布升级 **最小版本号（PATCH）**，如 `v0.3.0` → `v0.3.1` → `v0.3.2`
+  - 有较大功能变更时才升级 MINOR 版本，如 `v0.3.x` → `v0.4.0`
+  - MAJOR 版本号在架构重大变更时才升级
+- **发布流程**：
+  1. 提交代码：`git add -A && git commit -m "描述"`
+  2. 推送代码：`git push origin main`
+  3. 打 tag：`git tag v0.x.x`
+  4. 推送 tag：`git push origin v0.x.x`
+- **版本注入**：编译时通过 `ldflags` 将 Git tag 注入 `version.Version` 变量
+- **⚠️ 禁止跳版本号**：不允许从 `v0.3.1` 直接跳到 `v0.4.0` 或 `v1.0.0`，除非有充分理由
+
 ## 参考 1Panel 源码导航
 
 - Agent 端（实际执行层）：`1Panel/agent/app/service/` — 网站/数据库/容器/系统/工具箱

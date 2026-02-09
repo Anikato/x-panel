@@ -167,15 +167,82 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <!-- 监听端口 -->
+    <el-card class="setting-card">
+      <template #header>
+        <div class="card-header">
+          <div class="card-header-title">
+            <el-icon><Connection /></el-icon>
+            <span>{{ t('setting.portSetting') }}</span>
+          </div>
+        </div>
+      </template>
+      <el-form :model="portForm" label-width="140px" style="max-width: 600px">
+        <el-form-item :label="t('setting.serverPort')">
+          <el-input-number v-model="portForm.port" :min="1" :max="65535" :step="1" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="savingPort" @click="handleSavePort">
+            {{ t('setting.save') }}
+          </el-button>
+          <el-text type="info" size="small" style="margin-left: 12px">
+            {{ t('setting.portChangeHint') }}
+          </el-text>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- 用户名与密码 -->
+    <el-card class="setting-card">
+      <template #header>
+        <div class="card-header">
+          <div class="card-header-title">
+            <el-icon><User /></el-icon>
+            <span>{{ t('setting.accountSetting') }}</span>
+          </div>
+        </div>
+      </template>
+      <el-form label-width="140px" style="max-width: 600px">
+        <!-- 修改用户名 -->
+        <el-form-item :label="t('setting.userName')">
+          <el-input v-model="accountForm.userName" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="savingUserName" @click="handleSaveUserName">
+            {{ t('setting.saveUserName') }}
+          </el-button>
+        </el-form-item>
+
+        <el-divider />
+
+        <!-- 修改密码 -->
+        <el-form-item :label="t('setting.oldPassword')">
+          <el-input v-model="passwordForm.oldPassword" type="password" show-password autocomplete="off" />
+        </el-form-item>
+        <el-form-item :label="t('setting.newPassword')">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="off" />
+        </el-form-item>
+        <el-form-item :label="t('setting.confirmPassword')">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="off" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="savingPassword" @click="handleSavePassword">
+            {{ t('setting.savePassword') }}
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Setting, InfoFilled } from '@element-plus/icons-vue'
-import { getSettingInfo, updateSetting } from '@/api/modules/setting'
+import { Refresh, Setting, InfoFilled, Connection, User } from '@element-plus/icons-vue'
+import { getSettingInfo, updateSetting, updatePort } from '@/api/modules/setting'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
+import { updatePassword } from '@/api/modules/auth'
 import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
 
@@ -186,6 +253,16 @@ const globalStore = useGlobalStore()
 const loading = ref(false)
 const saving = ref(false)
 const form = reactive({ panelName: 'X-Panel', sessionTimeout: 86400, securityEntrance: '' })
+
+// 端口设置
+const savingPort = ref(false)
+const portForm = reactive({ port: 7777 })
+
+// 用户名与密码
+const savingUserName = ref(false)
+const savingPassword = ref(false)
+const accountForm = reactive({ userName: '' })
+const passwordForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
 
 // 版本与升级
 const versionInfo = reactive({
@@ -298,6 +375,8 @@ const fetchSettings = async () => {
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
       form.securityEntrance = res.data.securityEntrance || ''
       githubToken.value = res.data.githubToken || ''
+      portForm.port = parseInt(res.data.serverPort) || 7777
+      accountForm.userName = res.data.userName || 'admin'
     }
   } catch { /* */ } finally { loading.value = false }
 }
@@ -311,6 +390,55 @@ const handleSave = async () => {
     globalStore.setPanelName(form.panelName)
     ElMessage.success(t('commons.success'))
   } catch { /* */ } finally { saving.value = false }
+}
+
+// 保存端口
+const handleSavePort = async () => {
+  savingPort.value = true
+  try {
+    await updatePort({ port: String(portForm.port) })
+    ElMessage.success(t('setting.portChangedSuccess'))
+  } catch { /* */ } finally { savingPort.value = false }
+}
+
+// 保存用户名
+const handleSaveUserName = async () => {
+  if (!accountForm.userName.trim()) {
+    ElMessage.warning(t('setting.userNameRequired'))
+    return
+  }
+  savingUserName.value = true
+  try {
+    await updateSetting({ key: 'UserName', value: accountForm.userName })
+    ElMessage.success(t('commons.success'))
+  } catch { /* */ } finally { savingUserName.value = false }
+}
+
+// 保存密码
+const handleSavePassword = async () => {
+  if (!passwordForm.oldPassword || !passwordForm.newPassword) {
+    ElMessage.warning(t('setting.passwordRequired'))
+    return
+  }
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    ElMessage.warning(t('init.passwordMismatch'))
+    return
+  }
+  if (passwordForm.newPassword.length < 6) {
+    ElMessage.warning(t('init.passwordMinLength'))
+    return
+  }
+  savingPassword.value = true
+  try {
+    await updatePassword({
+      oldPassword: passwordForm.oldPassword,
+      newPassword: passwordForm.newPassword,
+    })
+    ElMessage.success(t('setting.passwordChangedSuccess'))
+    passwordForm.oldPassword = ''
+    passwordForm.newPassword = ''
+    passwordForm.confirmPassword = ''
+  } catch { /* */ } finally { savingPassword.value = false }
 }
 
 onMounted(() => {

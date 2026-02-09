@@ -247,6 +247,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
+import { useGlobalStore } from '@/store/modules/global'
 import {
   Monitor, Clock, Refresh, Cpu, Coin, Odometer, Connection,
   Box, Compass, DataLine, FolderOpened, Setting, Document, Notebook,
@@ -254,6 +255,7 @@ import {
 
 const router = useRouter()
 const { t } = useI18n()
+const globalStore = useGlobalStore()
 
 const loading = ref(false)
 const stats = ref<any>({})
@@ -276,6 +278,7 @@ const fetchVersion = async () => {
     const res: any = await getCurrentVersion()
     if (res.data) {
       panelVersion.value = res.data.version === 'dev' ? 'dev' : res.data.version
+      globalStore.setVersion(panelVersion.value)
     }
   } catch {
     panelVersion.value = '-'

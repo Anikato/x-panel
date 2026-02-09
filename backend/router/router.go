@@ -52,6 +52,7 @@ func Setup(mode string) *gin.Engine {
 		// 设置
 		privateGroup.GET("/settings", api.GetSettingInfo)
 		privateGroup.POST("/settings/update", api.Update)
+		privateGroup.POST("/settings/port/update", api.UpdatePort)
 
 		// 日志
 		privateGroup.POST("/logs/login", api.PageLoginLog)

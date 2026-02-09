@@ -9,3 +9,8 @@ export const getSettingInfo = () => {
 export const updateSetting = (data: { key: string; value: string }) => {
   return http.post('/settings/update', data)
 }
+
+/** 更新面板端口 */
+export const updatePort = (data: { port: string }) => {
+  return http.post('/settings/port/update', data)
+}

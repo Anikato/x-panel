@@ -77,7 +77,7 @@ const handleCommand = async (command: string) => {
       // cancelled
     }
   } else if (command === 'password') {
-    ElMessage.info(t('header.passwordChangeTodo'))
+    router.push('/setting')
   }
 }
 </script>

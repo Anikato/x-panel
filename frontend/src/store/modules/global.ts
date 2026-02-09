@@ -7,6 +7,7 @@ export const useGlobalStore = defineStore('global', {
     menuCollapse: false,
     panelName: 'X-Panel',
     theme: 'light' as 'light' | 'dark',
+    version: '',
   }),
   actions: {
     setLogin(status: boolean) {
@@ -20,6 +21,9 @@ export const useGlobalStore = defineStore('global', {
     },
     setPanelName(name: string) {
       this.panelName = name
+    },
+    setVersion(ver: string) {
+      this.version = ver
     },
   },
   persist: true,

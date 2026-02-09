@@ -126,6 +126,22 @@ export default {
     securityEntranceHint: '设置后面板只能通过 /入口路径 访问，直接访问根路径会返回 404，防止面板被扫描发现',
     dev: '开发版本',
     devTip: '当前为开发版本，不支持自动更新',
+    // 端口设置
+    portSetting: '端口设置',
+    serverPort: '面板端口',
+    portChangeHint: '修改端口后需要重启面板服务才能生效',
+    portChangedSuccess: '端口已更新，请重启面板服务使其生效',
+    // 用户名与密码
+    accountSetting: '用户名与密码',
+    userName: '用户名',
+    saveUserName: '保存用户名',
+    userNameRequired: '请输入用户名',
+    oldPassword: '当前密码',
+    newPassword: '新密码',
+    confirmPassword: '确认新密码',
+    savePassword: '修改密码',
+    passwordRequired: '请填写当前密码和新密码',
+    passwordChangedSuccess: '密码修改成功',
   },
   log: {
     loginLog: '登录日志',
