@@ -33,6 +33,7 @@ type IFileService interface {
 	ChangeOwner(req dto.FileChownReq) error
 	Compress(req dto.FileCompressReq) error
 	Decompress(req dto.FileDecompressReq) error
+	Wget(req dto.FileWgetReq) error
 	GetFileTree(req dto.FileTreeReq) ([]dto.FileTreeNode, error)
 	GetUsersAndGroups() (*dto.UserGroupResp, error)
 	GetDirSize(req dto.DirSizeReq) (*dto.DirSizeResp, error)
@@ -115,27 +116,36 @@ func (s *FileService) ListFiles(req dto.FileSearchReq) (*dto.FileInfo, error) {
 		return nil, buserr.New(constant.ErrFileNotDir)
 	}
 
-	entries, err := os.ReadDir(cleanPath)
-	if err != nil {
-		return nil, buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-	}
-
 	var items []dto.FileInfo
-	searchLower := strings.ToLower(req.Search)
-	for _, entry := range entries {
-		if !req.ShowHidden && strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		// 前端搜索过滤
-		if searchLower != "" && !strings.Contains(strings.ToLower(entry.Name()), searchLower) {
-			continue
-		}
-		fi, err := entry.Info()
+
+	// 递归子目录搜索
+	if req.Search != "" && req.ContainSub {
+		items, err = searchRecursive(cleanPath, req.Search, req.ShowHidden)
 		if err != nil {
-			continue
+			return nil, buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
-		fullPath := filepath.Join(cleanPath, entry.Name())
-		items = append(items, buildFileInfo(fullPath, fi))
+	} else {
+		entries, err := os.ReadDir(cleanPath)
+		if err != nil {
+			return nil, buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+
+		searchLower := strings.ToLower(req.Search)
+		for _, entry := range entries {
+			if !req.ShowHidden && strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			// 搜索过滤
+			if searchLower != "" && !strings.Contains(strings.ToLower(entry.Name()), searchLower) {
+				continue
+			}
+			fi, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			fullPath := filepath.Join(cleanPath, entry.Name())
+			items = append(items, buildFileInfo(fullPath, fi))
+		}
 	}
 
 	// 排序：目录在前，文件在后
@@ -171,6 +181,50 @@ func (s *FileService) ListFiles(req dto.FileSearchReq) (*dto.FileInfo, error) {
 	dirInfo := buildFileInfo(cleanPath, info)
 	dirInfo.Items = items
 	return &dirInfo, nil
+}
+
+// searchRecursive 使用 find 命令递归搜索子目录
+func searchRecursive(rootPath, search string, showHidden bool) ([]dto.FileInfo, error) {
+	args := []string{rootPath, "-iname", fmt.Sprintf("*%s*", search)}
+	if !showHidden {
+		// 排除隐藏文件和隐藏目录
+		args = []string{rootPath, "-not", "-path", "*/.*", "-iname", fmt.Sprintf("*%s*", search)}
+	}
+	// 限制最多返回 1000 条结果，防止结果过多
+	cmd := exec.Command("find", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		// find 命令可能因权限问题返回非零退出码，但仍有有效结果
+		if len(output) == 0 {
+			return nil, err
+		}
+	}
+
+	var items []dto.FileInfo
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	count := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == rootPath {
+			continue // 跳过根目录本身
+		}
+		if count >= 1000 {
+			break // 限制结果数量
+		}
+		fi, err := os.Lstat(line)
+		if err != nil {
+			continue
+		}
+		item := buildFileInfo(line, fi)
+		// 递归搜索时显示相对路径作为名称
+		relPath, _ := filepath.Rel(rootPath, line)
+		if relPath != "" {
+			item.Name = relPath
+		}
+		items = append(items, item)
+		count++
+	}
+	return items, nil
 }
 
 // ===================== 文件内容 =====================
@@ -536,12 +590,29 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 	var cmd *exec.Cmd
 	switch compressType {
 	case "zip":
+		// 使用相对路径压缩，避免解压时出现绝对路径
+		relPaths := make([]string, 0, len(req.Paths))
+		var workDir string
+		for i, p := range req.Paths {
+			cleanP := filepath.Clean(p)
+			if i == 0 {
+				workDir = filepath.Dir(cleanP)
+			}
+			relPaths = append(relPaths, filepath.Base(cleanP))
+		}
 		args := []string{"-r", dst}
-		args = append(args, req.Paths...)
+		args = append(args, relPaths...)
 		cmd = exec.Command("zip", args...)
-	default:
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
+	default: // tar.gz
+		// 使用 -C dir basename 模式，确保压缩包内为相对路径
 		args := []string{"-czf", dst}
-		args = append(args, req.Paths...)
+		for _, p := range req.Paths {
+			cleanP := filepath.Clean(p)
+			args = append(args, "-C", filepath.Dir(cleanP), filepath.Base(cleanP))
+		}
 		cmd = exec.Command("tar", args...)
 	}
 
@@ -562,11 +633,22 @@ func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 	}
 
 	var cmd *exec.Cmd
-	ext := strings.ToLower(filepath.Ext(src))
-	switch ext {
-	case ".zip":
+	archiveType := detectArchiveType(src)
+
+	switch archiveType {
+	case "zip":
 		cmd = exec.Command("unzip", "-o", src, "-d", dst)
-	default:
+	case "7z":
+		if _, err := exec.LookPath("7z"); err != nil {
+			return buserr.WithDetail(constant.ErrCmdNotFound, "7z", nil)
+		}
+		cmd = exec.Command("7z", "x", "-y", "-o"+dst, src)
+	case "rar":
+		if _, err := exec.LookPath("unrar"); err != nil {
+			return buserr.WithDetail(constant.ErrCmdNotFound, "unrar", nil)
+		}
+		cmd = exec.Command("unrar", "x", "-y", "-o+", src, dst+"/")
+	default: // tar, tar.gz, tar.bz2, tar.xz, tgz
 		cmd = exec.Command("tar", "-xf", src, "-C", dst)
 	}
 
@@ -574,6 +656,59 @@ func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 		return buserr.WithDetail(constant.ErrInternalServer, string(output), err)
 	}
 	global.LOG.Infof("File decompressed: %s → %s", src, dst)
+	return nil
+}
+
+// detectArchiveType 检测压缩文件类型
+func detectArchiveType(path string) string {
+	lower := strings.ToLower(path)
+	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") {
+		return "tar.gz"
+	}
+	if strings.HasSuffix(lower, ".tar.bz2") || strings.HasSuffix(lower, ".tbz2") {
+		return "tar.bz2"
+	}
+	if strings.HasSuffix(lower, ".tar.xz") || strings.HasSuffix(lower, ".txz") {
+		return "tar.xz"
+	}
+	if strings.HasSuffix(lower, ".tar") {
+		return "tar"
+	}
+	if strings.HasSuffix(lower, ".zip") {
+		return "zip"
+	}
+	if strings.HasSuffix(lower, ".7z") {
+		return "7z"
+	}
+	if strings.HasSuffix(lower, ".rar") {
+		return "rar"
+	}
+	if strings.HasSuffix(lower, ".gz") {
+		return "tar.gz" // 单独的 .gz 也用 tar 处理
+	}
+	if strings.HasSuffix(lower, ".bz2") {
+		return "tar.bz2"
+	}
+	if strings.HasSuffix(lower, ".xz") {
+		return "tar.xz"
+	}
+	return "tar" // 默认按 tar 处理
+}
+
+// ===================== 远程下载 =====================
+
+// Wget 使用 wget 下载远程文件
+func (s *FileService) Wget(req dto.FileWgetReq) error {
+	dst := filepath.Clean(req.Path)
+	if _, err := os.Stat(dst); os.IsNotExist(err) {
+		return buserr.New(constant.ErrFileNotExist)
+	}
+
+	cmd := exec.Command("wget", "-q", "-P", dst, req.URL)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, string(output), err)
+	}
+	global.LOG.Infof("File downloaded via wget: %s → %s", req.URL, dst)
 	return nil
 }
 

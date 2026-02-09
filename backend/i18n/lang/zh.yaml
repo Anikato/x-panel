@@ -39,6 +39,8 @@ ErrFileInvalidChar:
   other: "文件名包含非法字符"
 ErrFileChown:
   other: "修改文件所有者失败: {{.detail}}"
+ErrCmdNotFound:
+  other: "命令未安装: {{.detail}}，请先安装对应工具"
 
 # SSL 证书错误
 ErrSSLAcmeRegister:

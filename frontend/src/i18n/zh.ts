@@ -214,6 +214,10 @@ export default {
     compressName: '压缩文件名',
     decompressTo: '解压到',
     targetPath: '目标路径',
+    // 远程下载
+    remoteDownload: '远程下载',
+    remoteUrl: '下载链接',
+    remoteUrlPlaceholder: '输入文件下载链接',
     // 权限
     changePermission: '修改权限',
     owner: '所有者',
@@ -235,7 +239,8 @@ export default {
     cancelPaste: '取消',
     // 搜索
     searchFile: '搜索文件',
-    searchPlaceholder: '输入文件名搜索...',
+    searchPlaceholder: '在当前目录下查找',
+    containSub: '子目录',
     // 文件信息
     items: '{count} 个项目',
     hiddenFiles: '显示隐藏文件',

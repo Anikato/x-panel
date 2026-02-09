@@ -25,54 +25,49 @@
       />
     </el-tabs>
 
-    <!-- 工具栏 -->
+    <!-- 导航栏 -->
+    <div class="file-nav">
+      <el-tooltip :content="t('file.back')" placement="top">
+        <el-button @click="goBack" :disabled="!canGoBack" :icon="Back" circle size="small" />
+      </el-tooltip>
+      <el-tooltip :content="t('file.forward')" placement="top">
+        <el-button @click="goForward" :disabled="!canGoForward" :icon="Right" circle size="small" />
+      </el-tooltip>
+      <el-tooltip :content="t('file.goUp')" placement="top">
+        <el-button @click="goUp" :disabled="currentTab?.path === '/'" :icon="Top" circle size="small" />
+      </el-tooltip>
+      <el-tooltip :content="t('file.refresh')" placement="top">
+        <el-button @click="refreshFiles" :icon="Refresh" circle size="small" />
+      </el-tooltip>
+      <el-input
+        v-model="pathInput"
+        class="path-input"
+        @keyup.enter="navigateTo(pathInput)"
+        :placeholder="t('file.enterPath')"
+        size="default"
+      >
+        <template #prefix>
+          <el-icon><FolderOpened /></el-icon>
+        </template>
+      </el-input>
+    </div>
+
+    <!-- 工具栏（参考 1Panel 布局） -->
     <div class="file-toolbar">
       <div class="toolbar-left">
-        <el-tooltip :content="t('file.back')" placement="top">
-          <el-button @click="goBack" :disabled="!canGoBack" :icon="Back" circle size="small" />
-        </el-tooltip>
-        <el-tooltip :content="t('file.forward')" placement="top">
-          <el-button @click="goForward" :disabled="!canGoForward" :icon="Right" circle size="small" />
-        </el-tooltip>
-        <el-tooltip :content="t('file.goUp')" placement="top">
-          <el-button @click="goUp" :disabled="currentTab?.path === '/'" :icon="Top" circle size="small" />
-        </el-tooltip>
-        <el-tooltip :content="t('file.refresh')" placement="top">
-          <el-button @click="refreshFiles" :icon="Refresh" circle size="small" />
-        </el-tooltip>
-        <el-input
-          v-model="pathInput"
-          class="path-input"
-          @keyup.enter="navigateTo(pathInput)"
-          :placeholder="t('file.enterPath')"
-          size="default"
-        >
-          <template #prefix>
-            <el-icon><FolderOpened /></el-icon>
+        <!-- 创建下拉 -->
+        <el-dropdown @command="handleCreateCommand" trigger="click">
+          <el-button type="primary" size="small">
+            {{ t('commons.create') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="file"><el-icon><Document /></el-icon>{{ t('file.newFile') }}</el-dropdown-item>
+              <el-dropdown-item command="dir"><el-icon><Folder /></el-icon>{{ t('file.newDir') }}</el-dropdown-item>
+            </el-dropdown-menu>
           </template>
-        </el-input>
-      </div>
-      <div class="toolbar-right">
-        <!-- 搜索 -->
-        <el-input
-          v-model="searchKeyword"
-          :placeholder="t('file.searchPlaceholder')"
-          clearable
-          size="small"
-          style="width: 180px"
-          @input="handleSearchInput"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-divider direction="vertical" />
-        <el-button type="primary" plain size="small" @click="showCreate('file')">
-          <el-icon><DocumentAdd /></el-icon>{{ t('file.newFile') }}
-        </el-button>
-        <el-button type="primary" plain size="small" @click="showCreate('dir')">
-          <el-icon><FolderAdd /></el-icon>{{ t('file.newDir') }}
-        </el-button>
+        </el-dropdown>
+        <!-- 上传 -->
         <el-upload
           :show-file-list="false"
           :before-upload="() => false"
@@ -80,35 +75,73 @@
           @change="handleUploadChange"
           multiple
         >
-          <el-button type="success" plain size="small">
-            <el-icon><Upload /></el-icon>{{ t('file.upload') }}
-          </el-button>
+          <el-button size="small"><el-icon><Upload /></el-icon>{{ t('file.upload') }}</el-button>
         </el-upload>
-        <el-button type="warning" plain size="small" @click="openTerminal">
+        <!-- 远程下载 -->
+        <el-button size="small" @click="showRemoteDownload">
+          <el-icon><Download /></el-icon>{{ t('file.remoteDownload') }}
+        </el-button>
+
+        <!-- 批量操作按钮组 -->
+        <el-button-group class="batch-btn-group">
+          <el-button size="small" :disabled="selectedRows.length === 0" @click="setClipboard('copy', selectedRows)">
+            {{ t('file.copyTo') }}
+          </el-button>
+          <el-button size="small" :disabled="selectedRows.length === 0" @click="setClipboard('cut', selectedRows)">
+            {{ t('file.moveTo') }}
+          </el-button>
+          <el-button size="small" :disabled="selectedRows.length === 0" @click="batchCompress">
+            {{ t('file.compress') }}
+          </el-button>
+          <el-button size="small" :disabled="selectedRows.length === 0" @click="openBatchPermission">
+            {{ t('file.changePermission') }}
+          </el-button>
+          <el-button size="small" type="danger" plain :disabled="selectedRows.length === 0" @click="handleBatchDelete">
+            {{ t('file.delete') }}
+          </el-button>
+        </el-button-group>
+
+        <!-- 终端 -->
+        <el-button size="small" @click="openTerminal">
           <el-icon><Monitor /></el-icon>{{ t('file.openTerminal') }}
         </el-button>
-        <el-divider direction="vertical" />
-        <el-checkbox v-model="showHidden" size="small" @change="refreshFiles">
-          {{ t('file.hiddenFiles') }}
-        </el-checkbox>
-        <!-- 剪贴板状态 -->
-        <template v-if="clipboard.paths.length > 0">
-          <el-divider direction="vertical" />
+
+        <!-- 剪贴板粘贴 -->
+        <el-button-group v-if="clipboard.paths.length > 0" class="paste-btn-group">
           <el-button type="success" size="small" @click="doPaste">
-            <el-icon><DocumentCopy /></el-icon>{{ t('file.pasteHere') }} ({{ clipboard.paths.length }})
+            {{ t('file.pasteHere') }}({{ clipboard.paths.length }})
           </el-button>
-          <el-button size="small" @click="clearClipboard">{{ t('file.cancelPaste') }}</el-button>
-        </template>
-        <!-- 批量操作 -->
-        <template v-if="selectedRows.length > 0">
-          <el-divider direction="vertical" />
-          <el-button size="small" @click="batchCompress">
-            <el-icon><Box /></el-icon>{{ t('file.compress') }}
-          </el-button>
-          <el-button type="danger" plain size="small" @click="handleBatchDelete">
-            <el-icon><Delete /></el-icon>{{ t('file.delete') }} ({{ selectedRows.length }})
-          </el-button>
-        </template>
+          <el-button size="small" @click="clearClipboard" :icon="Close" />
+        </el-button-group>
+      </div>
+      <div class="toolbar-right">
+        <!-- 显示隐藏文件 -->
+        <el-tooltip :content="showHidden ? t('file.hiddenFiles') : t('file.hiddenFiles')" placement="top">
+          <el-button
+            circle
+            size="small"
+            :type="showHidden ? 'primary' : ''"
+            :icon="showHidden ? View : Hide"
+            @click="showHidden = !showHidden; refreshFiles()"
+          />
+        </el-tooltip>
+        <!-- 搜索（带子目录勾选） -->
+        <el-input
+          v-model="searchKeyword"
+          :placeholder="t('file.searchPlaceholder')"
+          clearable
+          size="small"
+          class="search-input"
+          @clear="handleSearchClear"
+          @keydown.enter="refreshFiles"
+        >
+          <template #prepend>
+            <el-checkbox v-model="containSub" size="small">{{ t('file.containSub') }}</el-checkbox>
+          </template>
+          <template #append>
+            <el-button :icon="Search" @click="refreshFiles" />
+          </template>
+        </el-input>
       </div>
     </div>
 
@@ -287,6 +320,22 @@
       </template>
     </el-dialog>
 
+    <!-- 远程下载弹窗 -->
+    <el-dialog v-model="remoteDownloadVisible" :title="t('file.remoteDownload')" width="500px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item :label="t('file.remoteUrl')">
+          <el-input v-model="remoteUrl" :placeholder="t('file.remoteUrlPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('file.targetPath')">
+          <el-input :model-value="currentTab?.path || '/'" disabled />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="remoteDownloadVisible = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="remoteDownloading" @click="doRemoteDownload">{{ t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 子组件 -->
     <CodeEditor ref="codeEditorRef" @saved="refreshFiles" />
     <TerminalDialog ref="terminalRef" />
@@ -298,7 +347,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listFiles, createFile, deleteFile, batchDeleteFile, renameFile,
@@ -309,7 +358,7 @@ import {
   Back, Right, Top, Refresh, FolderOpened, FolderAdd, DocumentAdd, Upload, Monitor, Search,
   Delete, Download, EditPen, CopyDocument, DocumentCopy, InfoFilled, User,
   Lock, Box, Files, ArrowDown, Document, Folder, Picture, VideoPlay,
-  Headset, SetUp, Tickets, Memo, Rank,
+  Headset, SetUp, Tickets, Memo, Rank, Close, View, Hide,
 } from '@element-plus/icons-vue'
 import CodeEditor from './code-editor.vue'
 import TerminalDialog from './terminal-dialog.vue'
@@ -326,7 +375,13 @@ const selectedRows = ref<any[]>([])
 const tableHeight = ref(500)
 const pathInput = ref('/')
 const searchKeyword = ref('')
+const containSub = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// 远程下载
+const remoteDownloadVisible = ref(false)
+const remoteUrl = ref('')
+const remoteDownloading = ref(false)
 
 // ===================== 多标签系统 =====================
 
@@ -456,8 +511,15 @@ const pathSegments = computed(() => {
 // ===================== 搜索防抖 =====================
 
 function handleSearchInput() {
+  // 子目录搜索不自动触发，需要手动点击搜索
+  if (containSub.value) return
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => refreshFiles(), 300)
+}
+
+function handleSearchClear() {
+  containSub.value = false
+  refreshFiles()
 }
 
 // ===================== 核心操作 =====================
@@ -471,6 +533,7 @@ const refreshFiles = async () => {
       path: tab.path,
       showHidden: showHidden.value,
       search: searchKeyword.value || undefined,
+      containSub: containSub.value || undefined,
     })
     fileList.value = res.data?.items || []
     pathInput.value = tab.path
@@ -632,6 +695,10 @@ const showCreate = (type: 'file' | 'dir') => {
   createVisible.value = true
 }
 
+function handleCreateCommand(cmd: string) {
+  showCreate(cmd as 'file' | 'dir')
+}
+
 const handleCreate = async () => {
   if (!createName.value) return
   const dir = currentTab.value?.path || '/'
@@ -656,6 +723,39 @@ const handleUploadChange = async (file: any) => {
   } catch { /* */ } finally {
     loading.value = false
   }
+}
+
+// ===================== 远程下载 =====================
+
+function showRemoteDownload() {
+  remoteUrl.value = ''
+  remoteDownloadVisible.value = true
+}
+
+async function doRemoteDownload() {
+  if (!remoteUrl.value) return
+  remoteDownloading.value = true
+  try {
+    const dir = currentTab.value?.path || '/'
+    // 使用 wget/curl 下载到当前目录
+    const resp: any = await import('@/api/http').then(m =>
+      m.default.post('/files/wget', { url: remoteUrl.value, path: dir })
+    )
+    ElMessage.success(t('commons.success'))
+    remoteDownloadVisible.value = false
+    refreshFiles()
+  } catch { /* */ } finally {
+    remoteDownloading.value = false
+  }
+}
+
+// ===================== 批量权限 =====================
+
+function openBatchPermission() {
+  if (selectedRows.value.length === 0) return
+  // 打开第一个文件的权限弹窗（后续可扩展为批量）
+  const row = selectedRows.value[0]
+  permissionRef.value?.open(row.path, row.mode)
 }
 
 // ===================== 拖拽上传 =====================
@@ -844,11 +944,22 @@ onBeforeUnmount(() => {
   }
 }
 
+.file-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+
+  .path-input {
+    flex: 1;
+  }
+}
+
 .file-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 10px;
   flex-wrap: wrap;
 
@@ -856,12 +967,20 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex: 1;
-    min-width: 300px;
+    flex-wrap: wrap;
 
-    .path-input {
-      flex: 1;
-      max-width: 500px;
+    .batch-btn-group {
+      .el-button {
+        font-size: 12px;
+      }
+    }
+
+    .paste-btn-group {
+      margin-left: 4px;
+
+      .el-button--success {
+        font-weight: 500;
+      }
     }
   }
 
@@ -869,7 +988,24 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
+
+    .search-input {
+      width: 320px;
+
+      :deep(.el-input-group__prepend) {
+        padding: 0 8px;
+        background: var(--xp-bg-surface);
+      }
+
+      :deep(.el-input-group__append) {
+        padding: 0 8px;
+      }
+
+      :deep(.el-checkbox) {
+        height: auto;
+        margin-right: 0;
+      }
+    }
   }
 }
 

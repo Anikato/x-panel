@@ -1,6 +1,6 @@
 import http from '@/api/http'
 
-export const listFiles = (params: { path: string; showHidden?: boolean; search?: string; sortBy?: string; sortOrder?: string }) => {
+export const listFiles = (params: { path: string; showHidden?: boolean; search?: string; containSub?: boolean; sortBy?: string; sortOrder?: string }) => {
   return http.post('/files/search', params)
 }
 

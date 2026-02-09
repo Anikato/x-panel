@@ -240,6 +240,21 @@ func (a *FileAPI) DecompressFile(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+// WgetFile 远程下载文件
+func (a *FileAPI) WgetFile(c *gin.Context) {
+	var req dto.FileWgetReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	svc := service.NewIFileService()
+	if err := svc.Wget(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 // UploadFile 上传文件
 func (a *FileAPI) UploadFile(c *gin.Context) {
 	dstPath := c.PostForm("path")

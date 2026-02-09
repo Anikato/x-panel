@@ -22,6 +22,7 @@ const (
 	ErrFileDeleteProtected = "ErrFileDeleteProtected"
 	ErrFileInvalidChar     = "ErrFileInvalidChar"
 	ErrFileChown           = "ErrFileChown"
+	ErrCmdNotFound         = "ErrCmdNotFound"
 
 	// SSL 证书
 	ErrSSLAcmeRegister = "ErrSSLAcmeRegister"

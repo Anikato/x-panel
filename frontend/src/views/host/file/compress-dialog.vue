@@ -14,7 +14,7 @@
       <el-form-item :label="t('file.targetPath')">
         <el-input v-model="compressForm.dst" />
       </el-form-item>
-      <el-form-item label="文件">
+      <el-form-item :label="t('file.name')">
         <div class="compress-files">
           <el-tag v-for="p in compressForm.paths" :key="p" size="small" class="file-tag">
             {{ p.split('/').pop() }}
@@ -31,8 +31,8 @@
   <!-- 解压弹窗 -->
   <el-dialog v-model="decompressVisible" :title="t('file.decompress')" width="500px" destroy-on-close>
     <el-form label-width="100px">
-      <el-form-item label="文件">
-        <el-input :model-value="decompressForm.path" disabled />
+      <el-form-item :label="t('file.name')">
+        <el-input :model-value="decompressForm.path.split('/').pop()" disabled />
       </el-form-item>
       <el-form-item :label="t('file.decompressTo')">
         <el-input v-model="decompressForm.dst" />

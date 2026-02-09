@@ -25,6 +25,7 @@ type FileSearchReq struct {
 	Path       string `json:"path" binding:"required"`
 	ShowHidden bool   `json:"showHidden"`
 	Search     string `json:"search"`
+	ContainSub bool   `json:"containSub"`
 	SortBy     string `json:"sortBy"`
 	SortOrder  string `json:"sortOrder"`
 }
@@ -142,4 +143,10 @@ type DirSizeReq struct {
 // DirSizeResp 目录大小响应
 type DirSizeResp struct {
 	Size int64 `json:"size"`
+}
+
+// FileWgetReq 远程下载请求
+type FileWgetReq struct {
+	URL  string `json:"url" binding:"required"`
+	Path string `json:"path" binding:"required"`
 }
