@@ -18,6 +18,7 @@ type ApiGroup struct {
 	DiskAPI
 	NginxAPI
 	UpgradeAPI
+	WebsiteAPI
 }
 
 // ApiGroupApp 全局 API 实例

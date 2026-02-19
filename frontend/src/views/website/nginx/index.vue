@@ -41,6 +41,9 @@
 
     <!-- 已安装 — 状态面板 -->
     <template v-if="status.isInstalled && !installing">
+      <el-tabs v-model="mainTab" class="nginx-tabs">
+        <el-tab-pane :label="$t('nginx.status')" name="status">
+
       <!-- 信息卡片 -->
       <el-row :gutter="16" class="info-row">
         <el-col :span="6">
@@ -129,6 +132,44 @@
         <el-alert :type="testResult.success ? 'success' : 'error'" :title="testResult.success ? $t('nginx.testSuccess') : $t('nginx.testFail')" :closable="false" show-icon />
         <pre class="config-output" v-if="testResult.output">{{ testResult.output }}</pre>
       </el-card>
+
+        </el-tab-pane>
+
+        <!-- 配置文件编辑 Tab -->
+        <el-tab-pane :label="$t('website.confEditor')" name="config">
+          <div class="conf-editor-section">
+            <el-row :gutter="16">
+              <el-col :span="6">
+                <div class="conf-file-list">
+                  <div class="conf-file-item" :class="{ active: activeConfFile === '__main__' }" @click="loadMainConf">
+                    <el-icon><Setting /></el-icon>
+                    <span>nginx.conf</span>
+                  </div>
+                  <el-divider style="margin: 8px 0">
+                    <span style="font-size: 12px">conf.d/</span>
+                  </el-divider>
+                  <template v-if="confFiles.length > 0">
+                    <div v-for="f in confFiles" :key="f.name" class="conf-file-item" :class="{ active: activeConfFile === f.name }" @click="loadConfFile(f.name)">
+                      <el-icon><Document /></el-icon>
+                      <span>{{ f.name }}</span>
+                    </div>
+                  </template>
+                  <div v-else class="no-conf-files">{{ $t('website.noConfFiles') }}</div>
+                </div>
+              </el-col>
+              <el-col :span="18">
+                <div class="conf-editor-header">
+                  <span class="conf-file-name">{{ activeConfFile === '__main__' ? 'nginx.conf' : activeConfFile || '选择文件' }}</span>
+                  <el-button size="small" type="primary" @click="handleSaveConf" :loading="confSaving" :disabled="!activeConfFile">
+                    {{ $t('website.saveConf') }}
+                  </el-button>
+                </div>
+                <el-input v-model="confContent" type="textarea" :rows="24" class="conf-editor-textarea" :placeholder="activeConfFile ? '' : '请从左侧选择配置文件'" />
+              </el-col>
+            </el-row>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
     </template>
 
     <!-- 安装对话框 -->
@@ -174,7 +215,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, VideoPlay, VideoPause, RefreshRight, SwitchButton,
-  Document, Delete, Box, Checked,
+  Document, Delete, Box, Checked, Setting,
 } from '@element-plus/icons-vue'
 import {
   getNginxStatus,
@@ -185,8 +226,17 @@ import {
   uninstallNginx,
   listNginxVersions,
 } from '@/api/modules/nginx'
+import {
+  getNginxMainConf,
+  saveNginxMainConf,
+  listNginxConfFiles,
+  getNginxConfFile,
+  saveNginxConfFile,
+} from '@/api/modules/website'
 
 const { t } = useI18n()
+
+const mainTab = ref('status')
 
 // 状态数据
 const loading = ref(false)
@@ -381,7 +431,58 @@ const formatDate = (dateStr?: string) => {
   } catch { return '' }
 }
 
-onMounted(() => loadStatus())
+// --- 配置文件编辑 ---
+const confFiles = ref<any[]>([])
+const activeConfFile = ref('')
+const confContent = ref('')
+const confSaving = ref(false)
+
+const loadConfFilesList = async () => {
+  try {
+    const res = await listNginxConfFiles()
+    confFiles.value = res.data || []
+  } catch { confFiles.value = [] }
+}
+
+const loadMainConf = async () => {
+  activeConfFile.value = '__main__'
+  try {
+    const res = await getNginxMainConf()
+    confContent.value = res.data || ''
+  } catch { confContent.value = '' }
+}
+
+const loadConfFile = async (name: string) => {
+  activeConfFile.value = name
+  try {
+    const res = await getNginxConfFile(name)
+    confContent.value = res.data || ''
+  } catch { confContent.value = '' }
+}
+
+const handleSaveConf = async () => {
+  if (!activeConfFile.value || !confContent.value) return
+  try {
+    await ElMessageBox.confirm(t('website.saveConfConfirm'), t('commons.tip'), { type: 'warning' })
+  } catch { return }
+
+  confSaving.value = true
+  try {
+    if (activeConfFile.value === '__main__') {
+      await saveNginxMainConf(confContent.value)
+    } else {
+      const confDir = status.value.installDir ? `${status.value.installDir}/conf/conf.d` : ''
+      await saveNginxConfFile(`${confDir}/${activeConfFile.value}`, confContent.value)
+    }
+    ElMessage.success(t('website.confSaved'))
+  } catch {}
+  finally { confSaving.value = false }
+}
+
+onMounted(() => {
+  loadStatus()
+  loadConfFilesList()
+})
 onUnmounted(() => stopProgressPolling())
 </script>
 
@@ -507,5 +608,75 @@ onUnmounted(() => stopProgressPolling())
 .version-date {
   font-size: 12px;
   color: var(--xp-text-muted, #666);
+}
+
+.nginx-tabs {
+  :deep(.el-tabs__header) {
+    margin-bottom: 16px;
+  }
+}
+
+.conf-editor-section {
+  min-height: 500px;
+}
+
+.conf-file-list {
+  background: var(--xp-bg-card, #161b22);
+  border-radius: var(--xp-radius-sm);
+  padding: 8px;
+  min-height: 400px;
+}
+
+.conf-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--xp-text-secondary);
+  transition: all 0.15s;
+
+  &:hover {
+    background: rgba(34, 211, 238, 0.06);
+    color: var(--xp-text-primary);
+  }
+
+  &.active {
+    background: rgba(34, 211, 238, 0.12);
+    color: var(--xp-accent);
+    font-weight: 500;
+  }
+}
+
+.no-conf-files {
+  text-align: center;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  padding: 20px 0;
+}
+
+.conf-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+
+  .conf-file-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--xp-text-primary);
+  }
+}
+
+.conf-editor-textarea {
+  :deep(textarea) {
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--xp-bg-deep, #0d1117);
+    color: #c9d1d9;
+  }
 }
 </style>

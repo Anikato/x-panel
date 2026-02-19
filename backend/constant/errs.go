@@ -37,6 +37,11 @@ const (
 	ErrNginxInstall        = "ErrNginxInstall"
 	ErrNginxBuildDeps      = "ErrNginxBuildDeps"
 
+	// Website
+	ErrWebsiteDomainExist = "ErrWebsiteDomainExist"
+	ErrWebsiteApplyConfig = "ErrWebsiteApplyConfig"
+	ErrWebsiteNotFound    = "ErrWebsiteNotFound"
+
 	// 升级
 	ErrUpgradeInProgress = "ErrUpgradeInProgress"
 )

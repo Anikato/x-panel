@@ -81,6 +81,7 @@ const menuList = computed(() => [
     title: t('menu.website'),
     icon: 'ChromeFilled',
     children: [
+      { path: '/website/websites', title: t('menu.websites') },
       { path: '/website/nginx', title: t('menu.nginx') },
       { path: '/website/ssl', title: t('menu.ssl') },
     ],

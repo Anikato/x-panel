@@ -17,6 +17,7 @@ func Init() {
 		&model.AcmeAccount{},
 		&model.DnsAccount{},
 		&model.Certificate{},
+		&model.Website{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

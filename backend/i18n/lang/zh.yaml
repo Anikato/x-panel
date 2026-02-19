@@ -64,6 +64,14 @@ ErrNginxInstall:
 ErrNginxBuildDeps:
   other: "缺少编译依赖: {{.detail}}"
 
+# 网站管理错误
+ErrWebsiteDomainExist:
+  other: "该域名已被其他网站使用"
+ErrWebsiteApplyConfig:
+  other: "应用 Nginx 配置失败: {{.detail}}"
+ErrWebsiteNotFound:
+  other: "网站不存在"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"
