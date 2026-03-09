@@ -1,8 +1,16 @@
 package service
 
 import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +21,7 @@ import (
 	hostUtil "github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
-	"github.com/shirou/gopsutil/v4/net"
+	gnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -25,17 +33,20 @@ type MonitorService struct{}
 
 func NewIMonitorService() IMonitorService { return &MonitorService{} }
 
-// 上一次网络采样，用于计算速率
 var (
-	lastNetIO   []net.IOCountersStat
+	lastNetIO   []gnet.IOCountersStat
 	lastNetTime time.Time
 	netMu       sync.Mutex
+
+	cachedPublicIPv4 string
+	cachedPublicIPv6 string
+	publicIPMu       sync.Mutex
+	publicIPLastTime time.Time
 )
 
 func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 	stats := &dto.SystemStats{}
 
-	// 系统基本信息
 	hostInfo, err := hostUtil.Info()
 	if err == nil {
 		stats.Host = dto.SystemHostInfo{
@@ -45,8 +56,17 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 			PlatformVersion: hostInfo.PlatformVersion,
 			KernelVersion:   hostInfo.KernelVersion,
 			KernelArch:      hostInfo.KernelArch,
+			Virtualization:  hostInfo.VirtualizationSystem,
 		}
 	}
+
+	stats.Host.Timezone = getTimezone()
+	stats.Host.DNSServers = getDNSServers()
+	stats.Host.Interfaces = getNetworkInterfaces()
+
+	ipv4, ipv6 := getCachedPublicIP()
+	stats.Host.PublicIPv4 = ipv4
+	stats.Host.PublicIPv6 = ipv6
 
 	// CPU
 	cpuInfo, _ := cpu.Info()
@@ -84,7 +104,7 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 		stats.Memory.SwapPercent = swapStat.UsedPercent
 	}
 
-	// 负载（Linux/macOS）
+	// 负载
 	loadStat, err := load.Avg()
 	if err == nil {
 		stats.Load = dto.LoadStats{
@@ -94,7 +114,7 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 		}
 	}
 
-	// 磁盘（含 inode）
+	// 磁盘
 	partitions, err := disk.Partitions(false)
 	if err == nil {
 		for _, p := range partitions {
@@ -121,8 +141,8 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 		}
 	}
 
-	// 网络（累计 + 每网卡速率）
-	netIO, err := net.IOCounters(true) // per-nic
+	// 网络
+	netIO, err := gnet.IOCounters(true)
 	if err == nil {
 		var totalSent, totalRecv, totalPktSent, totalPktRecv uint64
 		netMu.Lock()
@@ -141,7 +161,6 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 				BytesSent: nic.BytesSent,
 				BytesRecv: nic.BytesRecv,
 			}
-			// 计算速率
 			if elapsed > 0 && lastNetIO != nil {
 				for _, prev := range lastNetIO {
 					if prev.Name == nic.Name {
@@ -165,17 +184,141 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 		}
 	}
 
-	// Top 进程（CPU Top 5）
 	stats.TopProcess = getTopProcesses(5)
 
-	// Uptime
 	uptime, _ := hostUtil.Uptime()
 	stats.Uptime = uptime
 
 	return stats, nil
 }
 
-// getTopProcesses 获取 CPU 占用 Top N 的进程
+// getNetworkInterfaces 获取所有网卡信息（IP/MAC/状态）
+func getNetworkInterfaces() []dto.InterfaceInfo {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var result []dto.InterfaceInfo
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		info := dto.InterfaceInfo{
+			Name: iface.Name,
+			MAC:  iface.HardwareAddr.String(),
+		}
+		if iface.Flags&net.FlagUp != 0 {
+			info.Status = "up"
+		} else {
+			info.Status = "down"
+		}
+		addrs, err := iface.Addrs()
+		if err == nil {
+			for _, addr := range addrs {
+				ip := addr.String()
+				if strings.Contains(ip, ":") {
+					info.IPv6 = append(info.IPv6, ip)
+				} else {
+					info.IPv4 = append(info.IPv4, ip)
+				}
+			}
+		}
+		result = append(result, info)
+	}
+	return result
+}
+
+// getCachedPublicIP 获取公网 IP（缓存 5 分钟）
+func getCachedPublicIP() (string, string) {
+	publicIPMu.Lock()
+	defer publicIPMu.Unlock()
+
+	if time.Since(publicIPLastTime) < 5*time.Minute && (cachedPublicIPv4 != "" || cachedPublicIPv6 != "") {
+		return cachedPublicIPv4, cachedPublicIPv6
+	}
+
+	var wg sync.WaitGroup
+	var ipv4, ipv6 string
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ipv4 = fetchPublicIP("https://api.ipify.org", 3*time.Second)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ipv6 = fetchPublicIP("https://api6.ipify.org", 3*time.Second)
+	}()
+	wg.Wait()
+
+	cachedPublicIPv4 = ipv4
+	cachedPublicIPv6 = ipv6
+	publicIPLastTime = time.Now()
+	return ipv4, ipv6
+}
+
+func fetchPublicIP(url string, timeout time.Duration) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(body))
+}
+
+// getTimezone 获取系统时区
+func getTimezone() string {
+	zone, _ := time.Now().Zone()
+	loc := time.Now().Location()
+	if loc != nil && loc.String() != "Local" {
+		return fmt.Sprintf("%s (%s)", loc.String(), zone)
+	}
+	// Linux: 从 /etc/timezone 或 timedatectl 读取
+	if data, err := os.ReadFile("/etc/timezone"); err == nil {
+		tz := strings.TrimSpace(string(data))
+		if tz != "" {
+			return fmt.Sprintf("%s (%s)", tz, zone)
+		}
+	}
+	return zone
+}
+
+// getDNSServers 读取 /etc/resolv.conf 中的 DNS 服务器
+func getDNSServers() []string {
+	f, err := os.Open("/etc/resolv.conf")
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var servers []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "nameserver") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				servers = append(servers, fields[1])
+			}
+		}
+	}
+	return servers
+}
+
 func getTopProcesses(n int) []dto.ProcessBrief {
 	procs, err := process.Processes()
 	if err != nil {
@@ -215,7 +358,6 @@ func getTopProcesses(n int) []dto.ProcessBrief {
 }
 
 func shouldSkipPartition(p disk.PartitionStat) bool {
-	// 跳过虚拟文件系统
 	skipFS := map[string]bool{
 		"tmpfs": true, "devtmpfs": true, "devfs": true,
 		"squashfs": true, "overlay": true, "autofs": true,
@@ -225,7 +367,6 @@ func shouldSkipPartition(p disk.PartitionStat) bool {
 		return true
 	}
 	if runtime.GOOS == "darwin" {
-		// macOS 跳过系统快照等
 		if p.Mountpoint == "/System/Volumes/Data" {
 			return false
 		}

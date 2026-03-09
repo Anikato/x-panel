@@ -26,7 +26,7 @@ const termEl = ref<HTMLElement>()
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
-let resizeHandler: (() => void) | null = null
+let resizeObserver: ResizeObserver | null = null
 
 const terminalTheme = {
   background: '#0b0e14',
@@ -58,6 +58,16 @@ function getWsUrl() {
   return `${proto}//${location.host}/api/v1/terminal?token=${token}`
 }
 
+function sendResize(wsConn: WebSocket, rows: number, cols: number) {
+  const resizeData = JSON.stringify({ rows, cols })
+  const msg = new Uint8Array(1 + resizeData.length)
+  msg[0] = 1
+  for (let i = 0; i < resizeData.length; i++) {
+    msg[i + 1] = resizeData.charCodeAt(i)
+  }
+  wsConn.send(msg)
+}
+
 const open = async (path: string) => {
   cwd.value = path
   visible.value = true
@@ -78,24 +88,28 @@ function initTerminal() {
     allowProposedApi: true,
   })
 
+  terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+    if (event.ctrlKey && event.shiftKey && ['c', 'v'].includes(event.key.toLowerCase())) {
+      return false
+    }
+    if (event.key === 'F11' || event.key === 'F12') return false
+    return true
+  })
+
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
   terminal.open(termEl.value)
-  setTimeout(() => fitAddon!.fit(), 50)
+  setTimeout(() => { try { fitAddon!.fit() } catch { /* */ } }, 100)
+
+  resizeObserver = new ResizeObserver(() => {
+    if (fitAddon) { try { fitAddon.fit() } catch { /* */ } }
+  })
+  resizeObserver.observe(termEl.value)
 
   ws = new WebSocket(getWsUrl())
 
   ws.onopen = () => {
-    // Send initial resize
-    const resizeData = JSON.stringify({ rows: terminal!.rows, cols: terminal!.cols })
-    const msg = new Uint8Array(1 + resizeData.length)
-    msg[0] = 1
-    for (let i = 0; i < resizeData.length; i++) {
-      msg[i + 1] = resizeData.charCodeAt(i)
-    }
-    ws!.send(msg)
-
-    // cd to the directory
+    sendResize(ws!, terminal!.rows, terminal!.cols)
     setTimeout(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(`cd ${JSON.stringify(cwd.value)} && clear\n`)
@@ -123,18 +137,9 @@ function initTerminal() {
 
   terminal.onResize(({ rows, cols }) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      const resizeData = JSON.stringify({ rows, cols })
-      const msg = new Uint8Array(1 + resizeData.length)
-      msg[0] = 1
-      for (let i = 0; i < resizeData.length; i++) {
-        msg[i + 1] = resizeData.charCodeAt(i)
-      }
-      ws.send(msg)
+      sendResize(ws, rows, cols)
     }
   })
-
-  resizeHandler = () => fitAddon!.fit()
-  window.addEventListener('resize', resizeHandler)
 }
 
 function handleClose() {
@@ -145,7 +150,7 @@ function cleanup() {
   if (ws) { ws.close(); ws = null }
   if (terminal) { terminal.dispose(); terminal = null }
   if (fitAddon) { fitAddon = null }
-  if (resizeHandler) { window.removeEventListener('resize', resizeHandler); resizeHandler = null }
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
 }
 
 onBeforeUnmount(() => cleanup())
@@ -158,10 +163,10 @@ defineExpose({ open })
   height: calc(50vh - 80px);
   background: #0b0e14;
   border-radius: 4px;
-  padding: 8px;
 
   :deep(.xterm) {
     height: 100%;
+    padding: 4px;
   }
 
   :deep(.xterm-viewport) {

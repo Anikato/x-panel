@@ -15,12 +15,27 @@ type SystemStats struct {
 
 // SystemHostInfo 系统基本信息
 type SystemHostInfo struct {
-	Hostname        string `json:"hostname"`
-	OS              string `json:"os"`
-	Platform        string `json:"platform"`
-	PlatformVersion string `json:"platformVersion"`
-	KernelVersion   string `json:"kernelVersion"`
-	KernelArch      string `json:"kernelArch"`
+	Hostname        string          `json:"hostname"`
+	OS              string          `json:"os"`
+	Platform        string          `json:"platform"`
+	PlatformVersion string          `json:"platformVersion"`
+	KernelVersion   string          `json:"kernelVersion"`
+	KernelArch      string          `json:"kernelArch"`
+	PublicIPv4      string          `json:"publicIPv4"`
+	PublicIPv6      string          `json:"publicIPv6"`
+	Interfaces      []InterfaceInfo `json:"interfaces"`
+	Timezone        string          `json:"timezone"`
+	Virtualization  string          `json:"virtualization"`
+	DNSServers      []string        `json:"dnsServers"`
+}
+
+// InterfaceInfo 网卡信息
+type InterfaceInfo struct {
+	Name   string   `json:"name"`
+	IPv4   []string `json:"ipv4"`
+	IPv6   []string `json:"ipv6"`
+	MAC    string   `json:"mac"`
+	Status string   `json:"status"` // up / down
 }
 
 // CPUStats CPU 状态

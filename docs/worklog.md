@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-03-09 — Session #23：终端修复 + 首页信息增强 + 文件管理美化
+
+### 完成内容
+
+#### P0: 终端核心修复
+- **vim 快捷键冲突修复**: 添加 `attachCustomKeyEventHandler` 自定义按键处理，仅将 Ctrl+Shift+C/V (复制粘贴)、F11/F12 交给浏览器，其他所有按键（Esc、Ctrl+C、方向键等）都传递给终端
+- **最后一行显示截断修复**: 将 padding 从 `.terminal-instance` 内移到 `.terminal-container` 外层，确保 FitAddon 计算 rows/cols 时不受 padding 干扰；同时将 `window.resize` 替换为 `ResizeObserver` 精确监听容器尺寸变化
+- **同步修复文件管理终端弹窗** (`terminal-dialog.vue`)
+
+#### P1: 首页/监控信息增强
+- **后端 `dto/monitor.go`**: SystemHostInfo 扩展新字段：PublicIPv4/IPv6、Interfaces (网卡IP/MAC/状态)、Timezone、Virtualization、DNSServers
+- **后端 `service/monitor.go`**: 实现 `getNetworkInterfaces()`(net.Interfaces)、`getCachedPublicIP()`(ipify.org,缓存5分钟)、`getTimezone()`、`getDNSServers()`(/etc/resolv.conf)
+- **前端首页**: 增加网络信息卡片（公网IP、各网卡IP、DNS），所有信息项增加悬浮显示的复制按钮
+- **前端监控页**: 硬编码中文改为 i18n，增加公网IP/时区/虚拟化信息展示
+- **i18n**: 新增 hostname/publicIPv4/publicIPv6/timezone/virtualization/physicalMachine 等 key
+
+#### P2: 文件管理图标美化
+- **新建 SVG 图标组件** `components/file-icons/FileIcon.vue`: 基于文件扩展名显示不同颜色的 SVG 图标，支持 50+ 文件类型（Go/JS/TS/Vue/Python/Rust/Shell/JSON/YAML/图片/视频/压缩包/证书等）
+- **特殊目录图标**: .git(红色)、node_modules/vendor(绿色)、conf/config(蓝色)、log/logs(黄色)
+- **目录大小计算**: 前端接入已有的 `getDirSize` API，目录大小列显示"计算"链接，点击异步计算并显示结果
+
+#### P2: 终端快捷命令面板 + 批量输入增强
+- **命令面板 (Ctrl+P)**: 类似 VSCode 的弹出面板，支持模糊搜索快速命令，上下键选择，回车执行到当前终端
+- **批量输入增强**: 增加终端选择功能，可以勾选发送到哪些终端（全部/指定）
+
+### 关键决策
+- 公网IP获取使用 ipify.org API + 5分钟缓存，避免频繁外部请求
+- 终端按键处理仅放行 Ctrl+Shift+C/V (运维常用复制粘贴) 和 F11/F12，其余全部交给终端
+- 文件图标使用纯 SVG 组件而非引入图标字体库，保持零依赖
+
+### 下一步计划
+- 文件管理收藏夹功能（快速跳转常用路径）
+- 历史监控趋势图表（CPU/内存 24h 趋势）
+- 告警阈值配置
+- 终端会话审计/回放
+
+---
+
 ## 2026-02-09 — Session #22：文件管理功能增强
 
 ### 完成内容

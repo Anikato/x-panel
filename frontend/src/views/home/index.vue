@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard">
-    <!-- 顶部系统信息 + 版本 -->
+    <!-- 顶部系统信息 -->
     <div class="dashboard-header">
       <div class="system-identity">
         <div class="system-logo">
@@ -15,6 +15,9 @@
             </el-tag>
             <el-tag size="small" effect="plain" round type="info">
               {{ stats.host?.kernelArch }}
+            </el-tag>
+            <el-tag v-if="stats.host?.virtualization" size="small" effect="plain" round type="warning">
+              {{ stats.host?.virtualization }}
             </el-tag>
           </div>
         </div>
@@ -31,34 +34,63 @@
     <!-- 系统详情卡片 -->
     <el-card shadow="never" class="sys-info-card">
       <div class="sys-info-grid">
-        <div class="sys-info-item">
-          <span class="sys-info-label">{{ t('home.os') }}</span>
-          <span class="sys-info-value">{{ stats.host?.platform }} {{ stats.host?.platformVersion }}</span>
-        </div>
-        <div class="sys-info-item">
-          <span class="sys-info-label">{{ t('home.kernel') }}</span>
-          <span class="sys-info-value">{{ stats.host?.kernelVersion || '-' }}</span>
-        </div>
-        <div class="sys-info-item">
-          <span class="sys-info-label">{{ t('home.arch') }}</span>
-          <span class="sys-info-value">{{ stats.host?.kernelArch || '-' }}</span>
-        </div>
-        <div class="sys-info-item">
-          <span class="sys-info-label">{{ t('home.cpuModel') }}</span>
-          <span class="sys-info-value">{{ stats.cpu?.modelName || '-' }}</span>
-        </div>
-        <div class="sys-info-item">
-          <span class="sys-info-label">{{ t('home.cpuCores') }}</span>
-          <span class="sys-info-value">{{ stats.cpu?.cores }} {{ t('home.physical') }} / {{ stats.cpu?.logicalCores }} {{ t('home.logical') }}</span>
-        </div>
-        <div class="sys-info-item">
-          <span class="sys-info-label">{{ t('home.totalMemory') }}</span>
-          <span class="sys-info-value">{{ formatBytes(stats.memory?.total) }}</span>
+        <div class="sys-info-item" v-for="item in sysInfoItems" :key="item.label">
+          <span class="sys-info-label">{{ item.label }}</span>
+          <span class="sys-info-value">
+            {{ item.value }}
+            <el-icon class="copy-btn" @click="copyText(item.value)" v-if="item.value && item.value !== '-'"><CopyDocument /></el-icon>
+          </span>
         </div>
       </div>
     </el-card>
 
-    <!-- 资源占用 — 进度条风格 -->
+    <!-- 网络信息卡片 -->
+    <el-card shadow="never" class="sys-info-card" v-if="stats.host?.interfaces?.length">
+      <template #header>
+        <div class="card-header-row">
+          <el-icon><Connection /></el-icon>
+          <span>{{ t('home.networkInfo') }}</span>
+        </div>
+      </template>
+      <div class="net-info-list">
+        <div class="net-info-row" v-if="stats.host?.publicIPv4">
+          <span class="net-label">{{ t('home.publicIPv4') }}</span>
+          <span class="net-value highlight">
+            {{ stats.host.publicIPv4 }}
+            <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv4)"><CopyDocument /></el-icon>
+          </span>
+        </div>
+        <div class="net-info-row" v-if="stats.host?.publicIPv6">
+          <span class="net-label">{{ t('home.publicIPv6') }}</span>
+          <span class="net-value">
+            {{ stats.host.publicIPv6 }}
+            <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv6)"><CopyDocument /></el-icon>
+          </span>
+        </div>
+        <template v-for="iface in stats.host?.interfaces" :key="iface.name">
+          <div class="net-info-row" v-for="ip in iface.ipv4" :key="ip">
+            <span class="net-label">
+              <el-tag size="small" :type="iface.status === 'up' ? 'success' : 'info'" effect="plain" round>
+                {{ iface.name }}
+              </el-tag>
+            </span>
+            <span class="net-value">
+              {{ ip }}
+              <el-icon class="copy-btn" @click="copyText(ip.split('/')[0])"><CopyDocument /></el-icon>
+            </span>
+          </div>
+        </template>
+        <div class="net-info-row" v-if="stats.host?.dnsServers?.length">
+          <span class="net-label">DNS</span>
+          <span class="net-value">
+            {{ stats.host.dnsServers.join(', ') }}
+            <el-icon class="copy-btn" @click="copyText(stats.host.dnsServers.join(', '))"><CopyDocument /></el-icon>
+          </span>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 资源占用 -->
     <div class="resource-section">
       <h3 class="section-title">{{ t('home.resourceUsage') }}</h3>
       <el-row :gutter="16">
@@ -82,7 +114,6 @@
             </div>
           </div>
         </el-col>
-
         <!-- 内存 -->
         <el-col :xs="24" :sm="12" :lg="6">
           <div class="resource-card">
@@ -107,8 +138,7 @@
             </div>
           </div>
         </el-col>
-
-        <!-- 系统负载 -->
+        <!-- 负载 -->
         <el-col :xs="24" :sm="12" :lg="6">
           <div class="resource-card">
             <div class="resource-header">
@@ -130,7 +160,6 @@
             </div>
           </div>
         </el-col>
-
         <!-- 网络 -->
         <el-col :xs="24" :sm="12" :lg="6">
           <div class="resource-card">
@@ -247,9 +276,10 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
+import { ElMessage } from 'element-plus'
 import {
   Monitor, Clock, Refresh, Cpu, Coin, Odometer, Connection,
-  Box, Compass, DataLine, FolderOpened, Setting, Document, Notebook,
+  Box, Compass, DataLine, CopyDocument,
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -260,7 +290,6 @@ const stats = ref<any>({})
 const panelVersion = ref('...')
 let timer: ReturnType<typeof setInterval> | null = null
 
-// 获取系统状态
 const loadStats = async () => {
   loading.value = true
   try {
@@ -270,7 +299,6 @@ const loadStats = async () => {
   finally { loading.value = false }
 }
 
-// 获取面板版本
 const fetchVersion = async () => {
   try {
     const res: any = await getCurrentVersion()
@@ -282,19 +310,32 @@ const fetchVersion = async () => {
   }
 }
 
-// 负载百分比（load1 / 逻辑核心数 * 100）
+// 系统信息项（带复制按钮）
+const sysInfoItems = computed(() => {
+  const h = stats.value.host || {}
+  return [
+    { label: t('home.hostname'), value: h.hostname || '-' },
+    { label: t('home.os'), value: `${h.platform || ''} ${h.platformVersion || ''}`.trim() || '-' },
+    { label: t('home.kernel'), value: h.kernelVersion || '-' },
+    { label: t('home.arch'), value: h.kernelArch || '-' },
+    { label: t('home.timezone'), value: h.timezone || '-' },
+    { label: t('home.virtualization'), value: h.virtualization || t('home.physicalMachine') },
+    { label: t('home.cpuModel'), value: stats.value.cpu?.modelName || '-' },
+    { label: t('home.cpuCores'), value: stats.value.cpu ? `${stats.value.cpu.cores} ${t('home.physical')} / ${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-' },
+    { label: t('home.totalMemory'), value: formatBytes(stats.value.memory?.total) },
+  ]
+})
+
 const loadPercent = computed(() => {
   const cores = stats.value.cpu?.logicalCores || 1
   const load1 = stats.value.load?.load1 || 0
   return Math.min((load1 / cores) * 100, 100)
 })
 
-// 主网卡（过滤 lo）
 const mainNics = computed(() => {
   return (stats.value.netIO || []).filter((n: any) => n.name !== 'lo').slice(0, 4)
 })
 
-// 快速入口
 const quickEntries = computed(() => [
   { path: '/host/files', title: t('menu.fileManager'), icon: 'FolderOpened' },
   { path: '/terminal', title: t('menu.terminal'), icon: 'Monitor' },
@@ -306,16 +347,20 @@ const quickEntries = computed(() => [
   { path: '/log/operation', title: t('menu.operationLog'), icon: 'Notebook' },
 ])
 
-// 进度条颜色
+const copyText = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(t('commons.copy') + ' ✓')
+  } catch {
+    ElMessage.error('Copy failed')
+  }
+}
+
 const getBarColor = (pct: number, type: string): string => {
   if (pct >= 90) return '#ef4444'
   if (pct >= 70) return '#f59e0b'
   const colors: Record<string, string> = {
-    cpu: '#22d3ee',
-    mem: '#818cf8',
-    load: '#34d399',
-    disk: '#60a5fa',
-    net: '#a78bfa',
+    cpu: '#22d3ee', mem: '#818cf8', load: '#34d399', disk: '#60a5fa', net: '#a78bfa',
   }
   return colors[type] || '#22d3ee'
 }
@@ -337,7 +382,6 @@ const pctClass = (pct?: number) => {
   return 'pct-normal'
 }
 
-// 工具函数
 const formatBytes = (bytes?: number) => {
   if (!bytes || bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -385,7 +429,6 @@ onUnmounted(() => {
   padding: 0;
 }
 
-/* ===== 顶部区域 ===== */
 .dashboard-header {
   display: flex;
   justify-content: space-between;
@@ -422,7 +465,6 @@ onUnmounted(() => {
     color: var(--xp-text-primary);
     letter-spacing: 0.3px;
   }
-
   .system-tags {
     display: flex;
     gap: 6px;
@@ -453,10 +495,19 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--xp-text-primary);
+}
+
 .sys-info-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px 32px;
+  gap: 12px 32px;
 }
 
 .sys-info-item {
@@ -478,6 +529,63 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.copy-btn {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--xp-accent);
+  }
+}
+
+.sys-info-item:hover .copy-btn,
+.net-info-row:hover .copy-btn {
+  opacity: 1;
+}
+
+/* ===== 网络信息 ===== */
+.net-info-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 32px;
+}
+
+.net-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.net-label {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  min-width: 80px;
+  white-space: nowrap;
+}
+
+.net-value {
+  font-size: 13px;
+  color: var(--xp-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+
+  &.highlight {
+    color: var(--xp-accent);
+    font-weight: 600;
+  }
 }
 
 /* ===== 区域标题 ===== */
@@ -490,7 +598,7 @@ onUnmounted(() => {
   border-left: 3px solid var(--xp-accent);
 }
 
-/* ===== 资源占用卡片 ===== */
+/* ===== 资源占用 ===== */
 .resource-section {
   margin-bottom: 20px;
 }
@@ -525,25 +633,10 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.cpu-icon {
-  background: rgba(34, 211, 238, 0.12);
-  color: #22d3ee;
-}
-
-.mem-icon {
-  background: rgba(129, 140, 248, 0.12);
-  color: #818cf8;
-}
-
-.load-icon {
-  background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
-}
-
-.net-icon {
-  background: rgba(167, 139, 250, 0.12);
-  color: #a78bfa;
-}
+.cpu-icon { background: rgba(34, 211, 238, 0.12); color: #22d3ee; }
+.mem-icon { background: rgba(129, 140, 248, 0.12); color: #818cf8; }
+.load-icon { background: rgba(52, 211, 153, 0.12); color: #34d399; }
+.net-icon { background: rgba(167, 139, 250, 0.12); color: #a78bfa; }
 
 .resource-name {
   font-size: 14px;
@@ -562,7 +655,6 @@ onUnmounted(() => {
 .pct-warning { color: #f59e0b; }
 .pct-danger { color: #ef4444; }
 
-/* ===== 进度条 ===== */
 .resource-bar-wrapper {
   width: 100%;
   height: 8px;
@@ -595,10 +687,8 @@ onUnmounted(() => {
   gap: 16px;
 }
 
-/* ===== 网络 ===== */
-.net-stats {
-  margin-bottom: 8px;
-}
+/* ===== 网络速率 ===== */
+.net-stats { margin-bottom: 8px; }
 
 .net-row {
   display: flex;
@@ -614,20 +704,11 @@ onUnmounted(() => {
   min-width: 60px;
 }
 
-.net-speed-up {
-  color: #22d3ee;
-  font-variant-numeric: tabular-nums;
-}
-
-.net-speed-down {
-  color: #a78bfa;
-  font-variant-numeric: tabular-nums;
-}
+.net-speed-up { color: #22d3ee; font-variant-numeric: tabular-nums; }
+.net-speed-down { color: #a78bfa; font-variant-numeric: tabular-nums; }
 
 /* ===== 磁盘 ===== */
-.disk-section {
-  margin-bottom: 20px;
-}
+.disk-section { margin-bottom: 20px; }
 
 .disk-card {
   background: var(--xp-bg-surface);
@@ -636,10 +717,7 @@ onUnmounted(() => {
   padding: 16px 18px;
   margin-bottom: 16px;
   transition: all 0.25s;
-
-  &:hover {
-    border-color: rgba(96, 165, 250, 0.15);
-  }
+  &:hover { border-color: rgba(96, 165, 250, 0.15); }
 }
 
 .disk-header {
@@ -683,9 +761,7 @@ onUnmounted(() => {
   color: var(--xp-text-secondary);
 }
 
-.disk-fs {
-  color: var(--xp-text-muted);
-}
+.disk-fs { color: var(--xp-text-muted); }
 
 .disk-inode {
   font-size: 11px;
@@ -693,14 +769,9 @@ onUnmounted(() => {
   margin-top: 4px;
 }
 
-/* ===== 底部区域 ===== */
-.bottom-section {
-  margin-bottom: 20px;
-}
-
-.section-card {
-  margin-bottom: 16px;
-}
+/* ===== 底部 ===== */
+.bottom-section { margin-bottom: 20px; }
+.section-card { margin-bottom: 16px; }
 
 .section-card-header {
   display: flex;
@@ -711,7 +782,6 @@ onUnmounted(() => {
   color: var(--xp-text-primary);
 }
 
-/* ===== 快速入口 ===== */
 .quick-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -734,7 +804,6 @@ onUnmounted(() => {
     border-color: rgba(34, 211, 238, 0.2);
     background: var(--xp-accent-muted);
     transform: translateY(-2px);
-
     .quick-icon {
       color: var(--xp-accent);
       background: rgba(34, 211, 238, 0.12);
@@ -761,36 +830,24 @@ onUnmounted(() => {
   }
 }
 
-/* ===== 表格 ===== */
 .text-danger {
   color: #ef4444;
   font-weight: 600;
 }
 
-/* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .dashboard-header {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
   }
-
-  .sys-info-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .quick-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  .sys-info-grid { grid-template-columns: repeat(2, 1fr); }
+  .net-info-list { grid-template-columns: 1fr; }
+  .quick-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 480px) {
-  .sys-info-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .quick-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .sys-info-grid { grid-template-columns: 1fr; }
+  .quick-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

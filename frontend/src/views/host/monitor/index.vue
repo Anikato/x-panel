@@ -11,28 +11,49 @@
     <el-card shadow="never" class="host-info-card" v-if="stats.host">
       <div class="host-info-grid">
         <div class="info-item">
-          <span class="info-label">主机名</span>
-          <span class="info-value">{{ stats.host.hostname || '-' }}</span>
+          <span class="info-label">{{ $t('home.hostname') }}</span>
+          <span class="info-value">
+            {{ stats.host.hostname || '-' }}
+            <el-icon class="copy-btn" @click="copyText(stats.host.hostname)"><CopyDocument /></el-icon>
+          </span>
         </div>
         <div class="info-item">
-          <span class="info-label">操作系统</span>
+          <span class="info-label">{{ $t('home.os') }}</span>
           <span class="info-value">{{ stats.host.platform }} {{ stats.host.platformVersion }}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">内核版本</span>
-          <span class="info-value">{{ stats.host.kernelVersion || '-' }}</span>
+          <span class="info-label">{{ $t('home.kernel') }}</span>
+          <span class="info-value">
+            {{ stats.host.kernelVersion || '-' }}
+            <el-icon class="copy-btn" @click="copyText(stats.host.kernelVersion)"><CopyDocument /></el-icon>
+          </span>
         </div>
         <div class="info-item">
-          <span class="info-label">系统架构</span>
+          <span class="info-label">{{ $t('home.arch') }}</span>
           <span class="info-value">{{ stats.host.kernelArch || '-' }}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">运行时间</span>
+          <span class="info-label">{{ $t('monitor.uptime') }}</span>
           <span class="info-value uptime-highlight">{{ formatUptime(stats.uptime) }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">CPU</span>
-          <span class="info-value">{{ stats.cpu?.modelName }} ({{ stats.cpu?.logicalCores }}核)</span>
+          <span class="info-value">{{ stats.cpu?.modelName }} ({{ stats.cpu?.logicalCores }} {{ $t('monitor.cores') }})</span>
+        </div>
+        <div class="info-item" v-if="stats.host.publicIPv4">
+          <span class="info-label">{{ $t('home.publicIPv4') }}</span>
+          <span class="info-value ip-highlight">
+            {{ stats.host.publicIPv4 }}
+            <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv4)"><CopyDocument /></el-icon>
+          </span>
+        </div>
+        <div class="info-item" v-if="stats.host.timezone">
+          <span class="info-label">{{ $t('home.timezone') }}</span>
+          <span class="info-value">{{ stats.host.timezone }}</span>
+        </div>
+        <div class="info-item" v-if="stats.host.virtualization">
+          <span class="info-label">{{ $t('home.virtualization') }}</span>
+          <span class="info-value">{{ stats.host.virtualization }}</span>
         </div>
       </div>
     </el-card>
@@ -43,7 +64,7 @@
         <el-card shadow="never" class="stat-card">
           <div class="stat-title">CPU</div>
           <el-progress type="dashboard" :percentage="Math.round(stats.cpu?.usagePercent || 0)" :color="progressColor" :width="100" />
-          <div class="stat-detail">{{ stats.cpu?.cores }}物理核 / {{ stats.cpu?.logicalCores }}逻辑核</div>
+          <div class="stat-detail">{{ stats.cpu?.cores }} {{ $t('home.physical') }} / {{ stats.cpu?.logicalCores }} {{ $t('home.logical') }}</div>
         </el-card>
       </el-col>
       <el-col :span="6">
@@ -88,28 +109,28 @@
             </div>
           </div>
           <div class="stat-detail">
-            累计 ↑ {{ formatBytes(stats.network?.bytesSent) }}  ↓ {{ formatBytes(stats.network?.bytesRecv) }}
+            {{ $t('home.totalTraffic') }} ↑ {{ formatBytes(stats.network?.bytesSent) }}  ↓ {{ formatBytes(stats.network?.bytesRecv) }}
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- Top 进程 + 磁盘 并排 -->
+    <!-- Top 进程 + 磁盘 -->
     <el-row :gutter="16">
       <el-col :span="10">
         <el-card shadow="never" class="section-card">
           <template #header>
-            <span>Top 进程 (CPU)</span>
+            <span>{{ $t('home.topProcess') }}</span>
           </template>
           <el-table :data="stats.topProcess || []" size="small">
             <el-table-column prop="pid" label="PID" width="70" />
-            <el-table-column prop="name" label="进程名" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="name" :label="$t('home.processName')" min-width="120" show-overflow-tooltip />
             <el-table-column label="CPU %" width="90" align="right">
               <template #default="{ row }">
                 <span :class="row.cpuPercent > 50 ? 'text-danger' : ''">{{ row.cpuPercent.toFixed(1) }}%</span>
               </template>
             </el-table-column>
-            <el-table-column label="内存" width="90" align="right">
+            <el-table-column :label="$t('home.memoryUsage')" width="90" align="right">
               <template #default="{ row }">
                 {{ formatBytes(row.memRss) }}
               </template>
@@ -120,7 +141,7 @@
       <el-col :span="14">
         <el-card shadow="never" class="section-card">
           <template #header>
-            <span>{{ $t('monitor.disk') }}{{ $t('monitor.usage') }}</span>
+            <span>{{ $t('home.diskUsage') }}</span>
           </template>
           <el-table :data="stats.disks || []" size="small">
             <el-table-column prop="mountPoint" :label="$t('disk.mountPoint')" min-width="100" show-overflow-tooltip />
@@ -151,9 +172,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+import { Refresh, CopyDocument } from '@element-plus/icons-vue'
 import { getSystemStats } from '@/api/modules/monitor'
+import { ElMessage } from 'element-plus'
 
+const { t } = useI18n()
 const loading = ref(false)
 const stats = ref<any>({})
 let timer: ReturnType<typeof setInterval> | null = null
@@ -165,6 +189,14 @@ const loadStats = async () => {
     stats.value = res.data || {}
   } catch { /* handled by interceptor */ }
   finally { loading.value = false }
+}
+
+const copyText = async (text: string) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(t('commons.copy') + ' ✓')
+  } catch { /* */ }
 }
 
 const progressColor = (percentage: number) => {
@@ -193,9 +225,9 @@ const formatUptime = (seconds?: number) => {
   const h = Math.floor((seconds % 86400) / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const parts = []
-  if (d > 0) parts.push(`${d} 天`)
-  if (h > 0) parts.push(`${h} 时`)
-  parts.push(`${m} 分`)
+  if (d > 0) parts.push(`${d} ${t('monitor.days')}`)
+  if (h > 0) parts.push(`${h} ${t('monitor.hours')}`)
+  parts.push(`${m} ${t('monitor.minutes')}`)
   return parts.join(' ')
 }
 
@@ -210,24 +242,16 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.monitor-page {
-  height: 100%;
-}
+.monitor-page { height: 100%; }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
-
-  h3 {
-    margin: 0;
-    font-size: 16px;
-    color: var(--xp-text-primary);
-  }
+  h3 { margin: 0; font-size: 16px; color: var(--xp-text-primary); }
 }
 
-/* 系统信息卡片 */
 .host-info-card {
   margin-bottom: 16px;
 
@@ -241,6 +265,8 @@ onUnmounted(() => {
     display: flex;
     align-items: baseline;
     gap: 8px;
+
+    &:hover .copy-btn { opacity: 1; }
   }
 
   .info-label {
@@ -256,17 +282,26 @@ onUnmounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
-  .uptime-highlight {
-    color: #22d3ee;
-    font-weight: 600;
-  }
+  .uptime-highlight { color: #22d3ee; font-weight: 600; }
+  .ip-highlight { color: var(--xp-accent); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 }
 
-.overview-row {
-  margin-bottom: 16px;
+.copy-btn {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  &:hover { color: var(--xp-accent); }
 }
+
+.overview-row { margin-bottom: 16px; }
 
 .stat-card {
   text-align: center;
@@ -278,7 +313,6 @@ onUnmounted(() => {
     color: var(--xp-text-secondary);
     margin-bottom: 12px;
   }
-
   .stat-detail {
     font-size: 12px;
     color: var(--xp-text-secondary);
@@ -287,7 +321,6 @@ onUnmounted(() => {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
   .stat-sub {
     font-size: 11px;
     color: var(--xp-text-muted);
@@ -301,27 +334,13 @@ onUnmounted(() => {
   gap: 24px;
   padding: 20px 0;
 
-  .load-item {
-    text-align: center;
-  }
-
-  .load-num {
-    display: block;
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--xp-text-primary);
-  }
-
-  .load-label {
-    font-size: 11px;
-    color: var(--xp-text-muted);
-  }
+  .load-item { text-align: center; }
+  .load-num { display: block; font-size: 24px; font-weight: 600; color: var(--xp-text-primary); }
+  .load-label { font-size: 11px; color: var(--xp-text-muted); }
 }
 
-/* 网络速率 */
 .net-speed {
   padding: 8px 0;
-
   .nic-item {
     display: flex;
     justify-content: space-between;
@@ -329,32 +348,16 @@ onUnmounted(() => {
     padding: 4px 12px;
     font-size: 12px;
   }
-
-  .nic-name {
-    color: var(--xp-text-secondary);
-    font-weight: 500;
-  }
-
+  .nic-name { color: var(--xp-text-secondary); font-weight: 500; }
   .nic-speed {
     display: flex;
     gap: 12px;
-
-    .up {
-      color: #22d3ee;
-    }
-
-    .down {
-      color: #a78bfa;
-    }
+    .up { color: #22d3ee; }
+    .down { color: #a78bfa; }
   }
 }
 
-.section-card {
-  margin-bottom: 16px;
-}
+.section-card { margin-bottom: 16px; }
 
-.text-danger {
-  color: #ef4444;
-  font-weight: 600;
-}
+.text-danger { color: #ef4444; font-weight: 600; }
 </style>

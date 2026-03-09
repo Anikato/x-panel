@@ -19,7 +19,12 @@
         </el-radio-group>
       </div>
       <div class="header-right" v-if="currentView === 'terminal'">
-        <el-popover placement="bottom" :width="280" trigger="click">
+        <el-button size="small" type="primary" plain @click="showCommandPalette = true">
+          <el-icon><Search /></el-icon>
+          {{ $t('terminal.quickCommand') }}
+          <span class="shortcut-hint">Ctrl+P</span>
+        </el-button>
+        <el-popover placement="bottom" :width="360" trigger="click">
           <template #reference>
             <el-button size="small" type="info" plain>
               <el-icon><Promotion /></el-icon>
@@ -34,6 +39,22 @@
               :rows="3"
               resize="none"
             />
+            <div class="batch-targets">
+              <el-checkbox v-model="batchAllTerminals" @change="toggleBatchAll">
+                {{ $t('terminal.allTerminals') }}
+              </el-checkbox>
+              <div class="batch-tab-list">
+                <el-checkbox
+                  v-for="tab in tabs"
+                  :key="tab.id"
+                  :model-value="batchTargets.has(tab.id)"
+                  @change="(v: any) => toggleBatchTarget(tab.id, v as boolean)"
+                  size="small"
+                >
+                  {{ tab.title }}
+                </el-checkbox>
+              </div>
+            </div>
             <el-button type="primary" size="small" class="batch-send-btn" @click="sendBatchCommand">
               {{ $t('terminal.batchSend') }}
             </el-button>
@@ -154,16 +175,61 @@
     <div v-if="currentView === 'commands'" class="sub-view">
       <CommandManage @execute="handleCommandExecute" @back="currentView = 'terminal'" />
     </div>
+
+    <!-- 命令面板 (Ctrl+P) -->
+    <Teleport to="body">
+      <div v-if="showCommandPalette" class="command-palette-mask" @click="showCommandPalette = false">
+        <div class="command-palette" @click.stop>
+          <el-input
+            ref="paletteInputRef"
+            v-model="paletteSearch"
+            :placeholder="$t('terminal.searchCommand')"
+            size="large"
+            clearable
+            @keydown.enter="executePaletteCommand"
+            @keydown.escape="showCommandPalette = false"
+            @keydown.down.prevent="paletteMoveDown"
+            @keydown.up.prevent="paletteMoveUp"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <div class="palette-results" v-if="filteredCommands.length > 0">
+            <div
+              v-for="(cmd, idx) in filteredCommands"
+              :key="cmd.id"
+              class="palette-item"
+              :class="{ active: paletteIndex === idx }"
+              @click="executePaletteItem(cmd)"
+              @mouseenter="paletteIndex = idx"
+            >
+              <span class="palette-name">{{ cmd.name }}</span>
+              <code class="palette-cmd">{{ cmd.command }}</code>
+            </div>
+          </div>
+          <div v-else-if="paletteSearch" class="palette-empty">
+            {{ $t('command.noCommand') }}
+          </div>
+          <div class="palette-hint">
+            <span>↑↓ {{ $t('terminal.navigate') }}</span>
+            <span>Enter {{ $t('terminal.executeCmd') }}</span>
+            <span>Esc {{ $t('commons.close') }}</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { getHostTree, getCommandTree } from '@/api/modules/host'
 import { ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import HostManage from './host/index.vue'
 import CommandManage from './command/index.vue'
 
@@ -174,7 +240,7 @@ interface TermTab {
   terminal?: Terminal
   fitAddon?: FitAddon
   ws?: WebSocket
-  _resizeHandler?: () => void
+  _resizeObserver?: ResizeObserver
 }
 
 const currentView = ref<'terminal' | 'hosts' | 'commands'>('terminal')
@@ -185,6 +251,79 @@ let tabCounter = 0
 const batchCommand = ref('')
 const hostTree = ref<any[]>([])
 const commandList = ref<any[]>([])
+
+// 批量输入目标选择
+const batchTargets = ref<Set<string>>(new Set())
+const batchAllTerminals = ref(true)
+
+const toggleBatchAll = (val: any) => {
+  batchTargets.value.clear()
+  if (val) {
+    for (const tab of tabs.value) batchTargets.value.add(tab.id)
+  }
+}
+
+const toggleBatchTarget = (id: string, checked: boolean) => {
+  if (checked) {
+    batchTargets.value.add(id)
+  } else {
+    batchTargets.value.delete(id)
+  }
+  batchAllTerminals.value = batchTargets.value.size === tabs.value.length
+}
+
+// 命令面板
+const showCommandPalette = ref(false)
+const paletteSearch = ref('')
+const paletteIndex = ref(0)
+const paletteInputRef = ref<any>(null)
+
+const filteredCommands = computed(() => {
+  const q = paletteSearch.value.toLowerCase()
+  if (!q) return commandList.value
+  return commandList.value.filter((cmd: any) =>
+    cmd.name.toLowerCase().includes(q) || cmd.command.toLowerCase().includes(q)
+  )
+})
+
+watch(showCommandPalette, (val) => {
+  if (val) {
+    paletteSearch.value = ''
+    paletteIndex.value = 0
+    nextTick(() => paletteInputRef.value?.focus())
+  }
+})
+
+watch(paletteSearch, () => {
+  paletteIndex.value = 0
+})
+
+const paletteMoveDown = () => {
+  if (paletteIndex.value < filteredCommands.value.length - 1) paletteIndex.value++
+}
+const paletteMoveUp = () => {
+  if (paletteIndex.value > 0) paletteIndex.value--
+}
+
+const executePaletteCommand = () => {
+  const cmds = filteredCommands.value
+  if (cmds.length > 0 && paletteIndex.value < cmds.length) {
+    executePaletteItem(cmds[paletteIndex.value])
+  }
+}
+
+const executePaletteItem = (cmd: any) => {
+  showCommandPalette.value = false
+  executeCommand(cmd.command)
+}
+
+// 全局快捷键 Ctrl+P
+const handleGlobalKeydown = (e: KeyboardEvent) => {
+  if (e.ctrlKey && e.key.toLowerCase() === 'p' && currentView.value === 'terminal') {
+    e.preventDefault()
+    showCommandPalette.value = !showCommandPalette.value
+  }
+}
 
 const setTermRef = (id: string, el: HTMLElement | null) => {
   if (el) termRefs[id] = el
@@ -222,6 +361,16 @@ const terminalTheme = {
   brightWhite: '#f8fafc',
 }
 
+const sendResize = (ws: WebSocket, rows: number, cols: number) => {
+  const resizeData = JSON.stringify({ rows, cols })
+  const msg = new Uint8Array(1 + resizeData.length)
+  msg[0] = 1
+  for (let i = 0; i < resizeData.length; i++) {
+    msg[i + 1] = resizeData.charCodeAt(i)
+  }
+  ws.send(msg)
+}
+
 const createTerminal = async (tab: TermTab) => {
   await nextTick()
   const el = termRefs[tab.id]
@@ -233,29 +382,50 @@ const createTerminal = async (tab: TermTab) => {
     fontSize: 14,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
     theme: terminalTheme,
-    scrollback: 5000,
+    scrollback: 10000,
     allowProposedApi: true,
+  })
+
+  // 自定义按键处理：解决 vim/tmux 等程序的快捷键冲突
+  terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+    // Ctrl+Shift+C/V: 让浏览器处理（复制/粘贴）
+    if (event.ctrlKey && event.shiftKey && ['c', 'v'].includes(event.key.toLowerCase())) {
+      return false
+    }
+    // F11: 让浏览器处理全屏切换
+    if (event.key === 'F11') return false
+    // F12: 让浏览器处理开发者工具
+    if (event.key === 'F12') return false
+    // 其他所有按键（包括 Esc, Ctrl+C, Ctrl+Z, 方向键等）都交给终端
+    return true
   })
 
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
   terminal.open(el)
-  setTimeout(() => fitAddon.fit(), 50)
 
   tab.terminal = terminal
   tab.fitAddon = fitAddon
+
+  // 使用 ResizeObserver 精确监听容器尺寸变化，替代 window resize
+  const observer = new ResizeObserver(() => {
+    if (activeTab.value === tab.id && tab.fitAddon) {
+      try { tab.fitAddon.fit() } catch { /* ignore fit errors during teardown */ }
+    }
+  })
+  observer.observe(el)
+  tab._resizeObserver = observer
+
+  // 延迟首次 fit，确保 DOM 完全渲染
+  setTimeout(() => {
+    try { fitAddon.fit() } catch { /* */ }
+  }, 100)
 
   const ws = new WebSocket(getWsUrl(tab.hostId))
   tab.ws = ws
 
   ws.onopen = () => {
-    const resizeData = JSON.stringify({ rows: terminal.rows, cols: terminal.cols })
-    const msg = new Uint8Array(1 + resizeData.length)
-    msg[0] = 1
-    for (let i = 0; i < resizeData.length; i++) {
-      msg[i + 1] = resizeData.charCodeAt(i)
-    }
-    ws.send(msg)
+    sendResize(ws, terminal.rows, terminal.cols)
   }
 
   ws.onmessage = (e: MessageEvent) => {
@@ -278,23 +448,9 @@ const createTerminal = async (tab: TermTab) => {
 
   terminal.onResize(({ rows, cols }) => {
     if (ws.readyState === WebSocket.OPEN) {
-      const resizeData = JSON.stringify({ rows, cols })
-      const msg = new Uint8Array(1 + resizeData.length)
-      msg[0] = 1
-      for (let i = 0; i < resizeData.length; i++) {
-        msg[i + 1] = resizeData.charCodeAt(i)
-      }
-      ws.send(msg)
+      sendResize(ws, rows, cols)
     }
   })
-
-  const handleResize = () => {
-    if (activeTab.value === tab.id) {
-      fitAddon.fit()
-    }
-  }
-  window.addEventListener('resize', handleResize)
-  tab._resizeHandler = handleResize
 }
 
 const addLocalTab = async () => {
@@ -335,7 +491,7 @@ const closeTab = (idx: number) => {
   const tab = tabs.value[idx]
   if (tab.ws) tab.ws.close()
   if (tab.terminal) tab.terminal.dispose()
-  if (tab._resizeHandler) window.removeEventListener('resize', tab._resizeHandler)
+  if (tab._resizeObserver) tab._resizeObserver.disconnect()
   tabs.value.splice(idx, 1)
   if (activeTab.value === tab.id && tabs.value.length > 0) {
     activeTab.value = tabs.value[Math.min(idx, tabs.value.length - 1)].id
@@ -345,13 +501,21 @@ const closeTab = (idx: number) => {
 const sendBatchCommand = () => {
   if (!batchCommand.value.trim()) return
   const cmd = batchCommand.value + '\n'
+  let count = 0
   for (const tab of tabs.value) {
-    if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-      tab.ws.send(cmd)
+    if (batchAllTerminals.value || batchTargets.value.has(tab.id)) {
+      if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+        tab.ws.send(cmd)
+        count++
+      }
     }
   }
   batchCommand.value = ''
-  ElMessage.success('命令已发送到所有终端')
+  if (count > 0) {
+    ElMessage.success(`命令已发送到 ${count} 个终端`)
+  } else {
+    ElMessage.warning('没有可用的终端')
+  }
 }
 
 const executeCommand = (cmd: string) => {
@@ -413,13 +577,15 @@ onMounted(() => {
   loadHostTree()
   loadCommands()
   addLocalTab()
+  document.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
   for (const tab of tabs.value) {
     if (tab.ws) tab.ws.close()
     if (tab.terminal) tab.terminal.dispose()
-    if (tab._resizeHandler) window.removeEventListener('resize', tab._resizeHandler)
+    if (tab._resizeObserver) tab._resizeObserver.disconnect()
   }
 })
 </script>
@@ -457,10 +623,31 @@ onBeforeUnmount(() => {
   }
 }
 
+.shortcut-hint {
+  font-size: 10px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--xp-text-muted);
+  font-family: monospace;
+}
+
 .batch-input-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
+
+  .batch-targets {
+    font-size: 12px;
+    .batch-tab-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-left: 24px;
+      margin-top: 4px;
+    }
+  }
 
   .batch-send-btn {
     align-self: flex-end;
@@ -655,15 +842,23 @@ onBeforeUnmount(() => {
   border-radius: 0 0 var(--xp-radius-sm) var(--xp-radius-sm);
   overflow: hidden;
   position: relative;
+  padding: 4px;
 
   .terminal-instance {
     position: absolute;
-    inset: 0;
-    padding: 8px;
+    inset: 4px;
     display: none;
 
     &.active {
       display: block;
+    }
+
+    :deep(.xterm) {
+      height: 100%;
+    }
+
+    :deep(.xterm-screen) {
+      height: 100% !important;
     }
   }
 }
@@ -673,8 +868,89 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-:deep(.xterm) {
-  height: 100%;
+/* ===== 命令面板 ===== */
+.command-palette-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+}
+
+.command-palette {
+  width: 520px;
+  max-height: 420px;
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+
+  :deep(.el-input__wrapper) {
+    border-radius: 12px 12px 0 0;
+    box-shadow: none !important;
+    padding: 8px 16px;
+    background: transparent;
+  }
+}
+
+.palette-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+  max-height: 300px;
+}
+
+.palette-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &.active,
+  &:hover {
+    background: rgba(34, 211, 238, 0.08);
+  }
+
+  .palette-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--xp-text-primary);
+  }
+
+  .palette-cmd {
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--xp-accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.palette-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--xp-text-muted);
+  font-size: 13px;
+}
+
+.palette-hint {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px;
+  border-top: 1px solid var(--xp-border-light);
+  font-size: 11px;
+  color: var(--xp-text-muted);
 }
 
 :deep(.xterm-viewport) {

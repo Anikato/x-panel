@@ -183,16 +183,25 @@
       <el-table-column :label="t('file.name')" min-width="300" sortable :sort-method="sortByName">
         <template #default="{ row }">
           <div class="file-name-cell">
-            <el-icon class="file-icon" :style="{ color: getFileIconColor(row) }">
-              <component :is="getFileIcon(row)" />
-            </el-icon>
+            <FileIcon :name="row.name" :is-dir="row.isDir" :size="20" class="file-icon-svg" />
             <span class="file-name" :class="{ 'is-link': row.isSymlink }">{{ row.name }}</span>
           </div>
         </template>
       </el-table-column>
-      <el-table-column :label="t('file.size')" width="110" sortable prop="size">
+      <el-table-column :label="t('file.size')" width="130" sortable prop="size">
         <template #default="{ row }">
-          {{ row.isDir ? '-' : formatSize(row.size) }}
+          <template v-if="!row.isDir">{{ formatSize(row.size) }}</template>
+          <template v-else>
+            <span v-if="dirSizeMap[row.path]?.loading" class="dir-size-calc">
+              <el-icon class="is-loading"><Loading /></el-icon>
+            </span>
+            <span v-else-if="dirSizeMap[row.path]?.size != null" class="dir-size-val">
+              {{ formatSize(dirSizeMap[row.path].size!) }}
+            </span>
+            <el-link v-else :underline="false" type="primary" class="dir-size-link" @click.stop="calcDirSize(row.path)">
+              {{ t('file.calculate') }}
+            </el-link>
+          </template>
         </template>
       </el-table-column>
       <el-table-column :label="t('file.mode')" width="120">
@@ -353,15 +362,16 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listFiles, createFile, deleteFile, batchDeleteFile, renameFile,
-  moveFile, getDownloadUrl, uploadFile,
+  moveFile, getDownloadUrl, uploadFile, getDirSize,
 } from '@/api/modules/file'
 import { useI18n } from 'vue-i18n'
 import {
   Back, Right, Top, Refresh, FolderOpened, FolderAdd, DocumentAdd, Upload, Monitor, Search,
   Delete, Download, EditPen, CopyDocument, DocumentCopy, InfoFilled, User,
   Lock, Box, Files, ArrowDown, Document, Folder, Picture, VideoPlay,
-  Headset, SetUp, Tickets, Memo, Rank, Close, View, Hide,
+  Headset, SetUp, Tickets, Memo, Rank, Close, View, Hide, Loading,
 } from '@element-plus/icons-vue'
+import FileIcon from '@/components/file-icons/FileIcon.vue'
 import CodeEditor from './code-editor.vue'
 import TerminalDialog from './terminal-dialog.vue'
 import CompressDialog from './compress-dialog.vue'
@@ -379,6 +389,19 @@ const pathInput = ref('/')
 const searchKeyword = ref('')
 const containSub = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// 目录大小计算
+const dirSizeMap = ref<Record<string, { loading: boolean; size: number | null }>>({})
+
+async function calcDirSize(path: string) {
+  dirSizeMap.value[path] = { loading: true, size: null }
+  try {
+    const res: any = await getDirSize({ path })
+    dirSizeMap.value[path] = { loading: false, size: res.data?.size ?? null }
+  } catch {
+    dirSizeMap.value[path] = { loading: false, size: null }
+  }
+}
 
 // 远程下载
 const remoteDownloadVisible = ref(false)
@@ -530,6 +553,7 @@ const refreshFiles = async () => {
   const tab = currentTab.value
   if (!tab) return
   loading.value = true
+  dirSizeMap.value = {}
   try {
     const res: any = await listFiles({
       path: tab.path,
@@ -1075,9 +1099,10 @@ onBeforeUnmount(() => {
   gap: 8px;
   cursor: default;
 
-  .file-icon {
-    font-size: 18px;
+  .file-icon-svg {
     flex-shrink: 0;
+    width: 20px;
+    height: 20px;
   }
 
   .file-name {
@@ -1090,6 +1115,18 @@ onBeforeUnmount(() => {
       color: var(--xp-accent-secondary);
     }
   }
+}
+
+.dir-size-link {
+  font-size: 12px;
+}
+.dir-size-calc {
+  color: var(--xp-accent);
+  font-size: 12px;
+}
+.dir-size-val {
+  font-size: 12px;
+  color: var(--xp-text-secondary);
 }
 
 .operate-btns {
