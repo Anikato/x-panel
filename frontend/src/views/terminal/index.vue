@@ -154,7 +154,7 @@
             <el-icon :size="14"><Plus /></el-icon>
           </div>
         </div>
-        <div class="terminal-container">
+        <div class="terminal-container" @click="focusActiveTerminal">
           <div
             v-for="tab in tabs"
             :key="tab.id"
@@ -291,6 +291,8 @@ watch(showCommandPalette, (val) => {
     paletteSearch.value = ''
     paletteIndex.value = 0
     nextTick(() => paletteInputRef.value?.focus())
+  } else {
+    nextTick(() => focusActiveTerminal())
   }
 })
 
@@ -327,6 +329,11 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
 
 const setTermRef = (id: string, el: HTMLElement | null) => {
   if (el) termRefs[id] = el
+}
+
+const focusActiveTerminal = () => {
+  const tab = tabs.value.find((t) => t.id === activeTab.value)
+  tab?.terminal?.focus()
 }
 
 const getWsUrl = (hostId?: number) => {
@@ -419,6 +426,7 @@ const createTerminal = async (tab: TermTab) => {
   // 延迟首次 fit，确保 DOM 完全渲染
   setTimeout(() => {
     try { fitAddon.fit() } catch { /* */ }
+    terminal.focus()
   }, 100)
 
   const ws = new WebSocket(getWsUrl(tab.hostId))
@@ -426,6 +434,7 @@ const createTerminal = async (tab: TermTab) => {
 
   ws.onopen = () => {
     sendResize(ws, terminal.rows, terminal.cols)
+    terminal.focus()
   }
 
   ws.onmessage = (e: MessageEvent) => {
@@ -568,7 +577,8 @@ watch(currentView, (val) => {
     nextTick(() => {
       const tab = tabs.value.find((t) => t.id === activeTab.value)
       if (tab?.fitAddon) tab.fitAddon.fit()
-      tab?.terminal?.focus()
+      // 延迟聚焦，确保 DOM 已切换完毕
+      setTimeout(() => tab?.terminal?.focus(), 50)
     })
   }
 })

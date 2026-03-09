@@ -115,7 +115,7 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 	// WebSocket → PTY
 	go func() {
 		for {
-			_, msg, err := conn.ReadMessage()
+			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
 				once.Do(func() { close(done) })
 				return
@@ -123,13 +123,15 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 			if len(msg) == 0 {
 				continue
 			}
-			if msg[0] == 1 {
+			// Binary frames with prefix byte 1 are resize commands
+			if msgType == websocket.BinaryMessage && msg[0] == 1 {
 				var resize resizeMsg
 				if err := json.Unmarshal(msg[1:], &resize); err == nil {
 					pty.Setsize(ptmx, &pty.Winsize{Rows: resize.Rows, Cols: resize.Cols})
-					continue
 				}
+				continue
 			}
+			// Text frames are terminal input
 			if _, err := ptmx.Write(msg); err != nil {
 				once.Do(func() { close(done) })
 				return
@@ -194,7 +196,7 @@ func (a *TerminalAPI) handleSSHTerminal(conn *websocket.Conn, hostID uint) {
 	// WebSocket → SSH stdin
 	go func() {
 		for {
-			_, msg, err := conn.ReadMessage()
+			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
 				once.Do(func() { close(done) })
 				return
@@ -202,13 +204,15 @@ func (a *TerminalAPI) handleSSHTerminal(conn *websocket.Conn, hostID uint) {
 			if len(msg) == 0 {
 				continue
 			}
-			if msg[0] == 1 {
+			// Binary frames with prefix byte 1 are resize commands
+			if msgType == websocket.BinaryMessage && msg[0] == 1 {
 				var resize resizeMsg
 				if err := json.Unmarshal(msg[1:], &resize); err == nil {
 					session.WindowChange(int(resize.Rows), int(resize.Cols))
-					continue
 				}
+				continue
 			}
+			// Text frames are terminal input
 			if _, err := stdinPipe.Write(msg); err != nil {
 				once.Do(func() { close(done) })
 				return

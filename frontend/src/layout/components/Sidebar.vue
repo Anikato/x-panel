@@ -62,16 +62,14 @@ const { t } = useI18n()
 
 const activeMenu = computed(() => route.path)
 
-// 如果 global store 中还没有版本号，就去获取
+// 每次挂载都从后端获取真实版本号（不依赖缓存，防止版本升级后仍显示旧值）
 onMounted(async () => {
-  if (!globalStore.version) {
-    try {
-      const res: any = await getCurrentVersion()
-      if (res.data) {
-        globalStore.setVersion(res.data.version === 'dev' ? 'dev' : res.data.version)
-      }
-    } catch { /* ignore */ }
-  }
+  try {
+    const res: any = await getCurrentVersion()
+    if (res.data) {
+      globalStore.setVersion(res.data.version === 'dev' ? 'dev' : res.data.version)
+    }
+  } catch { /* ignore */ }
 })
 
 const menuList = computed(() => [

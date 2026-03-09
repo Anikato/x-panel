@@ -8,7 +8,7 @@
     @close="handleClose"
     class="terminal-drawer"
   >
-    <div ref="termEl" class="file-terminal" />
+    <div ref="termEl" class="file-terminal" @click="focusTerminal" />
   </el-drawer>
 </template>
 
@@ -99,7 +99,10 @@ function initTerminal() {
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
   terminal.open(termEl.value)
-  setTimeout(() => { try { fitAddon!.fit() } catch { /* */ } }, 100)
+  setTimeout(() => {
+    try { fitAddon!.fit() } catch { /* */ }
+    terminal!.focus()
+  }, 100)
 
   resizeObserver = new ResizeObserver(() => {
     if (fitAddon) { try { fitAddon.fit() } catch { /* */ } }
@@ -110,6 +113,7 @@ function initTerminal() {
 
   ws.onopen = () => {
     sendResize(ws!, terminal!.rows, terminal!.cols)
+    terminal!.focus()
     setTimeout(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(`cd ${JSON.stringify(cwd.value)} && clear\n`)
@@ -140,6 +144,10 @@ function initTerminal() {
       sendResize(ws, rows, cols)
     }
   })
+}
+
+function focusTerminal() {
+  terminal?.focus()
 }
 
 function handleClose() {
