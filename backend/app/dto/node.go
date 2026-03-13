@@ -3,18 +3,26 @@ package dto
 import "time"
 
 type NodeCreate struct {
-	Name    string `json:"name" binding:"required"`
-	Address string `json:"address" binding:"required"`
-	Token   string `json:"token" binding:"required"`
-	GroupID uint   `json:"groupID"`
+	Name        string `json:"name" binding:"required"`
+	SSHHost     string `json:"sshHost" binding:"required"`
+	SSHPort     uint   `json:"sshPort"`
+	SSHUser     string `json:"sshUser" binding:"required"`
+	SSHPassword string `json:"sshPassword" binding:"required"`
+	PanelPort   string `json:"panelPort"`
+	AgentToken  string `json:"agentToken"`
+	GroupID     uint   `json:"groupID"`
 }
 
 type NodeUpdate struct {
-	ID      uint   `json:"id" binding:"required"`
-	Name    string `json:"name" binding:"required"`
-	Address string `json:"address" binding:"required"`
-	Token   string `json:"token"`
-	GroupID uint   `json:"groupID"`
+	ID          uint   `json:"id" binding:"required"`
+	Name        string `json:"name" binding:"required"`
+	SSHHost     string `json:"sshHost"`
+	SSHPort     uint   `json:"sshPort"`
+	SSHUser     string `json:"sshUser"`
+	SSHPassword string `json:"sshPassword"`
+	PanelPort   string `json:"panelPort"`
+	AgentToken  string `json:"agentToken"`
+	GroupID     uint   `json:"groupID"`
 }
 
 type NodeInfo struct {
@@ -28,4 +36,23 @@ type NodeInfo struct {
 	Hostname  string    `json:"hostname"`
 	CpuCores  int       `json:"cpuCores"`
 	MemTotal  uint64    `json:"memTotal"`
+	SSHHost   string    `json:"sshHost"`
+	SSHPort   uint      `json:"sshPort"`
+	SSHUser   string    `json:"sshUser"`
+}
+
+type NodeSSHTest struct {
+	SSHHost     string `json:"sshHost" binding:"required"`
+	SSHPort     uint   `json:"sshPort"`
+	SSHUser     string `json:"sshUser" binding:"required"`
+	SSHPassword string `json:"sshPassword" binding:"required"`
+}
+
+type NodeInstallAgent struct {
+	ID uint `json:"id" binding:"required"`
+}
+
+type NodeAgentAction struct {
+	ID     uint   `json:"id" binding:"required"`
+	Action string `json:"action" binding:"required"` // install / uninstall / update
 }

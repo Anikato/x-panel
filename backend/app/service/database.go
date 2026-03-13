@@ -1,11 +1,16 @@
 package service
 
 import (
+	"fmt"
+	"os/exec"
+	"time"
+
 	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/repo"
 	"xpanel/buserr"
 	"xpanel/constant"
+	"xpanel/global"
 	dbUtil "xpanel/utils/database"
 )
 
@@ -21,6 +26,8 @@ type IDatabaseService interface {
 	DeleteInstance(id uint) error
 	SearchInstance(req dto.DatabaseInstanceSearch) (int64, []dto.DatabaseInstanceInfo, error)
 	SyncInstances(serverID uint) error
+	ChangeInstancePassword(req dto.DatabaseInstanceChangePassword) error
+	BackupInstance(id uint) (string, error)
 }
 
 func NewIDatabaseService() IDatabaseService {
@@ -220,6 +227,82 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 		_ = s.repo.CreateInstance(inst)
 	}
 	return nil
+}
+
+func (s *DatabaseService) ChangeInstancePassword(req dto.DatabaseInstanceChangePassword) error {
+	instance, err := s.repo.GetInstance(req.ID)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	server, err := s.repo.GetServer(instance.ServerID)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	switch server.Type {
+	case "mysql":
+		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		defer client.Close()
+		if err := client.ChangePassword(instance.Name, req.Password); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	case "postgresql":
+		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		defer client.Close()
+		userName := instance.Owner
+		if userName == "" {
+			userName = instance.Name
+		}
+		if err := client.ChangePassword(userName, req.Password); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	}
+	return nil
+}
+
+func (s *DatabaseService) BackupInstance(id uint) (string, error) {
+	instance, err := s.repo.GetInstance(id)
+	if err != nil {
+		return "", buserr.New(constant.ErrRecordNotFound)
+	}
+	server, err := s.repo.GetServer(instance.ServerID)
+	if err != nil {
+		return "", buserr.New(constant.ErrRecordNotFound)
+	}
+
+	backupDir := global.CONF.System.DataDir + "/backup/database"
+	_ = exec.Command("mkdir", "-p", backupDir).Run()
+	timestamp := time.Now().Format("20060102150405")
+	var outFile string
+
+	switch server.Type {
+	case "mysql":
+		outFile = fmt.Sprintf("%s/%s_%s.sql", backupDir, instance.Name, timestamp)
+		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		defer client.Close()
+		if err := client.Backup(instance.Name, outFile); err != nil {
+			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	case "postgresql":
+		outFile = fmt.Sprintf("%s/%s_%s.dump", backupDir, instance.Name, timestamp)
+		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		defer client.Close()
+		if err := client.Backup(instance.Name, outFile); err != nil {
+			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	}
+	return outFile, nil
 }
 
 func testDBConnection(server *model.DatabaseServer) error {

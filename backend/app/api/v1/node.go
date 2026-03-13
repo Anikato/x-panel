@@ -74,3 +74,37 @@ func (a *NodeAPI) TestNodeConnection(c *gin.Context) {
 	}
 	helper.SuccessWithOutData(c)
 }
+
+func (a *NodeAPI) TestSSH(c *gin.Context) {
+	var req dto.NodeSSHTest
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := nodeService.TestSSH(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *NodeAPI) AgentAction(c *gin.Context) {
+	var req dto.NodeAgentAction
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	output, err := nodeService.AgentAction(req)
+	if err != nil {
+		helper.SuccessWithData(c, map[string]interface{}{
+			"success": false,
+			"output":  output,
+			"error":   err.Error(),
+		})
+		return
+	}
+	helper.SuccessWithData(c, map[string]interface{}{
+		"success": true,
+		"output":  output,
+	})
+}

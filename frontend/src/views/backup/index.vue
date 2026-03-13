@@ -7,8 +7,15 @@
         </div>
         <el-table :data="accounts" v-loading="accountLoading">
           <el-table-column prop="name" :label="t('commons.name')" min-width="140" />
-          <el-table-column prop="type" :label="t('backup.type')" width="120" />
-          <el-table-column prop="backupPath" :label="t('backup.path')" min-width="200" show-overflow-tooltip />
+          <el-table-column :label="t('backup.type')" width="120">
+            <template #default="{ row }">
+              <el-tag :type="typeTagMap[row.type]" size="small" effect="plain">{{ typeLabel(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="backupPath" :label="t('backup.path')" min-width="240" show-overflow-tooltip />
+          <el-table-column :label="t('backup.endpoint')" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ getVarField(row.vars, 'endpoint') || '-' }}</template>
+          </el-table-column>
           <el-table-column :label="t('commons.actions')" width="180" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" @click="openEditAccount(row)">{{ t('commons.edit') }}</el-button>
@@ -23,18 +30,22 @@
           <el-button type="primary" @click="backupDialog = true">{{ t('backup.createBackup') }}</el-button>
           <div style="flex:1" />
           <el-select v-model="recordType" clearable :placeholder="t('backup.type')" style="width:140px" @change="loadRecords">
-            <el-option label="Website" value="website" />
-            <el-option label="Database" value="database" />
-            <el-option label="Directory" value="directory" />
+            <el-option :label="t('backup.typeWebsite')" value="website" />
+            <el-option :label="t('backup.typeDatabase')" value="database" />
+            <el-option :label="t('backup.typeDirectory')" value="directory" />
           </el-select>
         </div>
         <el-table :data="records" v-loading="recordLoading">
-          <el-table-column prop="type" :label="t('backup.type')" width="100" />
+          <el-table-column :label="t('backup.type')" width="100">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain">{{ row.type }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="name" :label="t('commons.name')" min-width="140" />
-          <el-table-column prop="fileName" :label="t('backup.fileName')" min-width="240" show-overflow-tooltip />
+          <el-table-column prop="fileName" :label="t('backup.fileName')" min-width="280" show-overflow-tooltip />
           <el-table-column prop="status" :label="t('backup.status')" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
+              <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status === 'Success' ? t('backup.success') : t('backup.failed') }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="createdAt" :label="t('backup.time')" width="180">
@@ -53,20 +64,92 @@
     </el-tabs>
 
     <!-- Account drawer -->
-    <el-drawer v-model="accountDrawer" :title="editAccountMode ? t('commons.edit') : t('backup.addAccount')" size="480px" destroy-on-close>
-      <el-form ref="accountFormRef" :model="accountForm" :rules="accountRules" label-width="100px">
-        <el-form-item :label="t('commons.name')" prop="name"><el-input v-model="accountForm.name" /></el-form-item>
+    <el-drawer v-model="accountDrawer" :title="editAccountMode ? t('commons.edit') : t('backup.addAccount')" size="520px" destroy-on-close>
+      <el-form ref="accountFormRef" :model="accountForm" :rules="accountRules" label-width="120px">
+        <el-form-item :label="t('commons.name')" prop="name">
+          <el-input v-model="accountForm.name" :placeholder="t('backup.accountNameHint')" />
+        </el-form-item>
         <el-form-item :label="t('backup.type')" prop="type">
-          <el-select v-model="accountForm.type" :disabled="editAccountMode" style="width:100%">
-            <el-option label="Local" value="local" /><el-option label="S3" value="s3" /><el-option label="SFTP" value="sftp" /><el-option label="WebDAV" value="webdav" />
+          <el-select v-model="accountForm.type" :disabled="editAccountMode" style="width:100%" @change="onTypeChange">
+            <el-option :label="t('backup.typeLocal')" value="local">
+              <div class="type-option"><span>{{ t('backup.typeLocal') }}</span><el-text type="info" size="small">{{ t('backup.typeLocalDesc') }}</el-text></div>
+            </el-option>
+            <el-option label="S3" value="s3">
+              <div class="type-option"><span>S3 / MinIO</span><el-text type="info" size="small">{{ t('backup.typeS3Desc') }}</el-text></div>
+            </el-option>
+            <el-option label="SFTP" value="sftp">
+              <div class="type-option"><span>SFTP</span><el-text type="info" size="small">{{ t('backup.typeSftpDesc') }}</el-text></div>
+            </el-option>
+            <el-option label="WebDAV" value="webdav">
+              <div class="type-option"><span>WebDAV</span><el-text type="info" size="small">{{ t('backup.typeWebdavDesc') }}</el-text></div>
+            </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item v-if="accountForm.type === 's3'" label="Bucket"><el-input v-model="accountForm.bucket" /></el-form-item>
-        <el-form-item v-if="accountForm.type !== 'local'" :label="t('backup.accessKey')"><el-input v-model="accountForm.accessKey" /></el-form-item>
-        <el-form-item v-if="accountForm.type !== 'local'" :label="t('backup.credential')"><el-input v-model="accountForm.credential" type="password" show-password /></el-form-item>
-        <el-form-item :label="t('backup.path')"><el-input v-model="accountForm.backupPath" placeholder="/opt/xpanel/backup" /></el-form-item>
-        <el-form-item v-if="['s3','sftp','webdav'].includes(accountForm.type)" label="Endpoint"><el-input v-model="endpointField" placeholder="https://s3.example.com" /></el-form-item>
-        <el-form-item v-if="accountForm.type === 's3'" label="Region"><el-input v-model="regionField" placeholder="us-east-1" /></el-form-item>
+
+        <!-- Local fields -->
+        <template v-if="accountForm.type === 'local'">
+          <el-form-item :label="t('backup.path')">
+            <el-input v-model="accountForm.backupPath" placeholder="/opt/xpanel/backup" />
+            <div class="form-hint">{{ t('backup.localPathHint') }}</div>
+          </el-form-item>
+        </template>
+
+        <!-- S3 fields -->
+        <template v-if="accountForm.type === 's3'">
+          <el-form-item label="Endpoint" required>
+            <el-input v-model="endpointField" placeholder="https://s3.amazonaws.com" />
+            <div class="form-hint">{{ t('backup.s3EndpointHint') }}</div>
+          </el-form-item>
+          <el-form-item label="Region">
+            <el-input v-model="regionField" placeholder="us-east-1" />
+          </el-form-item>
+          <el-form-item label="Bucket" required>
+            <el-input v-model="accountForm.bucket" placeholder="my-backup-bucket" />
+          </el-form-item>
+          <el-form-item label="Access Key" required>
+            <el-input v-model="accountForm.accessKey" />
+          </el-form-item>
+          <el-form-item label="Secret Key" required>
+            <el-input v-model="accountForm.credential" type="password" show-password />
+          </el-form-item>
+          <el-form-item :label="t('backup.path')">
+            <el-input v-model="accountForm.backupPath" placeholder="/xpanel-backup" />
+            <div class="form-hint">{{ t('backup.s3PathHint') }}</div>
+          </el-form-item>
+        </template>
+
+        <!-- SFTP fields -->
+        <template v-if="accountForm.type === 'sftp'">
+          <el-form-item :label="t('backup.sftpAddress')" required>
+            <el-input v-model="endpointField" placeholder="192.168.1.100:22" />
+          </el-form-item>
+          <el-form-item :label="t('backup.sftpUser')" required>
+            <el-input v-model="accountForm.accessKey" placeholder="root" />
+          </el-form-item>
+          <el-form-item :label="t('backup.sftpPassword')" required>
+            <el-input v-model="accountForm.credential" type="password" show-password />
+          </el-form-item>
+          <el-form-item :label="t('backup.path')">
+            <el-input v-model="accountForm.backupPath" placeholder="/data/backup" />
+            <div class="form-hint">{{ t('backup.sftpPathHint') }}</div>
+          </el-form-item>
+        </template>
+
+        <!-- WebDAV fields -->
+        <template v-if="accountForm.type === 'webdav'">
+          <el-form-item label="WebDAV URL" required>
+            <el-input v-model="endpointField" placeholder="https://dav.example.com/remote.php/dav/files/user/" />
+          </el-form-item>
+          <el-form-item :label="t('backup.webdavUser')" required>
+            <el-input v-model="accountForm.accessKey" />
+          </el-form-item>
+          <el-form-item :label="t('backup.webdavPassword')" required>
+            <el-input v-model="accountForm.credential" type="password" show-password />
+          </el-form-item>
+          <el-form-item :label="t('backup.path')">
+            <el-input v-model="accountForm.backupPath" placeholder="/xpanel-backup" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="accountDrawer = false">{{ t('commons.cancel') }}</el-button>
@@ -75,25 +158,32 @@
     </el-drawer>
 
     <!-- Backup dialog -->
-    <el-dialog v-model="backupDialog" :title="t('backup.createBackup')" width="460px" destroy-on-close>
-      <el-form ref="backupFormRef" :model="backupForm" :rules="backupRules" label-width="100px">
+    <el-dialog v-model="backupDialog" :title="t('backup.createBackup')" width="500px" destroy-on-close>
+      <el-form ref="backupFormRef" :model="backupForm" :rules="backupRules" label-width="110px">
         <el-form-item :label="t('backup.type')" prop="type">
           <el-select v-model="backupForm.type" style="width:100%">
-            <el-option label="Website" value="website" /><el-option label="Database" value="database" /><el-option label="Directory" value="directory" />
+            <el-option :label="t('backup.typeWebsite')" value="website" />
+            <el-option :label="t('backup.typeDatabase')" value="database" />
+            <el-option :label="t('backup.typeDirectory')" value="directory" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('commons.name')" prop="name"><el-input v-model="backupForm.name" /></el-form-item>
+        <el-form-item :label="t('commons.name')" prop="name">
+          <el-input v-model="backupForm.name" :placeholder="backupForm.type === 'website' ? 'example.com' : backupForm.type === 'database' ? 'my_database' : '/data/myapp'" />
+        </el-form-item>
         <el-form-item :label="t('backup.account')" prop="accountID">
           <el-select v-model="backupForm.accountID" style="width:100%">
-            <el-option v-for="a in accounts" :key="a.id" :label="a.name + ' (' + a.type + ')'" :value="a.id" />
+            <el-option v-for="a in accounts" :key="a.id" :label="a.name + ' (' + typeLabel(a.type) + ')'" :value="a.id" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="backupForm.type === 'database'" :label="t('backup.dbType')">
           <el-select v-model="backupForm.dbType" style="width:100%">
-            <el-option label="MySQL" value="mysql" /><el-option label="PostgreSQL" value="postgresql" />
+            <el-option label="MySQL" value="mysql" />
+            <el-option label="PostgreSQL" value="postgresql" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="backupForm.type === 'directory'" :label="t('backup.sourceDir')"><el-input v-model="backupForm.sourceDir" /></el-form-item>
+        <el-form-item v-if="backupForm.type === 'directory'" :label="t('backup.sourceDir')">
+          <el-input v-model="backupForm.sourceDir" placeholder="/data/myapp" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="backupDialog = false">{{ t('commons.cancel') }}</el-button>
@@ -116,17 +206,40 @@ import {
 const { t } = useI18n()
 const activeTab = ref('accounts')
 
+const typeTagMap: Record<string, string> = { local: 'success', s3: '', sftp: 'warning', webdav: 'info' }
+const typeLabel = (type: string) => {
+  const map: Record<string, string> = { local: t('backup.typeLocal'), s3: 'S3 / MinIO', sftp: 'SFTP', webdav: 'WebDAV' }
+  return map[type] || type
+}
+const getVarField = (vars: string, field: string) => {
+  try { return JSON.parse(vars || '{}')[field] || '' } catch { return '' }
+}
+
 const accountLoading = ref(false)
 const accounts = ref<any[]>([])
 const accountDrawer = ref(false)
 const editAccountMode = ref(false)
 const submitting = ref(false)
 const accountFormRef = ref<FormInstance>()
-const defaultAccountForm = () => ({ id: 0, name: '', type: 'local', bucket: '', accessKey: '', credential: '', backupPath: '', vars: '' })
+const defaultAccountForm = () => ({ id: 0, name: '', type: 'local', bucket: '', accessKey: '', credential: '', backupPath: '/opt/xpanel/backup', vars: '' })
 const accountForm = reactive(defaultAccountForm())
 const accountRules: FormRules = { name: [{ required: true, trigger: 'blur' }], type: [{ required: true }] }
 const endpointField = ref('')
 const regionField = ref('')
+
+const onTypeChange = (type: string) => {
+  accountForm.accessKey = ''
+  accountForm.credential = ''
+  accountForm.bucket = ''
+  endpointField.value = ''
+  regionField.value = ''
+  switch (type) {
+    case 'local': accountForm.backupPath = '/opt/xpanel/backup'; break
+    case 's3': accountForm.backupPath = '/xpanel-backup'; break
+    case 'sftp': accountForm.backupPath = '/data/backup'; break
+    case 'webdav': accountForm.backupPath = '/xpanel-backup'; break
+  }
+}
 
 const recordLoading = ref(false)
 const records = ref<any[]>([])
@@ -136,7 +249,7 @@ const recordPager = reactive({ page: 1, pageSize: 20, total: 0 })
 const backupDialog = ref(false)
 const backupFormRef = ref<FormInstance>()
 const backupForm = reactive({ type: 'website', name: '', accountID: 0 as number, dbType: 'mysql', sourceDir: '' })
-const backupRules: FormRules = { type: [{ required: true }], name: [{ required: true, trigger: 'blur' }], accountID: [{ required: true }] }
+const backupRules: FormRules = { type: [{ required: true }], name: [{ required: true, trigger: 'blur' }], accountID: [{ required: true, message: () => t('backup.selectAccount') }] }
 
 const loadAccounts = async () => {
   accountLoading.value = true
@@ -223,4 +336,6 @@ onMounted(() => loadAccounts())
 <style scoped>
 .app-toolbar { display: flex; align-items: center; margin-bottom: 16px; }
 .app-pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
+.type-option { display: flex; align-items: center; gap: 8px; }
+.form-hint { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
 </style>

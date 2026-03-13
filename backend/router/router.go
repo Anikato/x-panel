@@ -210,6 +210,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/databases/instances/del", api.DeleteDatabaseInstance)
 		privateGroup.POST("/databases/instances/search", api.SearchDatabaseInstance)
 		privateGroup.POST("/databases/instances/sync", api.SyncDatabaseInstances)
+		privateGroup.POST("/databases/instances/password", api.ChangeInstancePassword)
+		privateGroup.POST("/databases/instances/backup", api.BackupDatabaseInstance)
 
 		// 节点管理
 		privateGroup.GET("/nodes", api.ListNodes)
@@ -217,6 +219,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/nodes/update", api.UpdateNode)
 		privateGroup.POST("/nodes/del", api.DeleteNode)
 		privateGroup.POST("/nodes/test", api.TestNodeConnection)
+		privateGroup.POST("/nodes/ssh-test", api.TestSSH)
+		privateGroup.POST("/nodes/agent-action", api.AgentAction)
 
 		// 备份管理
 		privateGroup.GET("/backup/accounts", api.ListBackupAccounts)

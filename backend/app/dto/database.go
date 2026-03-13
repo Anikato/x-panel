@@ -63,3 +63,17 @@ type DatabaseInstanceSearch struct {
 	ServerID uint   `json:"serverID" binding:"required"`
 	Info     string `json:"info"`
 }
+
+type DatabaseInstanceChangePassword struct {
+	ID       uint   `json:"id" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type DatabaseInstanceBackup struct {
+	ID uint `json:"id" binding:"required"`
+}
+
+type DatabaseInstanceRestore struct {
+	ID   uint   `json:"id" binding:"required"`
+	File string `json:"file" binding:"required"`
+}

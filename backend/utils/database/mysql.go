@@ -75,6 +75,15 @@ func (c *MysqlClient) CreateUser(username, password, database string) error {
 	return err
 }
 
+func (c *MysqlClient) ChangePassword(username, password string) error {
+	_, err := c.db.Exec(fmt.Sprintf("ALTER USER '%s'@'%%' IDENTIFIED BY '%s'", username, password))
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec("FLUSH PRIVILEGES")
+	return err
+}
+
 func (c *MysqlClient) DeleteUser(username string) error {
 	_, err := c.db.Exec(fmt.Sprintf("DROP USER IF EXISTS '%s'@'%%'", username))
 	return err

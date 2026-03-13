@@ -11,15 +11,21 @@
     <el-table :data="data" v-loading="loading" style="width:100%">
       <el-table-column prop="name" :label="t('commons.name')" min-width="140" />
       <el-table-column prop="type" :label="t('cronjob.type')" width="120">
-        <template #default="{ row }">{{ t('cronjob.type_' + row.type) }}</template>
+        <template #default="{ row }">
+          <el-tag size="small" :type="typeTagMap[row.type] || 'info'">{{ t('cronjob.type_' + row.type) }}</el-tag>
+        </template>
       </el-table-column>
-      <el-table-column prop="spec" label="Cron" width="160" />
+      <el-table-column :label="t('cronjob.schedule')" width="200">
+        <template #default="{ row }">
+          <span class="cron-desc">{{ describeCron(row.spec) }}</span>
+        </template>
+      </el-table-column>
       <el-table-column :label="t('cronjob.status')" width="100">
         <template #default="{ row }">
           <el-switch :model-value="row.status === 'Enable'" @change="(v: boolean) => toggleStatus(row, v)" />
         </template>
       </el-table-column>
-      <el-table-column :label="t('commons.actions')" width="220" fixed="right">
+      <el-table-column :label="t('commons.actions')" width="240" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openRecords(row)">{{ t('cronjob.records') }}</el-button>
           <el-button link type="primary" @click="handleOnce(row)">{{ t('cronjob.runOnce') }}</el-button>
@@ -36,9 +42,9 @@
       />
     </div>
 
-    <!-- Create / Edit dialog -->
-    <el-drawer v-model="drawerVisible" :title="editMode ? t('commons.edit') : t('commons.create')" size="520px" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+    <!-- Create / Edit drawer -->
+    <el-drawer v-model="drawerVisible" :title="editMode ? t('commons.edit') : t('commons.create')" size="560px" destroy-on-close>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-form-item :label="t('commons.name')" prop="name">
           <el-input v-model="form.name" />
         </el-form-item>
@@ -47,20 +53,78 @@
             <el-option v-for="tp in typeOptions" :key="tp" :label="t('cronjob.type_' + tp)" :value="tp" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Cron" prop="spec">
-          <el-input v-model="form.spec" placeholder="*/5 * * * *" />
+
+        <!-- Visual cron scheduler -->
+        <el-form-item :label="t('cronjob.schedule')" required>
+          <div class="cron-builder">
+            <div class="cron-row">
+              <el-select v-model="cronMode" style="width:160px" @change="buildCron">
+                <el-option :label="t('cronjob.perMinute')" value="perMinute" />
+                <el-option :label="t('cronjob.perHour')" value="perHour" />
+                <el-option :label="t('cronjob.perDay')" value="perDay" />
+                <el-option :label="t('cronjob.perWeek')" value="perWeek" />
+                <el-option :label="t('cronjob.perMonth')" value="perMonth" />
+                <el-option :label="t('cronjob.perNMinute')" value="perNMinute" />
+                <el-option :label="t('cronjob.perNHour')" value="perNHour" />
+                <el-option :label="t('cronjob.custom')" value="custom" />
+              </el-select>
+            </div>
+
+            <div v-if="cronMode === 'perNMinute'" class="cron-row">
+              <span>{{ t('cronjob.every') }}</span>
+              <el-input-number v-model="cronEveryN" :min="1" :max="59" size="small" style="width:100px" @change="buildCron" />
+              <span>{{ t('cronjob.minutes') }}</span>
+            </div>
+
+            <div v-if="cronMode === 'perNHour'" class="cron-row">
+              <span>{{ t('cronjob.every') }}</span>
+              <el-input-number v-model="cronEveryN" :min="1" :max="23" size="small" style="width:100px" @change="buildCron" />
+              <span>{{ t('cronjob.hours') }}</span>
+              <span>{{ t('cronjob.atMinute') }}</span>
+              <el-input-number v-model="cronMinute" :min="0" :max="59" size="small" style="width:80px" @change="buildCron" />
+            </div>
+
+            <div v-if="cronMode === 'perHour'" class="cron-row">
+              <span>{{ t('cronjob.atMinute') }}</span>
+              <el-input-number v-model="cronMinute" :min="0" :max="59" size="small" style="width:80px" @change="buildCron" />
+            </div>
+
+            <div v-if="cronMode === 'perDay'" class="cron-row">
+              <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
+            </div>
+
+            <div v-if="cronMode === 'perWeek'" class="cron-row">
+              <el-select v-model="cronWeekday" style="width:120px" @change="buildCron">
+                <el-option v-for="d in 7" :key="d-1" :label="t('cronjob.weekday' + (d-1))" :value="d-1" />
+              </el-select>
+              <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
+            </div>
+
+            <div v-if="cronMode === 'perMonth'" class="cron-row">
+              <span>{{ t('cronjob.dayOfMonth') }}</span>
+              <el-input-number v-model="cronDayOfMonth" :min="1" :max="31" size="small" style="width:80px" @change="buildCron" />
+              <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
+            </div>
+
+            <div v-if="cronMode === 'custom'" class="cron-row">
+              <el-input v-model="form.spec" placeholder="*/5 * * * *" style="width:100%" />
+            </div>
+
+            <div class="cron-preview">
+              <el-tag type="info" effect="plain" size="small">{{ form.spec || '...' }}</el-tag>
+              <span class="cron-preview-desc">{{ describeCron(form.spec) }}</span>
+            </div>
+          </div>
         </el-form-item>
+
         <el-form-item v-if="form.type === 'shell'" :label="t('cronjob.script')" prop="script">
-          <el-input v-model="form.script" type="textarea" :rows="6" />
+          <el-input v-model="form.script" type="textarea" :rows="6" placeholder="#!/bin/bash" />
         </el-form-item>
         <el-form-item v-if="form.type === 'curl'" label="URL" prop="url">
-          <el-input v-model="form.url" />
-        </el-form-item>
-        <el-form-item v-if="['website','database','directory'].includes(form.type)" :label="t('cronjob.retainCopies')">
-          <el-input-number v-model="form.retainCopies" :min="1" :max="999" />
+          <el-input v-model="form.url" placeholder="https://example.com/api/ping" />
         </el-form-item>
         <el-form-item v-if="form.type === 'website'" :label="t('cronjob.website')">
-          <el-input v-model="form.website" />
+          <el-input v-model="form.website" :placeholder="t('cronjob.websitePlaceholder')" />
         </el-form-item>
         <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbType')">
           <el-select v-model="form.dbType" style="width:100%">
@@ -69,10 +133,13 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbName')">
-          <el-input v-model="form.dbName" />
+          <el-input v-model="form.dbName" placeholder="my_database" />
         </el-form-item>
         <el-form-item v-if="form.type === 'directory'" :label="t('cronjob.sourceDir')">
-          <el-input v-model="form.sourceDir" />
+          <el-input v-model="form.sourceDir" placeholder="/data/myapp" />
+        </el-form-item>
+        <el-form-item v-if="['website','database','directory'].includes(form.type)" :label="t('cronjob.retainCopies')">
+          <el-input-number v-model="form.retainCopies" :min="1" :max="999" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -81,8 +148,8 @@
       </template>
     </el-drawer>
 
-    <!-- Records dialog -->
-    <el-drawer v-model="recordDrawer" :title="t('cronjob.records')" size="640px" destroy-on-close>
+    <!-- Records drawer -->
+    <el-drawer v-model="recordDrawer" :title="recordTitle" size="700px" destroy-on-close>
       <el-table :data="records" v-loading="recordsLoading">
         <el-table-column prop="startTime" :label="t('cronjob.startTime')" width="180">
           <template #default="{ row }">{{ formatTime(row.startTime) }}</template>
@@ -92,10 +159,10 @@
         </el-table-column>
         <el-table-column prop="status" :label="t('cronjob.status')" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
+            <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status === 'Success' ? t('cronjob.success') : t('cronjob.failed') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="message" :label="t('cronjob.message')" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="message" :label="t('cronjob.message')" min-width="240" show-overflow-tooltip />
       </el-table>
       <div class="app-pagination">
         <el-pagination
@@ -120,6 +187,9 @@ import {
 
 const { t } = useI18n()
 const typeOptions = ['shell', 'curl', 'website', 'database', 'directory']
+const typeTagMap: Record<string, string> = {
+  shell: '', curl: 'warning', website: 'success', database: 'danger', directory: 'info',
+}
 
 const loading = ref(false)
 const data = ref<any[]>([])
@@ -133,7 +203,7 @@ const submitting = ref(false)
 const formRef = ref<FormInstance>()
 
 const defaultForm = () => ({
-  id: 0, name: '', type: 'shell', spec: '', script: '', url: '',
+  id: 0, name: '', type: 'shell', spec: '0 2 * * *', script: '', url: '',
   website: '', dbType: 'mysql', dbName: '', sourceDir: '',
   targetAccountID: 0, retainCopies: 7, exclusionRules: '',
 })
@@ -141,10 +211,96 @@ const form = reactive(defaultForm())
 const rules: FormRules = {
   name: [{ required: true, message: () => t('cronjob.nameRequired'), trigger: 'blur' }],
   type: [{ required: true }],
-  spec: [{ required: true, message: () => t('cronjob.specRequired'), trigger: 'blur' }],
 }
 
+// Cron builder state
+const cronMode = ref('perDay')
+const cronMinute = ref(0)
+const cronEveryN = ref(5)
+const cronWeekday = ref(1)
+const cronDayOfMonth = ref(1)
+const cronTime = ref<Date | null>(null)
+
+const initCronTime = (h: number, m: number) => {
+  const d = new Date()
+  d.setHours(h, m, 0, 0)
+  return d
+}
+
+const buildCron = () => {
+  const h = cronTime.value ? cronTime.value.getHours() : 2
+  const m = cronTime.value ? cronTime.value.getMinutes() : 0
+  switch (cronMode.value) {
+    case 'perMinute':
+      form.spec = '* * * * *'; break
+    case 'perNMinute':
+      form.spec = `*/${cronEveryN.value} * * * *`; break
+    case 'perHour':
+      form.spec = `${cronMinute.value} * * * *`; break
+    case 'perNHour':
+      form.spec = `${cronMinute.value} */${cronEveryN.value} * * *`; break
+    case 'perDay':
+      form.spec = `${m} ${h} * * *`; break
+    case 'perWeek':
+      form.spec = `${m} ${h} * * ${cronWeekday.value}`; break
+    case 'perMonth':
+      form.spec = `${m} ${h} ${cronDayOfMonth.value} * *`; break
+    case 'custom':
+      break
+  }
+}
+
+const parseCronToBuilder = (spec: string) => {
+  if (!spec) { cronMode.value = 'perDay'; cronTime.value = initCronTime(2, 0); buildCron(); return }
+  const parts = spec.trim().split(/\s+/)
+  if (parts.length !== 5) { cronMode.value = 'custom'; return }
+  const [min, hour, dom, , dow] = parts
+
+  if (min === '*' && hour === '*' && dom === '*' && dow === '*') {
+    cronMode.value = 'perMinute'; return
+  }
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && dow === '*') {
+    cronMode.value = 'perNMinute'; cronEveryN.value = parseInt(min.slice(2)) || 5; return
+  }
+  if (/^\d+$/.test(min) && hour === '*' && dom === '*' && dow === '*') {
+    cronMode.value = 'perHour'; cronMinute.value = parseInt(min); return
+  }
+  if (/^\d+$/.test(min) && hour.startsWith('*/') && dom === '*' && dow === '*') {
+    cronMode.value = 'perNHour'; cronMinute.value = parseInt(min); cronEveryN.value = parseInt(hour.slice(2)) || 1; return
+  }
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && dow === '*') {
+    cronMode.value = 'perDay'; cronTime.value = initCronTime(parseInt(hour), parseInt(min)); return
+  }
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && /^\d+$/.test(dow)) {
+    cronMode.value = 'perWeek'; cronTime.value = initCronTime(parseInt(hour), parseInt(min)); cronWeekday.value = parseInt(dow); return
+  }
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && /^\d+$/.test(dom) && dow === '*') {
+    cronMode.value = 'perMonth'; cronTime.value = initCronTime(parseInt(hour), parseInt(min)); cronDayOfMonth.value = parseInt(dom); return
+  }
+  cronMode.value = 'custom'
+}
+
+const describeCron = (spec: string): string => {
+  if (!spec) return ''
+  const parts = spec.trim().split(/\s+/)
+  if (parts.length !== 5) return spec
+  const [min, hour, dom, , dow] = parts
+  if (min === '*' && hour === '*') return t('cronjob.descEveryMinute')
+  if (min.startsWith('*/') && hour === '*') return t('cronjob.descEveryNMin', { n: min.slice(2) })
+  if (/^\d+$/.test(min) && hour === '*') return t('cronjob.descHourlyAt', { m: min })
+  if (/^\d+$/.test(min) && hour.startsWith('*/')) return t('cronjob.descEveryNHour', { n: hour.slice(2), m: min })
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && dow === '*')
+    return t('cronjob.descDailyAt', { h: hour.padStart(2, '0'), m: min.padStart(2, '0') })
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && /^\d+$/.test(dow))
+    return t('cronjob.descWeeklyAt', { day: t('cronjob.weekday' + dow), h: hour.padStart(2, '0'), m: min.padStart(2, '0') })
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && /^\d+$/.test(dom))
+    return t('cronjob.descMonthlyAt', { d: dom, h: hour.padStart(2, '0'), m: min.padStart(2, '0') })
+  return spec
+}
+
+// Records
 const recordDrawer = ref(false)
+const recordTitle = ref('')
 const recordsLoading = ref(false)
 const records = ref<any[]>([])
 const recordPager = reactive({ page: 1, pageSize: 20, total: 0 })
@@ -167,18 +323,25 @@ const search = async () => {
 const openCreate = () => {
   Object.assign(form, defaultForm())
   editMode.value = false
+  cronTime.value = initCronTime(2, 0)
+  parseCronToBuilder(form.spec)
   drawerVisible.value = true
 }
 
 const openEdit = (row: any) => {
   Object.assign(form, { ...row })
   editMode.value = true
+  parseCronToBuilder(row.spec)
   drawerVisible.value = true
 }
 
 const submit = async () => {
   if (!formRef.value) return
   await formRef.value.validate()
+  if (!form.spec || !form.spec.trim()) {
+    ElMessage.warning(t('cronjob.specRequired'))
+    return
+  }
   submitting.value = true
   try {
     if (editMode.value) {
@@ -212,6 +375,7 @@ const handleOnce = async (row: any) => {
 
 const openRecords = (row: any) => {
   currentRecordCronjobID = row.id
+  recordTitle.value = row.name + ' - ' + t('cronjob.records')
   recordPager.page = 1
   recordDrawer.value = true
   loadRecords()
@@ -242,5 +406,29 @@ onMounted(() => search())
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+.cron-builder {
+  width: 100%;
+}
+.cron-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.cron-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.cron-preview-desc {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.cron-desc {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 </style>

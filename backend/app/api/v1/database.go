@@ -120,6 +120,33 @@ func (a *DatabaseAPI) SearchDatabaseInstance(c *gin.Context) {
 	helper.SuccessWithPage(c, total, items)
 }
 
+func (a *DatabaseAPI) ChangeInstancePassword(c *gin.Context) {
+	var req dto.DatabaseInstanceChangePassword
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := databaseService.ChangeInstancePassword(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *DatabaseAPI) BackupDatabaseInstance(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	file, err := databaseService.BackupInstance(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, map[string]string{"file": file})
+}
+
 func (a *DatabaseAPI) SyncDatabaseInstances(c *gin.Context) {
 	var req dto.OperateByID
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

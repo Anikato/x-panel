@@ -10,3 +10,5 @@ export const createDatabaseInstance = (data: any) => http.post('/databases/insta
 export const deleteDatabaseInstance = (data: { id: number }) => http.post('/databases/instances/del', data)
 export const searchDatabaseInstance = (data: any) => http.post('/databases/instances/search', data)
 export const syncDatabaseInstances = (data: { id: number }) => http.post('/databases/instances/sync', data)
+export const changeInstancePassword = (data: { id: number; password: string }) => http.post('/databases/instances/password', data)
+export const backupDatabaseInstance = (data: { id: number }) => http.post('/databases/instances/backup', data)

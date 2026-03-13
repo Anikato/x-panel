@@ -65,6 +65,11 @@ func (c *PostgresClient) CreateUser(username, password string) error {
 	return err
 }
 
+func (c *PostgresClient) ChangePassword(username, password string) error {
+	_, err := c.db.Exec(fmt.Sprintf("ALTER ROLE \"%s\" WITH PASSWORD '%s'", username, password))
+	return err
+}
+
 func (c *PostgresClient) DeleteUser(username string) error {
 	_, err := c.db.Exec(fmt.Sprintf("DROP ROLE IF EXISTS \"%s\"", username))
 	return err
