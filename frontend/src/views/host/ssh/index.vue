@@ -59,6 +59,21 @@
         </el-card>
       </el-tab-pane>
 
+      <!-- sshd_config 编辑 -->
+      <el-tab-pane :label="$t('sshManage.sshdConfig')" name="sshdConfig">
+        <div class="sshd-editor-section">
+          <div class="sshd-toolbar">
+            <span class="sshd-file-label">/etc/ssh/sshd_config</span>
+            <div class="sshd-actions">
+              <el-button size="small" @click="loadSSHDConfig" :loading="sshdLoading">{{ $t('commons.refresh') }}</el-button>
+              <el-button size="small" type="primary" @click="handleSaveSSHDConfig" :loading="sshdSaving">{{ $t('commons.save') }}</el-button>
+            </div>
+          </div>
+          <div ref="sshdEditorRef" class="sshd-editor-container" />
+          <div class="sshd-hint">{{ $t('sshManage.sshdConfigHint') }}</div>
+        </div>
+      </el-tab-pane>
+
       <!-- SSH 登录日志 -->
       <el-tab-pane :label="$t('sshManage.loginLog')" name="log">
         <div class="toolbar">
@@ -87,11 +102,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
-import { getSSHInfo, operateSSH, updateSSHConfig, searchSSHLog } from '@/api/modules/ssh-manage'
+import { getSSHInfo, operateSSH, updateSSHConfig, searchSSHLog, getSSHDConfig, saveSSHDConfig } from '@/api/modules/ssh-manage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import * as monaco from 'monaco-editor'
 
 const { t } = useI18n()
 const activeTab = ref('config')
@@ -155,11 +171,61 @@ const loadSSHLog = async () => {
   finally { logLoading.value = false }
 }
 
+// sshd_config editor
+const sshdEditorRef = ref<HTMLElement>()
+const sshdLoading = ref(false)
+const sshdSaving = ref(false)
+let sshdEditor: monaco.editor.IStandaloneCodeEditor | null = null
+
+const loadSSHDConfig = async () => {
+  sshdLoading.value = true
+  try {
+    const res = await getSSHDConfig()
+    const content = res.data || ''
+    await nextTick()
+    if (sshdEditor) {
+      sshdEditor.setValue(content)
+    } else if (sshdEditorRef.value) {
+      sshdEditor = monaco.editor.create(sshdEditorRef.value, {
+        value: content,
+        language: 'plaintext',
+        theme: 'vs-dark',
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        lineNumbers: 'on',
+        automaticLayout: true,
+        tabSize: 4,
+        wordWrap: 'on',
+      })
+    }
+  } catch { /* handled */ }
+  finally { sshdLoading.value = false }
+}
+
+const handleSaveSSHDConfig = async () => {
+  if (!sshdEditor) return
+  const content = sshdEditor.getValue()
+  if (!content.trim()) { ElMessage.warning('配置内容不能为空'); return }
+  sshdSaving.value = true
+  try {
+    await saveSSHDConfig(content)
+    ElMessage.success(t('commons.success'))
+  } catch { /* handled */ }
+  finally { sshdSaving.value = false }
+}
+
 watch(activeTab, (val) => {
   if (val === 'log' && sshLogs.value.length === 0) loadSSHLog()
+  if (val === 'sshdConfig' && !sshdEditor) loadSSHDConfig()
 })
 
 onMounted(() => loadSSH())
+
+onBeforeUnmount(() => {
+  if (sshdEditor) { sshdEditor.dispose(); sshdEditor = null }
+})
 </script>
 
 <style lang="scss" scoped>
@@ -193,4 +259,42 @@ onMounted(() => loadSSH())
 }
 
 .mt-12 { margin-top: 12px; }
+
+.sshd-editor-section {
+  display: flex;
+  flex-direction: column;
+  height: 500px;
+}
+
+.sshd-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+
+  .sshd-file-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--xp-accent);
+    font-family: 'Fira Code', 'Consolas', monospace;
+  }
+
+  .sshd-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+.sshd-editor-container {
+  flex: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--xp-border-light);
+}
+
+.sshd-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
+}
 </style>

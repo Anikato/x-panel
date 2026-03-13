@@ -19,6 +19,8 @@ type ISSHManageService interface {
 	OperateSSH(operation string) error
 	UpdateSSHConfig(key, value string) error
 	LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLogEntry, error)
+	GetSSHDConfig() (string, error)
+	SaveSSHDConfig(content string) error
 }
 
 type SSHManageService struct{}
@@ -243,6 +245,35 @@ func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLog
 	}
 
 	return total, entries[start:end], nil
+}
+
+// GetSSHDConfig 读取 sshd_config 原始内容
+func (s *SSHManageService) GetSSHDConfig() (string, error) {
+	content, err := os.ReadFile(sshdConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("read sshd_config: %v", err)
+	}
+	return string(content), nil
+}
+
+// SaveSSHDConfig 保存 sshd_config（先测试再写入）
+func (s *SSHManageService) SaveSSHDConfig(content string) error {
+	backup, err := os.ReadFile(sshdConfigPath)
+	if err != nil {
+		return fmt.Errorf("read current config for backup: %v", err)
+	}
+
+	if err := os.WriteFile(sshdConfigPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write config: %v", err)
+	}
+
+	if _, err := cmd.ExecWithOutput("sshd", "-t"); err != nil {
+		os.WriteFile(sshdConfigPath, backup, 0644)
+		return fmt.Errorf("sshd config test failed, changes rolled back: %v", err)
+	}
+
+	global.LOG.Info("sshd_config saved via raw editor")
+	return nil
 }
 
 func detectSSHService() string {

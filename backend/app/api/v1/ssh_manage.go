@@ -58,3 +58,27 @@ func (a *SSHManageAPI) LoadSSHLog(c *gin.Context) {
 	}
 	helper.SuccessWithPage(c, total, items)
 }
+
+func (a *SSHManageAPI) GetSSHDConfig(c *gin.Context) {
+	content, err := service.NewISSHManageService().GetSSHDConfig()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, content)
+}
+
+func (a *SSHManageAPI) SaveSSHDConfig(c *gin.Context) {
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISSHManageService().SaveSSHDConfig(req.Content); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}

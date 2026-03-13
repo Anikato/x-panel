@@ -53,6 +53,9 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/settings", api.GetSettingInfo)
 		privateGroup.POST("/settings/update", api.Update)
 		privateGroup.POST("/settings/port/update", api.UpdatePort)
+		privateGroup.POST("/settings/reboot", api.RebootServer)
+		privateGroup.POST("/settings/shutdown", api.ShutdownServer)
+		privateGroup.POST("/settings/restart-panel", api.RestartPanel)
 
 		// 日志
 		privateGroup.POST("/logs/login", api.PageLoginLog)
@@ -146,6 +149,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/ssh/operate", api.OperateSSH)
 		privateGroup.POST("/ssh/update", api.UpdateSSHConfig)
 		privateGroup.POST("/ssh/log", api.LoadSSHLog)
+		privateGroup.GET("/ssh/sshd-config", api.GetSSHDConfig)
+		privateGroup.POST("/ssh/sshd-config", api.SaveSSHDConfig)
 
 		// 防火墙
 		privateGroup.GET("/firewall/base", api.GetBaseInfo)

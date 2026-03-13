@@ -430,6 +430,7 @@ const createTerminal = async (tab: TermTab) => {
   }, 100)
 
   const ws = new WebSocket(getWsUrl(tab.hostId))
+  ws.binaryType = 'arraybuffer'
   tab.ws = ws
 
   ws.onopen = () => {
@@ -438,7 +439,11 @@ const createTerminal = async (tab: TermTab) => {
   }
 
   ws.onmessage = (e: MessageEvent) => {
-    terminal.write(e.data)
+    if (e.data instanceof ArrayBuffer) {
+      terminal.write(new Uint8Array(e.data))
+    } else {
+      terminal.write(e.data)
+    }
   }
 
   ws.onclose = () => {

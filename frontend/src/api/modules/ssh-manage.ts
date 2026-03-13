@@ -15,3 +15,11 @@ export const updateSSHConfig = (key: string, value: string) => {
 export const searchSSHLog = (params: { page: number; pageSize: number; status?: string; info?: string }) => {
   return http.post('/ssh/log', params)
 }
+
+export const getSSHDConfig = () => {
+  return http.get('/ssh/sshd-config')
+}
+
+export const saveSSHDConfig = (content: string) => {
+  return http.post('/ssh/sshd-config', { content })
+}

@@ -110,6 +110,7 @@ function initTerminal() {
   resizeObserver.observe(termEl.value)
 
   ws = new WebSocket(getWsUrl())
+  ws.binaryType = 'arraybuffer'
 
   ws.onopen = () => {
     sendResize(ws!, terminal!.rows, terminal!.cols)
@@ -122,7 +123,11 @@ function initTerminal() {
   }
 
   ws.onmessage = (e: MessageEvent) => {
-    terminal!.write(e.data)
+    if (e.data instanceof ArrayBuffer) {
+      terminal!.write(new Uint8Array(e.data))
+    } else {
+      terminal!.write(e.data)
+    }
   }
 
   ws.onclose = () => {

@@ -2,10 +2,14 @@ package v1
 
 import (
 	"net/http"
+	"os"
+	"os/exec"
+	"time"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
 	"xpanel/app/service"
+	"xpanel/global"
 
 	"github.com/gin-gonic/gin"
 )
@@ -55,4 +59,41 @@ func (s *SettingAPI) UpdatePort(c *gin.Context) {
 	}
 
 	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
+}
+
+// RebootServer 重启服务器
+func (s *SettingAPI) RebootServer(c *gin.Context) {
+	global.LOG.Warn("Server reboot requested by user")
+	helper.SuccessWithData(c, nil)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		exec.Command("reboot").Run()
+	}()
+}
+
+// ShutdownServer 关闭服务器
+func (s *SettingAPI) ShutdownServer(c *gin.Context) {
+	global.LOG.Warn("Server shutdown requested by user")
+	helper.SuccessWithData(c, nil)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		exec.Command("shutdown", "-h", "now").Run()
+	}()
+}
+
+// RestartPanel 重启面板
+func (s *SettingAPI) RestartPanel(c *gin.Context) {
+	global.LOG.Warn("Panel restart requested by user")
+	helper.SuccessWithData(c, nil)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		cmd := exec.Command("systemctl", "restart", "xpanel")
+		if err := cmd.Start(); err != nil {
+			global.LOG.Warnf("systemctl restart failed: %v, sending signal", err)
+			proc, _ := os.FindProcess(os.Getpid())
+			if proc != nil {
+				proc.Signal(os.Interrupt)
+			}
+		}
+	}()
 }

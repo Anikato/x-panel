@@ -27,68 +27,84 @@
           <el-icon><Clock /></el-icon>
           <span>{{ t('home.uptime') }}: {{ formatUptime(stats.uptime) }}</span>
         </div>
+        <el-button-group size="small">
+          <el-button type="warning" plain @click="handleRestartPanel">
+            <el-icon><RefreshRight /></el-icon>{{ t('home.restartPanel') }}
+          </el-button>
+          <el-button type="danger" plain @click="handleRebootServer">
+            <el-icon><SwitchButton /></el-icon>{{ t('home.rebootServer') }}
+          </el-button>
+        </el-button-group>
         <el-button text :icon="Refresh" @click="loadStats" :loading="loading" circle />
       </div>
     </div>
 
-    <!-- 系统详情卡片 -->
-    <el-card shadow="never" class="sys-info-card">
-      <div class="sys-info-grid">
-        <div class="sys-info-item" v-for="item in sysInfoItems" :key="item.label">
-          <span class="sys-info-label">{{ item.label }}</span>
-          <span class="sys-info-value">
-            {{ item.value }}
-            <el-icon class="copy-btn" @click="copyText(item.value)" v-if="item.value && item.value !== '-'"><CopyDocument /></el-icon>
-          </span>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 网络信息卡片 -->
-    <el-card shadow="never" class="sys-info-card" v-if="stats.host?.interfaces?.length">
-      <template #header>
-        <div class="card-header-row">
-          <el-icon><Connection /></el-icon>
-          <span>{{ t('home.networkInfo') }}</span>
-        </div>
-      </template>
-      <div class="net-info-list">
-        <div class="net-info-row" v-if="stats.host?.publicIPv4">
-          <span class="net-label">{{ t('home.publicIPv4') }}</span>
-          <span class="net-value highlight">
-            {{ stats.host.publicIPv4 }}
-            <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv4)"><CopyDocument /></el-icon>
-          </span>
-        </div>
-        <div class="net-info-row" v-if="stats.host?.publicIPv6">
-          <span class="net-label">{{ t('home.publicIPv6') }}</span>
-          <span class="net-value">
-            {{ stats.host.publicIPv6 }}
-            <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv6)"><CopyDocument /></el-icon>
-          </span>
-        </div>
-        <template v-for="iface in stats.host?.interfaces" :key="iface.name">
-          <div class="net-info-row" v-for="ip in iface.ipv4" :key="ip">
-            <span class="net-label">
-              <el-tag size="small" :type="iface.status === 'up' ? 'success' : 'info'" effect="plain" round>
-                {{ iface.name }}
-              </el-tag>
-            </span>
-            <span class="net-value">
-              {{ ip }}
-              <el-icon class="copy-btn" @click="copyText(ip.split('/')[0])"><CopyDocument /></el-icon>
-            </span>
+    <!-- 系统信息 + 网络信息 合并 -->
+    <el-row :gutter="16" class="info-row">
+      <el-col :xs="24" :lg="14">
+        <el-card shadow="never" class="info-card">
+          <template #header>
+            <div class="card-header-row">
+              <el-icon><Monitor /></el-icon>
+              <span>{{ t('home.systemInfo') }}</span>
+            </div>
+          </template>
+          <div class="sys-info-grid">
+            <div class="sys-info-item" v-for="item in sysInfoItems" :key="item.label">
+              <span class="sys-info-label">{{ item.label }}</span>
+              <span class="sys-info-value">
+                {{ item.value }}
+                <el-icon class="copy-btn" @click="copyText(item.value)" v-if="item.value && item.value !== '-'"><CopyDocument /></el-icon>
+              </span>
+            </div>
           </div>
-        </template>
-        <div class="net-info-row" v-if="stats.host?.dnsServers?.length">
-          <span class="net-label">DNS</span>
-          <span class="net-value">
-            {{ stats.host.dnsServers.join(', ') }}
-            <el-icon class="copy-btn" @click="copyText(stats.host.dnsServers.join(', '))"><CopyDocument /></el-icon>
-          </span>
-        </div>
-      </div>
-    </el-card>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :lg="10">
+        <el-card shadow="never" class="info-card" v-if="stats.host?.interfaces?.length || stats.host?.publicIPv4">
+          <template #header>
+            <div class="card-header-row">
+              <el-icon><Connection /></el-icon>
+              <span>{{ t('home.networkInfo') }}</span>
+            </div>
+          </template>
+          <div class="net-info-list">
+            <div class="net-info-row" v-if="stats.host?.publicIPv4">
+              <span class="net-label">{{ t('home.publicIPv4') }}</span>
+              <span class="net-value highlight">
+                {{ stats.host.publicIPv4 }}
+                <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv4)"><CopyDocument /></el-icon>
+              </span>
+            </div>
+            <div class="net-info-row" v-if="stats.host?.publicIPv6">
+              <span class="net-label">{{ t('home.publicIPv6') }}</span>
+              <span class="net-value">
+                {{ stats.host.publicIPv6 }}
+                <el-icon class="copy-btn" @click="copyText(stats.host.publicIPv6)"><CopyDocument /></el-icon>
+              </span>
+            </div>
+            <template v-for="iface in stats.host?.interfaces" :key="iface.name">
+              <div class="net-info-row" v-for="ip in iface.ipv4" :key="ip">
+                <span class="net-label">
+                  <el-tag size="small" :type="iface.status === 'up' ? 'success' : 'info'" effect="plain" round>{{ iface.name }}</el-tag>
+                </span>
+                <span class="net-value">
+                  {{ ip }}
+                  <el-icon class="copy-btn" @click="copyText(ip.split('/')[0])"><CopyDocument /></el-icon>
+                </span>
+              </div>
+            </template>
+            <div class="net-info-row" v-if="stats.host?.dnsServers?.length">
+              <span class="net-label">DNS</span>
+              <span class="net-value">
+                {{ stats.host.dnsServers.join(', ') }}
+                <el-icon class="copy-btn" @click="copyText(stats.host.dnsServers.join(', '))"><CopyDocument /></el-icon>
+              </span>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
 
     <!-- 资源占用 -->
     <div class="resource-section">
@@ -276,10 +292,11 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
-import { ElMessage } from 'element-plus'
+import { rebootServer, shutdownServer, restartPanel } from '@/api/modules/setting'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Monitor, Clock, Refresh, Cpu, Coin, Odometer, Connection,
-  Box, Compass, DataLine, CopyDocument,
+  Box, Compass, DataLine, CopyDocument, SwitchButton, RefreshRight,
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -346,6 +363,24 @@ const quickEntries = computed(() => [
   { path: '/setting', title: t('menu.setting'), icon: 'Setting' },
   { path: '/log/operation', title: t('menu.operationLog'), icon: 'Notebook' },
 ])
+
+const handleRebootServer = async () => {
+  await ElMessageBox.confirm(t('home.rebootConfirm'), t('commons.tip'), { type: 'warning', confirmButtonText: t('home.rebootServer') })
+  await rebootServer()
+  ElMessage.success(t('home.rebootSuccess'))
+}
+
+const handleShutdownServer = async () => {
+  await ElMessageBox.confirm(t('home.shutdownConfirm'), t('commons.tip'), { type: 'error', confirmButtonText: t('home.shutdownServer') })
+  await shutdownServer()
+  ElMessage.success(t('home.shutdownSuccess'))
+}
+
+const handleRestartPanel = async () => {
+  await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), { type: 'warning' })
+  await restartPanel()
+  ElMessage.success(t('home.restartPanelSuccess'))
+}
 
 const copyText = async (text: string) => {
   try {
@@ -490,9 +525,14 @@ onUnmounted(() => {
   border-radius: 20px;
 }
 
-/* ===== 系统信息卡片 ===== */
-.sys-info-card {
+/* ===== 信息行 ===== */
+.info-row {
   margin-bottom: 20px;
+}
+
+.info-card {
+  height: 100%;
+  margin-bottom: 16px;
 }
 
 .card-header-row {
@@ -554,9 +594,9 @@ onUnmounted(() => {
 
 /* ===== 网络信息 ===== */
 .net-info-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .net-info-row {

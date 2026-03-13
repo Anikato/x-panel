@@ -94,7 +94,7 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 	var once sync.Once
 	done := make(chan struct{})
 
-	// PTY → WebSocket
+	// PTY → WebSocket (BinaryMessage to avoid UTF-8 validation issues with raw terminal data)
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -104,7 +104,7 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 				return
 			}
 			if n > 0 {
-				if err := sc.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
+				if err := sc.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
 					once.Do(func() { close(done) })
 					return
 				}
@@ -250,7 +250,7 @@ type wsWriter struct {
 }
 
 func (w *wsWriter) Write(p []byte) (n int, err error) {
-	if err := w.sc.WriteMessage(websocket.TextMessage, p); err != nil {
+	if err := w.sc.WriteMessage(websocket.BinaryMessage, p); err != nil {
 		return 0, io.EOF
 	}
 	return len(p), nil

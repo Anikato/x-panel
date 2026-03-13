@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-03-09 — Session #26：终端 vim 修复 + 首页美化运维按钮 + SSH 配置编辑
+
+### 完成内容
+
+#### Nginx 默认自启
+- 安装完成后自动执行 `systemctl enable xpanel-nginx`
+
+#### 终端 vim 严重 bug 修复（根因：WebSocket 编码）
+- **根因分析**：后端 PTY 输出作为 WebSocket TextMessage 发送，当 4096 字节缓冲区在多字节 UTF-8 字符中间截断时，浏览器因 UTF-8 校验失败丢弃/损坏数据
+- **对比 1Panel**：1Panel 使用 JSON + Base64 编码绕开此问题
+- **X-Panel 修复**：后端改用 `BinaryMessage` 发送 PTY/SSH 输出，前端设置 `ws.binaryType = 'arraybuffer'` 并用 `Uint8Array` 写入 xterm.js
+- 本地终端和 SSH 终端两处同步修复
+- 文件管理终端 (terminal-dialog.vue) 同步修复
+
+#### 首页运维按钮
+- 新增 3 个 API：重启服务器(`/settings/reboot`)、关机(`/settings/shutdown`)、重启面板(`/settings/restart-panel`)
+- 首页顶部增加「重启面板」「重启服务器」按钮组，均有二次确认对话框
+
+#### SSH 管理增加 sshd_config 编辑
+- 新增后端 API：`GET/POST /ssh/sshd-config`
+- 保存前自动执行 `sshd -t` 测试，不通过自动回滚
+- 前端 SSH 管理新增「配置文件」tab，Monaco Editor 直接编辑
+
+#### 首页布局美化
+- 系统信息和网络信息合并为左右双列布局
+- 运维按钮集成到 header 右侧
+- 网络信息改为纵向列表（之前是网格，信息挤在一起）
+
+### 关键决策
+- 终端数据传输使用 BinaryMessage 而非 1Panel 的 JSON+Base64（更高效，零开销）
+- 重启/关机使用 500ms 延迟确保 HTTP 响应先返回
+
+---
+
 ## 2026-03-09 — Session #25：网站管理全面优化（HTTP/2 + 自启 + 双模式配置 + 日志分析）
 
 ### 完成内容

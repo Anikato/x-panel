@@ -14,3 +14,18 @@ export const updateSetting = (data: { key: string; value: string }) => {
 export const updatePort = (data: { port: string }) => {
   return http.post('/settings/port/update', data)
 }
+
+/** 重启服务器 */
+export const rebootServer = () => {
+  return http.post('/settings/reboot')
+}
+
+/** 关闭服务器 */
+export const shutdownServer = () => {
+  return http.post('/settings/shutdown')
+}
+
+/** 重启面板 */
+export const restartPanel = () => {
+  return http.post('/settings/restart-panel')
+}

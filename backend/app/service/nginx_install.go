@@ -17,6 +17,7 @@ import (
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
+	"xpanel/utils/cmd"
 )
 
 type INginxInstallService interface {
@@ -296,10 +297,14 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 		_ = global.Vp.WriteConfig()
 	}
 
-	// Step 7: 创建 systemd service 文件
+	// Step 7: 创建 systemd service 文件并默认启用开机自启
 	s.setProgress("install", "创建 systemd 服务...", 95)
 	if err := EnsureNginxServiceFile(installDir); err != nil {
 		global.LOG.Warnf("Create systemd service failed: %v", err)
+	} else {
+		if _, err := cmd.ExecWithOutput("systemctl", "enable", nginxServiceName); err != nil {
+			global.LOG.Warnf("Enable nginx autostart failed: %v", err)
+		}
 	}
 
 	// Step 8: 完成
