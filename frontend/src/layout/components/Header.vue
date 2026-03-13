@@ -14,6 +14,15 @@
       </el-breadcrumb>
     </div>
     <div class="header-right">
+      <el-select
+        v-model="currentNode"
+        size="small"
+        style="width: 160px; margin-right: 12px"
+        @change="onNodeChange"
+      >
+        <el-option :label="t('node.local')" :value="0" />
+        <el-option v-for="n in nodes" :key="n.id" :label="n.name" :value="n.id" />
+      </el-select>
       <el-dropdown @command="handleCommand" trigger="click">
         <div class="user-dropdown">
           <div class="user-avatar">
@@ -38,12 +47,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useGlobalStore } from '@/store/modules/global'
 import { useUserStore } from '@/store/modules/user'
 import { logout as logoutApi } from '@/api/modules/auth'
+import { listNodes } from '@/api/modules/node'
 import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
@@ -51,6 +61,24 @@ const router = useRouter()
 const globalStore = useGlobalStore()
 const userStore = useUserStore()
 const { t } = useI18n()
+
+const nodes = ref<any[]>([])
+const currentNode = ref(globalStore.currentNodeID || 0)
+
+const loadNodes = async () => {
+  try {
+    const res: any = await listNodes()
+    nodes.value = res.data || []
+  } catch { /* ignore */ }
+}
+
+const onNodeChange = (val: number) => {
+  const node = nodes.value.find((n: any) => n.id === val)
+  globalStore.setCurrentNode(val, node ? node.name : '')
+  window.location.reload()
+}
+
+onMounted(() => loadNodes())
 
 const breadcrumbs = computed(() => {
   return route.matched

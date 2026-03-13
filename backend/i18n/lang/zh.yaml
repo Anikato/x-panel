@@ -9,6 +9,8 @@ ErrRecordExist:
   other: "记录已存在"
 
 # 认证错误
+ErrCaptchaInvalid:
+  other: "验证码错误或已过期"
 ErrAuth:
   other: "用户名或密码错误"
 ErrTokenInvalid:

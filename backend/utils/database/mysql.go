@@ -1,0 +1,118 @@
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"os/exec"
+
+	_ "github.com/go-sql-driver/mysql"
+)
+
+type MysqlClient struct {
+	db       *sql.DB
+	Address  string
+	Port     uint
+	Username string
+	Password string
+}
+
+func NewMysqlClient(address string, port uint, username, password string) (*MysqlClient, error) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/", username, password, address, port)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &MysqlClient{db: db, Address: address, Port: port, Username: username, Password: password}, nil
+}
+
+func (c *MysqlClient) Close() { c.db.Close() }
+
+func (c *MysqlClient) CreateDatabase(name, charset string) error {
+	if charset == "" {
+		charset = "utf8mb4"
+	}
+	_, err := c.db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET %s", name, charset))
+	return err
+}
+
+func (c *MysqlClient) DeleteDatabase(name string) error {
+	_, err := c.db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", name))
+	return err
+}
+
+func (c *MysqlClient) ListDatabases() ([]string, error) {
+	rows, err := c.db.Query("SHOW DATABASES")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var dbs []string
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		if name == "information_schema" || name == "performance_schema" || name == "mysql" || name == "sys" {
+			continue
+		}
+		dbs = append(dbs, name)
+	}
+	return dbs, nil
+}
+
+func (c *MysqlClient) CreateUser(username, password, database string) error {
+	_, err := c.db.Exec(fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'", username, password))
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec(fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%'", database, username))
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec("FLUSH PRIVILEGES")
+	return err
+}
+
+func (c *MysqlClient) DeleteUser(username string) error {
+	_, err := c.db.Exec(fmt.Sprintf("DROP USER IF EXISTS '%s'@'%%'", username))
+	return err
+}
+
+func (c *MysqlClient) Backup(database, outFile string) error {
+	args := []string{
+		fmt.Sprintf("-h%s", c.Address),
+		fmt.Sprintf("-P%d", c.Port),
+		fmt.Sprintf("-u%s", c.Username),
+		fmt.Sprintf("-p%s", c.Password),
+		"--single-transaction",
+		database,
+		fmt.Sprintf("--result-file=%s", outFile),
+	}
+	cmd := exec.Command("mysqldump", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %s", err, string(output))
+	}
+	return nil
+}
+
+func (c *MysqlClient) Restore(database, inFile string) error {
+	cmd := exec.Command("mysql",
+		fmt.Sprintf("-h%s", c.Address),
+		fmt.Sprintf("-P%d", c.Port),
+		fmt.Sprintf("-u%s", c.Username),
+		fmt.Sprintf("-p%s", c.Password),
+		database,
+	)
+	file, err := exec.Command("cat", inFile).Output()
+	if err != nil {
+		return err
+	}
+	cmd.Stdin = nil
+	_ = file
+	shellCmd := fmt.Sprintf("mysql -h%s -P%d -u%s -p%s %s < %s",
+		c.Address, c.Port, c.Username, c.Password, database, inFile)
+	return exec.Command("bash", "-c", shellCmd).Run()
+}

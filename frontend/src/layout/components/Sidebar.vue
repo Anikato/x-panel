@@ -97,6 +97,10 @@ const menuList = computed(() => [
       { path: '/host/disk', title: t('menu.diskManage') },
     ],
   },
+  { path: '/container', title: t('menu.container'), icon: 'Box' },
+  { path: '/database', title: t('menu.database'), icon: 'Coin' },
+  { path: '/cronjob', title: t('menu.cronjob'), icon: 'Timer' },
+  { path: '/backup', title: t('menu.backup'), icon: 'FolderChecked' },
   { path: '/terminal', title: t('menu.terminal'), icon: 'Monitor' },
   {
     path: '/log',
@@ -107,6 +111,7 @@ const menuList = computed(() => [
       { path: '/log/operation', title: t('menu.operationLog') },
     ],
   },
+  { path: '/node', title: t('menu.node'), icon: 'Connection' },
   { path: '/setting', title: t('menu.setting'), icon: 'Setting' },
 ])
 </script>

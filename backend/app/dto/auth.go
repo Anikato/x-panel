@@ -2,8 +2,10 @@ package dto
 
 // Login 登录请求
 type Login struct {
-	Name     string `json:"name" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Name      string `json:"name" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	CaptchaID string `json:"captchaID"`
+	Captcha   string `json:"captcha"`
 }
 
 // InitUser 初始化用户（首次设置密码）
@@ -14,9 +16,16 @@ type InitUser struct {
 
 // UserLoginInfo 登录响应
 type UserLoginInfo struct {
-	Name      string `json:"name"`
-	Token     string `json:"token"`
-	MfaStatus string `json:"mfaStatus"`
+	Name        string `json:"name"`
+	Token       string `json:"token"`
+	MfaStatus   string `json:"mfaStatus"`
+	NeedCaptcha bool   `json:"needCaptcha"`
+}
+
+// CaptchaResponse 验证码响应
+type CaptchaResponse struct {
+	CaptchaID string `json:"captchaID"`
+	ImageData string `json:"imageData"`
 }
 
 // MFALogin MFA 登录

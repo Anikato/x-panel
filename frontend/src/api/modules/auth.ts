@@ -16,8 +16,13 @@ export const initUser = (data: { name: string; password: string }) => {
 }
 
 /** 用户登录 */
-export const login = (data: { name: string; password: string }) => {
+export const login = (data: { name: string; password: string; captchaID?: string; captcha?: string }) => {
   return http.post('/auth/login', data)
+}
+
+/** 获取验证码 */
+export const getCaptcha = () => {
+  return http.get('/auth/captcha')
 }
 
 /** 退出登录 */

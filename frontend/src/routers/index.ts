@@ -5,7 +5,12 @@ import homeRoutes from './modules/home'
 import websiteRoutes from './modules/website'
 import hostRoutes from './modules/host'
 import terminalRoutes from './modules/terminal'
+import backupRoutes from './modules/backup'
+import containerRoutes from './modules/container'
+import cronjobRoutes from './modules/cronjob'
+import databaseRoutes from './modules/database'
 import logRoutes from './modules/log'
+import nodeRoutes from './modules/node'
 import settingRoutes from './modules/setting'
 import { setupGuard } from './guard'
 
@@ -31,7 +36,12 @@ const routes: RouteRecordRaw[] = [
       ...websiteRoutes,
       ...hostRoutes,
       ...terminalRoutes,
+      ...backupRoutes,
+      ...containerRoutes,
+      ...cronjobRoutes,
+      ...databaseRoutes,
       ...logRoutes,
+      ...nodeRoutes,
       ...settingRoutes,
     ],
   },

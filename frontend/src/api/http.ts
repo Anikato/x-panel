@@ -10,13 +10,22 @@ const http = axios.create({
   },
 })
 
-// 请求拦截器：自动附加 JWT Token
+// 请求拦截器：自动附加 JWT Token + 节点 ID
 http.interceptors.request.use(
   (config) => {
     const token = sessionStorage.getItem('token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    try {
+      const globalRaw = localStorage.getItem('global')
+      if (globalRaw) {
+        const globalState = JSON.parse(globalRaw)
+        if (globalState.currentNodeID) {
+          config.headers['X-Node-ID'] = String(globalState.currentNodeID)
+        }
+      }
+    } catch { /* ignore */ }
     return config
   },
   (error) => Promise.reject(error),

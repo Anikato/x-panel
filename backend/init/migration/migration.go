@@ -18,6 +18,13 @@ func Init() {
 		&model.DnsAccount{},
 		&model.Certificate{},
 		&model.Website{},
+		&model.Cronjob{},
+		&model.CronjobRecord{},
+		&model.DatabaseServer{},
+		&model.DatabaseInstance{},
+		&model.BackupAccount{},
+		&model.BackupRecord{},
+		&model.Node{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
@@ -40,6 +47,7 @@ func initDefaultSettings() {
 		{Key: "SSLDir", Value: ""},
 		{Key: "UpgradeURL", Value: ""},
 		{Key: "GitHubToken", Value: ""},
+		{Key: "AgentToken", Value: ""},
 	}
 
 	for _, s := range defaults {

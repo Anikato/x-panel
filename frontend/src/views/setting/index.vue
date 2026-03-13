@@ -193,6 +193,42 @@
       </el-form>
     </el-card>
 
+    <!-- Agent 节点设置 -->
+    <el-card class="setting-card">
+      <template #header>
+        <div class="card-header">
+          <div class="card-header-title">
+            <el-icon><Connection /></el-icon>
+            <span>{{ t('setting.agentSetting') }}</span>
+          </div>
+        </div>
+      </template>
+      <el-form label-width="140px" style="max-width: 600px">
+        <el-form-item :label="t('setting.agentToken')">
+          <div style="display: flex; gap: 8px; width: 100%">
+            <el-input
+              v-model="agentTokenForm.token"
+              :placeholder="t('setting.agentTokenPlaceholder')"
+              show-password
+              clearable
+              style="flex: 1"
+            />
+            <el-button @click="generateAgentToken">{{ t('setting.generateToken') }}</el-button>
+          </div>
+          <div style="margin-top: 4px">
+            <el-text type="info" size="small">
+              {{ t('setting.agentTokenHint') }}
+            </el-text>
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="savingAgentToken" @click="handleSaveAgentToken">
+            {{ t('setting.save') }}
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <!-- 用户名与密码 -->
     <el-card class="setting-card">
       <template #header>
@@ -257,6 +293,10 @@ const form = reactive({ panelName: 'X-Panel', sessionTimeout: 86400, securityEnt
 // 端口设置
 const savingPort = ref(false)
 const portForm = reactive({ port: 7777 })
+
+// Agent Token
+const savingAgentToken = ref(false)
+const agentTokenForm = reactive({ token: '' })
 
 // 用户名与密码
 const savingUserName = ref(false)
@@ -377,6 +417,7 @@ const fetchSettings = async () => {
       githubToken.value = res.data.githubToken || ''
       portForm.port = parseInt(res.data.serverPort) || 7777
       accountForm.userName = res.data.userName || 'admin'
+      agentTokenForm.token = res.data.agentToken || ''
     }
   } catch { /* */ } finally { loading.value = false }
 }
@@ -399,6 +440,25 @@ const handleSavePort = async () => {
     await updatePort({ port: String(portForm.port) })
     ElMessage.success(t('setting.portChangedSuccess'))
   } catch { /* */ } finally { savingPort.value = false }
+}
+
+// 生成随机 Agent Token
+const generateAgentToken = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let token = ''
+  for (let i = 0; i < 32; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  agentTokenForm.token = token
+}
+
+// 保存 Agent Token
+const handleSaveAgentToken = async () => {
+  savingAgentToken.value = true
+  try {
+    await updateSetting({ key: 'AgentToken', value: agentTokenForm.token })
+    ElMessage.success(t('commons.success'))
+  } catch { /* */ } finally { savingAgentToken.value = false }
 }
 
 // 保存用户名

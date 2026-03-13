@@ -4,6 +4,73 @@
 
 ---
 
+## 2026-03-13 — Session #27：六大功能模块全量实现
+
+### 完成内容
+
+#### Phase 1：登录防暴力破解
+- [x] `utils/captcha/captcha.go`：基于 base64Captcha 生成图片验证码
+- [x] `init/auth/ip_tracker.go`：内存 IP 失败计数器，3 次阈值 + 30 分钟过期
+- [x] `global.IPTracker` 全局实例
+- [x] Auth API 增加验证码校验逻辑 + `GET /auth/captcha` 接口
+- [x] 前端登录页动态显示验证码输入框
+
+#### Phase 2：计划任务管理
+- [x] `robfig/cron/v3` 集成，`global.CRON` 全局调度器
+- [x] Cronjob + CronjobRecord 模型，标准四层 CRUD
+- [x] 支持 shell / curl / website / database / directory 五种任务类型
+- [x] 手动触发 (HandleOnce)、启停状态切换、执行记录查看
+- [x] 前端 views/cronjob 完整管理界面
+
+#### Phase 3：数据库管理
+- [x] MySQL (`go-sql-driver/mysql`) + PostgreSQL (`lib/pq`) 驱动
+- [x] DatabaseServer + DatabaseInstance 模型
+- [x] utils/database/ 封装连接、CRUD、备份恢复 (mysqldump/pg_dump)
+- [x] 同步远程数据库列表功能
+- [x] 前端 views/database 服务器管理 + 库管理界面
+
+#### Phase 4：容器管理
+- [x] Docker SDK (`docker/docker`) 集成，支持容器/镜像/网络/卷完整 CRUD
+- [x] Compose 管理（基于 docker compose CLI）
+- [x] 容器启停重启、日志查看、镜像拉取删除
+- [x] 前端 views/container Tab 式管理界面
+
+#### Phase 5：备份系统
+- [x] BackupAccount + BackupRecord 模型
+- [x] utils/cloud_storage/ 统一接口：Local / S3 / SFTP / WebDAV 四种后端
+- [x] 网站备份(tar.gz) / 数据库备份(mysqldump/pg_dump) / 目录备份(tar.gz)
+- [x] 异步备份任务，自动写入备份记录
+- [x] 前端 views/backup 账户管理 + 备份创建 + 记录查看
+
+#### Phase 6：面板集群 (Agent 模式)
+- [x] Node 模型 + CRUD + 连接测试
+- [x] `middleware/node_proxy.go`：根据 X-Node-ID header 转发请求到 Agent
+- [x] `middleware/agent_token.go`：Agent 端 Token 认证
+- [x] 60 秒心跳定时检测节点在线状态
+- [x] 前端全局 store 增加 currentNodeID，HTTP 拦截器自动附加
+- [x] Header 节点切换下拉框 + views/node 节点管理页
+
+### 关键决策
+- 验证码阈值 3 次（而非 1Panel 的 1 次），平衡安全性和体验
+- 容器管理不依赖 Model，数据直接来自 Docker API
+- 备份系统通过统一 CloudStorageClient 接口解耦存储后端
+- 集群通过 HTTP API Proxy 实现，Agent 复用完整 X-Panel 实例
+
+### 新增依赖
+- `github.com/mojocn/base64Captcha` (验证码)
+- `github.com/robfig/cron/v3` (定时任务)
+- `github.com/go-sql-driver/mysql` + `github.com/lib/pq` (数据库)
+- `github.com/docker/docker` + `github.com/docker/go-connections` (容器)
+- `github.com/aws/aws-sdk-go-v2` (S3) + `github.com/pkg/sftp` (SFTP) + `github.com/studio-b12/gowebdav` (WebDAV)
+
+### 下一步计划
+- 前端构建验证 + 集成测试
+- 计划任务与备份系统联动（cronjob type=website/database/directory 触发备份）
+- 容器终端 (docker exec WebSocket)
+- 节点监控数据聚合展示
+
+---
+
 ## 2026-03-09 — Session #26：终端 vim 修复 + 首页美化运维按钮 + SSH 配置编辑
 
 ### 完成内容

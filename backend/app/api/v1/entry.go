@@ -19,6 +19,11 @@ type ApiGroup struct {
 	NginxAPI
 	UpgradeAPI
 	WebsiteAPI
+	CronjobAPI
+	DatabaseAPI
+	ContainerAPI
+	BackupAPI
+	NodeAPI
 }
 
 // ApiGroupApp 全局 API 实例

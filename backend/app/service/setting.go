@@ -46,6 +46,7 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		MFAStatus:        settingMap["MFAStatus"],
 		GitHubToken:      settingMap["GitHubToken"],
 		ServerPort:       global.CONF.System.Port,
+		AgentToken:       settingMap["AgentToken"],
 	}, nil
 }
 
@@ -55,7 +56,7 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 		"Language": true, "SessionTimeout": true,
 		"PanelName": true, "Theme": true,
 		"SecurityEntrance": true, "GitHubToken": true,
-		"UserName": true,
+		"UserName": true, "AgentToken": true,
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)

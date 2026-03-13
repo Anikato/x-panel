@@ -69,6 +69,7 @@ CUSTOM_PORT=""
 CUSTOM_PATH=""
 ENTRANCE=""
 ENABLE_SSL=true
+AGENT_TOKEN=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -90,6 +91,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --entrance|-e)
             ENTRANCE="$2"
+            shift 2
+            ;;
+        --agent-token)
+            AGENT_TOKEN="$2"
             shift 2
             ;;
         --ssl)
@@ -121,6 +126,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --ssl                 启用 HTTPS 自签证书 (默认)"
             echo "  --no-ssl              禁用 HTTPS，使用 HTTP"
             echo "  --version, -v <版本>  安装指定版本 (如 v1.0.0)"
+            echo "  --agent-token <TOKEN> 设置 Agent Token（用于被主面板管理）"
             echo "  --token, -t <TOKEN>   GitHub Token（私有仓库）"
             echo "  --uninstall           卸载 X-Panel"
             echo "  --yes, -y             跳过确认提示"
@@ -672,6 +678,12 @@ fi
 if [ "$SSL_ENABLED" = true ]; then
 echo -e "  ${YELLOW}  (自签名证书，浏览器会提示不安全，点击继续访问即可)${NC}"
 fi
+if [ -n "$AGENT_TOKEN" ]; then
+echo ""
+echo -e "  ${BOLD}Agent 模式:${NC} ${GREEN}已启用${NC}"
+echo -e "  ${BOLD}Agent Token:${NC} ${AGENT_TOKEN}"
+echo -e "  ${YELLOW}  在主面板中添加节点时，填写本机地址 ${SERVER_IP}:${PORT} 和上述 Token${NC}"
+fi
 echo ""
 echo -e "  ${BOLD}常用命令:${NC}"
 echo "    systemctl start $SERVICE_NAME     # 启动"
@@ -695,18 +707,29 @@ echo ""
 
 # ==================== 安全入口写入数据库 ====================
 # 等服务启动后写入安全入口（SQLite 数据库在服务首次启动时创建）
-if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
+if { [ -n "$ENTRANCE" ] || [ -n "$AGENT_TOKEN" ]; } && [ "$IS_UPGRADE" = false ]; then
     sleep 3  # 等待服务初始化数据库
     DB_PATH="$INSTALL_DIR/data/db/xpanel.db"
     if [ "$SQLITE3_AVAILABLE" = true ] && command -v sqlite3 &>/dev/null && [ -f "$DB_PATH" ]; then
-        sqlite3 "$DB_PATH" "UPDATE settings SET value='${ENTRANCE}' WHERE key='SecurityEntrance';" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            log_info "安全入口已配置: /${ENTRANCE}"
-        else
-            log_warn "安全入口写入失败，请在面板设置中手动配置"
+        if [ -n "$ENTRANCE" ]; then
+            sqlite3 "$DB_PATH" "UPDATE settings SET value='${ENTRANCE}' WHERE key='SecurityEntrance';" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                log_info "安全入口已配置: /${ENTRANCE}"
+            else
+                log_warn "安全入口写入失败，请在面板设置中手动配置"
+            fi
+        fi
+        if [ -n "$AGENT_TOKEN" ]; then
+            sqlite3 "$DB_PATH" "UPDATE settings SET value='${AGENT_TOKEN}' WHERE key='AgentToken';" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                log_info "Agent Token 已配置 ✓"
+            else
+                log_warn "Agent Token 写入失败，请在面板设置中手动配置"
+            fi
         fi
     else
-        log_warn "sqlite3 不可用或数据库未创建，安全入口需在面板设置中手动配置"
-        log_info "面板启动后，进入 设置 → 安全入口 中配置"
+        log_warn "sqlite3 不可用或数据库未创建"
+        [ -n "$ENTRANCE" ] && log_info "安全入口需在面板设置中手动配置"
+        [ -n "$AGENT_TOKEN" ] && log_info "Agent Token 需在面板设置中手动配置"
     fi
 fi

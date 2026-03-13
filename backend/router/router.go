@@ -30,6 +30,7 @@ func Setup(mode string) *gin.Engine {
 		publicGroup.GET("/auth/is-init", api.CheckIsInitialized)
 		publicGroup.POST("/auth/init", api.InitUser)
 		publicGroup.POST("/auth/login", api.Login)
+		publicGroup.GET("/auth/captcha", api.GetCaptcha)
 
 		// 版本信息（公开，无需认证）
 		publicGroup.GET("/version", func(c *gin.Context) {
@@ -43,6 +44,7 @@ func Setup(mode string) *gin.Engine {
 	// 私有路由
 	privateGroup := r.Group("/api/v1")
 	privateGroup.Use(middleware.JWTAuth())
+	privateGroup.Use(middleware.NodeProxy())
 	privateGroup.Use(middleware.OperationLog())
 	{
 		// 认证
@@ -187,6 +189,63 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nginx/conf-files", api.ListNginxConfFiles)
 		privateGroup.POST("/nginx/conf-file", api.GetNginxConfFile)
 		privateGroup.POST("/nginx/conf-file/save", api.SaveNginxConfFile)
+
+		// 计划任务
+		privateGroup.POST("/cronjobs", api.CreateCronjob)
+		privateGroup.POST("/cronjobs/update", api.UpdateCronjob)
+		privateGroup.POST("/cronjobs/del", api.DeleteCronjob)
+		privateGroup.POST("/cronjobs/search", api.SearchCronjob)
+		privateGroup.POST("/cronjobs/detail", api.GetCronjob)
+		privateGroup.POST("/cronjobs/status", api.UpdateCronjobStatus)
+		privateGroup.POST("/cronjobs/handle-once", api.HandleOnceCronjob)
+		privateGroup.POST("/cronjobs/records", api.SearchCronjobRecords)
+
+		// 数据库管理
+		privateGroup.POST("/databases/servers", api.CreateDatabaseServer)
+		privateGroup.POST("/databases/servers/update", api.UpdateDatabaseServer)
+		privateGroup.POST("/databases/servers/del", api.DeleteDatabaseServer)
+		privateGroup.POST("/databases/servers/search", api.SearchDatabaseServer)
+		privateGroup.POST("/databases/servers/test", api.TestDatabaseConnection)
+		privateGroup.POST("/databases/instances", api.CreateDatabaseInstance)
+		privateGroup.POST("/databases/instances/del", api.DeleteDatabaseInstance)
+		privateGroup.POST("/databases/instances/search", api.SearchDatabaseInstance)
+		privateGroup.POST("/databases/instances/sync", api.SyncDatabaseInstances)
+
+		// 节点管理
+		privateGroup.GET("/nodes", api.ListNodes)
+		privateGroup.POST("/nodes", api.CreateNode)
+		privateGroup.POST("/nodes/update", api.UpdateNode)
+		privateGroup.POST("/nodes/del", api.DeleteNode)
+		privateGroup.POST("/nodes/test", api.TestNodeConnection)
+
+		// 备份管理
+		privateGroup.GET("/backup/accounts", api.ListBackupAccounts)
+		privateGroup.POST("/backup/accounts", api.CreateBackupAccount)
+		privateGroup.POST("/backup/accounts/update", api.UpdateBackupAccount)
+		privateGroup.POST("/backup/accounts/del", api.DeleteBackupAccount)
+		privateGroup.POST("/backup", api.CreateBackup)
+		privateGroup.POST("/backup/records/search", api.SearchBackupRecords)
+		privateGroup.POST("/backup/records/del", api.DeleteBackupRecord)
+
+		// 容器管理
+		privateGroup.GET("/containers/docker/status", api.DockerStatus)
+		privateGroup.POST("/containers/search", api.ListContainers)
+		privateGroup.POST("/containers", api.CreateContainer)
+		privateGroup.POST("/containers/operate", api.OperateContainer)
+		privateGroup.POST("/containers/logs", api.ContainerLogs)
+		privateGroup.POST("/containers/del", api.RemoveContainer)
+		privateGroup.GET("/containers/image", api.ListImages)
+		privateGroup.POST("/containers/image/pull", api.PullImage)
+		privateGroup.POST("/containers/image/del", api.RemoveImage)
+		privateGroup.GET("/containers/network", api.ListNetworks)
+		privateGroup.POST("/containers/network", api.CreateNetwork)
+		privateGroup.POST("/containers/network/del", api.RemoveNetwork)
+		privateGroup.GET("/containers/volume", api.ListVolumes)
+		privateGroup.POST("/containers/volume", api.CreateVolume)
+		privateGroup.POST("/containers/volume/del", api.RemoveVolume)
+		privateGroup.GET("/containers/compose", api.ListCompose)
+		privateGroup.POST("/containers/compose", api.CreateCompose)
+		privateGroup.POST("/containers/compose/operate", api.OperateCompose)
 
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)

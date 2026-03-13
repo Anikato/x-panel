@@ -6,6 +6,7 @@ const (
 	ErrInvalidParams   = "ErrInvalidParams"
 	ErrRecordNotFound  = "ErrRecordNotFound"
 	ErrRecordExist     = "ErrRecordExist"
+	ErrCaptchaInvalid  = "ErrCaptchaInvalid"
 	ErrAuth            = "ErrAuth"
 	ErrTokenInvalid    = "ErrTokenInvalid"
 	ErrTokenExpired    = "ErrTokenExpired"

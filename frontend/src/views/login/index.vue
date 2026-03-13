@@ -34,6 +34,21 @@
             :placeholder="t('login.passwordPlaceholder')"
           />
         </el-form-item>
+        <el-form-item v-if="needCaptcha" prop="captcha">
+          <div class="captcha-row">
+            <el-input
+              v-model="form.captcha"
+              :placeholder="t('login.captchaPlaceholder')"
+              class="captcha-input"
+            />
+            <img
+              v-if="captchaImage"
+              :src="captchaImage"
+              class="captcha-image"
+              @click="loadCaptcha"
+            />
+          </div>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin">
             {{ t('login.login') }}
@@ -50,7 +65,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { login, checkIsInit, getLoginSetting } from '@/api/modules/auth'
+import { login, checkIsInit, getLoginSetting, getCaptcha } from '@/api/modules/auth'
 import { useUserStore } from '@/store/modules/user'
 import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
@@ -65,7 +80,11 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const panelName = ref('X-Panel')
 
-const form = reactive({ name: '', password: '' })
+const needCaptcha = ref(false)
+const captchaImage = ref('')
+const captchaID = ref('')
+
+const form = reactive({ name: '', password: '', captcha: '' })
 
 const rules: FormRules = {
   name: [{ required: true, message: () => t('login.nameRequired'), trigger: 'blur' }],
@@ -81,18 +100,51 @@ onMounted(async () => {
   } catch { /* backend not ready */ }
 })
 
+const loadCaptcha = async () => {
+  try {
+    const res: any = await getCaptcha()
+    captchaID.value = res.data.captchaID
+    captchaImage.value = res.data.imageData
+  } catch { /* ignore */ }
+}
+
 const handleLogin = async () => {
   if (!formRef.value) return
   await formRef.value.validate()
   loading.value = true
   try {
-    const res: any = await login({ name: form.name, password: form.password })
+    const payload: any = { name: form.name, password: form.password }
+    if (needCaptcha.value) {
+      payload.captchaID = captchaID.value
+      payload.captcha = form.captcha
+    }
+    const res: any = await login(payload)
+    if (res.data.needCaptcha && !res.data.token) {
+      needCaptcha.value = true
+      form.captcha = ''
+      await loadCaptcha()
+      ElMessage.warning(t('login.captchaRequired'))
+      return
+    }
+    if (!res.data.token) {
+      ElMessage.error(t('login.loginFailed'))
+      if (needCaptcha.value) {
+        form.captcha = ''
+        await loadCaptcha()
+      }
+      return
+    }
     userStore.setToken(res.data.token)
     userStore.setName(res.data.name)
     globalStore.setLogin(true)
     ElMessage.success(t('commons.success'))
     router.push((route.query.redirect as string) || '/home')
-  } catch { /* interceptor handles */ } finally { loading.value = false }
+  } catch {
+    if (needCaptcha.value) {
+      form.captcha = ''
+      await loadCaptcha()
+    }
+  } finally { loading.value = false }
 }
 </script>
 
@@ -190,6 +242,24 @@ const handleLogin = async () => {
   &:hover {
     background: linear-gradient(135deg, #06b6d4, #22d3ee);
     box-shadow: 0 0 24px rgba(34, 211, 238, 0.25);
+  }
+}
+
+.captcha-row {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  align-items: center;
+
+  .captcha-input {
+    flex: 1;
+  }
+
+  .captcha-image {
+    height: 44px;
+    border-radius: var(--xp-radius);
+    cursor: pointer;
+    border: 1px solid rgba(34, 211, 238, 0.15);
   }
 }
 

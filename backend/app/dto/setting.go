@@ -11,6 +11,7 @@ type SettingInfo struct {
 	MFAStatus        string `json:"mfaStatus"`
 	GitHubToken      string `json:"githubToken"`
 	ServerPort       string `json:"serverPort"`
+	AgentToken       string `json:"agentToken"`
 }
 
 // SettingUpdate 设置更新请求

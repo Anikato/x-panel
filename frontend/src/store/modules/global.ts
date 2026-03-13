@@ -8,6 +8,8 @@ export const useGlobalStore = defineStore('global', {
     panelName: 'X-Panel',
     theme: 'light' as 'light' | 'dark',
     version: '',
+    currentNodeID: 0,
+    currentNodeName: '',
   }),
   actions: {
     setLogin(status: boolean) {
@@ -24,6 +26,10 @@ export const useGlobalStore = defineStore('global', {
     },
     setVersion(ver: string) {
       this.version = ver
+    },
+    setCurrentNode(id: number, name: string) {
+      this.currentNodeID = id
+      this.currentNodeName = name
     },
   },
   persist: true,

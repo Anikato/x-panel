@@ -5,6 +5,9 @@ import (
 
 	"xpanel/global"
 	"xpanel/i18n"
+	"xpanel/app/service"
+	initAuth "xpanel/init/auth"
+	initCron "xpanel/init/cron"
 	initDB "xpanel/init/db"
 	initLog "xpanel/init/log"
 	"xpanel/init/migration"
@@ -29,7 +32,17 @@ func Start() {
 	// 5. i18n 国际化
 	i18n.Init()
 
-	// 6. 初始化路由并启动服务
+	// 6. 登录 IP 跟踪器
+	global.IPTracker = initAuth.NewIPTracker()
+
+	// 7. Cron 定时任务
+	initCron.Init()
+
+	// 8. 节点心跳
+	nodeService := service.NewINodeService()
+	nodeService.StartHeartbeat()
+
+	// 9. 初始化路由并启动服务
 	r := router.Setup(global.CONF.System.Mode)
 
 	port := global.CONF.System.Port

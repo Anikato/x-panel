@@ -6,6 +6,8 @@ import (
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
 	"xpanel/app/service"
+	"xpanel/global"
+	"xpanel/utils/captcha"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,19 +25,45 @@ func (a *AuthAPI) Login(c *gin.Context) {
 		return
 	}
 
+	clientIP := helper.GetClientIP(c)
+
+	if global.IPTracker != nil && global.IPTracker.NeedCaptcha(clientIP) {
+		if req.CaptchaID == "" || req.Captcha == "" || !captcha.VerifyCaptcha(req.CaptchaID, req.Captcha) {
+			helper.SuccessWithData(c, &dto.UserLoginInfo{NeedCaptcha: true})
+			return
+		}
+	}
+
 	info, err := authService.Login(req)
 	if err != nil {
-		service.SaveLoginLog(helper.GetClientIP(c), helper.GetUserAgent(c), err)
-		helper.HandleError(c, err)
+		if global.IPTracker != nil {
+			global.IPTracker.IncrementFail(clientIP)
+		}
+		needCaptcha := global.IPTracker != nil && global.IPTracker.NeedCaptcha(clientIP)
+		service.SaveLoginLog(clientIP, helper.GetUserAgent(c), err)
+		helper.SuccessWithData(c, &dto.UserLoginInfo{NeedCaptcha: needCaptcha})
 		return
 	}
 
-	// MFA 未完成时不记录登录成功日志
+	if global.IPTracker != nil {
+		global.IPTracker.Clear(clientIP)
+	}
+
 	if info.Token != "" {
-		service.SaveLoginLog(helper.GetClientIP(c), helper.GetUserAgent(c), nil)
+		service.SaveLoginLog(clientIP, helper.GetUserAgent(c), nil)
 	}
 
 	helper.SuccessWithData(c, info)
+}
+
+// GetCaptcha 获取验证码
+func (a *AuthAPI) GetCaptcha(c *gin.Context) {
+	id, imgData, err := captcha.CreateCaptcha()
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, dto.CaptchaResponse{CaptchaID: id, ImageData: imgData})
 }
 
 // InitUser 初始化用户（首次设置密码）

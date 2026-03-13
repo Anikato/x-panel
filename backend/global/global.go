@@ -5,17 +5,26 @@ import (
 	"path/filepath"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
+type ipTracker interface {
+	IncrementFail(ip string)
+	NeedCaptcha(ip string) bool
+	Clear(ip string)
+}
+
 var (
-	DB   *gorm.DB
-	LOG  *logrus.Logger
-	CONF ServerConfig
-	Vp   *viper.Viper
-	I18n *i18n.Localizer
+	DB        *gorm.DB
+	LOG       *logrus.Logger
+	CONF      ServerConfig
+	Vp        *viper.Viper
+	I18n      *i18n.Localizer
+	IPTracker ipTracker
+	CRON      *cron.Cron
 )
 
 // ServerConfig 服务器配置结构
