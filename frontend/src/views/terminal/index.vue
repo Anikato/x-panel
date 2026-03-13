@@ -22,7 +22,7 @@
         <el-button size="small" type="primary" plain @click="showCommandPalette = true">
           <el-icon><Search /></el-icon>
           {{ $t('terminal.quickCommand') }}
-          <span class="shortcut-hint">Ctrl+P</span>
+          <span class="shortcut-hint">Ctrl+Shift+P</span>
         </el-button>
         <el-popover placement="bottom" :width="360" trigger="click">
           <template #reference>
@@ -319,9 +319,9 @@ const executePaletteItem = (cmd: any) => {
   executeCommand(cmd.command)
 }
 
-// 全局快捷键 Ctrl+P
+// 全局快捷键 Ctrl+Shift+P（避免与 vim/tmux 等程序的 Ctrl+P 冲突）
 const handleGlobalKeydown = (e: KeyboardEvent) => {
-  if (e.ctrlKey && e.key.toLowerCase() === 'p' && currentView.value === 'terminal') {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p' && currentView.value === 'terminal') {
     e.preventDefault()
     showCommandPalette.value = !showCommandPalette.value
   }
