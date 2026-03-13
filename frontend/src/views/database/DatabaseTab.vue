@@ -170,7 +170,7 @@ const loadServers = async () => {
 const loadInstancesForServer = async (server: any) => {
   server._loading = true
   try {
-    const res: any = await searchDatabaseInstance({ page: 1, pageSize: 1000, serverID: server.id })
+    const res: any = await searchDatabaseInstance({ page: 1, pageSize: 100, serverID: server.id })
     server._instances = res.data.items || []
   } finally { server._loading = false }
 }
