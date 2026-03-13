@@ -34,3 +34,8 @@ export const uninstallNginx = () => {
 export const listNginxVersions = () => {
   return http.get('/nginx/versions')
 }
+
+// --- 设置 Nginx 开机自启 ---
+export const setNginxAutoStart = (enable: boolean) => {
+  return http.post('/nginx/autostart', { enable })
+}

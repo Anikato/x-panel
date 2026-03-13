@@ -296,7 +296,13 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 		_ = global.Vp.WriteConfig()
 	}
 
-	// Step 7: 完成
+	// Step 7: 创建 systemd service 文件
+	s.setProgress("install", "创建 systemd 服务...", 95)
+	if err := EnsureNginxServiceFile(installDir); err != nil {
+		global.LOG.Warnf("Create systemd service failed: %v", err)
+	}
+
+	// Step 8: 完成
 	s.setProgress("done", fmt.Sprintf("Nginx %s 安装成功", version), 100)
 	global.LOG.Infof("Nginx %s installed at %s (pre-compiled)", version, installDir)
 }

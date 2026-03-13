@@ -12,12 +12,26 @@
         </el-tag>
       </div>
       <div class="header-right">
+        <el-radio-group v-model="configMode" size="small" class="mode-switcher" @change="handleModeSwitch">
+          <el-radio-button value="managed">{{ $t('website.managedMode') }}</el-radio-button>
+          <el-radio-button value="source">{{ $t('website.sourceMode') }}</el-radio-button>
+        </el-radio-group>
         <el-button v-if="detail.status === 'stopped'" type="success" size="small" @click="handleEnable">{{ $t('website.enable') }}</el-button>
         <el-button v-else type="warning" size="small" @click="handleDisable">{{ $t('website.disable') }}</el-button>
       </div>
     </div>
 
-    <el-tabs v-model="activeTab" class="config-tabs">
+    <!-- 源码模式提示 -->
+    <el-alert
+      v-if="configMode === 'source'"
+      :title="$t('website.sourceModeHint')"
+      type="info"
+      show-icon
+      :closable="false"
+      class="mode-alert"
+    />
+
+    <el-tabs v-if="configMode === 'managed'" v-model="activeTab" class="config-tabs">
       <!-- 基本设置 -->
       <el-tab-pane :label="$t('website.basicSetting')" name="basic">
         <el-form :model="detail" label-width="120px" class="config-form">
@@ -84,6 +98,10 @@
                 <el-option :label="$t('website.httpConfigHTTPSOnly')" value="httpsOnly" />
                 <el-option :label="$t('website.httpConfigHTTPOnly')" value="httpOnly" />
               </el-select>
+            </el-form-item>
+            <el-form-item label="HTTP/2">
+              <el-switch v-model="detail.http2Enable" />
+              <div class="form-tip">{{ $t('website.http2Hint') }}</div>
             </el-form-item>
             <el-form-item :label="$t('website.hsts')">
               <el-switch v-model="detail.hsts" />
@@ -232,6 +250,94 @@
         </div>
       </el-tab-pane>
 
+      <!-- 日志分析 -->
+      <el-tab-pane :label="$t('website.logAnalysis')" name="logAnalysis">
+        <div class="log-analysis-section">
+          <div class="analysis-toolbar">
+            <el-radio-group v-model="analysisDays" size="small" @change="loadLogAnalysis">
+              <el-radio-button :value="1">{{ $t('website.today') }}</el-radio-button>
+              <el-radio-button :value="7">{{ $t('website.last7days') }}</el-radio-button>
+              <el-radio-button :value="30">{{ $t('website.last30days') }}</el-radio-button>
+            </el-radio-group>
+            <el-button size="small" @click="loadLogAnalysis" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
+          </div>
+
+          <!-- 概览卡片 -->
+          <div v-if="logAnalysisData" class="analysis-overview">
+            <el-row :gutter="16">
+              <el-col :span="6">
+                <el-card shadow="never" class="stat-card">
+                  <div class="stat-value">{{ formatNumber(logAnalysisData.totalRequests) }}</div>
+                  <div class="stat-label">{{ $t('website.totalRequests') }}</div>
+                </el-card>
+              </el-col>
+              <el-col :span="6">
+                <el-card shadow="never" class="stat-card">
+                  <div class="stat-value">{{ formatNumber(logAnalysisData.uniqueIPs) }}</div>
+                  <div class="stat-label">{{ $t('website.uniqueVisitors') }}</div>
+                </el-card>
+              </el-col>
+              <el-col :span="6">
+                <el-card shadow="never" class="stat-card">
+                  <div class="stat-value">{{ formatBytes(logAnalysisData.totalBytes) }}</div>
+                  <div class="stat-label">{{ $t('website.totalTraffic') }}</div>
+                </el-card>
+              </el-col>
+              <el-col :span="6">
+                <el-card shadow="never" class="stat-card" :class="{ 'error-card': logAnalysisData.errorRate > 5 }">
+                  <div class="stat-value">{{ logAnalysisData.errorRate.toFixed(1) }}%</div>
+                  <div class="stat-label">{{ $t('website.errorRate') }}</div>
+                </el-card>
+              </el-col>
+            </el-row>
+          </div>
+
+          <!-- 图表 -->
+          <div v-if="logAnalysisData" class="analysis-charts">
+            <el-row :gutter="16">
+              <el-col :span="16">
+                <el-card shadow="never">
+                  <template #header>{{ $t('website.requestTrend') }}</template>
+                  <div ref="trendChartRef" class="chart-container" />
+                </el-card>
+              </el-col>
+              <el-col :span="8">
+                <el-card shadow="never">
+                  <template #header>{{ $t('website.statusCodeDist') }}</template>
+                  <div ref="statusChartRef" class="chart-container" />
+                </el-card>
+              </el-col>
+            </el-row>
+          </div>
+
+          <!-- Top 排行 -->
+          <div v-if="logAnalysisData" class="analysis-rankings">
+            <el-row :gutter="16">
+              <el-col :span="12">
+                <el-card shadow="never">
+                  <template #header>{{ $t('website.topURLs') }}</template>
+                  <el-table :data="logAnalysisData.topUrls || []" size="small" stripe>
+                    <el-table-column label="URL" prop="name" show-overflow-tooltip />
+                    <el-table-column :label="$t('website.visits')" prop="count" width="100" align="right" />
+                  </el-table>
+                </el-card>
+              </el-col>
+              <el-col :span="12">
+                <el-card shadow="never">
+                  <template #header>{{ $t('website.topIPs') }}</template>
+                  <el-table :data="logAnalysisData.topIps || []" size="small" stripe>
+                    <el-table-column label="IP" prop="name" />
+                    <el-table-column :label="$t('website.visits')" prop="count" width="100" align="right" />
+                  </el-table>
+                </el-card>
+              </el-col>
+            </el-row>
+          </div>
+
+          <el-empty v-if="logAnalysisData && logAnalysisData.totalRequests === 0" :description="$t('website.noLogData')" />
+        </div>
+      </el-tab-pane>
+
       <!-- 自定义配置 -->
       <el-tab-pane :label="$t('website.customSetting')" name="custom">
         <el-form :model="detail" label-width="0" class="config-form">
@@ -243,7 +349,7 @@
         </el-form>
       </el-tab-pane>
 
-      <!-- 配置预览 -->
+      <!-- 配置预览 (托管模式) -->
       <el-tab-pane :label="$t('website.configPreview')" name="preview">
         <div class="config-preview">
           <el-button size="small" style="margin-bottom: 8px" @click="loadDetail">{{ $t('commons.refresh') }}</el-button>
@@ -251,17 +357,36 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 源码编辑模式 -->
+    <div v-if="configMode === 'source'" class="source-editor-section">
+      <div class="source-editor-toolbar">
+        <span class="source-file-label">{{ detail.alias }}.conf</span>
+        <div class="source-actions">
+          <el-button size="small" @click="loadSourceConf">{{ $t('commons.refresh') }}</el-button>
+          <el-button size="small" type="primary" @click="handleSaveSource" :loading="sourceSaving">{{ $t('commons.save') }}</el-button>
+        </div>
+      </div>
+      <div ref="monacoContainerRef" class="source-editor-container" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Plus } from '@element-plus/icons-vue'
-import { getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog } from '@/api/modules/website'
+import { getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog, getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog } from '@/api/modules/website'
 import { searchCertificate } from '@/api/modules/ssl'
+import * as monaco from 'monaco-editor'
+import * as echarts from 'echarts/core'
+import { BarChart, PieChart, LineChart } from 'echarts/charts'
+import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([BarChart, PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
 const route = useRoute()
 const router = useRouter()
@@ -274,9 +399,24 @@ const detail = ref<any>({})
 const certList = ref<any[]>([])
 const redirects = ref<any[]>([])
 
+// Config mode
+const configMode = ref<'managed' | 'source'>('managed')
+const sourceSaving = ref(false)
+const monacoContainerRef = ref<HTMLElement>()
+let monacoEditor: monaco.editor.IStandaloneCodeEditor | null = null
+
 // 日志
 const logType = ref('access')
 const logContent = ref<string | null>(null)
+
+// 日志分析
+const analysisDays = ref(1)
+const analysisLoading = ref(false)
+const logAnalysisData = ref<any>(null)
+const trendChartRef = ref<HTMLElement>()
+const statusChartRef = ref<HTMLElement>()
+let trendChart: echarts.ECharts | null = null
+let statusChart: echarts.ECharts | null = null
 
 const siteId = Number(route.params.id)
 
@@ -291,12 +431,14 @@ const loadDetail = async () => {
   try {
     const res = await getWebsiteDetail(siteId)
     detail.value = res.data || {}
-    // 解析 redirects JSON
     try {
       redirects.value = detail.value.redirects ? JSON.parse(detail.value.redirects) : []
     } catch { redirects.value = [] }
-  } catch { router.push('/website/websites') }
-  finally { loading.value = false }
+  } catch {
+    router.push('/website/websites')
+  } finally {
+    loading.value = false
+  }
 }
 
 const loadCerts = async () => {
@@ -350,9 +492,188 @@ const loadLog = async () => {
   } catch { logContent.value = '获取日志失败' }
 }
 
+// --- 日志分析 ---
+
+const loadLogAnalysis = async () => {
+  analysisLoading.value = true
+  try {
+    const res = await analyzeNginxLog(siteId, analysisDays.value)
+    logAnalysisData.value = res.data
+    await nextTick()
+    renderTrendChart()
+    renderStatusChart()
+  } catch { /* ignore */ }
+  finally { analysisLoading.value = false }
+}
+
+const renderTrendChart = () => {
+  if (!trendChartRef.value || !logAnalysisData.value) return
+  if (trendChart) trendChart.dispose()
+  trendChart = echarts.init(trendChartRef.value)
+
+  const data = analysisDays.value <= 1 ? logAnalysisData.value.hourlyStats : logAnalysisData.value.dailyStats
+  if (!data || !data.length) { trendChart.clear(); return }
+
+  trendChart.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map((p: any) => analysisDays.value <= 1 ? p.time.slice(11) : p.time.slice(5)),
+      axisLabel: { fontSize: 11 },
+    },
+    yAxis: [
+      { type: 'value', name: '请求数', axisLabel: { fontSize: 11 } },
+      { type: 'value', name: '流量', axisLabel: { fontSize: 11, formatter: (v: number) => formatBytes(v) } },
+    ],
+    series: [
+      { name: '请求数', type: 'bar', data: data.map((p: any) => p.requests), itemStyle: { color: '#409EFF' } },
+      { name: '流量', type: 'line', yAxisIndex: 1, data: data.map((p: any) => p.bytes), itemStyle: { color: '#67C23A' }, smooth: true },
+    ],
+  })
+}
+
+const renderStatusChart = () => {
+  if (!statusChartRef.value || !logAnalysisData.value) return
+  if (statusChart) statusChart.dispose()
+  statusChart = echarts.init(statusChartRef.value)
+
+  const codes = logAnalysisData.value.statusCodes || {}
+  const colorMap: Record<string, string> = { '2xx': '#67C23A', '3xx': '#409EFF', '4xx': '#E6A23C', '5xx': '#F56C6C' }
+  const data = Object.entries(codes).map(([name, value]) => ({
+    name,
+    value,
+    itemStyle: { color: colorMap[name] || '#909399' },
+  }))
+
+  if (!data.length) { statusChart.clear(); return }
+
+  statusChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      data,
+      label: { formatter: '{b}\n{d}%', fontSize: 12 },
+    }],
+  })
+}
+
+const formatNumber = (n: number) => {
+  if (!n) return '0'
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+  return n.toString()
+}
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0
+  let val = bytes
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++ }
+  return val.toFixed(i === 0 ? 0 : 1) + ' ' + units[i]
+}
+
+// --- 源码模式 ---
+
+const initMonacoEditor = (content: string) => {
+  if (monacoEditor) {
+    monacoEditor.setValue(content)
+    return
+  }
+  if (!monacoContainerRef.value) return
+  monacoEditor = monaco.editor.create(monacoContainerRef.value, {
+    value: content,
+    language: 'plaintext',
+    theme: 'vs-dark',
+    fontSize: 13,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    lineNumbers: 'on',
+    automaticLayout: true,
+    tabSize: 4,
+    wordWrap: 'on',
+  })
+}
+
+const disposeMonacoEditor = () => {
+  if (monacoEditor) {
+    monacoEditor.dispose()
+    monacoEditor = null
+  }
+}
+
+const loadSourceConf = async () => {
+  try {
+    const res = await getSiteConfContent(siteId)
+    const content = res.data || ''
+    await nextTick()
+    initMonacoEditor(content)
+  } catch { ElMessage.error('加载配置失败') }
+}
+
+const handleSaveSource = async () => {
+  if (!monacoEditor) return
+  const content = monacoEditor.getValue()
+  if (!content.trim()) { ElMessage.warning('配置内容不能为空'); return }
+  sourceSaving.value = true
+  try {
+    await saveSiteConfContent(siteId, content)
+    ElMessage.success(t('commons.success'))
+  } catch {}
+  finally { sourceSaving.value = false }
+}
+
+const handleModeSwitch = async (val: any) => {
+  const mode = val as string
+  if (mode === 'source') {
+    try {
+      await switchConfigMode(siteId, 'source')
+      await nextTick()
+      loadSourceConf()
+    } catch {
+      configMode.value = 'managed'
+    }
+  } else {
+    try {
+      await ElMessageBox.confirm(t('website.switchToManagedConfirm'), t('commons.tip'), { type: 'warning' })
+      await switchConfigMode(siteId, 'managed')
+      disposeMonacoEditor()
+      loadDetail()
+    } catch {
+      configMode.value = 'source'
+    }
+  }
+}
+
+watch(configMode, (val) => {
+  if (val !== 'source') {
+    disposeMonacoEditor()
+  }
+})
+
+watch(activeTab, (val) => {
+  if (val === 'logAnalysis' && !logAnalysisData.value) {
+    loadLogAnalysis()
+  }
+})
+
 onMounted(() => {
-  loadDetail()
+  loadDetail().then(() => {
+    configMode.value = detail.value.configMode === 'source' ? 'source' : 'managed'
+    if (configMode.value === 'source') {
+      nextTick(() => loadSourceConf())
+    }
+  })
   loadCerts()
+})
+
+onBeforeUnmount(() => {
+  disposeMonacoEditor()
+  if (trendChart) { trendChart.dispose(); trendChart = null }
+  if (statusChart) { statusChart.dispose(); statusChart = null }
 })
 </script>
 
@@ -462,5 +783,89 @@ onMounted(() => {
 
 .redirect-section {
   max-width: 900px;
+}
+
+.mode-switcher {
+  margin-right: 12px;
+}
+
+.mode-alert {
+  margin-bottom: 16px;
+}
+
+.source-editor-section {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 250px);
+  min-height: 400px;
+}
+
+.source-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  margin-bottom: 8px;
+
+  .source-file-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--xp-accent);
+    font-family: 'Fira Code', 'Consolas', monospace;
+  }
+
+  .source-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+.source-editor-container {
+  flex: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--xp-border-light);
+}
+
+.log-analysis-section {
+  .analysis-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .analysis-overview {
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    text-align: center;
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--xp-text-primary);
+      line-height: 1.2;
+    }
+    .stat-label {
+      font-size: 13px;
+      color: var(--xp-text-secondary);
+      margin-top: 4px;
+    }
+    &.error-card .stat-value { color: var(--el-color-danger); }
+  }
+
+  .analysis-charts {
+    margin-bottom: 16px;
+  }
+
+  .chart-container {
+    height: 300px;
+    width: 100%;
+  }
+
+  .analysis-rankings {
+    margin-bottom: 16px;
+  }
 }
 </style>

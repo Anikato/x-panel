@@ -27,6 +27,11 @@ type IWebsiteService interface {
 	GetNginxConfig(id uint) (string, error)
 	GetSiteLog(req dto.WebsiteLogReq) (string, error)
 
+	// Source-mode config editing
+	GetSiteConfContent(id uint) (string, error)
+	SaveSiteConfContent(id uint, content string) error
+	SwitchConfigMode(id uint, mode string) error
+
 	// Nginx config file management
 	GetMainConf() (string, error)
 	SaveMainConf(content string) error
@@ -119,6 +124,7 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.CertificateID = req.CertificateID
 	site.HttpConfig = req.HttpConfig
 	site.HSTS = req.HSTS
+	site.Http2Enable = req.Http2Enable
 	site.SSLProtocols = req.SSLProtocols
 	site.BasicAuth = req.BasicAuth
 	site.BasicUser = req.BasicUser
@@ -133,6 +139,9 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.CustomNginx = req.CustomNginx
 	site.DefaultServer = req.DefaultServer
 	site.Remark = req.Remark
+	if req.ConfigMode != "" {
+		site.ConfigMode = req.ConfigMode
+	}
 
 	// 处理 Basic Auth 密码
 	if req.BasicAuth && req.BasicPassword != "" {
@@ -147,8 +156,8 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
-	// 如果网站是运行中的，自动重新生成配置并 reload
-	if site.Status == "running" {
+	// 如果网站是运行中的且为托管模式，自动重新生成配置并 reload
+	if site.Status == "running" && site.ConfigMode != "source" {
 		if err := s.applyConfig(site); err != nil {
 			global.LOG.Warnf("Auto apply config failed for %s: %v", site.PrimaryDomain, err)
 			return buserr.WithDetail(constant.ErrWebsiteApplyConfig, err.Error(), err)
@@ -232,6 +241,7 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		CertificateID: site.CertificateID,
 		HttpConfig:    site.HttpConfig,
 		HSTS:          site.HSTS,
+		Http2Enable:   site.Http2Enable,
 		SSLProtocols:  site.SSLProtocols,
 		BasicAuth:     site.BasicAuth,
 		BasicUser:     site.BasicUser,
@@ -247,6 +257,7 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		CustomNginx:   site.CustomNginx,
 		DefaultServer: site.DefaultServer,
 		Remark:        site.Remark,
+		ConfigMode:    site.ConfigMode,
 	}
 
 	if site.CertificateID > 0 {
@@ -345,6 +356,84 @@ func (s *WebsiteService) GetSiteLog(req dto.WebsiteLogReq) (string, error) {
 		return "", err
 	}
 	return output, nil
+}
+
+// --- 源码模式配置编辑 ---
+
+func (s *WebsiteService) GetSiteConfContent(id uint) (string, error) {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return "", buserr.New(constant.ErrRecordNotFound)
+	}
+
+	confPath := GetSiteConfPath(site.Alias)
+	data, err := os.ReadFile(confPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			gen := NewNginxConfigGenerator()
+			return gen.Generate(site)
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (s *WebsiteService) SaveSiteConfContent(id uint, content string) error {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+
+	confPath := GetSiteConfPath(site.Alias)
+	backup, _ := os.ReadFile(confPath)
+
+	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write config failed: %v", err)
+	}
+
+	if err := s.testNginxConfig(); err != nil {
+		if backup != nil {
+			os.WriteFile(confPath, backup, 0644)
+		} else {
+			os.Remove(confPath)
+		}
+		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+	}
+
+	// If running, reload nginx
+	if site.Status == "running" {
+		s.reloadNginx()
+	}
+
+	// Switch to source mode
+	if site.ConfigMode != "source" {
+		site.ConfigMode = "source"
+		s.websiteRepo.Save(&site)
+	}
+
+	return nil
+}
+
+func (s *WebsiteService) SwitchConfigMode(id uint, mode string) error {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+
+	if mode != "managed" && mode != "source" {
+		return buserr.New(constant.ErrInvalidParams)
+	}
+
+	site.ConfigMode = mode
+	if err := s.websiteRepo.Save(&site); err != nil {
+		return err
+	}
+
+	// When switching back to managed, regenerate config
+	if mode == "managed" && site.Status == "running" {
+		return s.applyConfig(site)
+	}
+	return nil
 }
 
 // --- Nginx 配置文件管理 ---

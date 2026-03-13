@@ -486,6 +486,7 @@ export default {
     installConfirm: '确定要安装 Nginx {version} 吗？将从预编译仓库下载安装包。',
     uninstallConfirm: '确定要卸载 Nginx 吗？安装目录将被完全删除，此操作不可恢复。',
     // 配置测试
+    autoStart: '开机自启',
     testConfig: '测试配置',
     testSuccess: '配置测试通过',
     testFail: '配置测试失败',
@@ -539,6 +540,7 @@ export default {
     httpConfigHTTPSOnly: '仅 HTTPS',
     hsts: '启用 HSTS',
     hstsHint: '强制浏览器始终使用 HTTPS 访问',
+    http2Hint: '启用 HTTP/2 协议，提升并发性能（需要 Nginx 1.25.1+）',
     sslProtocols: 'SSL 协议',
     // 伪静态
     rewriteSetting: '伪静态',
@@ -586,6 +588,26 @@ export default {
     saveConfConfirm: '保存前会自动测试配置，测试不通过将自动回滚，确定保存？',
     confSaved: '配置已保存',
     noConfFiles: '暂无配置文件',
+    // 日志分析
+    logAnalysis: '日志分析',
+    today: '今天',
+    last7days: '近7天',
+    last30days: '近30天',
+    totalRequests: '总请求数',
+    uniqueVisitors: '独立访客 (UV)',
+    totalTraffic: '总流量',
+    errorRate: '错误率',
+    requestTrend: '请求趋势',
+    statusCodeDist: '状态码分布',
+    topURLs: '热门 URL',
+    topIPs: '热门 IP',
+    visits: '访问次数',
+    noLogData: '暂无日志数据',
+    // 双模式配置
+    managedMode: '托管模式',
+    sourceMode: '源码模式',
+    sourceModeHint: '源码编辑模式：直接编辑 Nginx 配置文件，保存时自动测试并重载。结构化设置不可用。',
+    switchToManagedConfirm: '切换回托管模式将根据结构化配置重新生成 Nginx 配置文件，源码修改将被覆盖，确定切换？',
   },
   ssl: {
     title: '证书管理',

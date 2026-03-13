@@ -19,6 +19,7 @@ type INginxService interface {
 	GetStatus() (*dto.NginxStatus, error)
 	Operate(req dto.NginxOperateReq) error
 	TestConfig() (*dto.NginxConfigTestResult, error)
+	SetAutoStart(enable bool) error
 }
 
 type NginxService struct{}
@@ -62,6 +63,9 @@ func (s *NginxService) GetStatus() (*dto.NginxStatus, error) {
 	if testResult != nil {
 		status.ConfigOK = testResult.Success
 	}
+
+	// 开机自启状态
+	status.AutoStart = s.isAutoStartEnabled()
 
 	return status, nil
 }
@@ -229,4 +233,65 @@ func getProcessStartTime(pid int) time.Time {
 		return time.Time{}
 	}
 	return info.ModTime()
+}
+
+const nginxServiceName = "xpanel-nginx"
+const nginxServicePath = "/etc/systemd/system/xpanel-nginx.service"
+
+// SetAutoStart 设置 Nginx 开机自启
+func (s *NginxService) SetAutoStart(enable bool) error {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return buserr.New(constant.ErrNginxNotInstalled)
+	}
+
+	if err := EnsureNginxServiceFile(nc.InstallDir); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, "create service file: "+err.Error(), err)
+	}
+
+	var args []string
+	if enable {
+		args = []string{"systemctl", "enable", nginxServiceName}
+	} else {
+		args = []string{"systemctl", "disable", nginxServiceName}
+	}
+	output, err := cmd.ExecWithOutput(args[0], args[1:]...)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer,
+			fmt.Sprintf("systemctl failed: %s %v", output, err), err)
+	}
+	global.LOG.Infof("Nginx autostart set to %v", enable)
+	return nil
+}
+
+func (s *NginxService) isAutoStartEnabled() bool {
+	output, _ := cmd.ExecWithOutput("systemctl", "is-enabled", nginxServiceName)
+	return strings.TrimSpace(output) == "enabled"
+}
+
+// EnsureNginxServiceFile 确保 systemd service 文件存在
+func EnsureNginxServiceFile(installDir string) error {
+	if _, err := os.Stat(nginxServicePath); err == nil {
+		return nil
+	}
+	content := fmt.Sprintf(`[Unit]
+Description=Nginx HTTP Server (X-Panel managed)
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=%s/logs/nginx.pid
+ExecStart=%s/sbin/nginx -p %s
+ExecReload=%s/sbin/nginx -p %s -s reload
+ExecStop=%s/sbin/nginx -p %s -s quit
+
+[Install]
+WantedBy=multi-user.target
+`, installDir, installDir, installDir, installDir, installDir, installDir, installDir)
+
+	if err := os.WriteFile(nginxServicePath, []byte(content), 0644); err != nil {
+		return err
+	}
+	_, _ = cmd.ExecWithOutput("systemctl", "daemon-reload")
+	return nil
 }

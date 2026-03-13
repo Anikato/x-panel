@@ -12,6 +12,11 @@ type NginxStatus struct {
 	InstallDir  string    `json:"installDir"`  // 安装目录
 	StartedAt   time.Time `json:"startedAt"`   // 启动时间
 	ConfigOK    bool      `json:"configOK"`    // 配置是否合法
+	AutoStart   bool      `json:"autoStart"`   // 是否开机自启
+}
+
+type NginxAutoStartReq struct {
+	Enable bool `json:"enable"`
 }
 
 // ---- Nginx 安装 ----

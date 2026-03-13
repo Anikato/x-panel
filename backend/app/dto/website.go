@@ -35,6 +35,7 @@ type WebsiteUpdate struct {
 	CertificateID uint   `json:"certificateID"`
 	HttpConfig    string `json:"httpConfig"`
 	HSTS          bool   `json:"hsts"`
+	Http2Enable   bool   `json:"http2Enable"`
 	SSLProtocols  string `json:"sslProtocols"`
 
 	// Security
@@ -62,6 +63,9 @@ type WebsiteUpdate struct {
 	CustomNginx   string `json:"customNginx"`
 	DefaultServer bool   `json:"defaultServer"`
 	Remark        string `json:"remark"`
+
+	// Config mode
+	ConfigMode string `json:"configMode"`
 }
 
 // --- 搜索 ---
@@ -105,6 +109,7 @@ type WebsiteDetail struct {
 	CertificateID uint   `json:"certificateID"`
 	HttpConfig    string `json:"httpConfig"`
 	HSTS          bool   `json:"hsts"`
+	Http2Enable   bool   `json:"http2Enable"`
 	SSLProtocols  string `json:"sslProtocols"`
 
 	BasicAuth     bool   `json:"basicAuth"`
@@ -127,6 +132,8 @@ type WebsiteDetail struct {
 	DefaultServer bool   `json:"defaultServer"`
 	Remark        string `json:"remark"`
 
+	ConfigMode string `json:"configMode"`
+
 	// 额外信息
 	CertificateDomain string `json:"certificateDomain"`
 	NginxConfig       string `json:"nginxConfig"`
@@ -138,6 +145,22 @@ type WebsiteLogReq struct {
 	ID   uint   `json:"id" binding:"required"`
 	Type string `json:"type" binding:"required,oneof=access error"`
 	Tail int    `json:"tail"`
+}
+
+// --- 源码模式配置编辑 ---
+
+type SiteConfContentReq struct {
+	ID uint `json:"id" binding:"required"`
+}
+
+type SaveSiteConfReq struct {
+	ID      uint   `json:"id" binding:"required"`
+	Content string `json:"content" binding:"required"`
+}
+
+type SwitchConfigModeReq struct {
+	ID   uint   `json:"id" binding:"required"`
+	Mode string `json:"mode" binding:"required,oneof=managed source"`
 }
 
 // --- Nginx 配置文件 ---

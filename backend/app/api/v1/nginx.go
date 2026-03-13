@@ -76,6 +76,19 @@ func (api *NginxAPI) UninstallNginx(c *gin.Context) {
 	helper.SuccessWithData(c, nil)
 }
 
+// SetNginxAutoStart 设置 Nginx 开机自启
+func (api *NginxAPI) SetNginxAutoStart(c *gin.Context) {
+	var req dto.NginxAutoStartReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := nginxService.SetAutoStart(req.Enable); err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, nil)
+}
+
 // ListNginxVersions 获取可用的 Nginx 预编译版本列表
 func (api *NginxAPI) ListNginxVersions(c *gin.Context) {
 	versions, err := nginxInstallService.ListVersions()

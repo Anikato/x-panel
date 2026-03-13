@@ -174,6 +174,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nginx/install/progress", api.GetInstallProgress)
 		privateGroup.POST("/nginx/uninstall", api.UninstallNginx)
 		privateGroup.GET("/nginx/versions", api.ListNginxVersions)
+		privateGroup.POST("/nginx/autostart", api.SetNginxAutoStart)
 
 		// Nginx 配置文件管理
 		privateGroup.GET("/nginx/conf", api.GetNginxMainConf)
@@ -192,6 +193,10 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/websites/disable", api.DisableWebsite)
 		privateGroup.POST("/websites/nginx-config", api.GetWebsiteNginxConfig)
 		privateGroup.POST("/websites/log", api.GetWebsiteLog)
+		privateGroup.POST("/websites/conf-content", api.GetSiteConfContent)
+		privateGroup.POST("/websites/conf-content/save", api.SaveSiteConfContent)
+		privateGroup.POST("/websites/config-mode", api.SwitchConfigMode)
+		privateGroup.POST("/websites/log-analysis", api.AnalyzeNginxLog)
 	}
 
 	// WebSocket

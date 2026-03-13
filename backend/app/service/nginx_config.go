@@ -113,6 +113,9 @@ func (g *NginxConfigGenerator) writeListenHTTPS(b *strings.Builder, site model.W
 }
 
 func (g *NginxConfigGenerator) writeSSLBlock(b *strings.Builder, site model.Website, certPath, keyPath string) {
+	if site.Http2Enable {
+		b.WriteString("    http2 on;\n")
+	}
 	fmt.Fprintf(b, "    ssl_certificate %s;\n", certPath)
 	fmt.Fprintf(b, "    ssl_certificate_key %s;\n", keyPath)
 	protocols := site.SSLProtocols

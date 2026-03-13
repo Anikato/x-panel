@@ -37,6 +37,24 @@ export const getWebsiteLog = (params: { id: number; type: string; tail?: number 
   return http.post('/websites/log', params)
 }
 
+// --- 源码模式配置编辑 ---
+export const getSiteConfContent = (id: number) => {
+  return http.post('/websites/conf-content', { id })
+}
+
+export const saveSiteConfContent = (id: number, content: string) => {
+  return http.post('/websites/conf-content/save', { id, content })
+}
+
+export const switchConfigMode = (id: number, mode: string) => {
+  return http.post('/websites/config-mode', { id, mode })
+}
+
+// --- 日志分析 ---
+export const analyzeNginxLog = (siteId: number, days: number) => {
+  return http.post('/websites/log-analysis', { siteId, days })
+}
+
 // --- Nginx 配置文件管理 ---
 export const getNginxMainConf = () => {
   return http.get('/nginx/conf')

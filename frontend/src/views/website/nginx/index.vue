@@ -108,6 +108,15 @@
           <el-button type="danger" plain @click="handleUninstall">
             <el-icon><Delete /></el-icon>{{ $t('nginx.uninstall') }}
           </el-button>
+          <el-divider direction="vertical" />
+          <div class="autostart-toggle">
+            <span class="autostart-label">{{ $t('nginx.autoStart') }}</span>
+            <el-switch
+              v-model="status.autoStart"
+              :loading="autoStartLoading"
+              @change="handleAutoStart"
+            />
+          </div>
         </div>
       </el-card>
 
@@ -225,6 +234,7 @@ import {
   getInstallProgress,
   uninstallNginx,
   listNginxVersions,
+  setNginxAutoStart,
 } from '@/api/modules/nginx'
 import {
   getNginxMainConf,
@@ -244,6 +254,7 @@ const status = ref<any>({})
 const operateLoading = ref('')
 const testLoading = ref(false)
 const testResult = ref<any>(null)
+const autoStartLoading = ref(false)
 
 // 安装相关
 const showInstallDialog = ref(false)
@@ -293,6 +304,18 @@ const handleOperate = async (operation: string) => {
     await loadStatus()
   } catch { /* handled */ }
   finally { operateLoading.value = '' }
+}
+
+// 开机自启
+const handleAutoStart = async (val: any) => {
+  autoStartLoading.value = true
+  try {
+    await setNginxAutoStart(val as boolean)
+    ElMessage.success(t('commons.success'))
+  } catch {
+    status.value.autoStart = !val
+  }
+  finally { autoStartLoading.value = false }
 }
 
 // 配置测试
@@ -542,6 +565,18 @@ onUnmounted(() => stopProgressPolling())
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+
+  .autostart-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .autostart-label {
+    font-size: 13px;
+    color: var(--xp-text-secondary);
+    white-space: nowrap;
+  }
 }
 
 .detail-card {

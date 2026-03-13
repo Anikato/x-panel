@@ -11,6 +11,7 @@ import (
 type WebsiteAPI struct{}
 
 var websiteService = service.NewIWebsiteService()
+var nginxLogService = service.NewINginxLogService()
 
 func (a *WebsiteAPI) SearchWebsite(c *gin.Context) {
 	var req dto.WebsiteSearch
@@ -195,4 +196,62 @@ func (a *WebsiteAPI) SaveNginxConfFile(c *gin.Context) {
 		return
 	}
 	helper.SuccessWithOutData(c)
+}
+
+// --- 源码模式配置编辑 ---
+
+func (a *WebsiteAPI) GetSiteConfContent(c *gin.Context) {
+	var req dto.SiteConfContentReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	content, err := websiteService.GetSiteConfContent(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, content)
+}
+
+func (a *WebsiteAPI) SaveSiteConfContent(c *gin.Context) {
+	var req dto.SaveSiteConfReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := websiteService.SaveSiteConfContent(req.ID, req.Content); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *WebsiteAPI) SwitchConfigMode(c *gin.Context) {
+	var req dto.SwitchConfigModeReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := websiteService.SwitchConfigMode(req.ID, req.Mode); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+// --- 日志分析 ---
+
+func (a *WebsiteAPI) AnalyzeNginxLog(c *gin.Context) {
+	var req dto.NginxLogAnalysisReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := nginxLogService.Analyze(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
 }

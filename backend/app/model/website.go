@@ -21,6 +21,7 @@ type Website struct {
 	CertificateID uint   `json:"certificateID"`
 	HttpConfig    string `gorm:"default:'HTTPSRedirect'" json:"httpConfig"` // httpOnly | httpsOnly | HTTPSRedirect | HTTPAlso
 	HSTS          bool   `gorm:"default:false" json:"hsts"`
+	Http2Enable   bool   `gorm:"default:true" json:"http2Enable"`
 	SSLProtocols  string `gorm:"default:'TLSv1.2 TLSv1.3'" json:"sslProtocols"`
 
 	// Security
@@ -51,4 +52,7 @@ type Website struct {
 
 	DefaultServer bool   `gorm:"default:false" json:"defaultServer"`
 	Remark        string `json:"remark"`
+
+	// Config management mode: "managed" (DB-driven) or "source" (direct file edit)
+	ConfigMode string `gorm:"default:'managed'" json:"configMode"`
 }

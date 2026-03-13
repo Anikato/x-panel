@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-03-09 — Session #25：网站管理全面优化（HTTP/2 + 自启 + 双模式配置 + 日志分析）
+
+### 完成内容
+
+#### HTTP/2 开关
+- `model.Website` 新增 `Http2Enable` 字段（默认 true）
+- 配置生成器 `writeSSLBlock()` 增加 `http2 on;` 指令（Nginx 1.25.1+ 语法）
+- 前端 HTTPS 设置 tab 增加 HTTP/2 开关
+
+#### Nginx 开机自启
+- 安装时自动创建 systemd service 文件 `/etc/systemd/system/xpanel-nginx.service`
+- 新增 `SetAutoStart(enable)` / `isAutoStartEnabled()` 方法
+- 前端 Nginx 管理页增加开机自启开关
+- 新增 API: `POST /nginx/autostart`
+
+#### 双模式配置管理（托管/源码）
+- `model.Website` 新增 `ConfigMode` 字段（`managed`/`source`）
+- **托管模式**：保持原有 DB→生成→覆写流程
+- **源码模式**：Monaco Editor 直接编辑 conf 文件，保存前 `nginx -t` 验证，失败自动回滚
+- 模式切换：托管→源码 (加载现有配置)，源码→托管 (警告后从 DB 重新生成)
+- 新增 API: `POST /websites/conf-content`, `/conf-content/save`, `/config-mode`
+
+#### 日志分析
+- 新增 `nginx_log.go` 服务：解析 Nginx combined 格式 access log
+- 支持按时间范围过滤（今日/7天/30天）
+- 聚合统计：总请求、UV、流量、错误率、状态码分布、Top URL/IP/UA
+- 时间序列：按小时/天的请求和流量趋势
+- 前端新增「日志分析」tab：概览卡片 + ECharts 图表 + 排行表格
+- 新增 API: `POST /websites/log-analysis`
+
+### 关键决策
+- HTTP/2 使用 `http2 on;` 而非 `listen 443 ssl http2;`，兼容 Nginx 1.25.1+
+- 双模式配置解决了"手动修改被覆盖"的核心痛点，源码模式下 UI 表单操作不会覆写配置
+- 日志分析采用纯 Go 流式解析，不依赖外部工具
+
+### 遗留问题
+- 日志文件较大时解析可能较慢，后续可考虑增量解析或 SQLite 缓存
+- 源码模式暂不支持语法高亮（Nginx 语法），Monaco 使用 plaintext 模式
+
+### 发布
+- 版本 `v0.4.3`，已推送 tag 触发 GitHub Actions 自动构建
+
+---
+
+## 2026-03-09 — Session #24：终端焦点修复 + 版本号 bug + WebSocket 协议改进
+
+### 完成内容
+
+#### 终端 vim 焦点修复（根因定位）
+- **核心问题**：终端创建后未调用 `terminal.focus()`，xterm.js 的内部 textarea 没有焦点，导致按键事件（i、o、: 等）无法被捕获传递给 vim
+- **修复**：在 `createTerminal()` 首次 fit 后和 WebSocket 连接后都调用 `terminal.focus()`
+- **点击聚焦**：为 `.terminal-container` 添加 `@click="focusActiveTerminal"` 处理器，点击任意位置都能恢复焦点
+- **焦点恢复**：命令面板关闭后、视图切换回终端后自动 `focus()`
+- **文件管理终端同步修复**：`terminal-dialog.vue` 同步添加焦点管理
+
+#### 版本号缓存 bug 修复
+- **根因**：Pinia store 使用 `persist: true`，Sidebar 仅在 `!globalStore.version` 时获取版本，缓存旧版本号后永远不会再请求后端
+- **修复**：改为每次 `onMounted` 都从后端 API 获取真实版本号
+
+#### 后端 WebSocket 协议改进
+- **改进**：使用 `messageType`（TextMessage vs BinaryMessage）区分终端数据和控制帧（resize）
+- **原因**：原实现通过 `msg[0] == 1` 检查内容首字节，理论上 Ctrl+A（ASCII 0x01）可能与 resize 控制帧冲突
+- **影响**：本地终端和 SSH 终端两处 WebSocket 处理同步修改
+
+### 发布
+- 版本 `v0.4.2`，已推送 tag 触发 GitHub Actions 自动构建
+
+---
+
 ## 2026-03-09 — Session #23：终端修复 + 首页信息增强 + 文件管理美化
 
 ### 完成内容
