@@ -44,6 +44,12 @@ func (c *MysqlClient) DeleteDatabase(name string) error {
 	return err
 }
 
+type DBInfo struct {
+	Name    string
+	Charset string
+	Owner   string
+}
+
 func (c *MysqlClient) ListDatabases() ([]string, error) {
 	rows, err := c.db.Query("SHOW DATABASES")
 	if err != nil {
@@ -58,6 +64,21 @@ func (c *MysqlClient) ListDatabases() ([]string, error) {
 			continue
 		}
 		dbs = append(dbs, name)
+	}
+	return dbs, nil
+}
+
+func (c *MysqlClient) ListDatabasesWithInfo() ([]DBInfo, error) {
+	rows, err := c.db.Query("SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema','performance_schema','mysql','sys')")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var dbs []DBInfo
+	for rows.Next() {
+		var info DBInfo
+		rows.Scan(&info.Name, &info.Charset)
+		dbs = append(dbs, info)
 	}
 	return dbs, nil
 }

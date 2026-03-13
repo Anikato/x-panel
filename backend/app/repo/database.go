@@ -16,9 +16,11 @@ type IDatabaseRepo interface {
 	ListServers(opts ...DBOption) ([]model.DatabaseServer, error)
 
 	CreateInstance(i *model.DatabaseInstance) error
+	UpdateInstance(id uint, fields map[string]interface{}) error
 	DeleteInstance(id uint) error
 	GetInstance(id uint) (*model.DatabaseInstance, error)
 	PageInstance(page, pageSize int, opts ...DBOption) (int64, []model.DatabaseInstance, error)
+	ListInstancesByServerID(serverID uint) ([]model.DatabaseInstance, error)
 	DeleteInstanceByServerID(serverID uint) error
 }
 
@@ -77,6 +79,10 @@ func (r *DatabaseRepo) CreateInstance(i *model.DatabaseInstance) error {
 	return global.DB.Create(i).Error
 }
 
+func (r *DatabaseRepo) UpdateInstance(id uint, fields map[string]interface{}) error {
+	return global.DB.Model(&model.DatabaseInstance{}).Where("id = ?", id).Updates(fields).Error
+}
+
 func (r *DatabaseRepo) DeleteInstance(id uint) error {
 	return global.DB.Delete(&model.DatabaseInstance{}, id).Error
 }
@@ -103,6 +109,14 @@ func (r *DatabaseRepo) PageInstance(page, pageSize int, opts ...DBOption) (int64
 		return 0, nil, err
 	}
 	return total, items, nil
+}
+
+func (r *DatabaseRepo) ListInstancesByServerID(serverID uint) ([]model.DatabaseInstance, error) {
+	var items []model.DatabaseInstance
+	if err := global.DB.Where("server_id = ?", serverID).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (r *DatabaseRepo) DeleteInstanceByServerID(serverID uint) error {

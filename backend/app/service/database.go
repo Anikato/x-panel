@@ -198,7 +198,7 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 
-	var dbNames []string
+	var remoteDBs []dbUtil.DBInfo
 	switch server.Type {
 	case "mysql":
 		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
@@ -206,7 +206,7 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		dbNames, err = client.ListDatabases()
+		remoteDBs, err = client.ListDatabasesWithInfo()
 		if err != nil {
 			return err
 		}
@@ -216,16 +216,48 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		dbNames, err = client.ListDatabases()
+		remoteDBs, err = client.ListDatabasesWithInfo()
 		if err != nil {
 			return err
 		}
 	}
 
-	for _, name := range dbNames {
-		inst := &model.DatabaseInstance{ServerID: serverID, Name: name}
-		_ = s.repo.CreateInstance(inst)
+	existingInstances, err := s.repo.ListInstancesByServerID(serverID)
+	if err != nil {
+		return err
 	}
+	existingMap := make(map[string]model.DatabaseInstance, len(existingInstances))
+	for _, inst := range existingInstances {
+		if prev, dup := existingMap[inst.Name]; dup {
+			_ = s.repo.DeleteInstance(prev.ID)
+		}
+		existingMap[inst.Name] = inst
+	}
+
+	remoteSet := make(map[string]struct{}, len(remoteDBs))
+	for _, info := range remoteDBs {
+		remoteSet[info.Name] = struct{}{}
+		if existing, found := existingMap[info.Name]; found {
+			_ = s.repo.UpdateInstance(existing.ID, map[string]interface{}{
+				"charset": info.Charset,
+				"owner":   info.Owner,
+			})
+		} else {
+			_ = s.repo.CreateInstance(&model.DatabaseInstance{
+				ServerID: serverID,
+				Name:     info.Name,
+				Charset:  info.Charset,
+				Owner:    info.Owner,
+			})
+		}
+	}
+
+	for name, inst := range existingMap {
+		if _, found := remoteSet[name]; !found {
+			_ = s.repo.DeleteInstance(inst.ID)
+		}
+	}
+
 	return nil
 }
 
@@ -322,3 +354,4 @@ func testDBConnection(server *model.DatabaseServer) error {
 	}
 	return nil
 }
+

@@ -60,6 +60,21 @@ func (c *PostgresClient) ListDatabases() ([]string, error) {
 	return dbs, nil
 }
 
+func (c *PostgresClient) ListDatabasesWithInfo() ([]DBInfo, error) {
+	rows, err := c.db.Query("SELECT datname, pg_catalog.pg_get_userbyid(datdba) AS owner, pg_encoding_to_char(encoding) AS encoding FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres')")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var dbs []DBInfo
+	for rows.Next() {
+		var info DBInfo
+		rows.Scan(&info.Name, &info.Owner, &info.Charset)
+		dbs = append(dbs, info)
+	}
+	return dbs, nil
+}
+
 func (c *PostgresClient) CreateUser(username, password string) error {
 	_, err := c.db.Exec(fmt.Sprintf("CREATE ROLE \"%s\" WITH LOGIN PASSWORD '%s'", username, password))
 	return err
