@@ -251,6 +251,14 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/containers/compose", api.CreateCompose)
 		privateGroup.POST("/containers/compose/operate", api.OperateCompose)
 
+		// 流量统计
+		privateGroup.GET("/traffic/configs", api.ListConfigs)
+		privateGroup.POST("/traffic/configs", api.CreateConfig)
+		privateGroup.POST("/traffic/configs/del", api.DeleteConfig)
+		privateGroup.GET("/traffic/interfaces", api.ListInterfaces)
+		privateGroup.POST("/traffic/stats", api.GetStats)
+		privateGroup.GET("/traffic/summary", api.GetSummary)
+
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)

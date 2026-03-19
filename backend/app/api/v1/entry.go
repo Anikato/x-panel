@@ -24,6 +24,7 @@ type ApiGroup struct {
 	ContainerAPI
 	BackupAPI
 	NodeAPI
+	TrafficAPI
 }
 
 // ApiGroupApp 全局 API 实例

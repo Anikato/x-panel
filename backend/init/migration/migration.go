@@ -25,6 +25,9 @@ func Init() {
 		&model.BackupAccount{},
 		&model.BackupRecord{},
 		&model.Node{},
+		&model.TrafficConfig{},
+		&model.TrafficHourly{},
+		&model.TrafficSnapshot{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

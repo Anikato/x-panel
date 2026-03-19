@@ -14,5 +14,8 @@ func Init() {
 	cronjobService := service.NewICronjobService()
 	cronjobService.StartAllJobs()
 
+	trafficService := service.NewITrafficService()
+	trafficService.StartCollector()
+
 	global.LOG.Info("Cron scheduler initialized")
 }

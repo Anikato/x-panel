@@ -12,6 +12,7 @@ import databaseRoutes from './modules/database'
 import logRoutes from './modules/log'
 import nodeRoutes from './modules/node'
 import settingRoutes from './modules/setting'
+import trafficRoutes from './modules/traffic'
 import { setupGuard } from './guard'
 
 const routes: RouteRecordRaw[] = [
@@ -41,6 +42,7 @@ const routes: RouteRecordRaw[] = [
       ...cronjobRoutes,
       ...databaseRoutes,
       ...logRoutes,
+      ...trafficRoutes,
       ...nodeRoutes,
       ...settingRoutes,
     ],

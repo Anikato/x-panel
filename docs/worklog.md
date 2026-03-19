@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-03-19 — Session #28：流量统计功能
+
+### 完成内容
+
+- [x] **后端三层架构**：Model (`TrafficConfig` / `TrafficHourly` / `TrafficSnapshot`) → Repo → Service → API
+- [x] **流量采集器**：基于 cron 每 5 分钟采样系统网卡计数器，计算增量写入 SQLite 小时记录，支持重启后计数器归零检测
+- [x] **计费周期计算**：根据用户配置的 `ResetDay`（每月重置日 1-28）动态计算当前计费周期起止时间
+- [x] **6 个 API 接口**：配置 CRUD、网卡列表、按时间范围查询流量统计、当前周期汇总
+- [x] **前端顶级菜单页面**：概览卡片（环形进度条 + 用量详情）、ECharts 柱状图（上行/下行分色堆叠）、明细表格
+- [x] **配置弹窗**：选择网卡、设置月配额（GB/TB 单位切换）、重置日
+- [x] **数据清理**：cron 每月自动清理 12 个月前的旧记录
+- [x] **i18n 支持**：完整中文翻译
+
+### 关键决策
+- 采用小时粒度存储（每月约 720 条/网卡），兼顾查询灵活性和存储效率
+- 使用 gopsutil 读取 `/proc/net/dev` 计数器，通过快照差值法计算增量
+- 计数器回退检测：当前值 < 上次值时视为重启，增量 = 当前值
+
+### 涉及文件
+- 后端新增：`model/traffic.go` `dto/traffic.go` `repo/traffic.go` `service/traffic.go` `api/v1/traffic.go`
+- 后端修改：`api/v1/entry.go` `router/router.go` `init/migration/migration.go` `init/cron/cron.go`
+- 前端新增：`views/traffic/index.vue` `views/traffic/config-dialog.vue` `api/modules/traffic.ts` `routers/modules/traffic.ts`
+- 前端修改：`routers/index.ts` `layout/components/Sidebar.vue` `i18n/zh.ts`
+
+---
+
 ## 2026-03-13 — Session #27：六大功能模块全量实现
 
 ### 完成内容

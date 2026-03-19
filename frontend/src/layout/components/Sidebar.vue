@@ -97,6 +97,7 @@ const menuList = computed(() => [
       { path: '/host/disk', title: t('menu.diskManage') },
     ],
   },
+  { path: '/traffic', title: t('menu.traffic'), icon: 'Odometer' },
   { path: '/container', title: t('menu.container'), icon: 'Box' },
   { path: '/database', title: t('menu.database'), icon: 'Coin' },
   { path: '/cronjob', title: t('menu.cronjob'), icon: 'Timer' },
