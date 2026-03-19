@@ -1151,46 +1151,5 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 
-// 右键菜单
-.context-menu {
-  position: fixed;
-  z-index: 9999;
-  background: var(--xp-bg-surface);
-  border: 1px solid var(--xp-border);
-  border-radius: 8px;
-  padding: 4px 0;
-  min-width: 180px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 
-  .context-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    font-size: 13px;
-    color: var(--xp-text-secondary);
-    cursor: pointer;
-    transition: all 0.15s;
-
-    &:hover {
-      background: rgba(34, 211, 238, 0.08);
-      color: var(--xp-accent);
-    }
-
-    &.danger:hover {
-      background: rgba(239, 68, 68, 0.08);
-      color: var(--el-color-danger);
-    }
-
-    .el-icon {
-      font-size: 15px;
-    }
-  }
-
-  .context-divider {
-    height: 1px;
-    margin: 4px 8px;
-    background: var(--xp-border-light);
-  }
-}
 </style>

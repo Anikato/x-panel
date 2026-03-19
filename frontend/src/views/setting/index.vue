@@ -578,14 +578,10 @@ onUnmounted(() => {
 }
 
 .log-textarea :deep(.el-textarea__inner) {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--xp-font-mono);
   font-size: 12px;
-  background: #1e1e1e;
-  color: #d4d4d4;
-}
-
-.mono-text {
-  font-family: 'Courier New', Courier, monospace;
+  background: var(--xp-bg-inset);
+  color: var(--xp-text-primary);
 }
 
 .dev-notice {

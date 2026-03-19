@@ -204,19 +204,6 @@ onMounted(() => loadWebsites())
   height: 100%;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-
-  h3 {
-    margin: 0;
-    font-size: 16px;
-    color: var(--xp-text-primary);
-  }
-}
-
 .filter-bar {
   display: flex;
   gap: 10px;

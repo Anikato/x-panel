@@ -1,0 +1,562 @@
+// ============================================================
+// Global Element Plus Component Overrides (Dark)
+// Covers every component that needs visual tweaking.
+// ============================================================
+
+html.dark {
+  // ---- Card ----
+  .el-card {
+    background: var(--xp-bg-surface);
+    border: 1px solid var(--xp-border-light);
+    border-radius: var(--xp-radius);
+    box-shadow: 0 0 1px rgba(0, 0, 0, 0.3);
+
+    &:hover {
+      border-color: rgba(34, 211, 238, 0.12);
+    }
+
+    .el-card__header {
+      border-bottom: 1px solid var(--xp-border-light);
+    }
+  }
+
+  // ---- Button Primary ----
+  .el-button--primary {
+    --el-button-bg-color: var(--xp-btn-primary-bg);
+    --el-button-border-color: var(--xp-btn-primary-bg);
+    --el-button-hover-bg-color: var(--xp-btn-primary-hover);
+    --el-button-hover-border-color: var(--xp-btn-primary-hover);
+    --el-button-active-bg-color: var(--xp-btn-primary-active);
+    --el-button-active-border-color: var(--xp-btn-primary-active);
+  }
+
+  // ---- Input ----
+  .el-input__wrapper {
+    background: var(--xp-bg-inset);
+    box-shadow: 0 0 0 1px var(--xp-border) inset;
+    border-radius: var(--xp-radius-sm);
+
+    &:hover {
+      box-shadow: 0 0 0 1px var(--xp-border-hover) inset;
+    }
+
+    &.is-focus {
+      box-shadow: 0 0 0 1px var(--xp-accent) inset, var(--xp-accent-glow);
+    }
+  }
+
+  .el-input-group__prepend,
+  .el-input-group__append {
+    background: var(--xp-bg-surface);
+    border-color: var(--xp-border);
+    color: var(--xp-text-secondary);
+  }
+
+  // ---- Input Number ----
+  .el-input-number {
+    .el-input-number__decrease,
+    .el-input-number__increase {
+      background: var(--xp-bg-overlay);
+      border-color: var(--xp-border);
+      color: var(--xp-text-secondary);
+
+      &:hover {
+        color: var(--xp-accent);
+      }
+    }
+  }
+
+  // ---- Select Dropdown ----
+  .el-select__popper,
+  .el-select-dropdown,
+  .el-picker-panel,
+  .el-date-picker,
+  .el-time-panel,
+  .el-cascader__dropdown {
+    background: var(--xp-bg-elevated) !important;
+    border: 1px solid var(--xp-border) !important;
+  }
+
+  .el-select-dropdown__item.is-hovering {
+    background: var(--xp-context-hover);
+  }
+
+  .el-select-dropdown__item.is-selected {
+    color: var(--xp-accent);
+    font-weight: 600;
+  }
+
+  // ---- Table ----
+  .el-table {
+    --el-table-border-color: var(--xp-border-light);
+
+    th.el-table__cell {
+      background: var(--xp-bg-table-header) !important;
+      color: var(--xp-text-secondary);
+      font-weight: 500;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    tr:nth-child(even) {
+      background: rgba(255, 255, 255, 0.01);
+    }
+  }
+
+  // ---- Tag ----
+  .el-tag {
+    border-radius: 4px;
+    border: none;
+  }
+
+  .el-tag--success {
+    --el-tag-bg-color: rgba(34, 197, 94, 0.12);
+    --el-tag-text-color: #4ade80;
+  }
+
+  .el-tag--danger {
+    --el-tag-bg-color: rgba(239, 68, 68, 0.12);
+    --el-tag-text-color: #f87171;
+  }
+
+  .el-tag--warning {
+    --el-tag-bg-color: rgba(245, 158, 11, 0.12);
+    --el-tag-text-color: #fbbf24;
+  }
+
+  .el-tag--info {
+    --el-tag-bg-color: rgba(100, 116, 139, 0.15);
+    --el-tag-text-color: #94a3b8;
+  }
+
+  // ---- Breadcrumb ----
+  .el-breadcrumb__inner {
+    color: var(--xp-text-muted) !important;
+
+    &.is-link:hover {
+      color: var(--xp-accent) !important;
+    }
+  }
+
+  .el-breadcrumb__separator {
+    color: var(--xp-text-muted) !important;
+  }
+
+  // ---- Pagination ----
+  .el-pagination {
+    --el-pagination-button-bg-color: transparent;
+    --el-pagination-button-color: var(--xp-text-secondary);
+
+    .is-active {
+      background: var(--xp-accent-muted) !important;
+      color: var(--xp-accent) !important;
+    }
+  }
+
+  // ---- Dropdown ----
+  .el-dropdown-menu {
+    background: var(--xp-bg-elevated);
+    border: 1px solid var(--xp-border);
+
+    .el-dropdown-menu__item:hover {
+      background: var(--xp-accent-muted);
+      color: var(--xp-accent);
+    }
+  }
+
+  // ---- MessageBox ----
+  .el-message-box {
+    background: var(--xp-bg-elevated);
+    border: 1px solid var(--xp-border);
+    border-radius: var(--xp-radius);
+  }
+
+  // ---- Dialog ----
+  .el-dialog {
+    background: var(--xp-drawer-bg);
+    border: 1px solid var(--xp-border);
+    border-radius: var(--xp-radius);
+
+    .el-dialog__header {
+      border-bottom: 1px solid var(--xp-border-light);
+      padding-bottom: 16px;
+    }
+
+    .el-dialog__title {
+      color: var(--xp-text-primary);
+      font-weight: 600;
+    }
+
+    .el-dialog__headerbtn .el-dialog__close {
+      color: var(--xp-text-muted);
+
+      &:hover {
+        color: var(--xp-accent);
+      }
+    }
+  }
+
+  // ---- Drawer ----
+  .el-drawer {
+    background: var(--xp-drawer-bg);
+    border-color: var(--xp-border);
+
+    .el-drawer__header {
+      background: var(--xp-drawer-header-bg);
+      border-bottom: 1px solid var(--xp-border-light);
+      margin-bottom: 0;
+      padding: 16px 20px;
+      color: var(--xp-text-primary);
+    }
+
+    .el-drawer__title {
+      color: var(--xp-text-primary);
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .el-drawer__close-btn {
+      color: var(--xp-text-muted);
+
+      &:hover {
+        color: var(--xp-accent);
+      }
+    }
+
+    .el-drawer__body {
+      padding: 20px;
+    }
+  }
+
+  // ---- Tabs (card style) ----
+  .el-tabs--card {
+    > .el-tabs__header {
+      background: transparent;
+      border-bottom: 1px solid var(--xp-border-light);
+
+      .el-tabs__nav {
+        border: none;
+      }
+
+      .el-tabs__item {
+        background: transparent;
+        border: 1px solid transparent;
+        border-bottom: none;
+        color: var(--xp-text-muted);
+        transition: all 0.2s;
+
+        &:hover {
+          color: var(--xp-text-secondary);
+        }
+
+        &.is-active {
+          background: var(--xp-bg-surface);
+          color: var(--xp-accent);
+          border-color: var(--xp-border-light);
+          border-bottom-color: var(--xp-bg-surface);
+        }
+      }
+    }
+  }
+
+  .el-tabs--border-card {
+    background: var(--xp-bg-surface);
+    border-color: var(--xp-border-light);
+
+    > .el-tabs__header {
+      background: var(--xp-bg-inset);
+      border-bottom-color: var(--xp-border-light);
+
+      .el-tabs__item {
+        color: var(--xp-text-muted);
+        border-color: transparent;
+
+        &.is-active {
+          background: var(--xp-bg-surface);
+          color: var(--xp-accent);
+          border-right-color: var(--xp-border-light);
+          border-left-color: var(--xp-border-light);
+        }
+      }
+    }
+  }
+
+  .el-tab-pane {
+    color: var(--xp-text-primary);
+  }
+
+  // ---- Radio Group / Button ----
+  .el-radio-group {
+    .el-radio-button__inner {
+      background: var(--xp-bg-inset);
+      border-color: var(--xp-border);
+      color: var(--xp-text-secondary);
+
+      &:hover {
+        color: var(--xp-accent);
+      }
+    }
+
+    .el-radio-button__original-radio:checked + .el-radio-button__inner {
+      background: var(--xp-accent);
+      border-color: var(--xp-accent);
+      color: var(--xp-bg-base);
+      box-shadow: -1px 0 0 0 var(--xp-accent);
+    }
+  }
+
+  .el-radio {
+    --el-radio-text-color: var(--xp-text-secondary);
+    --el-radio-input-border-color: var(--xp-border-hover);
+    --el-radio-input-border-color-hover: var(--xp-accent);
+  }
+
+  // ---- Checkbox ----
+  .el-checkbox {
+    --el-checkbox-text-color: var(--xp-text-secondary);
+    --el-checkbox-input-border: var(--xp-border-hover);
+    --el-checkbox-input-border-color-hover: var(--xp-accent);
+  }
+
+  // ---- Switch ----
+  .el-switch {
+    --el-switch-off-color: #334155;
+    --el-switch-on-color: var(--xp-accent);
+    --el-switch-border-color: transparent;
+  }
+
+  // ---- Progress ----
+  .el-progress {
+    .el-progress__text {
+      color: var(--xp-text-primary);
+    }
+
+    .el-progress-bar__outer {
+      background: var(--xp-progress-trail);
+    }
+  }
+
+  .el-progress--dashboard .el-progress-circle__track {
+    stroke: var(--xp-progress-trail);
+  }
+
+  // ---- Descriptions ----
+  .el-descriptions {
+    .el-descriptions__label {
+      background: var(--xp-bg-inset);
+      color: var(--xp-text-muted);
+    }
+
+    .el-descriptions__content {
+      background: var(--xp-bg-surface);
+      color: var(--xp-text-primary);
+    }
+
+    .el-descriptions__cell {
+      border-color: var(--xp-border-light) !important;
+    }
+  }
+
+  // ---- Popover ----
+  .el-popover.el-popper {
+    background: var(--xp-popover-bg);
+    border: 1px solid var(--xp-popover-border);
+
+    .el-popper__arrow::before {
+      background: var(--xp-popover-bg);
+      border-color: var(--xp-popover-border);
+    }
+  }
+
+  // ---- Alert ----
+  .el-alert {
+    border: none;
+    border-radius: var(--xp-radius-sm);
+
+    &--info {
+      background: rgba(59, 130, 246, 0.1);
+      .el-alert__title { color: #60a5fa; }
+      .el-alert__description { color: #93c5fd; }
+      .el-icon { color: #60a5fa; }
+    }
+
+    &--success {
+      background: rgba(34, 197, 94, 0.1);
+      .el-alert__title { color: #4ade80; }
+    }
+
+    &--warning {
+      background: rgba(245, 158, 11, 0.1);
+      .el-alert__title { color: #fbbf24; }
+    }
+
+    &--error {
+      background: rgba(239, 68, 68, 0.1);
+      .el-alert__title { color: #f87171; }
+    }
+  }
+
+  // ---- Loading ----
+  .el-loading-mask {
+    background-color: rgba(11, 14, 20, 0.7);
+  }
+
+  .el-loading-spinner .circular .path {
+    stroke: var(--xp-accent);
+  }
+
+  .el-loading-spinner .el-loading-text {
+    color: var(--xp-text-secondary);
+  }
+
+  // ---- DatePicker Panel ----
+  .el-date-editor {
+    --el-date-editor-width: auto;
+  }
+
+  .el-picker-panel {
+    background: var(--xp-bg-elevated);
+    border-color: var(--xp-border);
+  }
+
+  .el-date-table td.today .el-date-table-cell__text {
+    color: var(--xp-accent);
+  }
+
+  .el-date-table td.available:hover .el-date-table-cell__text {
+    background: var(--xp-accent-muted);
+    color: var(--xp-accent);
+  }
+
+  // ---- Scrollbar ----
+  .el-scrollbar__bar .el-scrollbar__thumb {
+    background: rgba(148, 163, 184, 0.2);
+  }
+
+  // ---- Form ----
+  .el-form-item__label {
+    color: var(--xp-text-secondary);
+  }
+
+  // ---- Tooltip ----
+  .el-tooltip__popper.is-dark {
+    background: var(--xp-bg-elevated);
+    border: 1px solid var(--xp-border);
+    color: var(--xp-text-primary);
+  }
+
+  // ---- Notification ----
+  .el-notification {
+    background: var(--xp-bg-elevated);
+    border-color: var(--xp-border);
+
+    .el-notification__title {
+      color: var(--xp-text-primary);
+    }
+
+    .el-notification__content {
+      color: var(--xp-text-secondary);
+    }
+  }
+
+  // ---- Message ----
+  .el-message {
+    background: var(--xp-bg-elevated);
+    border-color: var(--xp-border);
+
+    .el-message__content {
+      color: var(--xp-text-primary);
+    }
+  }
+
+  // ---- Empty ----
+  .el-empty__description p {
+    color: var(--xp-text-muted);
+  }
+
+  // ---- Upload ----
+  .el-upload-dragger {
+    background: var(--xp-bg-inset);
+    border-color: var(--xp-border);
+
+    &:hover {
+      border-color: var(--xp-accent);
+    }
+  }
+}
+
+// ============================================================
+// Light Mode Component Overrides
+// ============================================================
+
+html:not(.dark) {
+  .el-card {
+    border: 1px solid var(--xp-border-light);
+    border-radius: var(--xp-radius);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+
+    &:hover {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  .el-button--primary {
+    --el-button-bg-color: var(--xp-btn-primary-bg);
+    --el-button-border-color: var(--xp-btn-primary-bg);
+    --el-button-hover-bg-color: var(--xp-btn-primary-hover);
+    --el-button-hover-border-color: var(--xp-btn-primary-hover);
+    --el-button-active-bg-color: var(--xp-btn-primary-active);
+    --el-button-active-border-color: var(--xp-btn-primary-active);
+  }
+
+  .el-drawer {
+    .el-drawer__header {
+      border-bottom: 1px solid var(--xp-border-light);
+      margin-bottom: 0;
+      padding: 16px 20px;
+    }
+
+    .el-drawer__body {
+      padding: 20px;
+    }
+  }
+
+  .el-dialog {
+    border-radius: var(--xp-radius);
+
+    .el-dialog__header {
+      border-bottom: 1px solid var(--xp-border-light);
+      padding-bottom: 16px;
+    }
+  }
+
+  .el-table {
+    th.el-table__cell {
+      font-weight: 500;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--xp-text-muted);
+    }
+  }
+
+  .el-descriptions {
+    .el-descriptions__label {
+      color: var(--xp-text-muted);
+    }
+  }
+
+  .el-progress .el-progress-bar__outer {
+    background: var(--xp-progress-trail);
+  }
+
+  .el-progress--dashboard .el-progress-circle__track {
+    stroke: var(--xp-progress-trail);
+  }
+
+  .el-pagination .is-active {
+    background: var(--xp-accent-muted) !important;
+    color: var(--xp-accent) !important;
+  }
+}

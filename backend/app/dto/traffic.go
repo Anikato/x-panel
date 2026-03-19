@@ -60,12 +60,3 @@ type TrafficSummaryItem struct {
 type TrafficDeleteConfig struct {
 	InterfaceName string `json:"interfaceName" binding:"required"`
 }
-
-// TrafficRealtimeItem 单网卡实时速率
-type TrafficRealtimeItem struct {
-	Name      string  `json:"name"`
-	BytesSent uint64  `json:"bytesSent"`
-	BytesRecv uint64  `json:"bytesRecv"`
-	SpeedUp   float64 `json:"speedUp"`   // bytes/s
-	SpeedDown float64 `json:"speedDown"` // bytes/s
-}

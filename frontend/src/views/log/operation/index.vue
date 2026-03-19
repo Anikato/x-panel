@@ -80,9 +80,4 @@ onMounted(() => fetchData())
 </script>
 
 <style lang="scss" scoped>
-.table-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
 </style>

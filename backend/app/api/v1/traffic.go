@@ -80,12 +80,3 @@ func (a *TrafficAPI) GetSummary(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, summary)
 }
-
-func (a *TrafficAPI) GetRealtime(c *gin.Context) {
-	items, err := trafficService.GetRealtime()
-	if err != nil {
-		helper.HandleError(c, err)
-		return
-	}
-	helper.SuccessWithData(c, items)
-}

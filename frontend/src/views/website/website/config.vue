@@ -682,23 +682,10 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.page-header {
+.page-header .header-left {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: var(--xp-text-primary);
-    }
-  }
+  gap: 10px;
 }
 
 .config-tabs {
@@ -746,7 +733,7 @@ onBeforeUnmount(() => {
   }
 
   .log-container {
-    background: var(--xp-bg-deep, #0d1117);
+    background: var(--xp-bg-inset);
     border-radius: 6px;
     padding: 16px;
     max-height: 450px;
@@ -754,10 +741,10 @@ onBeforeUnmount(() => {
   }
 
   .log-content {
-    font-family: 'Courier New', Consolas, monospace;
+    font-family: var(--xp-font-mono);
     font-size: 12px;
     line-height: 1.7;
-    color: #c9d1d9;
+    color: var(--xp-text-secondary);
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
@@ -766,13 +753,13 @@ onBeforeUnmount(() => {
 
 .config-preview {
   .preview-content {
-    background: var(--xp-bg-deep, #0d1117);
+    background: var(--xp-bg-inset);
     border-radius: 6px;
     padding: 16px;
-    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-family: var(--xp-font-mono);
     font-size: 13px;
     line-height: 1.6;
-    color: #c9d1d9;
+    color: var(--xp-text-secondary);
     white-space: pre-wrap;
     word-break: break-all;
     max-height: 600px;

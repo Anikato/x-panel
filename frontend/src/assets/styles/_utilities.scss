@@ -1,0 +1,142 @@
+// ============================================================
+// Global Utility Classes — shared across all pages
+// ============================================================
+
+// --- Page Header (title + actions row) ---
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--xp-text-primary);
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+// --- Toolbar (above tables) ---
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+// --- Pagination (below tables) ---
+.app-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+// --- Table Footer (alias) ---
+.table-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+// --- Card Header pattern ---
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--xp-text-primary);
+
+  .card-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+// --- Card Header Row (alternate pattern used in home) ---
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--xp-text-primary);
+}
+
+// --- Context Menu (right-click) ---
+.context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--xp-context-bg);
+  border: 1px solid var(--xp-context-border);
+  border-radius: 8px;
+  padding: 4px 0;
+  min-width: 180px;
+  box-shadow: var(--xp-context-shadow);
+
+  .context-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--xp-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+
+    &:hover {
+      background: var(--xp-context-hover);
+      color: var(--xp-accent);
+    }
+
+    &.danger:hover {
+      background: var(--xp-context-danger-hover);
+      color: var(--xp-danger);
+    }
+
+    .el-icon {
+      font-size: 15px;
+    }
+  }
+
+  .context-divider {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--xp-border-light);
+  }
+}
+
+// --- Traffic color helpers ---
+.up-color {
+  color: var(--xp-color-up);
+}
+
+.down-color {
+  color: var(--xp-color-down);
+}
+
+// --- Mono text ---
+.mono-text {
+  font-family: var(--xp-font-mono);
+  font-size: 12px;
+}
+
+// --- Copy button (appears on hover) ---
+.copy-btn {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--xp-accent);
+  }
+}

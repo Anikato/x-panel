@@ -258,7 +258,6 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/traffic/interfaces", api.ListInterfaces)
 		privateGroup.POST("/traffic/stats", api.GetStats)
 		privateGroup.GET("/traffic/summary", api.GetSummary)
-		privateGroup.GET("/traffic/realtime", api.GetRealtime)
 
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)

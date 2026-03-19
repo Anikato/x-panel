@@ -344,29 +344,7 @@ const getWsUrl = (hostId?: number) => {
   return url
 }
 
-const terminalTheme = {
-  background: '#0b0e14',
-  foreground: '#e6edf3',
-  cursor: '#22d3ee',
-  cursorAccent: '#0b0e14',
-  selectionBackground: 'rgba(34, 211, 238, 0.2)',
-  black: '#0b0e14',
-  red: '#f87171',
-  green: '#4ade80',
-  yellow: '#fbbf24',
-  blue: '#60a5fa',
-  magenta: '#c084fc',
-  cyan: '#22d3ee',
-  white: '#e6edf3',
-  brightBlack: '#475569',
-  brightRed: '#fca5a5',
-  brightGreen: '#86efac',
-  brightYellow: '#fde68a',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#d8b4fe',
-  brightCyan: '#67e8f9',
-  brightWhite: '#f8fafc',
-}
+import { terminalTheme } from '@/utils/terminal-theme'
 
 const sendResize = (ws: WebSocket, rows: number, cols: number) => {
   const resizeData = JSON.stringify({ rows, cols })
@@ -851,7 +829,7 @@ onBeforeUnmount(() => {
 
 .terminal-container {
   flex: 1;
-  background: #0b0e14;
+  background: var(--xp-terminal-bg);
   border: 1px solid var(--xp-border-light);
   border-top: none;
   border-radius: 0 0 var(--xp-radius-sm) var(--xp-radius-sm);

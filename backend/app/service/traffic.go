@@ -3,7 +3,6 @@ package service
 import (
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"xpanel/app/dto"
@@ -22,7 +21,6 @@ type ITrafficService interface {
 	ListInterfaces() ([]dto.InterfaceInfo, error)
 	GetStats(req dto.TrafficStatsRequest) (*dto.TrafficStatsResponse, error)
 	GetSummary() ([]dto.TrafficSummaryItem, error)
-	GetRealtime() ([]dto.TrafficRealtimeItem, error)
 	StartCollector()
 	CollectOnce()
 	CleanOldRecords()
@@ -31,12 +29,6 @@ type ITrafficService interface {
 type TrafficService struct {
 	repo repo.ITrafficRepo
 }
-
-var (
-	trafficLastIO   map[string]gnet.IOCountersStat
-	trafficLastTime time.Time
-	trafficMu       sync.Mutex
-)
 
 func NewITrafficService() ITrafficService {
 	return &TrafficService{repo: repo.NewITrafficRepo()}
@@ -77,12 +69,7 @@ func (s *TrafficService) CreateConfig(req dto.TrafficConfigCreate) error {
 		ResetDay:      req.ResetDay,
 		Enabled:       req.Enabled,
 	}
-	if err := s.repo.SaveConfig(item); err != nil {
-		return err
-	}
-	// Immediately take a snapshot so the next collect cycle can compute a delta
-	go s.CollectOnce()
-	return nil
+	return s.repo.SaveConfig(item)
 }
 
 func (s *TrafficService) DeleteConfig(interfaceName string) error {
@@ -220,58 +207,7 @@ func (s *TrafficService) GetSummary() ([]dto.TrafficSummaryItem, error) {
 	return result, nil
 }
 
-// GetRealtime returns live upload/download speeds for all monitored interfaces.
-func (s *TrafficService) GetRealtime() ([]dto.TrafficRealtimeItem, error) {
-	netIO, err := gnet.IOCounters(true)
-	if err != nil {
-		return nil, err
-	}
-
-	trafficMu.Lock()
-	defer trafficMu.Unlock()
-
-	now := time.Now()
-	elapsed := now.Sub(trafficLastTime).Seconds()
-	var result []dto.TrafficRealtimeItem
-
-	for _, nic := range netIO {
-		if nic.Name == "lo" {
-			continue
-		}
-		item := dto.TrafficRealtimeItem{
-			Name:      nic.Name,
-			BytesSent: nic.BytesSent,
-			BytesRecv: nic.BytesRecv,
-		}
-		if elapsed > 0 && elapsed < 30 && trafficLastIO != nil {
-			if prev, ok := trafficLastIO[nic.Name]; ok {
-				item.SpeedUp = float64(nic.BytesSent-prev.BytesSent) / elapsed
-				item.SpeedDown = float64(nic.BytesRecv-prev.BytesRecv) / elapsed
-				if item.SpeedUp < 0 {
-					item.SpeedUp = 0
-				}
-				if item.SpeedDown < 0 {
-					item.SpeedDown = 0
-				}
-			}
-		}
-		result = append(result, item)
-	}
-
-	// Update last state
-	trafficLastIO = make(map[string]gnet.IOCountersStat)
-	for _, nic := range netIO {
-		trafficLastIO[nic.Name] = nic
-	}
-	trafficLastTime = now
-
-	return result, nil
-}
-
 func (s *TrafficService) StartCollector() {
-	// Run immediately on startup to capture the initial snapshot
-	go s.CollectOnce()
-
 	_, err := global.CRON.AddFunc("@every 5m", func() {
 		s.CollectOnce()
 	})
@@ -279,6 +215,7 @@ func (s *TrafficService) StartCollector() {
 		global.LOG.Errorf("Failed to register traffic collector cron: %v", err)
 	}
 
+	// Also run cleanup monthly
 	_, err = global.CRON.AddFunc("0 3 1 * *", func() {
 		s.CleanOldRecords()
 	})
@@ -329,9 +266,11 @@ func (s *TrafficService) CollectOnce() {
 
 		var deltaSent, deltaRecv uint64
 		if err == gorm.ErrRecordNotFound {
+			// First run: just save the snapshot, no delta
 			deltaSent = 0
 			deltaRecv = 0
 		} else {
+			// Counter reset detection (reboot or overflow)
 			if nic.BytesSent >= snapshot.BytesSent {
 				deltaSent = nic.BytesSent - snapshot.BytesSent
 			} else {
@@ -371,6 +310,7 @@ func (s *TrafficService) CleanOldRecords() {
 	}
 }
 
+// calcBillingPeriod returns the billing period [start, end) for a given day.
 func calcBillingPeriod(now time.Time, resetDay int) (time.Time, time.Time) {
 	if resetDay < 1 {
 		resetDay = 1
@@ -393,6 +333,7 @@ func calcBillingPeriod(now time.Time, resetDay int) (time.Time, time.Time) {
 }
 
 func parseFlexTime(s string) (time.Time, error) {
+	// Try RFC3339 first, then date-only
 	t, err := time.Parse(time.RFC3339, s)
 	if err == nil {
 		return t, nil

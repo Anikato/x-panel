@@ -155,7 +155,7 @@ const handleLogin = async () => {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #050810;
+  background: var(--xp-bg-auth);
   overflow: hidden;
 }
 
@@ -216,13 +216,13 @@ const handleLogin = async () => {
   .login-title {
     font-size: 26px;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--xp-text-primary);
     margin: 0 0 6px;
     letter-spacing: -0.5px;
   }
 
   .login-desc {
-    color: #64748b;
+    color: var(--xp-text-muted);
     font-size: 14px;
     margin: 0;
   }
@@ -234,13 +234,13 @@ const handleLogin = async () => {
   font-size: 15px;
   font-weight: 600;
   border-radius: var(--xp-radius);
-  background: linear-gradient(135deg, #0891b2, #06b6d4);
+  background: var(--xp-btn-primary-gradient);
   border: none;
   letter-spacing: 0.5px;
   transition: all 0.3s;
 
   &:hover {
-    background: linear-gradient(135deg, #06b6d4, #22d3ee);
+    background: var(--xp-btn-primary-gradient-hover);
     box-shadow: 0 0 24px rgba(34, 211, 238, 0.25);
   }
 }

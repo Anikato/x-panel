@@ -83,14 +83,6 @@ onMounted(() => loadDisk())
 <style lang="scss" scoped>
 .disk-page { height: 100%; }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-  h3 { margin: 0; font-size: 16px; color: var(--xp-text-primary); }
-}
-
 .disk-card {
   margin-bottom: 12px;
 }

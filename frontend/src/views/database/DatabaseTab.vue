@@ -338,11 +338,6 @@ onMounted(() => loadServers())
 </script>
 
 <style scoped>
-.app-toolbar {
-  display: flex;
-  align-items: center;
-  margin-bottom: 16px;
-}
 .instance-panel {
   padding: 8px 16px;
 }

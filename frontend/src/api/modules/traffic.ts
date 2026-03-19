@@ -56,14 +56,6 @@ export interface TrafficSummaryItem {
   enabled: boolean
 }
 
-export interface TrafficRealtimeItem {
-  name: string
-  bytesSent: number
-  bytesRecv: number
-  speedUp: number
-  speedDown: number
-}
-
 export const trafficApi = {
   listConfigs: () => http.get<{ data: TrafficConfig[] }>('/traffic/configs'),
   createConfig: (params: TrafficConfigCreate) => http.post('/traffic/configs', params),
@@ -71,5 +63,4 @@ export const trafficApi = {
   listInterfaces: () => http.get<{ data: InterfaceInfo[] }>('/traffic/interfaces'),
   getStats: (params: TrafficStatsRequest) => http.post<{ data: TrafficStatsResponse }>('/traffic/stats', params),
   getSummary: () => http.get<{ data: TrafficSummaryItem[] }>('/traffic/summary'),
-  getRealtime: () => http.get<{ data: TrafficRealtimeItem[] }>('/traffic/realtime'),
 }

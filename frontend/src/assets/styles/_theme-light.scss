@@ -1,0 +1,116 @@
+// ============================================================
+// Light Theme — Override CSS variables for light mode
+// Applied when html does NOT have class="dark"
+// ============================================================
+
+html:not(.dark) {
+  // --- XP custom variables ---
+  --xp-bg-base: #f0f2f5;
+  --xp-bg-surface: #ffffff;
+  --xp-bg-elevated: #ffffff;
+  --xp-bg-overlay: #f5f7fa;
+  --xp-bg-sidebar: #1e293b;
+  --xp-bg-header: rgba(255, 255, 255, 0.9);
+  --xp-bg-input: #ffffff;
+  --xp-bg-table-header: #fafafa;
+  --xp-bg-inset: #f5f7fa;
+
+  --xp-accent: #0891b2;
+  --xp-accent-hover: #0e7490;
+  --xp-accent-muted: rgba(8, 145, 178, 0.1);
+  --xp-accent-glow: 0 0 12px rgba(8, 145, 178, 0.15);
+  --xp-accent-secondary: #6366f1;
+
+  --xp-text-primary: #1e293b;
+  --xp-text-secondary: #475569;
+  --xp-text-muted: #94a3b8;
+
+  --xp-border: #e2e8f0;
+  --xp-border-light: #f1f5f9;
+  --xp-border-hover: #cbd5e1;
+
+  --xp-success: #16a34a;
+  --xp-warning: #d97706;
+  --xp-danger: #dc2626;
+  --xp-info: #2563eb;
+
+  --xp-progress-trail: #e2e8f0;
+
+  --xp-drawer-bg: #ffffff;
+  --xp-drawer-header-bg: #fafafa;
+
+  --xp-popover-bg: #ffffff;
+  --xp-popover-border: #e2e8f0;
+
+  --xp-tab-active-bg: #ffffff;
+  --xp-tab-border: #e2e8f0;
+
+  --xp-terminal-bg: #1e1e2e;
+
+  --xp-color-up: #0891b2;
+  --xp-color-down: #7c3aed;
+
+  --xp-bg-auth: #f0f2f5;
+
+  --xp-btn-primary-bg: #0891b2;
+  --xp-btn-primary-hover: #0e7490;
+  --xp-btn-primary-active: #155e75;
+  --xp-btn-primary-gradient: linear-gradient(135deg, #0891b2, #06b6d4);
+  --xp-btn-primary-gradient-hover: linear-gradient(135deg, #0e7490, #0891b2);
+
+  --xp-context-bg: #ffffff;
+  --xp-context-border: #e2e8f0;
+  --xp-context-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --xp-context-hover: rgba(8, 145, 178, 0.06);
+  --xp-context-danger-hover: rgba(239, 68, 68, 0.06);
+
+  // --- Element Plus variable overrides for light mode ---
+  --el-color-primary: #0891b2;
+  --el-color-primary-light-3: #06b6d4;
+  --el-color-primary-light-5: #22d3ee;
+  --el-color-primary-light-7: #67e8f9;
+  --el-color-primary-light-8: #a5f3fc;
+  --el-color-primary-light-9: #cffafe;
+  --el-color-primary-dark-2: #0e7490;
+
+  --el-color-success: #16a34a;
+  --el-color-warning: #d97706;
+  --el-color-danger: #dc2626;
+  --el-color-info: #64748b;
+
+  --el-bg-color: #ffffff;
+  --el-bg-color-overlay: #ffffff;
+  --el-bg-color-page: #f0f2f5;
+
+  --el-text-color-primary: #1e293b;
+  --el-text-color-regular: #334155;
+  --el-text-color-secondary: #64748b;
+  --el-text-color-placeholder: #94a3b8;
+
+  --el-border-color: #e2e8f0;
+  --el-border-color-light: #f1f5f9;
+  --el-border-color-lighter: #f8fafc;
+  --el-border-color-dark: #cbd5e1;
+
+  --el-fill-color: #f1f5f9;
+  --el-fill-color-light: #f8fafc;
+  --el-fill-color-lighter: #ffffff;
+  --el-fill-color-blank: #ffffff;
+
+  --el-box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --el-box-shadow-light: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --el-box-shadow-lighter: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  --el-card-bg-color: #ffffff;
+  --el-dialog-bg-color: #ffffff;
+  --el-drawer-bg-color: #ffffff;
+
+  --el-table-header-bg-color: #fafafa;
+  --el-table-row-hover-bg-color: rgba(8, 145, 178, 0.04);
+
+  --el-menu-bg-color: transparent;
+  --el-menu-hover-bg-color: rgba(8, 145, 178, 0.06);
+  --el-menu-active-color: #0891b2;
+
+  --el-pagination-hover-color: #0891b2;
+}

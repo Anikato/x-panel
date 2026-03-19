@@ -4,36 +4,6 @@
 
 ---
 
-## 2026-03-19 — Session #29：流量统计实时化 + 全局 UI/UX 升级
-
-### 完成内容
-
-#### 流量统计增强
-- [x] 新增实时速率 API（`GET /traffic/realtime`），基于内存差值法计算每网卡上下行速率
-- [x] 首次采集立即执行 + 新增配置时自动触发快照，解决初始 0 值问题
-- [x] 前端每 3 秒轮询实时速率，在卡片中显示动态上行/下行速度
-- [x] 卡片重新设计：自定义 SVG 环形进度条（带发光效果）、渐变顶部光条、网卡徽章
-- [x] 图表使用渐变色填充 + 暗色 tooltip + 动画过渡
-
-#### 全局 UI/UX 升级
-- [x] **主题色自定义**：Header 新增调色板按钮，支持 6 种预设主题色（cyan/blue/purple/green/orange/pink），持久化到 localStorage
-- [x] 主题色通过 CSS Variables 动态注入，全面联动侧边栏高亮、按钮、进度条、图表等
-- [x] Element Plus primary button 改为跟随主题色变量，不再硬编码
-- [x] 页面切换增加 slide-up 过渡动画
-- [x] 全局卡片 hover 增加平滑 transition
-- [x] 首页快速入口 hover 颜色改为跟随主题色变量
-
-### 关键决策
-- 实时速率使用独立 API 而非复用 summary（轻量级，不查 DB）
-- 自定义 SVG 环形进度条替代 Element Plus 的 dashboard progress（更灵活的视觉效果）
-- 主题色系统通过 CSS Variables 实现，运行时零开销
-
-### 涉及文件
-- 后端修改：`service/traffic.go`（+realtime）、`dto/traffic.go`（+RealtimeItem）、`api/v1/traffic.go`（+handler）、`router.go`（+route）
-- 前端修改：`views/traffic/index.vue`（全面重写）、`store/modules/global.ts`（+accentColor）、`layout/components/Header.vue`（+调色板）、`App.vue`（+初始化）、`layout/components/AppMain.vue`（+动画）、`styles/dark-theme.scss`（+变量化）、`views/home/index.vue`（+变量化）、`api/modules/traffic.ts`（+realtime）、`i18n/zh.ts`（+accentColor）
-
----
-
 ## 2026-03-19 — Session #28：流量统计功能
 
 ### 完成内容

@@ -397,16 +397,6 @@ onMounted(() => search())
 </script>
 
 <style scoped>
-.app-toolbar {
-  display: flex;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.app-pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
 .cron-builder {
   width: 100%;
 }

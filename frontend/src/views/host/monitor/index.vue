@@ -199,10 +199,12 @@ const copyText = async (text: string) => {
   } catch { /* */ }
 }
 
+const getCS = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim()
+
 const progressColor = (percentage: number) => {
-  if (percentage < 50) return '#22d3ee'
-  if (percentage < 80) return '#f59e0b'
-  return '#ef4444'
+  if (percentage < 50) return getCS('--xp-accent') || '#22d3ee'
+  if (percentage < 80) return getCS('--xp-warning') || '#f59e0b'
+  return getCS('--xp-danger') || '#ef4444'
 }
 
 const formatBytes = (bytes?: number) => {
@@ -244,14 +246,6 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .monitor-page { height: 100%; }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-  h3 { margin: 0; font-size: 16px; color: var(--xp-text-primary); }
-}
-
 .host-info-card {
   margin-bottom: 16px;
 
@@ -287,18 +281,8 @@ onUnmounted(() => {
     gap: 4px;
   }
 
-  .uptime-highlight { color: #22d3ee; font-weight: 600; }
+  .uptime-highlight { color: var(--xp-accent); font-weight: 600; }
   .ip-highlight { color: var(--xp-accent); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-}
-
-.copy-btn {
-  font-size: 12px;
-  color: var(--xp-text-muted);
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  &:hover { color: var(--xp-accent); }
 }
 
 .overview-row { margin-bottom: 16px; }
@@ -352,12 +336,12 @@ onUnmounted(() => {
   .nic-speed {
     display: flex;
     gap: 12px;
-    .up { color: #22d3ee; }
-    .down { color: #a78bfa; }
+    .up { color: var(--xp-color-up); }
+    .down { color: var(--xp-color-down); }
   }
 }
 
 .section-card { margin-bottom: 16px; }
 
-.text-danger { color: #ef4444; font-weight: 600; }
+.text-danger { color: var(--xp-danger); font-weight: 600; }
 </style>

@@ -1,0 +1,95 @@
+// ============================================================
+// X-Panel — CSS Custom Properties (Design Tokens)
+// All colors MUST be referenced via these variables.
+// ============================================================
+
+:root {
+  // --- Layout ---
+  --xp-sidebar-width: 220px;
+  --xp-sidebar-collapse-width: 64px;
+  --xp-header-height: 56px;
+
+  // --- Radius ---
+  --xp-radius: 10px;
+  --xp-radius-sm: 6px;
+  --xp-radius-lg: 16px;
+
+  // --- Backgrounds ---
+  --xp-bg-base: #0b0e14;
+  --xp-bg-surface: #111827;
+  --xp-bg-elevated: #1a2332;
+  --xp-bg-overlay: #1e293b;
+  --xp-bg-sidebar: #070a0f;
+  --xp-bg-header: rgba(11, 14, 20, 0.85);
+  --xp-bg-input: #0f172a;
+  --xp-bg-table-header: #0f172a;
+  --xp-bg-inset: #0f172a;
+
+  // --- Accent ---
+  --xp-accent: #22d3ee;
+  --xp-accent-hover: #06b6d4;
+  --xp-accent-muted: rgba(34, 211, 238, 0.15);
+  --xp-accent-glow: 0 0 20px rgba(34, 211, 238, 0.2);
+  --xp-accent-secondary: #818cf8;
+
+  // --- Text ---
+  --xp-text-primary: #f1f5f9;
+  --xp-text-secondary: #94a3b8;
+  --xp-text-muted: #64748b;
+
+  // --- Borders ---
+  --xp-border: #1e293b;
+  --xp-border-light: rgba(255, 255, 255, 0.06);
+  --xp-border-hover: #334155;
+
+  // --- Semantic Colors ---
+  --xp-success: #22c55e;
+  --xp-warning: #f59e0b;
+  --xp-danger: #ef4444;
+  --xp-info: #3b82f6;
+
+  // --- Progress / Dashboard ---
+  --xp-progress-trail: rgba(255, 255, 255, 0.06);
+
+  // --- Drawer / Dialog ---
+  --xp-drawer-bg: #1a2332;
+  --xp-drawer-header-bg: #111827;
+
+  // --- Popover ---
+  --xp-popover-bg: var(--xp-bg-elevated);
+  --xp-popover-border: var(--xp-border);
+
+  // --- Tabs ---
+  --xp-tab-bg: transparent;
+  --xp-tab-active-bg: var(--xp-bg-surface);
+  --xp-tab-border: var(--xp-border);
+
+  // --- Terminal ---
+  --xp-terminal-bg: #0b0e14;
+
+  // --- Semantic UI Colors ---
+  --xp-color-up: #22d3ee;
+  --xp-color-down: #a78bfa;
+
+  // --- Login / Auth page background ---
+  --xp-bg-auth: #050810;
+
+  // --- Gradient for primary buttons ---
+  --xp-btn-primary-bg: #0891b2;
+  --xp-btn-primary-hover: #06b6d4;
+  --xp-btn-primary-active: #0e7490;
+  --xp-btn-primary-gradient: linear-gradient(135deg, #0891b2, #06b6d4);
+  --xp-btn-primary-gradient-hover: linear-gradient(135deg, #06b6d4, #22d3ee);
+
+  // --- Context menu / Floating panels ---
+  --xp-context-bg: var(--xp-bg-surface);
+  --xp-context-border: var(--xp-border);
+  --xp-context-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --xp-context-hover: rgba(34, 211, 238, 0.08);
+  --xp-context-danger-hover: rgba(239, 68, 68, 0.08);
+
+  // --- Font ---
+  --xp-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Noto Sans SC', sans-serif;
+  --xp-font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}

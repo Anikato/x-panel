@@ -1,5 +1,15 @@
-@use './dark-theme';
+// ============================================================
+// X-Panel Global Styles — Entry Point
+// Import order matters: variables → themes → components → utilities → base
+// ============================================================
 
+@use './variables';
+@use './theme-dark';
+@use './theme-light';
+@use './components';
+@use './utilities';
+
+// ---- Reset ----
 * {
   margin: 0;
   padding: 0;
@@ -12,8 +22,7 @@ body {
   height: 100%;
   background: var(--xp-bg-base);
   color: var(--xp-text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Noto Sans SC', sans-serif;
+  font-family: var(--xp-font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -23,7 +32,7 @@ body {
   height: 100%;
 }
 
-// 滚动条 — 极简风格
+// ---- Scrollbar ----
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -42,28 +51,13 @@ body {
   background: transparent;
 }
 
-// 选中文本
+// ---- Selection ----
 ::selection {
   background: rgba(34, 211, 238, 0.25);
-  color: #f1f5f9;
-}
-
-// 通用卡片头
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
   color: var(--xp-text-primary);
-
-  .card-header-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
 }
 
-// 页面渐入动画
+// ---- Page transition ----
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;

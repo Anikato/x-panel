@@ -167,7 +167,6 @@ export default {
     passwordRequired: '请填写当前密码和新密码',
     passwordChangedSuccess: '密码修改成功',
     agentSetting: 'Agent 节点设置',
-    accentColor: '主题色',
     agentToken: '通信密钥',
     agentTokenPlaceholder: '设置 Agent Token 后，主面板可通过此密钥管理本机',
     agentTokenHint: '将本机作为 Agent 节点时需要设置此密钥。主面板添加节点时需填写相同的密钥。留空表示不启用 Agent 模式。',
@@ -193,6 +192,9 @@ export default {
     logoutConfirm: '确定要退出登录吗？',
     changePassword: '修改密码',
     passwordChangeTodo: '修改密码功能开发中',
+    themeDark: '深色模式',
+    themeLight: '浅色模式',
+    themeAuto: '跟随系统',
   },
   file: {
     title: '文件管理',

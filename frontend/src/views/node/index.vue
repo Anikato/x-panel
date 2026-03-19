@@ -240,13 +240,12 @@ onMounted(() => load())
 </script>
 
 <style scoped>
-.app-toolbar { display: flex; align-items: center; margin-bottom: 16px; }
 .form-hint { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
 .output-textarea :deep(.el-textarea__inner) {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--xp-font-mono);
   font-size: 12px;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--xp-bg-inset);
+  color: var(--xp-text-primary);
   line-height: 1.5;
 }
 </style>

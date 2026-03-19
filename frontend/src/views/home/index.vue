@@ -391,13 +391,15 @@ const copyText = async (text: string) => {
   }
 }
 
+const THEME_COLORS = {
+  danger: '#ef4444', warning: '#f59e0b',
+  cpu: '#22d3ee', mem: '#818cf8', load: '#34d399', disk: '#60a5fa', net: '#a78bfa',
+}
+
 const getBarColor = (pct: number, type: string): string => {
-  if (pct >= 90) return '#ef4444'
-  if (pct >= 70) return '#f59e0b'
-  const colors: Record<string, string> = {
-    cpu: '#22d3ee', mem: '#818cf8', load: '#34d399', disk: '#60a5fa', net: '#a78bfa',
-  }
-  return colors[type] || '#22d3ee'
+  if (pct >= 90) return THEME_COLORS.danger
+  if (pct >= 70) return THEME_COLORS.warning
+  return (THEME_COLORS as Record<string, string>)[type] || THEME_COLORS.cpu
 }
 
 const barStyle = (pct?: number, type = 'cpu') => {
@@ -574,21 +576,8 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-.copy-btn {
-  font-size: 12px;
-  color: var(--xp-text-muted);
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.2s;
-  flex-shrink: 0;
-
-  &:hover {
-    color: var(--xp-accent);
-  }
-}
-
-.sys-info-item:hover .copy-btn,
-.net-info-row:hover .copy-btn {
+.sys-info-item:hover :deep(.copy-btn),
+.net-info-row:hover :deep(.copy-btn) {
   opacity: 1;
 }
 
@@ -673,10 +662,10 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.cpu-icon { background: rgba(34, 211, 238, 0.12); color: #22d3ee; }
-.mem-icon { background: rgba(129, 140, 248, 0.12); color: #818cf8; }
-.load-icon { background: rgba(52, 211, 153, 0.12); color: #34d399; }
-.net-icon { background: rgba(167, 139, 250, 0.12); color: #a78bfa; }
+.cpu-icon { background: rgba(34, 211, 238, 0.12); color: var(--xp-accent); }
+.mem-icon { background: rgba(129, 140, 248, 0.12); color: var(--xp-accent-secondary); }
+.load-icon { background: rgba(52, 211, 153, 0.12); color: var(--xp-success); }
+.net-icon { background: rgba(167, 139, 250, 0.12); color: var(--xp-color-down); }
 
 .resource-name {
   font-size: 14px;
@@ -692,8 +681,8 @@ onUnmounted(() => {
 }
 
 .pct-normal { color: var(--xp-accent); }
-.pct-warning { color: #f59e0b; }
-.pct-danger { color: #ef4444; }
+.pct-warning { color: var(--xp-warning); }
+.pct-danger { color: var(--xp-danger); }
 
 .resource-bar-wrapper {
   width: 100%;
@@ -744,8 +733,8 @@ onUnmounted(() => {
   min-width: 60px;
 }
 
-.net-speed-up { color: #22d3ee; font-variant-numeric: tabular-nums; }
-.net-speed-down { color: #a78bfa; font-variant-numeric: tabular-nums; }
+.net-speed-up { color: var(--xp-color-up); font-variant-numeric: tabular-nums; }
+.net-speed-down { color: var(--xp-color-down); font-variant-numeric: tabular-nums; }
 
 /* ===== 磁盘 ===== */
 .disk-section { margin-bottom: 20px; }
@@ -775,7 +764,7 @@ onUnmounted(() => {
   justify-content: center;
   border-radius: 6px;
   background: rgba(96, 165, 250, 0.12);
-  color: #60a5fa;
+  color: var(--xp-info);
 }
 
 .disk-mount {
@@ -841,12 +830,12 @@ onUnmounted(() => {
   transition: all 0.25s;
 
   &:hover {
-    border-color: var(--xp-accent-muted);
+    border-color: rgba(34, 211, 238, 0.2);
     background: var(--xp-accent-muted);
     transform: translateY(-2px);
     .quick-icon {
       color: var(--xp-accent);
-      background: var(--xp-accent-muted);
+      background: rgba(34, 211, 238, 0.12);
     }
   }
 
@@ -871,7 +860,7 @@ onUnmounted(() => {
 }
 
 .text-danger {
-  color: #ef4444;
+  color: var(--xp-danger);
   font-weight: 600;
 }
 

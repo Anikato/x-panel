@@ -334,8 +334,6 @@ onMounted(() => loadAccounts())
 </script>
 
 <style scoped>
-.app-toolbar { display: flex; align-items: center; margin-bottom: 16px; }
-.app-pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 .type-option { display: flex; align-items: center; gap: 8px; }
 .form-hint { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
 </style>

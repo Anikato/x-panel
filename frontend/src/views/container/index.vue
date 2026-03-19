@@ -330,14 +330,12 @@ onMounted(() => loadContainers())
 </script>
 
 <style scoped>
-.app-toolbar { display: flex; align-items: center; margin-bottom: 16px; }
-.app-pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 .log-content {
-  background: var(--xp-bg-card, #1e1e2e);
-  color: #e0e0e0;
+  background: var(--xp-bg-inset);
+  color: var(--xp-text-primary);
   padding: 16px;
   border-radius: 8px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--xp-font-mono);
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;

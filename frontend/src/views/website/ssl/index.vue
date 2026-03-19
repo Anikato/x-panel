@@ -822,14 +822,14 @@ onUnmounted(() => {
 
 .error-popover {
   font-size: 13px;
-  color: #ef4444;
+  color: var(--xp-danger);
   word-break: break-all;
   max-height: 200px;
   overflow-y: auto;
 }
 
 .ssl-log-container {
-  background: var(--xp-bg-deep, #0d1117);
+  background: var(--xp-bg-inset);
   border-radius: 6px;
   padding: 16px;
   max-height: 450px;
@@ -837,10 +837,10 @@ onUnmounted(() => {
 }
 
 .ssl-log-content {
-  font-family: 'Courier New', Consolas, monospace;
+  font-family: var(--xp-font-mono);
   font-size: 12px;
   line-height: 1.7;
-  color: #c9d1d9;
+  color: var(--xp-text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
