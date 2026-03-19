@@ -32,3 +32,4 @@ main_id_rsa
 *.key
 id_rsa
 id_rsa.pub
+backend/cmd/server/web/dist/

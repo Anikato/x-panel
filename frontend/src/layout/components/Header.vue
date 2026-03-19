@@ -23,6 +23,26 @@
         <el-option :label="t('node.local')" :value="0" />
         <el-option v-for="n in nodes" :key="n.id" :label="n.name" :value="n.id" />
       </el-select>
+      <el-popover trigger="click" :width="180" placement="bottom-end">
+        <template #reference>
+          <div class="accent-btn" :title="t('setting.accentColor')">
+            <div class="accent-dot" :style="{ background: currentAccent }"></div>
+          </div>
+        </template>
+        <div class="accent-picker">
+          <span class="accent-picker-title">{{ t('setting.accentColor') }}</span>
+          <div class="accent-options">
+            <div
+              v-for="color in accentColors"
+              :key="color.key"
+              class="accent-option"
+              :class="{ active: globalStore.accentColor === color.key }"
+              :style="{ background: color.value }"
+              @click="globalStore.setAccentColor(color.key as any)"
+            ></div>
+          </div>
+        </div>
+      </el-popover>
       <el-dropdown @command="handleCommand" trigger="click">
         <div class="user-dropdown">
           <div class="user-avatar">
@@ -64,6 +84,18 @@ const { t } = useI18n()
 
 const nodes = ref<any[]>([])
 const currentNode = ref(globalStore.currentNodeID || 0)
+
+const accentColors = [
+  { key: 'cyan', value: '#22d3ee' },
+  { key: 'blue', value: '#3b82f6' },
+  { key: 'purple', value: '#8b5cf6' },
+  { key: 'green', value: '#10b981' },
+  { key: 'orange', value: '#f59e0b' },
+  { key: 'pink', value: '#ec4899' },
+]
+const currentAccent = computed(() => {
+  return accentColors.find(c => c.key === globalStore.accentColor)?.value || '#22d3ee'
+})
 
 const loadNodes = async () => {
   try {
@@ -182,6 +214,55 @@ const handleCommand = async (command: string) => {
 
     .arrow {
       color: var(--xp-text-muted);
+    }
+  }
+}
+
+.accent-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 8px;
+
+  &:hover { background: var(--xp-accent-muted); }
+
+  .accent-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0,0,0,0.3);
+  }
+}
+
+.accent-picker {
+  .accent-picker-title {
+    font-size: 12px;
+    color: var(--xp-text-muted);
+    display: block;
+    margin-bottom: 8px;
+  }
+  .accent-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .accent-option {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+
+    &:hover { transform: scale(1.15); }
+    &.active {
+      border-color: var(--xp-text-primary);
+      box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 12px currentColor;
     }
   }
 }

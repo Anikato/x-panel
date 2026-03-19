@@ -841,12 +841,12 @@ onUnmounted(() => {
   transition: all 0.25s;
 
   &:hover {
-    border-color: rgba(34, 211, 238, 0.2);
+    border-color: var(--xp-accent-muted);
     background: var(--xp-accent-muted);
     transform: translateY(-2px);
     .quick-icon {
       color: var(--xp-accent);
-      background: rgba(34, 211, 238, 0.12);
+      background: var(--xp-accent-muted);
     }
   }
 

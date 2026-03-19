@@ -127,9 +127,10 @@ html.dark {
     border: 1px solid var(--xp-border-light);
     border-radius: var(--xp-radius);
     box-shadow: 0 0 1px rgba(0, 0, 0, 0.3);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
 
     &:hover {
-      border-color: rgba(34, 211, 238, 0.12);
+      border-color: rgba(255, 255, 255, 0.08);
     }
 
     .el-card__header {
@@ -138,12 +139,12 @@ html.dark {
   }
 
   .el-button--primary {
-    --el-button-bg-color: #0891b2;
-    --el-button-border-color: #0891b2;
-    --el-button-hover-bg-color: #06b6d4;
-    --el-button-hover-border-color: #06b6d4;
-    --el-button-active-bg-color: #0e7490;
-    --el-button-active-border-color: #0e7490;
+    --el-button-bg-color: var(--xp-accent-hover);
+    --el-button-border-color: var(--xp-accent-hover);
+    --el-button-hover-bg-color: var(--xp-accent);
+    --el-button-hover-border-color: var(--xp-accent);
+    --el-button-active-bg-color: var(--xp-accent-hover);
+    --el-button-active-border-color: var(--xp-accent-hover);
   }
 
   .el-input__wrapper {
