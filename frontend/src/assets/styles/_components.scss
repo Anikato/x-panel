@@ -9,10 +9,12 @@ html.dark {
     background: var(--xp-bg-surface);
     border: 1px solid var(--xp-border-light);
     border-radius: var(--xp-radius);
-    box-shadow: 0 0 1px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+    transition: border-color 0.25s, box-shadow 0.25s;
 
     &:hover {
-      border-color: rgba(34, 211, 238, 0.12);
+      border-color: var(--xp-accent-muted);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
     }
 
     .el-card__header {
@@ -158,10 +160,18 @@ html.dark {
   .el-dropdown-menu {
     background: var(--xp-bg-elevated);
     border: 1px solid var(--xp-border);
+    border-radius: var(--xp-radius-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 4px;
 
-    .el-dropdown-menu__item:hover {
-      background: var(--xp-accent-muted);
-      color: var(--xp-accent);
+    .el-dropdown-menu__item {
+      border-radius: 4px;
+      transition: all 0.15s;
+
+      &:hover {
+        background: var(--xp-accent-muted);
+        color: var(--xp-accent);
+      }
     }
   }
 
@@ -176,7 +186,8 @@ html.dark {
   .el-dialog {
     background: var(--xp-drawer-bg);
     border: 1px solid var(--xp-border);
-    border-radius: var(--xp-radius);
+    border-radius: var(--xp-radius-lg);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.05) inset;
 
     .el-dialog__header {
       border-bottom: 1px solid var(--xp-border-light);
@@ -190,6 +201,7 @@ html.dark {
 
     .el-dialog__headerbtn .el-dialog__close {
       color: var(--xp-text-muted);
+      transition: color 0.2s;
 
       &:hover {
         color: var(--xp-accent);
@@ -201,6 +213,7 @@ html.dark {
   .el-drawer {
     background: var(--xp-drawer-bg);
     border-color: var(--xp-border);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
 
     .el-drawer__header {
       background: var(--xp-drawer-header-bg);

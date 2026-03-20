@@ -1073,7 +1073,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   z-index: 100;
-  background: rgba(34, 211, 238, 0.08);
+  background: var(--xp-accent-muted);
   border: 2px dashed var(--xp-accent);
   border-radius: 8px;
   display: flex;

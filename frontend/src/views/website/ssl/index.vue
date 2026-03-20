@@ -805,7 +805,7 @@ onUnmounted(() => {
     font-size: 11px;
     padding: 1px 5px;
     border-radius: 3px;
-    background: rgba(34, 211, 238, 0.12);
+    background: var(--xp-accent-muted);
     color: var(--xp-accent);
   }
 }

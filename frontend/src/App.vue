@@ -6,6 +6,7 @@
 import { watch, onMounted } from 'vue'
 import { useGlobalStore } from '@/store/modules/global'
 import type { ThemeMode } from '@/store/modules/global'
+import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const globalStore = useGlobalStore()
 
@@ -19,10 +20,23 @@ const applyTheme = (mode: ThemeMode) => {
   document.documentElement.classList.toggle('dark', isDark)
 }
 
-watch(() => globalStore.theme, (mode) => applyTheme(mode), { immediate: true })
+const applyAccent = () => {
+  const key = globalStore.accentKey
+  if (key === 'custom' && globalStore.accentCustom) {
+    applyAccentPalette(generatePaletteFromHex(globalStore.accentCustom))
+  } else {
+    const preset = getPresetByKey(key)
+    if (preset) applyAccentPalette(preset)
+  }
+}
+
+watch(() => globalStore.theme, (mode) => applyTheme(mode))
+watch(() => globalStore.accentKey, () => applyAccent())
+watch(() => globalStore.accentCustom, () => applyAccent())
 
 onMounted(() => {
   applyTheme(globalStore.theme)
+  applyAccent()
 
   const mq = window.matchMedia('(prefers-color-scheme: dark)')
   mq.addEventListener('change', () => {

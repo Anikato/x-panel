@@ -69,7 +69,7 @@ html.dark {
   --el-table-bg-color: transparent;
   --el-table-header-bg-color: var(--xp-bg-table-header);
   --el-table-tr-bg-color: transparent;
-  --el-table-row-hover-bg-color: rgba(34, 211, 238, 0.04);
+  --el-table-row-hover-bg-color: var(--xp-accent-muted);
   --el-table-border-color: var(--xp-border);
 
   // --- Menu ---
@@ -78,7 +78,7 @@ html.dark {
   --el-menu-active-color: var(--xp-accent);
 
   // --- Button ---
-  --el-button-hover-bg-color: rgba(34, 211, 238, 0.1);
+  --el-button-hover-bg-color: var(--xp-accent-muted);
 
   // --- Pagination ---
   --el-pagination-bg-color: transparent;

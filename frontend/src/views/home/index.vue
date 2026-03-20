@@ -391,14 +391,16 @@ const copyText = async (text: string) => {
   }
 }
 
+const getCS = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim()
 const THEME_COLORS = {
   danger: '#ef4444', warning: '#f59e0b',
-  cpu: '#22d3ee', mem: '#818cf8', load: '#34d399', disk: '#60a5fa', net: '#a78bfa',
+  cpu: '', mem: '#818cf8', load: '#34d399', disk: '#60a5fa', net: '#a78bfa',
 }
 
 const getBarColor = (pct: number, type: string): string => {
   if (pct >= 90) return THEME_COLORS.danger
   if (pct >= 70) return THEME_COLORS.warning
+  if (!THEME_COLORS.cpu) THEME_COLORS.cpu = getCS('--xp-accent') || '#22d3ee'
   return (THEME_COLORS as Record<string, string>)[type] || THEME_COLORS.cpu
 }
 
@@ -641,7 +643,7 @@ onUnmounted(() => {
   transition: all 0.25s;
 
   &:hover {
-    border-color: rgba(34, 211, 238, 0.15);
+    border-color: var(--xp-accent-muted);
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
   }
 }
@@ -662,7 +664,7 @@ onUnmounted(() => {
   border-radius: 8px;
 }
 
-.cpu-icon { background: rgba(34, 211, 238, 0.12); color: var(--xp-accent); }
+.cpu-icon { background: var(--xp-accent-muted); color: var(--xp-accent); }
 .mem-icon { background: rgba(129, 140, 248, 0.12); color: var(--xp-accent-secondary); }
 .load-icon { background: rgba(52, 211, 153, 0.12); color: var(--xp-success); }
 .net-icon { background: rgba(167, 139, 250, 0.12); color: var(--xp-color-down); }
@@ -830,12 +832,12 @@ onUnmounted(() => {
   transition: all 0.25s;
 
   &:hover {
-    border-color: rgba(34, 211, 238, 0.2);
+    border-color: var(--xp-accent-muted);
     background: var(--xp-accent-muted);
     transform: translateY(-2px);
     .quick-icon {
       color: var(--xp-accent);
-      background: rgba(34, 211, 238, 0.12);
+      background: var(--xp-accent-muted);
     }
   }
 

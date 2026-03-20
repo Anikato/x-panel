@@ -19,8 +19,8 @@
         <path d="M2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4H4C2.9 4 2 4.9 2 6Z" stroke="#fbbf24" stroke-width="1.5" stroke-linejoin="round" />
       </template>
       <template v-else>
-        <path d="M2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4H4C2.9 4 2 4.9 2 6Z" fill="#22d3ee" fill-opacity="0.15" />
-        <path d="M2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4H4C2.9 4 2 4.9 2 6Z" stroke="#22d3ee" stroke-width="1.5" stroke-linejoin="round" />
+        <path d="M2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4H4C2.9 4 2 4.9 2 6Z" :fill="accentColor" fill-opacity="0.15" />
+        <path d="M2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V8C22 6.9 21.1 6 20 6H12L10 4H4C2.9 4 2 4.9 2 6Z" :stroke="accentColor" stroke-width="1.5" stroke-linejoin="round" />
       </template>
     </template>
 
@@ -119,6 +119,8 @@ const colorMap: Record<string, string> = {
 
 const iconColor = computed(() => colorMap[ext.value] || '#8b949e')
 const bgColor = computed(() => iconColor.value)
+
+const accentColor = computed(() => getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#22d3ee')
 
 const extLabel = computed(() => {
   const e = ext.value

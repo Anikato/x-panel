@@ -117,6 +117,8 @@ export default {
   },
   setting: {
     title: '面板设置',
+    appearance: '外观设置',
+    themeMode: '主题模式',
     panelName: '面板名称',
     sessionTimeout: '会话超时(秒)',
     save: '保存设置',
@@ -195,6 +197,8 @@ export default {
     themeDark: '深色模式',
     themeLight: '浅色模式',
     themeAuto: '跟随系统',
+    accentColor: '主题色',
+    customColor: '自定义',
   },
   file: {
     title: '文件管理',

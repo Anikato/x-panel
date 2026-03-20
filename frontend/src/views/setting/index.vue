@@ -129,6 +129,57 @@
       </div>
     </el-card>
 
+    <!-- 外观设置 -->
+    <el-card class="setting-card">
+      <template #header>
+        <div class="card-header">
+          <div class="card-header-title">
+            <el-icon><Brush /></el-icon>
+            <span>{{ t('setting.appearance') }}</span>
+          </div>
+        </div>
+      </template>
+      <div class="appearance-section">
+        <div class="appearance-row">
+          <span class="appearance-label">{{ t('setting.themeMode') }}</span>
+          <el-radio-group v-model="globalStore.theme" @change="(val: any) => globalStore.setTheme(val)">
+            <el-radio-button value="dark">
+              <el-icon><Moon /></el-icon> {{ t('header.themeDark') }}
+            </el-radio-button>
+            <el-radio-button value="light">
+              <el-icon><Sunny /></el-icon> {{ t('header.themeLight') }}
+            </el-radio-button>
+            <el-radio-button value="auto">
+              <el-icon><Monitor /></el-icon> {{ t('header.themeAuto') }}
+            </el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="appearance-row">
+          <span class="appearance-label">{{ t('header.accentColor') }}</span>
+          <div class="accent-grid-large">
+            <div
+              v-for="preset in ACCENT_PRESETS"
+              :key="preset.key"
+              class="accent-swatch-large"
+              :class="{ active: globalStore.accentKey === preset.key }"
+              :style="{ background: preset.primary }"
+              @click="selectPreset(preset.key)"
+            >
+              <el-icon v-if="globalStore.accentKey === preset.key" :size="16"><Check /></el-icon>
+            </div>
+            <div class="accent-swatch-large custom-swatch">
+              <input
+                type="color"
+                class="swatch-color-input"
+                :value="globalStore.accentCustom || '#22d3ee'"
+                @input="onCustomAccent"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 面板设置 -->
     <el-card v-loading="loading" class="setting-card">
       <template #header>
@@ -275,15 +326,28 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Setting, InfoFilled, Connection, User } from '@element-plus/icons-vue'
+import { Refresh, Setting, InfoFilled, Connection, User, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
 import { getSettingInfo, updateSetting, updatePort } from '@/api/modules/setting'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
 import { updatePassword } from '@/api/modules/auth'
 import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
+import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const { t } = useI18n()
 const globalStore = useGlobalStore()
+
+const selectPreset = (key: string) => {
+  globalStore.setAccent(key)
+  const preset = getPresetByKey(key)
+  if (preset) applyAccentPalette(preset)
+}
+
+const onCustomAccent = (e: Event) => {
+  const hex = (e.target as HTMLInputElement).value
+  globalStore.setAccent('custom', hex)
+  applyAccentPalette(generatePaletteFromHex(hex))
+}
 
 // 面板设置
 const loading = ref(false)
@@ -586,5 +650,73 @@ onUnmounted(() => {
 
 .dev-notice {
   margin-top: 4px;
+}
+
+.appearance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.appearance-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.appearance-label {
+  font-size: 14px;
+  color: var(--xp-text-secondary);
+  min-width: 80px;
+  padding-top: 6px;
+  font-weight: 500;
+}
+
+.accent-grid-large {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.accent-swatch-large {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  &.active {
+    border-color: var(--xp-text-primary);
+    box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 4px currentColor;
+  }
+
+  &.custom-swatch {
+    border: 2px dashed var(--xp-border-hover);
+    background: transparent !important;
+    overflow: hidden;
+    padding: 0;
+  }
+}
+
+.swatch-color-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+
+  &::-webkit-color-swatch-wrapper { padding: 0; }
+  &::-webkit-color-swatch { border: none; border-radius: 8px; }
 }
 </style>

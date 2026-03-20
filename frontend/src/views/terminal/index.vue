@@ -608,7 +608,7 @@ onBeforeUnmount(() => {
       font-size: 13px;
     }
     :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-      background: rgba(34, 211, 238, 0.12);
+      background: var(--xp-accent-muted);
       border-color: var(--xp-accent);
       color: var(--xp-accent);
       box-shadow: -1px 0 0 0 var(--xp-accent);
@@ -699,7 +699,7 @@ onBeforeUnmount(() => {
     transition: all 0.2s;
 
     &:hover {
-      background: rgba(34, 211, 238, 0.08);
+      background: var(--xp-accent-muted);
       color: var(--xp-accent);
     }
 
@@ -789,7 +789,7 @@ onBeforeUnmount(() => {
     &.active {
       color: var(--xp-accent);
       border-bottom-color: var(--xp-accent);
-      background: rgba(34, 211, 238, 0.05);
+      background: var(--xp-accent-muted);
     }
 
     .remote {
@@ -910,7 +910,7 @@ onBeforeUnmount(() => {
 
   &.active,
   &:hover {
-    background: rgba(34, 211, 238, 0.08);
+    background: var(--xp-accent-muted);
   }
 
   .palette-name {

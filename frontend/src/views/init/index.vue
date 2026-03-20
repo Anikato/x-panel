@@ -91,17 +91,18 @@ const handleInit = async () => {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+    linear-gradient(var(--xp-accent-muted) 1px, transparent 1px),
+    linear-gradient(90deg, var(--xp-accent-muted) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 20%, transparent 70%);
+  opacity: 0.3;
 }
 
 .login-bg-glow {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse 40% 50% at 25% 50%, rgba(34, 211, 238, 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 50% at 25% 50%, var(--xp-accent-muted) 0%, transparent 70%),
     radial-gradient(ellipse 40% 50% at 75% 40%, rgba(129, 140, 248, 0.05) 0%, transparent 70%);
 }
 
@@ -111,9 +112,9 @@ const handleInit = async () => {
   padding: 40px 36px;
   background: rgba(17, 24, 39, 0.7);
   backdrop-filter: blur(24px);
-  border: 1px solid rgba(34, 211, 238, 0.12);
+  border: 1px solid var(--xp-accent-muted);
   border-radius: 20px;
-  box-shadow: 0 0 60px rgba(34, 211, 238, 0.06), 0 24px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--xp-accent-glow), 0 24px 48px rgba(0, 0, 0, 0.4);
 }
 
 .login-header {
@@ -127,8 +128,8 @@ const handleInit = async () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(129, 140, 248, 0.15));
-    border: 1px solid rgba(34, 211, 238, 0.2);
+    background: linear-gradient(135deg, var(--xp-accent-muted), rgba(129, 140, 248, 0.15));
+    border: 1px solid var(--xp-accent-muted);
     border-radius: 16px;
     color: var(--xp-accent);
   }

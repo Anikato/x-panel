@@ -661,12 +661,12 @@ onUnmounted(() => stopProgressPolling())
   transition: all 0.15s;
 
   &:hover {
-    background: rgba(34, 211, 238, 0.06);
+    background: var(--xp-accent-muted);
     color: var(--xp-text-primary);
   }
 
   &.active {
-    background: rgba(34, 211, 238, 0.12);
+    background: var(--xp-accent-muted);
     color: var(--xp-accent);
     font-weight: 500;
   }

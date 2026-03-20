@@ -60,7 +60,7 @@ const loadDisk = async () => {
 }
 
 const progressColor = (percentage: number) => {
-  if (percentage < 50) return '#22d3ee'
+  if (percentage < 50) return getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#22d3ee'
   if (percentage < 80) return '#f59e0b'
   return '#ef4444'
 }

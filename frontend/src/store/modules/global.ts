@@ -9,6 +9,8 @@ export const useGlobalStore = defineStore('global', {
     menuCollapse: false,
     panelName: 'X-Panel',
     theme: 'dark' as ThemeMode,
+    accentKey: 'cyan',
+    accentCustom: '',
     version: '',
     currentNodeID: 0,
     currentNodeName: '',
@@ -40,6 +42,10 @@ export const useGlobalStore = defineStore('global', {
       const order: ThemeMode[] = ['dark', 'light', 'auto']
       const idx = order.indexOf(this.theme)
       this.theme = order[(idx + 1) % order.length]
+    },
+    setAccent(key: string, customHex?: string) {
+      this.accentKey = key
+      this.accentCustom = customHex || ''
     },
   },
   persist: true,

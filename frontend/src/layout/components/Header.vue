@@ -17,12 +17,48 @@
       <el-select
         v-model="currentNode"
         size="small"
-        style="width: 160px; margin-right: 12px"
+        style="width: 160px; margin-right: 4px"
         @change="onNodeChange"
       >
         <el-option :label="t('node.local')" :value="0" />
         <el-option v-for="n in nodes" :key="n.id" :label="n.name" :value="n.id" />
       </el-select>
+
+      <!-- 主题色选择 -->
+      <el-popover placement="bottom" :width="280" trigger="click">
+        <template #reference>
+          <div class="theme-btn">
+            <div class="accent-dot" :style="{ background: currentAccentColor }"></div>
+          </div>
+        </template>
+        <div class="accent-panel">
+          <div class="accent-panel-title">{{ t('header.accentColor') }}</div>
+          <div class="accent-grid">
+            <div
+              v-for="preset in ACCENT_PRESETS"
+              :key="preset.key"
+              class="accent-swatch"
+              :class="{ active: globalStore.accentKey === preset.key }"
+              :style="{ background: preset.primary }"
+              :title="preset.name"
+              @click="selectAccent(preset.key)"
+            >
+              <el-icon v-if="globalStore.accentKey === preset.key" :size="14"><Check /></el-icon>
+            </div>
+          </div>
+          <div class="accent-custom-row">
+            <span class="accent-custom-label">{{ t('header.customColor') }}</span>
+            <input
+              type="color"
+              class="accent-color-input"
+              :value="globalStore.accentCustom || '#22d3ee'"
+              @input="onCustomColor"
+            />
+          </div>
+        </div>
+      </el-popover>
+
+      <!-- 深浅模式切换 -->
       <el-tooltip :content="themeLabel" placement="bottom">
         <div class="theme-btn" @click="globalStore.cycleTheme()">
           <el-icon :size="16">
@@ -32,6 +68,7 @@
           </el-icon>
         </div>
       </el-tooltip>
+
       <el-dropdown @command="handleCommand" trigger="click">
         <div class="user-dropdown">
           <div class="user-avatar">
@@ -64,7 +101,8 @@ import { useUserStore } from '@/store/modules/user'
 import { logout as logoutApi } from '@/api/modules/auth'
 import { listNodes } from '@/api/modules/node'
 import { useI18n } from 'vue-i18n'
-import { Moon, Sunny } from '@element-plus/icons-vue'
+import { Moon, Sunny, Check } from '@element-plus/icons-vue'
+import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
 const router = useRouter()
@@ -76,6 +114,23 @@ const themeLabel = computed(() => {
   const labels = { dark: t('header.themeDark'), light: t('header.themeLight'), auto: t('header.themeAuto') }
   return labels[globalStore.theme] || labels.dark
 })
+
+const currentAccentColor = computed(() => {
+  if (globalStore.accentKey === 'custom' && globalStore.accentCustom) return globalStore.accentCustom
+  return getPresetByKey(globalStore.accentKey)?.primary || '#22d3ee'
+})
+
+const selectAccent = (key: string) => {
+  globalStore.setAccent(key)
+  const preset = getPresetByKey(key)
+  if (preset) applyAccentPalette(preset)
+}
+
+const onCustomColor = (e: Event) => {
+  const hex = (e.target as HTMLInputElement).value
+  globalStore.setAccent('custom', hex)
+  applyAccentPalette(generatePaletteFromHex(hex))
+}
 
 const nodes = ref<any[]>([])
 const currentNode = ref(globalStore.currentNodeID || 0)
@@ -133,9 +188,10 @@ const handleCommand = async (command: string) => {
   justify-content: space-between;
   padding: 0 20px;
   background: var(--xp-bg-header);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px) saturate(1.8);
   border-bottom: 1px solid var(--xp-border-light);
   flex-shrink: 0;
+  position: relative;
 }
 
 .header-left {
@@ -181,6 +237,14 @@ const handleCommand = async (command: string) => {
       background: var(--xp-accent-muted);
       color: var(--xp-accent);
     }
+
+    .accent-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      transition: all 0.2s;
+    }
   }
 
   .user-dropdown {
@@ -219,6 +283,73 @@ const handleCommand = async (command: string) => {
     .arrow {
       color: var(--xp-text-muted);
     }
+  }
+}
+
+// Accent picker popover (not scoped — rendered in teleport)
+:global(.accent-panel) {
+  .accent-panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--xp-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+
+  .accent-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .accent-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+
+    &:hover {
+      transform: scale(1.15);
+    }
+
+    &.active {
+      border-color: var(--xp-text-primary);
+      box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 4px var(--xp-accent);
+    }
+  }
+
+  .accent-custom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid var(--xp-border-light);
+  }
+
+  .accent-custom-label {
+    font-size: 12px;
+    color: var(--xp-text-secondary);
+  }
+
+  .accent-color-input {
+    width: 32px;
+    height: 28px;
+    border: 1px solid var(--xp-border);
+    border-radius: 6px;
+    padding: 2px;
+    background: transparent;
+    cursor: pointer;
+
+    &::-webkit-color-swatch-wrapper { padding: 2px; }
+    &::-webkit-color-swatch { border-radius: 4px; border: none; }
   }
 }
 </style>

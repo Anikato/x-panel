@@ -130,6 +130,18 @@ const menuList = computed(() => [
   z-index: 1001;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--xp-accent-muted), transparent 30%, transparent 70%, var(--xp-accent-muted));
+    pointer-events: none;
+  }
 
   &.is-collapse {
     width: var(--xp-sidebar-collapse-width);
@@ -151,7 +163,7 @@ const menuList = computed(() => [
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(129, 140, 248, 0.15));
+    background: linear-gradient(135deg, var(--xp-accent-muted), rgba(129, 140, 248, 0.15));
     border-radius: 10px;
     color: var(--xp-accent);
     flex-shrink: 0;
@@ -199,7 +211,7 @@ const menuList = computed(() => [
     font-size: 14px;
 
     &:hover {
-      background: rgba(34, 211, 238, 0.06);
+      background: var(--xp-accent-muted);
       color: var(--xp-text-primary);
     }
 
@@ -209,7 +221,7 @@ const menuList = computed(() => [
   }
 
   .el-menu-item.is-active {
-    background: linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(34, 211, 238, 0.04));
+    background: linear-gradient(90deg, var(--xp-accent-muted), rgba(255, 255, 255, 0.02));
     color: var(--xp-accent);
     font-weight: 500;
     position: relative;
