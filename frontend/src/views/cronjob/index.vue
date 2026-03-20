@@ -396,7 +396,7 @@ const loadRecords = async () => {
 onMounted(() => search())
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .cron-builder {
   width: 100%;
 }
@@ -404,21 +404,27 @@ onMounted(() => search())
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--xp-text-secondary);
 }
 .cron-preview {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--xp-bg-inset);
+  border-radius: var(--xp-radius-sm);
+  border: 1px solid var(--xp-border-light);
 }
 .cron-preview-desc {
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-muted);
   font-size: 12px;
 }
 .cron-desc {
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-secondary);
   font-size: 13px;
+  font-family: var(--xp-font-mono);
 }
 </style>

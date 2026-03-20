@@ -4,6 +4,39 @@
 
 ---
 
+## 2026-03-19 — Session #30：主题色自定义系统 + 全局视觉增强
+
+### 完成内容
+
+- [x] **主题色系统**：8 种预设色板（青蓝/靛蓝/翡翠/琥珀/玫红/天蓝/紫罗兰/橙色）+ 自定义拾色器
+- [x] **动态 CSS 注入**：accent 颜色实时修改 `--xp-accent` 及 Element Plus `--el-color-primary` 等变量，无需刷新
+- [x] **Header 色彩选择器**：Popover 面板内含预设色块网格 + HTML5 颜色输入
+- [x] **设置页外观区块**：新增「外观设置」卡片，深浅模式切换 + 主题色预设 + 自定义
+- [x] **硬编码颜色清理**：全面替换 `rgba(34, 211, 238, ...)` 为 `var(--xp-accent-muted)` 等动态变量
+- [x] **组件视觉增强**：Card 悬停阴影、Dialog/Drawer 圆角和阴影、Dropdown 圆角、侧边栏装饰线、Header 模糊增强
+- [x] **文件图标适配**：SVG 默认文件夹颜色跟随主题色变化
+- [x] **ECharts/进度条适配**：动态读取 CSS 变量而非硬编码颜色值
+- [x] **Pinia 持久化**：`accentKey` / `accentCustom` 保存在 localStorage
+
+### 关键决策
+- 选择 8 种预设 + 自定义的方案，而非仅提供拾色器，降低用户选择成本
+- accent 变量通过 `document.documentElement.style.setProperty` 注入，覆盖 SCSS 默认值
+- 使用 `mixColor` 工具函数从自定义颜色自动生成完整色板（hover/muted/glow/secondary 等）
+
+### 涉及文件
+- 新增：`utils/accent-colors.ts`
+- 修改：`App.vue` `store/modules/global.ts` `layout/components/Header.vue` `layout/components/Sidebar.vue`
+- 修改：`views/setting/index.vue` `views/home/index.vue` `views/login/index.vue` `views/init/index.vue`
+- 修改：`views/terminal/index.vue` `views/host/file/index.vue` `views/host/disk/index.vue`
+- 修改：`views/website/nginx/index.vue` `views/website/ssl/index.vue` `views/website/website/index.vue`
+- 修改：`components/file-icons/FileIcon.vue` `i18n/zh.ts`
+- SCSS：`_components.scss` `_theme-dark.scss` `index.scss`
+
+### 版本
+- 发布 `v0.5.2`
+
+---
+
 ## 2026-03-19 — Session #28：流量统计功能
 
 ### 完成内容

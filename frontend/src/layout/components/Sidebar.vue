@@ -2,7 +2,7 @@
   <div class="sidebar" :class="{ 'is-collapse': globalStore.menuCollapse }">
     <div class="sidebar-logo">
       <div class="logo-icon">
-        <el-icon :size="24"><Monitor /></el-icon>
+        <el-icon :size="22"><Monitor /></el-icon>
       </div>
       <transition name="fade-text">
         <span v-if="!globalStore.menuCollapse" class="logo-text">
@@ -62,7 +62,6 @@ const { t } = useI18n()
 
 const activeMenu = computed(() => route.path)
 
-// 每次挂载都从后端获取真实版本号（不依赖缓存，防止版本升级后仍显示旧值）
 onMounted(async () => {
   try {
     const res: any = await getCurrentVersion()
@@ -132,17 +131,6 @@ const menuList = computed(() => [
   flex-direction: column;
   overflow: hidden;
 
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 1px;
-    background: linear-gradient(to bottom, var(--xp-accent-muted), transparent 30%, transparent 70%, var(--xp-accent-muted));
-    pointer-events: none;
-  }
-
   &.is-collapse {
     width: var(--xp-sidebar-collapse-width);
   }
@@ -163,15 +151,16 @@ const menuList = computed(() => [
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--xp-accent-muted), rgba(129, 140, 248, 0.15));
+    background: linear-gradient(135deg, var(--xp-accent), var(--xp-accent-secondary));
     border-radius: 10px;
-    color: var(--xp-accent);
+    color: #fff;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 
   .logo-text {
     color: var(--xp-text-primary);
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 700;
     white-space: nowrap;
     letter-spacing: -0.3px;
@@ -184,7 +173,7 @@ const menuList = computed(() => [
 }
 
 .sidebar-footer {
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-top: 1px solid var(--xp-border-light);
 
   .sidebar-version {
@@ -192,39 +181,45 @@ const menuList = computed(() => [
     color: var(--xp-text-muted);
     text-align: center;
     letter-spacing: 0.5px;
+    opacity: 0.7;
   }
 }
 
-// Menu 样式
 :deep(.el-menu) {
   border-right: none;
   background: transparent;
-  padding: 8px;
+  padding: 6px 8px;
 
   .el-menu-item,
   .el-sub-menu__title {
     color: var(--xp-text-secondary);
     border-radius: var(--xp-radius-sm);
-    margin: 2px 0;
-    height: 42px;
-    line-height: 42px;
-    font-size: 14px;
+    margin: 1px 0;
+    height: 40px;
+    line-height: 40px;
+    font-size: 13.5px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
 
     &:hover {
-      background: var(--xp-accent-muted);
+      background: rgba(255, 255, 255, 0.05);
       color: var(--xp-text-primary);
     }
 
     .el-icon {
-      font-size: 18px;
+      font-size: 17px;
+      transition: transform 0.2s;
+    }
+
+    &:hover .el-icon {
+      transform: scale(1.1);
     }
   }
 
   .el-menu-item.is-active {
-    background: linear-gradient(90deg, var(--xp-accent-muted), rgba(255, 255, 255, 0.02));
+    background: var(--xp-accent-muted);
     color: var(--xp-accent);
-    font-weight: 500;
-    position: relative;
+    font-weight: 600;
 
     &::before {
       content: '';
@@ -236,13 +231,58 @@ const menuList = computed(() => [
       background: var(--xp-accent);
       border-radius: 0 3px 3px 0;
     }
+
+    .el-icon {
+      color: var(--xp-accent);
+    }
   }
 
+  // Sub-menu children
   .el-sub-menu .el-menu-item {
-    padding-left: 52px !important;
+    padding-left: 48px !important;
     font-size: 13px;
-    height: 38px;
-    line-height: 38px;
+    height: 36px;
+    line-height: 36px;
+    color: var(--xp-text-muted);
+
+    &:hover {
+      color: var(--xp-text-primary);
+      padding-left: 52px !important;
+    }
+
+    &.is-active {
+      color: var(--xp-accent);
+      padding-left: 52px !important;
+
+      &::before {
+        top: 6px;
+        bottom: 6px;
+      }
+    }
+  }
+
+  // Sub-menu expand arrow
+  .el-sub-menu__icon-arrow {
+    color: var(--xp-text-muted);
+    transition: transform 0.2s;
+  }
+
+  .el-sub-menu.is-opened > .el-sub-menu__title .el-sub-menu__icon-arrow {
+    color: var(--xp-accent);
+  }
+
+  .el-sub-menu .el-menu {
+    background: transparent;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 24px;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--xp-border-light);
+    }
   }
 }
 

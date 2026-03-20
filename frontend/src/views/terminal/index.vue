@@ -755,8 +755,8 @@ onBeforeUnmount(() => {
 .terminal-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
+  gap: 1px;
+  padding: 4px 4px 0;
   background: var(--xp-bg-surface);
   border: 1px solid var(--xp-border-light);
   border-bottom: none;
@@ -772,12 +772,13 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 14px;
+    padding: 8px 16px;
     font-size: 13px;
     color: var(--xp-text-muted);
     cursor: pointer;
     border-bottom: 2px solid transparent;
-    transition: all 0.2s;
+    border-radius: var(--xp-radius-sm) var(--xp-radius-sm) 0 0;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
     user-select: none;
 
@@ -790,6 +791,7 @@ onBeforeUnmount(() => {
       color: var(--xp-accent);
       border-bottom-color: var(--xp-accent);
       background: var(--xp-accent-muted);
+      font-weight: 500;
     }
 
     .remote {
@@ -836,6 +838,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   position: relative;
   padding: 4px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.15);
 
   .terminal-instance {
     position: absolute;
@@ -866,19 +869,20 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   padding-top: 15vh;
 }
 
 .command-palette {
-  width: 520px;
-  max-height: 420px;
+  width: 540px;
+  max-height: 440px;
   background: var(--xp-bg-surface);
   border: 1px solid var(--xp-border);
-  border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  border-radius: var(--xp-radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   display: flex;
   flex-direction: column;

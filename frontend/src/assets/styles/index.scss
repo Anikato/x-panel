@@ -1,6 +1,6 @@
 // ============================================================
 // X-Panel Global Styles — Entry Point
-// Import order matters: variables → themes → components → utilities → base
+// Import order: variables → themes → components → utilities
 // ============================================================
 
 @use './variables';
@@ -23,13 +23,27 @@ body {
   background: var(--xp-bg-base);
   color: var(--xp-text-primary);
   font-family: var(--xp-font-family);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 #app {
   width: 100%;
   height: 100%;
+}
+
+// ---- Links ----
+a {
+  color: var(--xp-accent);
+  text-decoration: none;
+  transition: color 0.15s;
+
+  &:hover {
+    color: var(--xp-accent-hover);
+  }
 }
 
 // ---- Scrollbar ----
@@ -39,12 +53,11 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.15);
+  background: rgba(148, 163, 184, 0.12);
   border-radius: 6px;
-  transition: background 0.2s;
 
   &:hover {
-    background: rgba(148, 163, 184, 0.3);
+    background: rgba(148, 163, 184, 0.25);
   }
 }
 
@@ -61,10 +74,42 @@ body {
 // ---- Page transition ----
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.15s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.fade-enter-from,
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
 .fade-leave-to {
   opacity: 0;
+}
+
+// ---- Slide-fade (for drawers/dialogs) ----
+.slide-fade-enter-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slide-fade-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slide-fade-enter-from {
+  transform: translateX(20px);
+  opacity: 0;
+}
+.slide-fade-leave-to {
+  transform: translateX(-10px);
+  opacity: 0;
+}
+
+// ---- Focus ring ----
+:focus-visible {
+  outline: 2px solid var(--xp-accent);
+  outline-offset: 2px;
+  border-radius: var(--xp-radius-sm);
+}
+
+// ---- Smooth font size on resize ----
+html {
+  scroll-behavior: smooth;
 }

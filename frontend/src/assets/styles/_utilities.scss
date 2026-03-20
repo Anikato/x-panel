@@ -7,13 +7,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 
   h3 {
     margin: 0;
     font-size: 16px;
     font-weight: 600;
     color: var(--xp-text-primary);
+    letter-spacing: -0.2px;
   }
 
   .header-actions {
@@ -26,8 +27,12 @@
 .app-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius);
 }
 
 // --- Pagination (below tables) ---
@@ -35,6 +40,7 @@
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+  padding-top: 12px;
 }
 
 // --- Table Footer (alias) ---
@@ -42,6 +48,7 @@
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+  padding-top: 12px;
 }
 
 // --- Card Header pattern ---
@@ -56,10 +63,15 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: 15px;
+
+    .el-icon {
+      color: var(--xp-accent);
+    }
   }
 }
 
-// --- Card Header Row (alternate pattern used in home) ---
+// --- Card Header Row (alternate pattern) ---
 .card-header-row {
   display: flex;
   align-items: center;
@@ -67,6 +79,10 @@
   font-weight: 600;
   font-size: 14px;
   color: var(--xp-text-primary);
+
+  .el-icon {
+    color: var(--xp-accent);
+  }
 }
 
 // --- Context Menu (right-click) ---
@@ -75,19 +91,21 @@
   z-index: 9999;
   background: var(--xp-context-bg);
   border: 1px solid var(--xp-context-border);
-  border-radius: 8px;
-  padding: 4px 0;
+  border-radius: var(--xp-radius);
+  padding: 4px;
   min-width: 180px;
   box-shadow: var(--xp-context-shadow);
+  backdrop-filter: blur(12px);
 
   .context-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
+    gap: 10px;
+    padding: 8px 14px;
     font-size: 13px;
     color: var(--xp-text-secondary);
     cursor: pointer;
+    border-radius: var(--xp-radius-sm);
     transition: all 0.15s;
 
     &:hover {
@@ -102,6 +120,7 @@
 
     .el-icon {
       font-size: 15px;
+      opacity: 0.8;
     }
   }
 
@@ -113,13 +132,8 @@
 }
 
 // --- Traffic color helpers ---
-.up-color {
-  color: var(--xp-color-up);
-}
-
-.down-color {
-  color: var(--xp-color-down);
-}
+.up-color { color: var(--xp-color-up); }
+.down-color { color: var(--xp-color-down); }
 
 // --- Mono text ---
 .mono-text {
@@ -135,8 +149,45 @@
   opacity: 0;
   transition: all 0.2s;
   flex-shrink: 0;
+  padding: 2px;
+  border-radius: 3px;
 
   &:hover {
     color: var(--xp-accent);
+    background: var(--xp-accent-muted);
+  }
+}
+
+// --- Status dot indicator ---
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+
+  &.online { background: var(--xp-success); box-shadow: 0 0 6px rgba(34, 197, 94, 0.4); }
+  &.offline { background: var(--xp-danger); }
+  &.warning { background: var(--xp-warning); }
+}
+
+// --- Section title with left accent bar ---
+.section-title-bar {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--xp-text-primary);
+  margin: 0 0 14px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--xp-accent);
+}
+
+// --- Hover reveal pattern ---
+.hover-reveal {
+  &:hover .reveal-target {
+    opacity: 1;
+  }
+
+  .reveal-target {
+    opacity: 0;
+    transition: opacity 0.2s;
   }
 }
