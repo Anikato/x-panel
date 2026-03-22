@@ -4,7 +4,36 @@
 
 ---
 
-## 2026-03-21 — Session #34：Xray 管理板块完整重设计
+## 2026-03-21 — Session #35：Xray 服务控制、nginx 对话框修复、分享链接 TLS 覆盖
+
+### 完成内容
+
+- [x] **后端：Xray 服务控制接口**
+  - 新增 `POST /xray/service/control`，支持 `start/stop/restart/enable/disable`
+  - `GetStatus()` 新增 `enabledOnBoot` 字段（`systemctl is-enabled xray`）
+  - `ControlService()` 统一调用 `systemctl <action> xray`
+
+- [x] **前端：状态栏服务控制按钮**
+  - 启动 / 重启 / 停止 三按钮组（`el-button-group`），依状态自动 `disabled`
+  - 开机自启切换按钮，状态来自 `enabledOnBoot`；操作后自动刷新状态
+
+- [x] **前端：修复 nginx 配置对话框 SyntaxError**
+  - 根本原因：`v-model="generatedNginxConfig"` 绑定到只读 `computed` ref，Vue 内部尝试写入触发解析错误
+  - 修复：改为 `:model-value="generatedNginxConfig"`（单向绑定）
+  - 同时移除 gRPC 模板注释中的 `⚠` emoji（避免部分解析器异常）
+
+- [x] **前端：分享链接 TLS 覆盖选项**
+  - 当节点 `security=none`（nginx 反代场景）时，对话框展示"客户端加密"区块
+  - 支持选择：无加密（直连）/ TLS（via nginx）
+  - TLS 模式下可配置：SNI、ALPN（h2/http1.1 多选）、uTLS 指纹
+  - `buildShareLinkClient` 重构为接收 `override` 对象，覆盖 security/sni/alpn/fp
+  - 默认值：打开分享链接时自动预填 security=tls、alpn=[h2, http/1.1]、fp=chrome
+
+- [x] **package.json**：固化 `NODE_OPTIONS=--max-old-space-size=3072`
+
+### 版本
+- `v0.5.8` 已推送 GitHub，CI 自动构建中
+
 
 ### 完成内容
 
