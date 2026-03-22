@@ -25,6 +25,7 @@ type ApiGroup struct {
 	BackupAPI
 	NodeAPI
 	TrafficAPI
+	XrayAPI
 }
 
 // ApiGroupApp 全局 API 实例

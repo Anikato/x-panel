@@ -1,0 +1,185 @@
+package v1
+
+import (
+	"strings"
+	"xpanel/app/api/v1/helper"
+	"xpanel/app/dto"
+	"xpanel/app/service"
+
+	"github.com/gin-gonic/gin"
+)
+
+type XrayAPI struct{}
+
+var xrayService = service.NewIXrayService()
+
+func (a *XrayAPI) GetXrayStatus(c *gin.Context) {
+	helper.SuccessWithData(c, xrayService.GetStatus())
+}
+
+func (a *XrayAPI) ListXrayNodes(c *gin.Context) {
+	nodes, err := xrayService.ListNodes()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, nodes)
+}
+
+func (a *XrayAPI) CreateXrayNode(c *gin.Context) {
+	var req dto.XrayNodeCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.CreateNode(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) UpdateXrayNode(c *gin.Context) {
+	var req dto.XrayNodeUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.UpdateNode(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) DeleteXrayNode(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.DeleteNode(req.ID); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) ToggleXrayNode(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.ToggleNode(req.ID); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) StartInstall(c *gin.Context) {
+	if err := xrayService.StartInstall(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) GetInstallLog(c *gin.Context) {
+	log := xrayService.GetInstallLog()
+	helper.SuccessWithData(c, gin.H{
+		"log":     log,
+		"running": log != "" && !strings.HasSuffix(strings.TrimSpace(log), "[DONE] Xray installed successfully.") && !strings.Contains(log, "[ERROR]"),
+	})
+}
+
+func (a *XrayAPI) GetTrafficHistory(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	rows, err := xrayService.GetTrafficHistory(req.ID, 30)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, rows)
+}
+
+func (a *XrayAPI) SearchXrayUsers(c *gin.Context) {
+	var req dto.XrayUserSearch
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	total, items, err := xrayService.SearchUsers(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithPage(c, total, items)
+}
+
+func (a *XrayAPI) CreateXrayUser(c *gin.Context) {
+	var req dto.XrayUserCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.CreateUser(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) UpdateXrayUser(c *gin.Context) {
+	var req dto.XrayUserUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.UpdateUser(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) DeleteXrayUser(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.DeleteUser(req.ID); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) GenerateRealityKeys(c *gin.Context) {
+	resp, err := xrayService.GenerateRealityKeys()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, resp)
+}
+
+func (a *XrayAPI) GetXrayShareLink(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	resp, err := xrayService.GetShareLink(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, resp)
+}

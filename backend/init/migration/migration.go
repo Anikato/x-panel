@@ -28,6 +28,9 @@ func Init() {
 		&model.TrafficConfig{},
 		&model.TrafficHourly{},
 		&model.TrafficSnapshot{},
+		&model.XrayNode{},
+		&model.XrayUser{},
+		&model.XrayTrafficDaily{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

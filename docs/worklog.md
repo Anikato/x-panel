@@ -4,6 +4,73 @@
 
 ---
 
+## 2026-03-21 — Session #33：Xray 功能完善
+
+### 完成内容
+
+- [x] **Xray 安装引导**：进入页面时检测 `/data/xray/bin/xray` 是否存在，未安装则显示引导卡片；点击「一键安装」后台执行 `xray-install.sh install`，前端每 2 秒轮询日志流展示实时进度，安装成功后自动刷新状态
+- [x] **修复 getServerIP()**：移除 `curl ifconfig.me` 外网依赖，改用 `ip route get 1.1.1.1` 从本机路由表获取主出口 IP，无网络依赖；备用方案为 `hostname -I`
+- [x] **SyncTraffic 并发安全**：新增独立 `syncMu sync.Mutex`，`SyncTraffic` 使用 `TryLock` 防止 cron 积压导致并发执行
+- [x] **节点快速启用/禁用**：节点列表每项新增 el-switch 开关，调用 `POST /xray/nodes/toggle`，无需打开编辑对话框即可切换；禁用节点在列表中半透明显示
+- [x] **流量历史图表**：
+  - 新增 `XrayTrafficDaily` 数据库模型（user_id + date 联合唯一索引）
+  - cron 每日 00:01 调用 `SnapshotDailyTraffic()` 快照当前累计值
+  - `GetTrafficHistory()` 将累计值转换为每日增量
+  - 前端点击流量单元格弹出 ECharts 折线图（30 天上行/下行）
+- [x] **XrayStatus 新增 installed 字段**：前端根据此字段区分「未安装」和「已安装未运行」两种状态
+- [x] **新增 ToggleNode API**：`POST /xray/nodes/toggle`
+- [x] **新增安装相关 API**：`POST /xray/install`、`GET /xray/install/log`
+- [x] **新增流量历史 API**：`POST /xray/users/traffic-history`
+
+### 版本
+- 待发布
+
+---
+
+
+
+### 完成内容
+
+- [x] **后端 Model**：`XrayNode`（节点/入站配置）、`XrayUser`（代理用户，含 UUID/Email/到期时间/流量统计）
+- [x] **后端 DTO**：节点和用户的创建/更新/搜索/响应 DTO，含 `XrayStatusResponse`、`XrayGenerateKeyResponse` 等
+- [x] **后端 Repo**：`IXrayNodeRepo` + `IXrayUserRepo`，含 `WithXrayNodeID` DBOption
+- [x] **后端 Service**：`IXrayService` 完整实现
+  - 节点 CRUD + Xray config.json 动态生成（VLESS/VMess/Trojan × TCP/WS/gRPC × none/TLS/Reality）
+  - 用户 CRUD，UUID 自动生成，Email 用于流量统计 key
+  - Stats API 流量同步（`xray api statsquery --reset true` → 原子累加到 SQLite）
+  - 到期用户自动禁用并 reload Xray
+  - Reality 密钥对生成（`xray x25519`）
+  - 分享链接生成（VLESS/VMess/Trojan URI 格式）
+- [x] **后端 API**：`XrayAPI` 12 个接口，注册进 `entry.go` 和 `router.go`
+- [x] **DB 迁移**：`XrayNode`、`XrayUser` 表自动迁移
+- [x] **Cron 任务**：每 5 分钟同步流量，每小时检查过期用户
+- [x] **前端 API 模块**：`api/modules/xray.ts`，TS 接口定义 + 所有 API 调用封装
+- [x] **前端页面**：`views/xray/index.vue` 左右布局
+  - 左侧节点列表（协议/安全类型标签、端口、用户数统计）
+  - 右侧用户表格（UUID、到期时间、上下行流量、状态）
+  - 节点对话框（Reality 密钥自动生成、TLS 证书配置）
+  - 用户对话框（到期时间、启用/禁用）
+  - 分享链接复制弹窗
+- [x] **路由注册**：`routers/modules/xray.ts` + 注入 `routers/index.ts`
+- [x] **侧边栏菜单**：在「流量统计」下方添加「Xray 代理」菜单项
+- [x] **i18n**：zh.ts 新增 `menu.xray` + 完整 `xray` 命名空间（50+ 条文本）
+
+### 关键决策
+
+- Xray 安装路径：`/data/xray/`，配置文件 `/data/xray/etc/config.json`
+- 流量统计方案：使用 `xray api statsquery --reset true` CLI，避免引入 gRPC 依赖，每次调用返回增量并清零，累加存 DB
+- 配置生成策略：以 SQLite 为单一数据源，每次 CRUD 后重新生成完整 config.json 并 `systemctl reload xray`
+- Stats API 端口：固定 `127.0.0.1:10085`，作为 `dokodemo-door` inbound 注入每次生成的配置中
+
+### 下一步计划
+
+- 用户流量历史图表（按日/周统计折线图）
+- 订阅链接（Base64 编码的多节点合并链接）
+- 节点二维码生成
+- 限速功能（通过 Xray Policy Level 实现）
+
+---
+
 ## 2026-03-19 — Session #30：主题色自定义系统 + 全局视觉增强
 
 ### 完成内容
@@ -18,22 +85,59 @@
 - [x] **ECharts/进度条适配**：动态读取 CSS 变量而非硬编码颜色值
 - [x] **Pinia 持久化**：`accentKey` / `accentCustom` 保存在 localStorage
 
-### 关键决策
-- 选择 8 种预设 + 自定义的方案，而非仅提供拾色器，降低用户选择成本
-- accent 变量通过 `document.documentElement.style.setProperty` 注入，覆盖 SCSS 默认值
-- 使用 `mixColor` 工具函数从自定义颜色自动生成完整色板（hover/muted/glow/secondary 等）
-
-### 涉及文件
-- 新增：`utils/accent-colors.ts`
-- 修改：`App.vue` `store/modules/global.ts` `layout/components/Header.vue` `layout/components/Sidebar.vue`
-- 修改：`views/setting/index.vue` `views/home/index.vue` `views/login/index.vue` `views/init/index.vue`
-- 修改：`views/terminal/index.vue` `views/host/file/index.vue` `views/host/disk/index.vue`
-- 修改：`views/website/nginx/index.vue` `views/website/ssl/index.vue` `views/website/website/index.vue`
-- 修改：`components/file-icons/FileIcon.vue` `i18n/zh.ts`
-- SCSS：`_components.scss` `_theme-dark.scss` `index.scss`
-
 ### 版本
 - 发布 `v0.5.2`
+
+---
+
+## 2026-03-19 — Session #31：深度 UI 优化
+
+### 完成内容
+
+- [x] **全局组件重写** (_components.scss)：
+  - 卡片：悬停升浮 + 渐变阴影 + 内发光边缘
+  - 弹窗/抽屉：大圆角 + 深阴影 + 关闭按钮旋转动效 + header/footer 边框
+  - 按钮：Default 悬停变色、Primary 发光阴影、link 按钮悬停底色
+  - 输入框：聚焦微透明背景、textarea 焦点外发光
+  - 下拉菜单/选择器：项目圆角 + 内边距 + 选中项背景高亮
+  - 表格：行悬停 accent 高亮、圆角溢出隐藏
+  - 分页/日期选择器/标签/加载遮罩等全面增强
+  - 遮罩层增加 backdrop-filter 模糊
+
+- [x] **侧边栏重构** (Sidebar.vue)：
+  - Logo 图标改为渐变色背景 (accent→secondary)
+  - 菜单项悬停图标微放大 scale(1.1)
+  - 子菜单项悬停右移 padding 视觉反馈
+  - 展开子菜单增加左侧连接线
+  - 活跃子菜单箭头变色
+
+- [x] **首页增强** (home/index.vue)：
+  - 资源卡片悬停升起 translateY(-2px) + 阴影扩散
+  - 进度条优化：6px 高度 + 3px 圆角 + 0.8s 缓动
+  - 快捷入口悬停：升起 3px + 图标放大 + 标签变色 + 阴影
+  - 磁盘卡片悬停统一 accent 边框
+
+- [x] **终端页增强** (terminal/index.vue)：
+  - 标签栏顶部 padding + 圆角标签
+  - 终端容器内阴影增强深度感
+  - 命令面板遮罩增加 blur
+
+- [x] **计划任务增强** (cronjob/index.vue)：
+  - Cron 预览区块增加背景色和边框
+
+- [x] **全局工具类** (_utilities.scss)：
+  - 工具栏增加背景容器化（背景+边框+圆角）
+  - 右键菜单增加 backdrop-filter
+  - 新增 `.status-dot` / `.hover-reveal` 等工具类
+
+- [x] **全局基础** (index.scss)：
+  - 页面切换增加 translateY 入场动效
+  - 新增 slide-fade 过渡动画
+  - focus-visible 聚焦轮廓环
+  - 链接默认样式
+
+### 版本
+- 发布 `v0.5.3`
 
 ---
 
