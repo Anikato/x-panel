@@ -28,6 +28,96 @@ func (a *XrayAPI) ControlXrayService(c *gin.Context) {
 	helper.SuccessWithData(c, xrayService.GetStatus())
 }
 
+func (a *XrayAPI) FixXrayPermissions(c *gin.Context) {
+	if err := xrayService.FixPermissions(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) GetXrayLogSettings(c *gin.Context) {
+	helper.SuccessWithData(c, xrayService.GetLogSettings())
+}
+
+func (a *XrayAPI) UpdateXrayLogSettings(c *gin.Context) {
+	var req dto.XrayLogSettings
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.UpdateLogSettings(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) CheckXrayUpdate(c *gin.Context) {
+	info, err := xrayService.CheckUpdate()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, info)
+}
+
+func (a *XrayAPI) DoXrayUpgrade(c *gin.Context) {
+	if err := xrayService.DoUpgrade(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) ListXrayOutbounds(c *gin.Context) {
+	list, err := xrayService.ListOutbounds()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, list)
+}
+
+func (a *XrayAPI) CreateXrayOutbound(c *gin.Context) {
+	var req dto.XrayOutboundCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.CreateOutbound(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) UpdateXrayOutbound(c *gin.Context) {
+	var req dto.XrayOutboundUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.UpdateOutbound(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *XrayAPI) DeleteXrayOutbound(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.DeleteOutbound(req.ID); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *XrayAPI) GetXrayStatus(c *gin.Context) {
 	helper.SuccessWithData(c, xrayService.GetStatus())
 }

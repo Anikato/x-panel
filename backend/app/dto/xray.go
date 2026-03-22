@@ -118,6 +118,9 @@ type XrayNodeCreate struct {
 	RealitySettings *XrayRealitySettings `json:"realitySettings,omitempty"`
 
 	Remark string `json:"remark"`
+
+	// 出站标签（空 = direct）
+	OutboundTag string `json:"outboundTag"`
 }
 
 // XrayFallback 回落配置
@@ -156,6 +159,9 @@ type XrayNodeUpdate struct {
 
 	Remark  string `json:"remark"`
 	Enabled bool   `json:"enabled"`
+
+	// 出站标签（空 = direct）
+	OutboundTag string `json:"outboundTag"`
 }
 
 type XrayNodeResponse struct {
@@ -191,6 +197,9 @@ type XrayNodeResponse struct {
 	Enabled   bool      `json:"enabled"`
 	UserCount int64     `json:"userCount"`
 	CreatedAt time.Time `json:"createdAt"`
+
+	// 出站标签
+	OutboundTag string `json:"outboundTag"`
 }
 
 // ============================================================
@@ -261,6 +270,52 @@ type XrayInstallStatus struct {
 type XrayGenerateKeyResponse struct {
 	PrivateKey string `json:"privateKey"`
 	PublicKey  string `json:"publicKey"`
+}
+
+// XrayLogSettings Xray 日志设置
+type XrayLogSettings struct {
+	LogLevel  string `json:"logLevel"`  // debug|info|warning|error|none
+	AccessLog string `json:"accessLog"` // 文件路径，"none" 或 "" 禁用
+	ErrorLog  string `json:"errorLog"`  // 文件路径，"none" 或 "" 禁用
+}
+
+// XrayUpdateInfo 版本更新信息
+type XrayUpdateInfo struct {
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+	HasUpdate      bool   `json:"hasUpdate"`
+}
+
+// XrayOutboundCreate 创建出站代理请求
+type XrayOutboundCreate struct {
+	Name     string `json:"name" binding:"required"`
+	Tag      string `json:"tag" binding:"required"`
+	Protocol string `json:"protocol" binding:"required"`
+	Settings string `json:"settings"` // JSON 字符串
+	Enabled  bool   `json:"enabled"`
+	Remark   string `json:"remark"`
+}
+
+// XrayOutboundUpdate 更新出站代理请求
+type XrayOutboundUpdate struct {
+	ID       uint   `json:"id" binding:"required"`
+	Name     string `json:"name" binding:"required"`
+	Tag      string `json:"tag" binding:"required"`
+	Protocol string `json:"protocol" binding:"required"`
+	Settings string `json:"settings"`
+	Enabled  bool   `json:"enabled"`
+	Remark   string `json:"remark"`
+}
+
+// XrayOutboundResponse 出站代理响应
+type XrayOutboundResponse struct {
+	ID       uint   `json:"id"`
+	Name     string `json:"name"`
+	Tag      string `json:"tag"`
+	Protocol string `json:"protocol"`
+	Settings string `json:"settings"`
+	Enabled  bool   `json:"enabled"`
+	Remark   string `json:"remark"`
 }
 
 type XrayShareLinkResponse struct {

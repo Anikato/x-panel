@@ -144,3 +144,53 @@ func WithXrayNodeID(id uint) DBOption {
 		return db.Where("node_id = ?", id)
 	}
 }
+
+// ==================== XrayOutbound Repo ====================
+
+type IXrayOutboundRepo interface {
+	GetList(opts ...DBOption) ([]model.XrayOutbound, error)
+	Get(opts ...DBOption) (model.XrayOutbound, error)
+	Create(item *model.XrayOutbound) error
+	Save(item *model.XrayOutbound) error
+	Delete(opts ...DBOption) error
+}
+
+func NewIXrayOutboundRepo() IXrayOutboundRepo { return &XrayOutboundRepo{} }
+
+type XrayOutboundRepo struct{}
+
+func (r *XrayOutboundRepo) GetList(opts ...DBOption) ([]model.XrayOutbound, error) {
+	var items []model.XrayOutbound
+	db := getDB().Model(&model.XrayOutbound{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	err := db.Order("created_at ASC").Find(&items).Error
+	return items, err
+}
+
+func (r *XrayOutboundRepo) Get(opts ...DBOption) (model.XrayOutbound, error) {
+	var item model.XrayOutbound
+	db := getDB().Model(&model.XrayOutbound{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	err := db.First(&item).Error
+	return item, err
+}
+
+func (r *XrayOutboundRepo) Create(item *model.XrayOutbound) error {
+	return getDB().Create(item).Error
+}
+
+func (r *XrayOutboundRepo) Save(item *model.XrayOutbound) error {
+	return getDB().Save(item).Error
+}
+
+func (r *XrayOutboundRepo) Delete(opts ...DBOption) error {
+	db := getDB().Model(&model.XrayOutbound{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	return db.Delete(&model.XrayOutbound{}).Error
+}

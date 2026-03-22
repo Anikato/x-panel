@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -35,6 +37,14 @@ type IXrayService interface {
 	GetInstallLog() string
 	// 服务控制
 	ControlService(action string) error
+	// 权限修复
+	FixPermissions() error
+	// 日志设置
+	GetLogSettings() dto.XrayLogSettings
+	UpdateLogSettings(req dto.XrayLogSettings) error
+	// 更新
+	CheckUpdate() (dto.XrayUpdateInfo, error)
+	DoUpgrade() error
 	// 节点管理
 	ListNodes() ([]dto.XrayNodeResponse, error)
 	CreateNode(req dto.XrayNodeCreate) error
@@ -46,6 +56,11 @@ type IXrayService interface {
 	CreateUser(req dto.XrayUserCreate) error
 	UpdateUser(req dto.XrayUserUpdate) error
 	DeleteUser(id uint) error
+	// 出站代理
+	ListOutbounds() ([]dto.XrayOutboundResponse, error)
+	CreateOutbound(req dto.XrayOutboundCreate) error
+	UpdateOutbound(req dto.XrayOutboundUpdate) error
+	DeleteOutbound(id uint) error
 	// 工具
 	GenerateRealityKeys() (dto.XrayGenerateKeyResponse, error)
 	GetShareLink(userID uint) (dto.XrayShareLinkResponse, error)
@@ -59,14 +74,18 @@ type IXrayService interface {
 
 func NewIXrayService() IXrayService { return &XrayService{} }
 
+// xraySettingRepo 获取 settings repo（避免循环初始化）
+func xraySettingRepo() repo.ISettingRepo { return repo.NewISettingRepo() }
+
 type XrayService struct {
 	mu     sync.Mutex // 保护配置写入 & reload
 	syncMu sync.Mutex // 防止并发流量同步
 }
 
 var (
-	xrayNodeRepo = repo.NewIXrayNodeRepo()
-	xrayUserRepo = repo.NewIXrayUserRepo()
+	xrayNodeRepo    = repo.NewIXrayNodeRepo()
+	xrayUserRepo    = repo.NewIXrayUserRepo()
+	xrayOutboundRepo = repo.NewIXrayOutboundRepo()
 
 	installLog     strings.Builder
 	installRunning bool
@@ -110,6 +129,7 @@ func (s *XrayService) StartInstall() error {
 		installMu.Lock()
 		installLog.WriteString("\n[DONE] Xray installed successfully.\n")
 		installMu.Unlock()
+		_ = s.FixPermissions()
 		s.mu.Lock()
 		_ = s.reloadConfig()
 		s.mu.Unlock()
@@ -160,6 +180,197 @@ func (s *XrayService) ControlService(action string) error {
 		return fmt.Errorf("systemctl %s: %s", action, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// FixPermissions 修复 /data/xray 目录权限（service 以 nobody 运行）
+func (s *XrayService) FixPermissions() error {
+	dirs := []string{"/data/xray/log", "/data/xray/etc"}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("mkdir %s: %v", dir, err)
+		}
+	}
+	// 尝试 nobody:nogroup（Debian/Ubuntu），失败则尝试 nobody:nobody（RHEL/CentOS）
+	for _, target := range []string{"/data/xray/log", "/data/xray/etc"} {
+		if out, err := exec.Command("chown", "-R", "nobody:nogroup", target).CombinedOutput(); err != nil {
+			if out2, err2 := exec.Command("chown", "-R", "nobody:nobody", target).CombinedOutput(); err2 != nil {
+				return fmt.Errorf("chown %s failed: %s / %s", target, out, out2)
+			}
+		}
+	}
+	// config.json 只读即可
+	exec.Command("chmod", "640", xrayConfigPath).Run()
+	return nil
+}
+
+// GetLogSettings 读取日志设置
+func (s *XrayService) GetLogSettings() dto.XrayLogSettings {
+	get := func(key, def string) string {
+		if v, err := xraySettingRepo().GetValueByKey(key); err == nil && v != "" {
+			return v
+		}
+		return def
+	}
+	return dto.XrayLogSettings{
+		LogLevel:  get("XrayLogLevel", "warning"),
+		AccessLog: get("XrayAccessLog", "/data/xray/log/access.log"),
+		ErrorLog:  get("XrayErrorLog", "/data/xray/log/error.log"),
+	}
+}
+
+// UpdateLogSettings 更新日志设置并 reload
+func (s *XrayService) UpdateLogSettings(req dto.XrayLogSettings) error {
+	r := xraySettingRepo()
+	updates := map[string]string{
+		"XrayLogLevel":  req.LogLevel,
+		"XrayAccessLog": req.AccessLog,
+		"XrayErrorLog":  req.ErrorLog,
+	}
+	for k, v := range updates {
+		if err := r.Update(k, v); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reloadConfig()
+}
+
+// CheckUpdate 检查 Xray-core 是否有新版本
+func (s *XrayService) CheckUpdate() (dto.XrayUpdateInfo, error) {
+	info := dto.XrayUpdateInfo{}
+	if !s.IsInstalled() {
+		return info, fmt.Errorf("xray not installed")
+	}
+	verOut, _ := exec.Command(xrayBin, "version").Output()
+	if len(verOut) > 0 {
+		lines := strings.Split(string(verOut), "\n")
+		if len(lines) > 0 {
+			info.CurrentVersion = strings.TrimSpace(lines[0])
+		}
+	}
+	// 从 GitHub API 获取最新版本
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("https://api.github.com/repos/XTLS/Xray-core/releases/latest")
+	if err != nil {
+		return info, fmt.Errorf("cannot reach GitHub: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var release struct {
+		TagName string `json:"tag_name"`
+		Name    string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &release); err != nil {
+		return info, fmt.Errorf("parse response: %v", err)
+	}
+	info.LatestVersion = release.TagName
+	info.HasUpdate = release.TagName != "" && !strings.Contains(info.CurrentVersion, strings.TrimPrefix(release.TagName, "v"))
+	return info, nil
+}
+
+// DoUpgrade 升级 Xray（复用安装脚本）
+func (s *XrayService) DoUpgrade() error {
+	installMu.Lock()
+	defer installMu.Unlock()
+	if installRunning {
+		return fmt.Errorf("installation already in progress")
+	}
+	installRunning = true
+	installLog.Reset()
+
+	scriptPath := "/data/X-Panel/xray-install.sh"
+	go func() {
+		defer func() {
+			installMu.Lock()
+			installRunning = false
+			installMu.Unlock()
+		}()
+		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles")
+		cmd.Stdout = &installLog
+		cmd.Stderr = &installLog
+		if err := cmd.Run(); err != nil {
+			installMu.Lock()
+			installLog.WriteString(fmt.Sprintf("\n[ERROR] upgrade failed: %v\n", err))
+			installMu.Unlock()
+			return
+		}
+		installMu.Lock()
+		installLog.WriteString("\n[DONE] Xray upgraded successfully.\n")
+		installMu.Unlock()
+		_ = s.FixPermissions()
+		s.mu.Lock()
+		_ = s.reloadConfig()
+		s.mu.Unlock()
+	}()
+	return nil
+}
+
+// ============================================================
+// 出站代理管理
+// ============================================================
+
+func (s *XrayService) ListOutbounds() ([]dto.XrayOutboundResponse, error) {
+	list, err := xrayOutboundRepo.GetList()
+	if err != nil {
+		return nil, err
+	}
+	var result []dto.XrayOutboundResponse
+	for _, ob := range list {
+		result = append(result, dto.XrayOutboundResponse{
+			ID: ob.ID, Name: ob.Name, Tag: ob.Tag,
+			Protocol: ob.Protocol, Settings: ob.Settings,
+			Enabled: ob.Enabled, Remark: ob.Remark,
+		})
+	}
+	return result, nil
+}
+
+func (s *XrayService) CreateOutbound(req dto.XrayOutboundCreate) error {
+	m := &model.XrayOutbound{
+		Name: req.Name, Tag: req.Tag, Protocol: req.Protocol,
+		Settings: req.Settings, Enabled: req.Enabled, Remark: req.Remark,
+	}
+	if m.Settings == "" {
+		m.Settings = "{}"
+	}
+	if err := xrayOutboundRepo.Create(m); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reloadConfig()
+}
+
+func (s *XrayService) UpdateOutbound(req dto.XrayOutboundUpdate) error {
+	m, err := xrayOutboundRepo.Get(repo.WithByID(req.ID))
+	if err != nil {
+		return err
+	}
+	m.Name = req.Name
+	m.Tag = req.Tag
+	m.Protocol = req.Protocol
+	m.Settings = req.Settings
+	m.Enabled = req.Enabled
+	m.Remark = req.Remark
+	if m.Settings == "" {
+		m.Settings = "{}"
+	}
+	if err := xrayOutboundRepo.Save(&m); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reloadConfig()
+}
+
+func (s *XrayService) DeleteOutbound(id uint) error {
+	if err := xrayOutboundRepo.Delete(repo.WithByID(id)); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reloadConfig()
 }
 
 // ============================================================
@@ -227,6 +438,7 @@ func (s *XrayService) CreateNode(req dto.XrayNodeCreate) error {
 		SniffMetadataOnly: req.SniffMetadataOnly,
 		Remark:            req.Remark,
 		Enabled:           true,
+		OutboundTag:       req.OutboundTag,
 	}
 	if err := xrayNodeRepo.Create(node); err != nil {
 		return err
@@ -281,6 +493,7 @@ func (s *XrayService) UpdateNode(req dto.XrayNodeUpdate) error {
 	node.SniffMetadataOnly = req.SniffMetadataOnly
 	node.Remark = req.Remark
 	node.Enabled = req.Enabled
+	node.OutboundTag = req.OutboundTag
 
 	if err := xrayNodeRepo.Save(&node); err != nil {
 		return err
@@ -468,7 +681,12 @@ func (s *XrayService) reloadConfig() error {
 	if err != nil {
 		return err
 	}
-	cfg := buildXrayConfig(nodes, users)
+	outbounds, err := xrayOutboundRepo.GetList()
+	if err != nil {
+		return err
+	}
+	logSettings := s.GetLogSettings()
+	cfg := buildXrayConfig(nodes, users, outbounds, logSettings)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -476,6 +694,8 @@ func (s *XrayService) reloadConfig() error {
 	if err := os.WriteFile(xrayConfigPath, data, 0644); err != nil {
 		return err
 	}
+	// 保持 nobody 可读
+	exec.Command("chmod", "640", xrayConfigPath).Run()
 	return reloadXray()
 }
 
@@ -493,7 +713,7 @@ func reloadXray() error {
 }
 
 // buildXrayConfig 从数据库生成完整 Xray config.json
-func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]interface{} {
+func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundModels []model.XrayOutbound, logSettings dto.XrayLogSettings) map[string]interface{} {
 	usersByNode := map[uint][]model.XrayUser{}
 	for _, u := range users {
 		if u.Enabled {
@@ -512,6 +732,11 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 		},
 	}
 
+	// 路由规则：api 最优先，然后按节点 outboundTag 分流
+	routingRules := []map[string]interface{}{
+		{"inboundTag": []string{"api"}, "outboundTag": "api", "type": "field"},
+	}
+
 	for _, node := range nodes {
 		if !node.Enabled {
 			continue
@@ -519,14 +744,52 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 		if ib := buildInbound(node, usersByNode[node.ID]); ib != nil {
 			inbounds = append(inbounds, ib)
 		}
+		// 为有出站标签的节点添加路由规则
+		if node.OutboundTag != "" {
+			routingRules = append(routingRules, map[string]interface{}{
+				"inboundTag":  []string{fmt.Sprintf("inbound-%d", node.ID)},
+				"outboundTag": node.OutboundTag,
+				"type":        "field",
+			})
+		}
+	}
+
+	// 出站列表：内置 + 用户自定义
+	outboundList := []map[string]interface{}{
+		{"protocol": "freedom", "tag": "direct"},
+		{"protocol": "blackhole", "tag": "blocked"},
+	}
+	for _, ob := range outboundModels {
+		if !ob.Enabled {
+			continue
+		}
+		var settings map[string]interface{}
+		if ob.Settings != "" && ob.Settings != "{}" {
+			_ = json.Unmarshal([]byte(ob.Settings), &settings)
+		}
+		entry := map[string]interface{}{
+			"protocol": ob.Protocol,
+			"tag":      ob.Tag,
+		}
+		if settings != nil {
+			entry["settings"] = settings
+		}
+		outboundList = append(outboundList, entry)
+	}
+
+	// 日志配置
+	logCfg := map[string]interface{}{
+		"loglevel": logSettings.LogLevel,
+	}
+	if logSettings.AccessLog != "" && logSettings.AccessLog != "none" {
+		logCfg["access"] = logSettings.AccessLog
+	}
+	if logSettings.ErrorLog != "" && logSettings.ErrorLog != "none" {
+		logCfg["error"] = logSettings.ErrorLog
 	}
 
 	return map[string]interface{}{
-		"log": map[string]interface{}{
-			"loglevel": "warning",
-			"access":   "/data/xray/log/access.log",
-			"error":    "/data/xray/log/error.log",
-		},
+		"log": logCfg,
 		"stats": map[string]interface{}{},
 		"api": map[string]interface{}{
 			"tag":      "api",
@@ -540,15 +803,10 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 			},
 		},
 		"routing": map[string]interface{}{
-			"rules": []map[string]interface{}{
-				{"inboundTag": []string{"api"}, "outboundTag": "api", "type": "field"},
-			},
+			"rules": routingRules,
 		},
-		"inbounds": inbounds,
-		"outbounds": []map[string]interface{}{
-			{"protocol": "freedom", "tag": "direct"},
-			{"protocol": "blackhole", "tag": "blocked"},
-		},
+		"inbounds":  inbounds,
+		"outbounds": outboundList,
 	}
 }
 
@@ -975,6 +1233,7 @@ func nodeToResponse(n model.XrayNode) dto.XrayNodeResponse {
 		Remark:            n.Remark,
 		Enabled:           n.Enabled,
 		CreatedAt:         n.CreatedAt,
+		OutboundTag:       n.OutboundTag,
 	}
 	// sniffDestOverride
 	if n.SniffDestOverride != "" {

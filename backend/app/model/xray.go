@@ -41,6 +41,20 @@ type XrayNode struct {
 
 	Remark  string `json:"remark"`
 	Enabled bool   `gorm:"default:true" json:"enabled"`
+
+	// 出站标签：指定此节点流量走哪个出站，空 = direct
+	OutboundTag string `gorm:"default:''" json:"outboundTag"`
+}
+
+// XrayOutbound Xray 出站代理配置
+type XrayOutbound struct {
+	BaseModel
+	Name     string `gorm:"not null" json:"name"`
+	Tag      string `gorm:"not null;uniqueIndex" json:"tag"`
+	Protocol string `gorm:"not null;default:'freedom'" json:"protocol"` // freedom|socks|http|shadowsocks|vmess|vless|trojan
+	Settings string `gorm:"type:text;default:'{}'" json:"settings"`     // JSON，各协议格式不同
+	Enabled  bool   `gorm:"default:true" json:"enabled"`
+	Remark   string `json:"remark"`
 }
 
 // XrayUser Xray 代理用户

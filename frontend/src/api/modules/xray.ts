@@ -92,6 +92,7 @@ export interface XrayNode {
   enabled: boolean
   userCount: number
   createdAt: string
+  outboundTag: string
 }
 
 export interface XrayNodeForm {
@@ -168,6 +169,28 @@ export interface XrayStatus {
   binPath: string
 }
 
+export interface XrayLogSettings {
+  logLevel: 'debug' | 'info' | 'warning' | 'error' | 'none'
+  accessLog: string
+  errorLog: string
+}
+
+export interface XrayUpdateInfo {
+  currentVersion: string
+  latestVersion: string
+  hasUpdate: boolean
+}
+
+export interface XrayOutbound {
+  id: number
+  name: string
+  tag: string
+  protocol: string
+  settings: string  // JSON 字符串
+  enabled: boolean
+  remark: string
+}
+
 export interface XrayInstallStatus {
   running: boolean
   log: string
@@ -193,6 +216,11 @@ export const startXrayInstall = () => http.post('/xray/install', {})
 export const getXrayInstallLog = () => http.get<XrayInstallStatus>('/xray/install/log')
 export const controlXrayService = (action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') =>
   http.post<XrayStatus>('/xray/service/control', { action })
+export const fixXrayPermissions = () => http.post('/xray/fix-permissions', {})
+export const getXrayLogSettings = () => http.get<XrayLogSettings>('/xray/log-settings')
+export const updateXrayLogSettings = (data: XrayLogSettings) => http.post('/xray/log-settings', data)
+export const checkXrayUpdate = () => http.get<XrayUpdateInfo>('/xray/update/check')
+export const doXrayUpgrade = () => http.post('/xray/update/do', {})
 
 export const listXrayNodes = () => http.get<XrayNode[]>('/xray/nodes')
 export const createXrayNode = (data: object) => http.post('/xray/nodes', data)
@@ -211,3 +239,8 @@ export const getXrayShareLink = (id: number) =>
   http.post<{ link: string }>('/xray/users/share-link', { id })
 export const getXrayTrafficHistory = (id: number) =>
   http.post<XrayTrafficDaily[]>('/xray/users/traffic-history', { id })
+
+export const listXrayOutbounds = () => http.get<XrayOutbound[]>('/xray/outbounds')
+export const createXrayOutbound = (data: object) => http.post('/xray/outbounds', data)
+export const updateXrayOutbound = (data: object) => http.post('/xray/outbounds/update', data)
+export const deleteXrayOutbound = (id: number) => http.post('/xray/outbounds/del', { id })

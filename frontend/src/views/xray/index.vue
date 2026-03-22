@@ -62,7 +62,15 @@
             :loading="serviceControlLoading"
             @click="handleControlService(xrayStatus.enabledOnBoot ? 'disable' : 'enable')"
           >{{ xrayStatus.enabledOnBoot ? t('xray.bootDisableBtn') : t('xray.bootEnableBtn') }}</el-button>
+          <el-tooltip :content="t('xray.fixPermissionsHint')" placement="bottom">
+            <el-button size="small" :loading="fixingPerms" @click="handleFixPermissions">
+              {{ t('xray.fixPermissions') }}
+            </el-button>
+          </el-tooltip>
           <el-button size="small" @click="loadStatus">{{ t('commons.refresh') }}</el-button>
+          <el-button size="small" type="primary" plain @click="openSettingsDrawer">
+            <el-icon><Setting /></el-icon>{{ t('xray.settings') }}
+          </el-button>
         </div>
       </el-card>
 
@@ -518,6 +526,22 @@
               <el-switch v-model="nodeForm.sniffMetadataOnly" />
               <span class="form-hint">{{ t('xray.sniffMetadataOnlyHint') }}</span>
             </el-form-item>
+
+            <!-- 出站路由 -->
+            <el-divider content-position="left">{{ t('xray.outboundRouting') }}</el-divider>
+            <el-form-item :label="t('xray.outboundTag')">
+              <el-select v-model="nodeForm.outboundTag" clearable style="width:100%" :placeholder="t('xray.outboundTagDefault')">
+                <el-option value="direct" label="direct（直连）" />
+                <el-option value="blocked" label="blocked（屏蔽）" />
+                <el-option
+                  v-for="ob in outbounds"
+                  :key="ob.tag"
+                  :value="ob.tag"
+                  :label="`${ob.name}（${ob.tag}）- ${ob.protocol.toUpperCase()}`"
+                />
+              </el-select>
+              <span class="form-hint">{{ t('xray.outboundTagHint') }}</span>
+            </el-form-item>
           </el-tab-pane>
         </el-tabs>
       </el-form>
@@ -700,6 +724,164 @@
         <el-button @click="nginxDialogVisible = false">{{ t('commons.close') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- ============================================================ -->
+    <!-- 全局设置抽屉（日志/更新/出站）                                  -->
+    <!-- ============================================================ -->
+    <el-drawer
+      v-model="settingsDrawerVisible"
+      :title="t('xray.settings')"
+      size="620px"
+      destroy-on-close
+    >
+      <el-tabs v-model="settingsTab">
+        <!-- 日志设置 -->
+        <el-tab-pane :label="t('xray.tabLog')" name="log">
+          <el-form :model="logSettings" label-width="120px" style="margin-top:8px">
+            <el-form-item :label="t('xray.logLevel')">
+              <el-select v-model="logSettings.logLevel" style="width:100%">
+                <el-option value="debug" label="debug（最详细）" />
+                <el-option value="info" label="info（一般信息）" />
+                <el-option value="warning" label="warning（推荐）" />
+                <el-option value="error" label="error（仅错误）" />
+                <el-option value="none" label="none（禁用日志）" />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('xray.accessLog')">
+              <el-input v-model="logSettings.accessLog" :placeholder="t('xray.accessLogPlaceholder')" clearable />
+              <span class="form-hint">{{ t('xray.accessLogHint') }}</span>
+            </el-form-item>
+            <el-form-item :label="t('xray.errorLog')">
+              <el-input v-model="logSettings.errorLog" :placeholder="t('xray.errorLogPlaceholder')" clearable />
+            </el-form-item>
+            <el-alert type="info" :closable="false" style="margin-bottom:16px">
+              <template #default>{{ t('xray.logRotateHint') }}</template>
+            </el-alert>
+            <el-form-item>
+              <el-button type="primary" :loading="logSettingsSaving" @click="saveLogSettings">{{ t('commons.save') }}</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 更新管理 -->
+        <el-tab-pane :label="t('xray.tabUpdate')" name="update">
+          <div style="padding:16px 0">
+            <el-descriptions :column="1" border>
+              <el-descriptions-item :label="t('xray.currentVersion')">
+                {{ xrayStatus.version || t('xray.notRunning') }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="updateInfo" :label="t('xray.latestVersion')">
+                <el-tag :type="updateInfo.hasUpdate ? 'warning' : 'success'">
+                  {{ updateInfo.latestVersion }}
+                </el-tag>
+              </el-descriptions-item>
+            </el-descriptions>
+            <div style="margin-top:16px;display:flex;gap:8px">
+              <el-button :loading="checkingUpdate" @click="handleCheckUpdate">{{ t('xray.checkUpdate') }}</el-button>
+              <el-button
+                v-if="updateInfo?.hasUpdate"
+                type="warning" :loading="upgrading"
+                @click="handleUpgrade"
+              >{{ t('xray.doUpgrade') }}</el-button>
+            </div>
+            <div v-if="upgrading && installLog" class="install-log" style="margin-top:12px;max-height:200px">
+              <pre>{{ installLog }}</pre>
+            </div>
+            <el-alert v-if="updateInfo && !updateInfo.hasUpdate" type="success" :closable="false" :title="t('xray.alreadyLatest')" style="margin-top:12px" />
+          </div>
+        </el-tab-pane>
+
+        <!-- 出站代理管理 -->
+        <el-tab-pane :label="t('xray.tabOutbound')" name="outbound">
+          <div style="padding:8px 0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <span style="font-size:13px;color:var(--el-text-color-secondary)">{{ t('xray.outboundDesc') }}</span>
+              <el-button type="primary" size="small" @click="openOutboundDialog()">
+                <el-icon><Plus /></el-icon>{{ t('xray.addOutbound') }}
+              </el-button>
+            </div>
+            <el-table :data="outbounds" border size="small">
+              <el-table-column prop="name" :label="t('xray.outboundName')" width="120" />
+              <el-table-column prop="tag" :label="t('xray.outboundTag')" width="100">
+                <template #default="{ row }">
+                  <el-tag size="small" type="info">{{ row.tag }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="protocol" :label="t('xray.protocol')" width="110">
+                <template #default="{ row }">
+                  <el-tag size="small">{{ row.protocol.toUpperCase() }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="enabled" :label="t('commons.status')" width="70">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="row.enabled ? 'success' : 'info'">
+                    {{ row.enabled ? t('commons.enabled') : t('commons.disabled') }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" :label="t('xray.remark')" />
+              <el-table-column :label="t('commons.operations')" width="120">
+                <template #default="{ row }">
+                  <el-button size="small" text @click="openOutboundDialog(row)">{{ t('commons.edit') }}</el-button>
+                  <el-button size="small" text type="danger" @click="handleDeleteOutbound(row.id)">{{ t('commons.delete') }}</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-drawer>
+
+    <!-- 出站代理编辑 Dialog -->
+    <el-dialog
+      v-model="outboundDialogVisible"
+      :title="outboundForm.id ? t('xray.editOutbound') : t('xray.addOutbound')"
+      width="560px"
+      destroy-on-close
+    >
+      <el-form :model="outboundForm" label-width="100px">
+        <el-form-item :label="t('xray.outboundName')" required>
+          <el-input v-model="outboundForm.name" :placeholder="t('xray.outboundNamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('xray.outboundTag')" required>
+          <el-input v-model="outboundForm.tag" :placeholder="t('xray.outboundTagPlaceholder')" />
+          <span class="form-hint">{{ t('xray.outboundTagHint') }}</span>
+        </el-form-item>
+        <el-form-item :label="t('xray.protocol')">
+          <el-select v-model="outboundForm.protocol" style="width:100%">
+            <el-option value="freedom" label="freedom（直连）" />
+            <el-option value="blackhole" label="blackhole（丢弃/屏蔽）" />
+            <el-option value="socks" label="SOCKS5 代理" />
+            <el-option value="http" label="HTTP 代理" />
+            <el-option value="shadowsocks" label="Shadowsocks" />
+            <el-option value="vmess" label="VMess" />
+            <el-option value="vless" label="VLESS" />
+            <el-option value="trojan" label="Trojan" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('xray.outboundSettings')">
+          <el-input
+            v-model="outboundForm.settings"
+            type="textarea"
+            :rows="8"
+            placeholder="{}"
+            class="nginx-code"
+            style="font-family: monospace"
+          />
+          <span class="form-hint">{{ t('xray.outboundSettingsHint') }}</span>
+        </el-form-item>
+        <el-form-item :label="t('commons.enable')">
+          <el-switch v-model="outboundForm.enabled" />
+        </el-form-item>
+        <el-form-item :label="t('xray.remark')">
+          <el-input v-model="outboundForm.remark" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="outboundDialogVisible = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="outboundSubmitting" @click="submitOutboundForm">{{ t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -708,18 +890,21 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, CircleCheck, CircleClose, Monitor, Connection, User, CopyDocument, Warning, InfoFilled
+  Plus, CircleCheck, CircleClose, Monitor, Connection, User, CopyDocument, Warning, InfoFilled, Setting
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { v4 as uuidv4 } from 'uuid'
 import type { FormInstance } from 'element-plus'
 import {
   getXrayStatus, startXrayInstall, getXrayInstallLog, controlXrayService,
+  fixXrayPermissions, getXrayLogSettings, updateXrayLogSettings,
+  checkXrayUpdate, doXrayUpgrade,
   listXrayNodes, createXrayNode, updateXrayNode, deleteXrayNode, toggleXrayNode,
   searchXrayUsers, createXrayUser, updateXrayUser, deleteXrayUser,
-  generateRealityKeys, getXrayShareLink, getXrayTrafficHistory
+  generateRealityKeys, getXrayShareLink, getXrayTrafficHistory,
+  listXrayOutbounds, createXrayOutbound, updateXrayOutbound, deleteXrayOutbound
 } from '@/api/modules/xray'
-import type { XrayNode, XrayUser, XrayStatus } from '@/api/modules/xray'
+import type { XrayNode, XrayUser, XrayStatus, XrayOutbound, XrayLogSettings, XrayUpdateInfo } from '@/api/modules/xray'
 
 const { t } = useI18n()
 
@@ -859,6 +1044,8 @@ const emptyNodeForm = () => ({
   // Shadowsocks 专属
   ssMethod: 'aes-256-gcm',
   ssPassword: '',
+  // 出站路由
+  outboundTag: '',
   rawSettings: { headerType: 'none', acceptProxyProtocol: false },
   wsSettings: { path: '/ws', host: '', acceptProxyProtocol: false },
   grpcSettings: { serviceName: 'grpc', multiMode: false, idleTimeout: 60, healthCheckTimeout: 20, permitWithoutStream: false, initialWindowsSize: 0 },
@@ -881,6 +1068,7 @@ const nodeRules = {
 const openNodeDrawer = (node?: XrayNode) => {
   nodeForm.value = emptyNodeForm()
   nodeFormTab.value = 'basic'
+  loadOutbounds()  // 确保出站列表是最新的
   if (node) {
     Object.assign(nodeForm.value, {
       id: node.id,
@@ -895,6 +1083,7 @@ const openNodeDrawer = (node?: XrayNode) => {
       sniffDestOverride: node.sniffDestOverride || ['http', 'tls'],
       remark: node.remark || '',
       enabled: node.enabled,
+      outboundTag: node.outboundTag || '',
     })
     if (node.rawSettings) Object.assign(nodeForm.value.rawSettings, node.rawSettings)
     if (node.wsSettings) Object.assign(nodeForm.value.wsSettings, node.wsSettings)
@@ -968,6 +1157,8 @@ const buildNodePayload = () => {
     ssPassword: f.ssPassword,
     // Fallbacks
     fallbacks: f.fallbacks.filter(fb => fb.dest),
+    // 出站路由
+    outboundTag: f.outboundTag,
   }
   const netMap: Record<string, object> = {
     raw: { rawSettings: f.rawSettings },
@@ -1395,6 +1586,150 @@ const securityTagType = (s: string) => {
 }
 
 onMounted(() => { loadStatus() })
+
+// ============================================================
+// 全局设置抽屉（日志 + 出站 + 更新）
+// ============================================================
+
+const settingsDrawerVisible = ref(false)
+const settingsTab = ref('log')
+
+// -- 日志设置 --
+const logSettings = ref<XrayLogSettings>({ logLevel: 'warning', accessLog: '/data/xray/log/access.log', errorLog: '/data/xray/log/error.log' })
+const logSettingsSaving = ref(false)
+
+const loadLogSettings = async () => {
+  const res = await getXrayLogSettings()
+  logSettings.value = res.data
+}
+
+const saveLogSettings = async () => {
+  logSettingsSaving.value = true
+  try {
+    await updateXrayLogSettings(logSettings.value)
+    ElMessage.success(t('commons.saveSuccess'))
+  } finally { logSettingsSaving.value = false }
+}
+
+// -- 更新检测 --
+const updateInfo = ref<XrayUpdateInfo | null>(null)
+const checkingUpdate = ref(false)
+const upgrading = ref(false)
+
+const handleCheckUpdate = async () => {
+  checkingUpdate.value = true
+  try {
+    const res = await checkXrayUpdate()
+    updateInfo.value = res.data
+  } catch (e: unknown) {
+    ElMessage.error((e as Error).message || t('xray.updateCheckFailed'))
+  } finally { checkingUpdate.value = false }
+}
+
+const handleUpgrade = async () => {
+  await ElMessageBox.confirm(t('xray.upgradeConfirm'), t('commons.warning'), { type: 'warning' })
+  upgrading.value = true
+  try {
+    await doXrayUpgrade()
+    ElMessage.success(t('xray.upgradeStarted'))
+    // 复用安装日志轮询
+    installPollTimer = setInterval(async () => {
+      const res = await getXrayInstallLog()
+      installLog.value = res.data.log
+      if (!res.data.running) {
+        clearInterval(installPollTimer!)
+        upgrading.value = false
+        updateInfo.value = null
+        await loadStatus()
+      }
+    }, 1500)
+  } finally { if (!upgrading.value) upgrading.value = false }
+}
+
+// -- 权限修复 --
+const fixingPerms = ref(false)
+const handleFixPermissions = async () => {
+  fixingPerms.value = true
+  try {
+    await fixXrayPermissions()
+    ElMessage.success(t('xray.permissionsFixed'))
+  } finally { fixingPerms.value = false }
+}
+
+// -- 出站代理管理 --
+const outbounds = ref<XrayOutbound[]>([])
+const outboundDialogVisible = ref(false)
+const outboundSubmitting = ref(false)
+
+const emptyOutboundForm = () => ({
+  id: undefined as number | undefined,
+  name: '',
+  tag: '',
+  protocol: 'freedom',
+  settings: '{}',
+  enabled: true,
+  remark: '',
+})
+const outboundForm = ref(emptyOutboundForm())
+
+const loadOutbounds = async () => {
+  const res = await listXrayOutbounds()
+  outbounds.value = res.data ?? []
+}
+
+const openOutboundDialog = (ob?: XrayOutbound) => {
+  outboundForm.value = emptyOutboundForm()
+  if (ob) Object.assign(outboundForm.value, { ...ob })
+  outboundDialogVisible.value = true
+}
+
+const submitOutboundForm = async () => {
+  outboundSubmitting.value = true
+  try {
+    if (outboundForm.value.id) {
+      await updateXrayOutbound(outboundForm.value)
+    } else {
+      await createXrayOutbound(outboundForm.value)
+    }
+    ElMessage.success(t('commons.saveSuccess'))
+    outboundDialogVisible.value = false
+    await loadOutbounds()
+  } finally { outboundSubmitting.value = false }
+}
+
+const handleDeleteOutbound = async (id: number) => {
+  await ElMessageBox.confirm(t('xray.deleteOutboundConfirm'), t('commons.warning'), { type: 'warning' })
+  await deleteXrayOutbound(id)
+  ElMessage.success(t('commons.deleteSuccess'))
+  await loadOutbounds()
+}
+
+// 出站协议对应的默认 settings 模板
+const outboundSettingsTemplate = (protocol: string): string => {
+  const templates: Record<string, object> = {
+    freedom: {},
+    blackhole: {},
+    socks: { servers: [{ address: '127.0.0.1', port: 1080, users: [] }] },
+    http: { servers: [{ address: '127.0.0.1', port: 8080, users: [] }] },
+    shadowsocks: { servers: [{ address: '127.0.0.1', port: 8388, method: 'aes-256-gcm', password: '' }] },
+    vmess: { vnext: [{ address: '', port: 443, users: [{ id: '', security: 'auto' }] }] },
+    vless: { vnext: [{ address: '', port: 443, users: [{ id: '', encryption: 'none' }] }] },
+    trojan: { servers: [{ address: '', port: 443, password: '' }] },
+  }
+  return JSON.stringify(templates[protocol] ?? {}, null, 2)
+}
+
+watch(() => outboundForm.value.protocol, (v) => {
+  if (!outboundForm.value.id) {
+    outboundForm.value.settings = outboundSettingsTemplate(v)
+  }
+})
+
+const openSettingsDrawer = () => {
+  loadLogSettings()
+  loadOutbounds()
+  settingsDrawerVisible.value = true
+}
 </script>
 
 <style scoped>
@@ -1407,10 +1742,11 @@ onMounted(() => { loadStatus() })
 
 .status-bar :deep(.el-card__body) { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; flex-wrap: wrap; gap: 8px; }
 .status-bar { margin-bottom: 16px; }
-.status-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.status-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.version-text { font-size: 13px; color: #606266; }
-.config-path { font-size: 12px; color: #909399; font-family: monospace; }
+.status-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.status-info .el-tag { white-space: nowrap; flex-shrink: 0; }
+.status-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: nowrap; }
+.version-text { font-size: 13px; color: #606266; white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.config-path { font-size: 12px; color: #909399; font-family: monospace; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 
 .main-layout { min-height: calc(100vh - 200px); }
 .node-card { height: 100%; }

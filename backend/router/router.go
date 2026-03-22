@@ -277,6 +277,11 @@ func Setup(mode string) *gin.Engine {
 		// Xray 管理
 		privateGroup.GET("/xray/status", api.GetXrayStatus)
 		privateGroup.POST("/xray/service/control", api.ControlXrayService)
+		privateGroup.POST("/xray/fix-permissions", api.FixXrayPermissions)
+		privateGroup.GET("/xray/log-settings", api.GetXrayLogSettings)
+		privateGroup.POST("/xray/log-settings", api.UpdateXrayLogSettings)
+		privateGroup.GET("/xray/update/check", api.CheckXrayUpdate)
+		privateGroup.POST("/xray/update/do", api.DoXrayUpgrade)
 		privateGroup.POST("/xray/install", api.StartInstall)
 		privateGroup.GET("/xray/install/log", api.GetInstallLog)
 		privateGroup.GET("/xray/nodes", api.ListXrayNodes)
@@ -291,6 +296,10 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/xray/reality/keys", api.GenerateRealityKeys)
 		privateGroup.POST("/xray/users/share-link", api.GetXrayShareLink)
 		privateGroup.POST("/xray/users/traffic-history", api.GetTrafficHistory)
+		privateGroup.GET("/xray/outbounds", api.ListXrayOutbounds)
+		privateGroup.POST("/xray/outbounds", api.CreateXrayOutbound)
+		privateGroup.POST("/xray/outbounds/update", api.UpdateXrayOutbound)
+		privateGroup.POST("/xray/outbounds/del", api.DeleteXrayOutbound)
 	}
 
 	// WebSocket

@@ -31,6 +31,7 @@ func Init() {
 		&model.XrayNode{},
 		&model.XrayUser{},
 		&model.XrayTrafficDaily{},
+		&model.XrayOutbound{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
@@ -54,6 +55,10 @@ func initDefaultSettings() {
 		{Key: "UpgradeURL", Value: ""},
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
+		// Xray 日志设置
+		{Key: "XrayLogLevel", Value: "warning"},
+		{Key: "XrayAccessLog", Value: "/data/xray/log/access.log"},
+		{Key: "XrayErrorLog", Value: "/data/xray/log/error.log"},
 	}
 
 	for _, s := range defaults {
