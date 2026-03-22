@@ -28,8 +28,13 @@
             <el-icon class="mr-1"><CircleCheck v-if="xrayStatus.running" /><CircleClose v-else /></el-icon>
             {{ xrayStatus.running ? t('xray.running') : t('xray.stopped') }}
           </el-tag>
-          <span class="version-text">{{ xrayStatus.version }}</span>
+          <span v-if="xrayStatus.version" class="version-text">{{ xrayStatus.version }}</span>
           <span class="config-path">{{ xrayStatus.configPath }}</span>
+          <el-tooltip :content="t('xray.singleProcessNote')" placement="bottom">
+            <el-tag type="info" size="small" style="cursor:help">
+              <el-icon><InfoFilled /></el-icon> 单进程多节点
+            </el-tag>
+          </el-tooltip>
         </div>
         <el-button size="small" @click="loadStatus">{{ t('commons.refresh') }}</el-button>
       </el-card>
@@ -149,7 +154,7 @@
               <el-table-column :label="t('commons.operations')" width="160" fixed="right">
                 <template #default="{ row }">
                   <el-button size="small" text @click="openUserDialog(row)">{{ t('commons.edit') }}</el-button>
-                  <el-button size="small" text @click="getShareLink(row.id)">{{ t('xray.shareLink') }}</el-button>
+                  <el-button size="small" text @click="getShareLink(row)">{{ t('xray.shareLink') }}</el-button>
                   <el-button size="small" text type="danger" @click="handleDeleteUser(row.id)">{{ t('commons.delete') }}</el-button>
                 </template>
               </el-table-column>
@@ -560,10 +565,24 @@
     </el-dialog>
 
     <!-- 分享链接 -->
-    <el-dialog v-model="shareLinkVisible" :title="t('xray.shareLink')" width="580px">
-      <el-input v-model="shareLink" readonly type="textarea" :rows="5" />
+    <el-dialog v-model="shareLinkVisible" :title="t('xray.shareLink')" width="600px" destroy-on-close>
+      <el-form label-width="90px" size="default">
+        <el-form-item :label="t('xray.shareLinkHost')">
+          <el-input
+            v-model="shareLinkHost"
+            :placeholder="t('xray.shareLinkHostPlaceholder')"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item :label="t('xray.shareLinkPort')">
+          <el-input-number v-model="shareLinkPort" :min="1" :max="65535" style="width:100%" />
+        </el-form-item>
+        <div class="share-hint">{{ t('xray.shareLinkHostHint') }}</div>
+      </el-form>
+      <el-divider />
+      <el-input v-model="computedShareLink" readonly type="textarea" :rows="5" class="share-link-text" resize="none" />
       <template #footer>
-        <el-button type="primary" @click="copyText(shareLink)">{{ t('commons.copy') }}</el-button>
+        <el-button type="primary" :disabled="!computedShareLink" @click="copyText(computedShareLink)">{{ t('commons.copy') }}</el-button>
         <el-button @click="shareLinkVisible = false">{{ t('commons.close') }}</el-button>
       </template>
     </el-dialog>
@@ -630,7 +649,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, CircleCheck, CircleClose, Monitor, Connection, User, CopyDocument, Warning
+  Plus, CircleCheck, CircleClose, Monitor, Connection, User, CopyDocument, Warning, InfoFilled
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { v4 as uuidv4 } from 'uuid'
@@ -970,16 +989,132 @@ const handleDeleteUser = async (id: number) => {
 }
 
 // ============================================================
-// 分享链接
+// 分享链接（客户端生成，可编辑地址/端口）
 // ============================================================
 
 const shareLinkVisible = ref(false)
-const shareLink = ref('')
+const shareLinkHost = ref('')
+const shareLinkPort = ref(443)
+const shareLinkUser = ref<XrayUser | null>(null)
+const shareLinkNode = ref<XrayNode | null>(null)
 
-const getShareLink = async (userId: number) => {
-  const res = await getXrayShareLink(userId)
-  shareLink.value = res.data.link
+// 实时计算分享链接
+const computedShareLink = computed(() => {
+  const user = shareLinkUser.value
+  const node = shareLinkNode.value
+  const host = shareLinkHost.value.trim()
+  const port = shareLinkPort.value
+  if (!user || !node || !host) return ''
+  return buildShareLinkClient(node, user, host, port)
+})
+
+const getShareLink = (user: XrayUser) => {
+  const node = nodes.value.find(n => n.id === user.nodeId)
+  if (!node) { ElMessage.error('找不到对应节点'); return }
+  shareLinkUser.value = user
+  shareLinkNode.value = node
+  // 自动填充连接地址
+  let defaultHost = ''
+  if (node.security === 'tls' && node.tlsSettings?.serverName) {
+    defaultHost = node.tlsSettings.serverName
+  } else if (node.security === 'reality' && node.realitySettings?.serverNames?.length) {
+    defaultHost = node.realitySettings.serverNames[0]
+  }
+  shareLinkHost.value = defaultHost
+  shareLinkPort.value = node.port
   shareLinkVisible.value = true
+}
+
+// 客户端分享链接生成器
+function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port: number): string {
+  const userFlow = user.flow || node.flow || ''
+  const name = encodeURIComponent(user.name)
+
+  switch (node.protocol) {
+    case 'vless': {
+      const p = new URLSearchParams()
+      p.set('type', node.network === 'raw' ? 'tcp' : node.network)
+      p.set('security', node.security)
+      if (userFlow) p.set('flow', userFlow)
+      // 传输参数
+      switch (node.network) {
+        case 'ws':
+          if (node.wsSettings?.path) p.set('path', node.wsSettings.path)
+          if (node.wsSettings?.host) p.set('host', node.wsSettings.host)
+          break
+        case 'grpc':
+          if (node.grpcSettings?.serviceName) p.set('serviceName', node.grpcSettings.serviceName)
+          // gun = 单路（multiMode:false），multi = 多路（multiMode:true）
+          p.set('mode', node.grpcSettings?.multiMode ? 'multi' : 'gun')
+          break
+        case 'xhttp':
+          if (node.xhttpSettings?.path) p.set('path', node.xhttpSettings.path)
+          if (node.xhttpSettings?.host) p.set('host', node.xhttpSettings.host)
+          if (node.xhttpSettings?.mode && node.xhttpSettings.mode !== 'auto') p.set('mode', node.xhttpSettings.mode)
+          break
+        case 'httpupgrade':
+          if (node.httpUpgradeSettings?.path) p.set('path', node.httpUpgradeSettings.path)
+          if (node.httpUpgradeSettings?.host) p.set('host', node.httpUpgradeSettings.host)
+          break
+      }
+      // 安全参数
+      switch (node.security) {
+        case 'reality':
+          if (node.realitySettings) {
+            p.set('pbk', node.realitySettings.publicKey)
+            p.set('fp', node.realitySettings.fingerprint || 'chrome')
+            if (node.realitySettings.shortIds?.length) p.set('sid', node.realitySettings.shortIds[0])
+            if (node.realitySettings.serverNames?.length) p.set('sni', node.realitySettings.serverNames[0])
+            p.set('spx', node.realitySettings.spiderX || '/')
+          }
+          break
+        case 'tls':
+          if (node.tlsSettings) {
+            if (node.tlsSettings.serverName) p.set('sni', node.tlsSettings.serverName)
+            if (node.tlsSettings.fingerprint) p.set('fp', node.tlsSettings.fingerprint)
+            if (node.tlsSettings.alpn?.length) p.set('alpn', node.tlsSettings.alpn.join(','))
+          }
+          break
+      }
+      return `vless://${user.uuid}@${host}:${port}?${p.toString()}#${name}`
+    }
+
+    case 'vmess': {
+      const v: Record<string, string | number> = {
+        v: '2', ps: user.name, add: host, port: String(port),
+        id: user.uuid, aid: '0', scy: 'auto',
+        net: node.network === 'raw' ? 'tcp' : node.network,
+        tls: node.security === 'tls' ? 'tls' : '',
+      }
+      if (node.network === 'ws') {
+        v.path = node.wsSettings?.path || '/'
+        v.host = node.wsSettings?.host || ''
+      } else if (node.network === 'grpc') {
+        v.path = node.grpcSettings?.serviceName || 'grpc'
+        v.type = node.grpcSettings?.multiMode ? 'multi' : 'gun'
+      }
+      if (node.security === 'tls' && node.tlsSettings?.serverName) v.sni = node.tlsSettings.serverName
+      return 'vmess://' + btoa(unescape(encodeURIComponent(JSON.stringify(v))))
+    }
+
+    case 'trojan': {
+      const p = new URLSearchParams()
+      p.set('type', node.network === 'raw' ? 'tcp' : node.network)
+      if (node.security === 'tls' && node.tlsSettings) {
+        if (node.tlsSettings.serverName) p.set('sni', node.tlsSettings.serverName)
+        if (node.tlsSettings.fingerprint) p.set('fp', node.tlsSettings.fingerprint)
+      }
+      if (node.network === 'ws' && node.wsSettings?.path) p.set('path', node.wsSettings.path)
+      if (node.network === 'grpc' && node.grpcSettings?.serviceName) {
+        p.set('serviceName', node.grpcSettings.serviceName)
+        p.set('mode', node.grpcSettings.multiMode ? 'multi' : 'gun')
+      }
+      return `trojan://${user.uuid}@${host}:${port}?${p.toString()}#${name}`
+    }
+
+    default:
+      return `# ${node.protocol} 暂不支持 URI 格式`
+  }
 }
 
 // ============================================================
@@ -1051,54 +1186,80 @@ const openNginxDialog = (node: XrayNode) => {
 function generateNginxConfig(): string {
   const f = nginxForm.value
   const upstream = `${f.upstreamAddr}:${f.upstreamPort}`
-  const ppHeader = f.sendProxyProtocol ? '\n    proxy_set_header X-Real-IP $proxy_protocol_addr;\n    proxy_set_header X-Forwarded-For $proxy_protocol_addr;' : '\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
+
+  // Proxy Protocol: 向 Xray 传递真实 IP
+  const ppLine = f.sendProxyProtocol ? '\n    proxy_protocol     on;' : ''
+  const realIpLine = f.sendProxyProtocol
+    ? '\n    proxy_set_header   X-Real-IP          $proxy_protocol_addr;\n    proxy_set_header   X-Forwarded-For    $proxy_protocol_addr;'
+    : '\n    proxy_set_header   X-Real-IP          $remote_addr;\n    proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;'
 
   switch (f.network) {
     case 'ws':
     case 'httpupgrade':
       return `location ${f.path} {
-    proxy_pass http://${upstream};
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;${ppHeader}
-    proxy_read_timeout 86400s;
-    proxy_send_timeout 86400s;${f.sendProxyProtocol ? '\n    proxy_protocol on;' : ''}
+    proxy_pass          http://${upstream};
+    proxy_http_version  1.1;
+    proxy_set_header    Upgrade            $http_upgrade;
+    proxy_set_header    Connection         "upgrade";
+    proxy_set_header    Host               $host;${realIpLine}
+    proxy_set_header    X-Forwarded-Proto  $scheme;${ppLine}
+    proxy_connect_timeout  60s;
+    proxy_read_timeout     86400s;
+    proxy_send_timeout     86400s;
+    # 防止 nginx 缓冲 WebSocket 数据
+    proxy_buffering        off;
 }`
 
-    case 'grpc':
-      return `location /${f.grpcServiceName} {
-    grpc_pass grpc://${upstream};
-    grpc_set_header Host $host;
-    grpc_read_timeout 86400s;
-    grpc_send_timeout 86400s;
-    client_max_body_size 0;
+    case 'grpc': {
+      const svc = f.grpcServiceName || 'grpc'
+      return `# ⚠ 需确保 server 块已包含: listen 443 ssl; + http2 on;
+location /${svc} {
+    grpc_pass           grpc://${upstream};
+    grpc_set_header     Host               $host;
+    grpc_set_header     X-Real-IP          $remote_addr;
+    grpc_connect_timeout  60s;
+    grpc_read_timeout     86400s;
+    grpc_send_timeout     86400s;
+    # gRPC 流式传输不限制 body 大小
+    client_max_body_size   0;
+    client_body_timeout    86400s;
 }`
+    }
 
     case 'xhttp':
       return `location ${f.path} {
-    proxy_pass http://${upstream};
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-    proxy_set_header Host $host;${ppHeader}
-    proxy_buffering off;
-    proxy_cache off;
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    proxy_read_timeout 86400s;
+    proxy_pass          http://${upstream};
+    proxy_http_version  1.1;
+    # XHTTP/SplitHTTP 必须禁用 Connection 复用
+    proxy_set_header    Connection         "";
+    proxy_set_header    Host               $host;${realIpLine}${ppLine}
+    # 关闭所有缓冲，保证流式传输
+    proxy_buffering         off;
+    proxy_cache             off;
+    proxy_request_buffering off;
+    proxy_connect_timeout   60s;
+    proxy_read_timeout      86400s;
+    proxy_send_timeout      86400s;
+    # TCP 优化
+    tcp_nodelay  on;
 }`
 
     case 'raw':
-      return `# TCP(RAW) 模式建议直接监听端口，无需 nginx 反代 HTTP
-# 如需在同一端口混用，可参考 stream 模块：
+      return `# TCP(RAW) 模式直接监听端口，无需 HTTP 反代
+# 如需在同一端口与 HTTPS 共存，可使用 nginx stream 模块：
+#
 # stream {
-#     server {
-#         listen 443;
-#         proxy_pass ${upstream};
+#     upstream xray_backend {
+#         server ${upstream};
 #     }
-# }`
+#     server {
+#         listen     443;
+#         proxy_pass xray_backend;
+#     }
+# }
+#
+# 注意：stream 模块需在 nginx 主配置（nginx.conf）中配置，
+# 不能放在 http {} 块内。`
 
     default:
       return `# 暂不支持 ${f.network} 的 nginx 反代模板`
@@ -1194,6 +1355,9 @@ onMounted(() => { loadStatus() })
 .nginx-code-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .nginx-code-title { font-weight: 600; font-size: 14px; }
 .nginx-code :deep(textarea) { font-family: 'Courier New', monospace !important; font-size: 13px !important; background: #1a1a2e !important; color: #e2e8f0 !important; }
+
+.share-hint { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 8px; }
+.share-link-text :deep(textarea) { font-family: monospace !important; font-size: 12px !important; word-break: break-all; }
 
 .mr-1 { margin-right: 4px; }
 .ml-2 { margin-left: 8px; }

@@ -962,6 +962,13 @@ export default {
     sniffing: '流量探测 (Sniffing)',
     sniffEnabled: '启用探测',
     sniffDestOverride: '探测类型',
+    sniffMetadataOnly: '仅元数据模式',
+    sniffMetadataOnlyHint: '仅探测连接元数据，不读取完整流量内容',
+    // Fallbacks
+    fallbacks: '回落 (Fallbacks)',
+    fallbacksHint: '握手失败或路径不匹配时将流量回落到指定目标，常用于与 nginx 共享 443 端口。',
+    fallbackDest: '回落目标（如 80 或 127.0.0.1:8080）',
+    addFallback: '添加回落规则',
     // 标签页
     tabBasic: '基础设置',
     tabTransport: '传输协议',
@@ -992,6 +999,21 @@ export default {
     trafficHistory: '流量历史',
     // 分享链接
     shareLink: '分享链接',
+    shareLinkHost: '连接地址',
+    shareLinkHostPlaceholder: '域名或 IP，如 example.com',
+    shareLinkPort: '连接端口',
+    shareLinkHostHint: '修改连接地址/端口后分享链接实时更新',
+    // Nginx 反代
+    nginxProxyTitle: 'Nginx 反代配置生成',
+    nginxProxyDesc: '根据节点参数生成 nginx location 块，粘贴到对应网站的 server {} 块内即可。gRPC 需确保 server 块已配置 http2。',
+    nginxUpstreamAddr: '上游地址',
+    nginxUpstreamAddrHint: 'Xray 节点监听地址，通常为 127.0.0.1',
+    nginxUpstreamPort: '上游端口',
+    nginxSendProxyProtocol: 'Proxy Protocol',
+    nginxSendProxyProtocolHint: '向 Xray 传递真实客户端 IP（需节点开启 acceptProxyProtocol）',
+    nginxLocationBlock: 'nginx location 配置块',
+    // 架构说明
+    singleProcessNote: '所有节点运行在同一个 Xray 进程中，由单一 systemd 服务管理',
   },
   traffic: {
     title: '流量统计',
