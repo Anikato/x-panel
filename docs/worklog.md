@@ -4,6 +4,51 @@
 
 ---
 
+## 2026-03-21 — Session #34：Xray 管理板块完整重设计
+
+### 完成内容
+
+- [x] **彻底重写 Xray 节点模型**（`model/xray.go`）
+  - 移除旧的扁平化字段（domain/tlsCert/path/serviceName 等硬编码字段）
+  - 新增 `ListenAddr`（监听地址：0.0.0.0 或 127.0.0.1，适合 nginx 反代场景）
+  - 新增 `NetworkSettings`（JSON 存储传输方式专属参数）
+  - 新增 `SecuritySettings`（JSON 存储 TLS/Reality 专属参数）
+  - 新增节点级 `Flow` 字段，用户可独立覆盖
+  - 新增 `SniffEnabled` / `SniffDestOverride` 流量探测设置
+  - 用户模型新增独立 `Flow` 字段（可覆盖节点默认 flow）
+
+- [x] **完整 DTO 重设计**（`dto/xray.go`）
+  - RAW(TCP)：`headerType`、`acceptProxyProtocol`
+  - WebSocket：`path`、`host`、`acceptProxyProtocol`
+  - gRPC：`serviceName`、`multiMode`、`idleTimeout`、`healthCheckTimeout`、`permitWithoutStream`
+  - XHTTP：`path`、`host`、`mode`（auto/packet-up/stream-up/stream-one）、`xPaddingBytes`、`scStreamUpServerSecs`
+  - HTTPUpgrade：`path`、`host`、`acceptProxyProtocol`
+  - TLS：`serverName`、`certFile`、`keyFile`、`alpn`、`fingerprint`（uTLS）、`minVersion`、`rejectUnknownSni`
+  - Reality：`privateKey`、`publicKey`、`shortIds[]`、`serverNames[]`、`dest`、`fingerprint`、`spiderX`、`xver`
+
+- [x] **Service 层完整重写**（`service/xray.go`）
+  - 支持所有传输方式的配置反序列化映射到 Xray JSON
+  - TLS 证书使用文件路径（`certificateFile`/`keyFile`）
+  - Reality 完整参数映射，`network: "raw"` 正确使用 `rawSettings` 键
+  - 用户 flow 优先于节点默认 flow
+
+- [x] **前端界面全面重设计**（`views/xray/index.vue`）
+  - 节点使用 Drawer 抽屉（640px）替代对话框
+  - 表单 4 个 Tab：基础设置 / 传输协议 / 安全加密 / 高级设置
+  - 动态子表单：切换传输/安全类型后显示对应参数
+  - Reality: serverNames/shortIds 支持 Tag 形式增删
+  - VLESS Flow 含组合警告提示
+
+- [x] **TypeScript 类型全面更新**（`api/modules/xray.ts`）
+
+### 关键架构决策
+
+- `NetworkSettings`/`SecuritySettings` 以 JSON 字符串存入 SQLite，避免频繁 Schema 变更
+- `127.0.0.1` 监听 + `acceptProxyProtocol` 支持 nginx 透传场景
+- 分享链接连接地址完全依赖节点配置，不做外网 IP 探测
+
+---
+
 ## 2026-03-21 — Session #33：Xray 功能完善
 
 ### 完成内容

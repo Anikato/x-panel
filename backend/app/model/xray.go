@@ -2,57 +2,64 @@ package model
 
 import "time"
 
-// XrayNode 代表一个 Xray 入站节点（inbound）
+// XrayNode Xray 入站节点（inbound）配置
+// NetworkSettings 和 SecuritySettings 以 JSON 字符串存储，前端透传各自的子配置对象
 type XrayNode struct {
 	BaseModel
-	Name      string `gorm:"not null" json:"name"`
-	Protocol  string `gorm:"not null;default:'vless'" json:"protocol"` // vless | vmess | trojan
-	Port      int    `gorm:"not null;uniqueIndex" json:"port"`
-	Transport string `gorm:"not null;default:'tcp'" json:"transport"` // tcp | ws | grpc
-	Security  string `gorm:"not null;default:'none'" json:"security"` // none | tls | reality
+	Name        string `gorm:"not null" json:"name"`
+	Protocol    string `gorm:"not null;default:'vless'" json:"protocol"` // vless | vmess | trojan | shadowsocks
+	ListenAddr  string `gorm:"default:'0.0.0.0'" json:"listenAddr"`      // 0.0.0.0 | 127.0.0.1
+	Port        int    `gorm:"not null;uniqueIndex" json:"port"`
 
-	// TLS/Reality 公共
-	Domain string `json:"domain"`
-	// TLS
-	TLSCert string `gorm:"type:text" json:"-"`
-	TLSKey  string `gorm:"type:text" json:"-"`
-	// Reality 专用
-	RealityPrivateKey  string `gorm:"type:text" json:"-"`
-	RealityPublicKey   string `json:"realityPublicKey"`
-	RealityShortIds    string `json:"realityShortIds"`    // JSON 数组字符串
-	RealityServerNames string `json:"realityServerNames"` // JSON 数组字符串，dest SNI
+	// 传输方式：raw(tcp) | ws | grpc | xhttp | httpupgrade
+	// v24.9.30 后 TCP 更名为 RAW，但两者互为别名
+	Network string `gorm:"not null;default:'raw'" json:"network"`
 
-	// WebSocket 路径
-	Path string `gorm:"default:'/'" json:"path"`
-	// gRPC serviceName
-	ServiceName string `json:"serviceName"`
+	// 加密方式：none | tls | reality
+	Security string `gorm:"not null;default:'none'" json:"security"`
+
+	// 传输方式专属配置（JSON），格式见各 transport 文档
+	NetworkSettings string `gorm:"type:text;default:'{}'" json:"networkSettings"`
+
+	// 安全专属配置（JSON），TLS/Reality 分别有不同字段
+	SecuritySettings string `gorm:"type:text;default:'{}'" json:"securitySettings"`
+
+	// VLESS flow：""（普通 TLS）| "xtls-rprx-vision"（仅 TCP+TLS/Reality）
+	Flow string `gorm:"default:''" json:"flow"`
+
+	// 流量探测
+	SniffEnabled     bool   `gorm:"default:true" json:"sniffEnabled"`
+	SniffDestOverride string `gorm:"type:text;default:'[\"http\",\"tls\"]'" json:"sniffDestOverride"` // JSON 数组
 
 	Remark  string `json:"remark"`
 	Enabled bool   `gorm:"default:true" json:"enabled"`
 }
 
+// XrayUser Xray 代理用户
+type XrayUser struct {
+	BaseModel
+	NodeID uint   `gorm:"not null;index" json:"nodeId"`
+	Name   string `gorm:"not null" json:"name"`
+	UUID   string `gorm:"not null;uniqueIndex" json:"uuid"`
+	Email  string `gorm:"not null;uniqueIndex" json:"email"` // 流量统计唯一 key
+
+	Level int    `gorm:"default:0" json:"level"`
+	Flow  string `gorm:"default:''" json:"flow"` // 单独覆盖节点 flow，留空则继承节点默认
+
+	ExpireAt *time.Time `json:"expireAt"` // nil = 永不过期
+	Enabled  bool       `gorm:"default:true" json:"enabled"`
+	Remark   string     `json:"remark"`
+
+	// 累计流量（字节），由 SyncTraffic cron 更新
+	UploadTotal   int64 `gorm:"default:0" json:"uploadTotal"`
+	DownloadTotal int64 `gorm:"default:0" json:"downloadTotal"`
+}
+
 // XrayTrafficDaily 每日流量快照（供历史图表使用）
 type XrayTrafficDaily struct {
 	BaseModel
-	UserID   uint   `gorm:"not null;uniqueIndex:idx_user_date" json:"userId"`
-	Date     string `gorm:"not null;uniqueIndex:idx_user_date" json:"date"` // YYYY-MM-DD
+	UserID   uint   `gorm:"not null;uniqueIndex:idx_xray_user_date" json:"userId"`
+	Date     string `gorm:"not null;uniqueIndex:idx_xray_user_date" json:"date"` // YYYY-MM-DD
 	Upload   int64  `gorm:"default:0" json:"upload"`
 	Download int64  `gorm:"default:0" json:"download"`
-}
-
-// XrayUser 代表一个 Xray 代理用户
-type XrayUser struct {
-	BaseModel
-	NodeID    uint      `gorm:"not null;index" json:"nodeId"`
-	Name      string    `gorm:"not null" json:"name"`
-	UUID      string    `gorm:"not null;uniqueIndex" json:"uuid"`
-	Email     string    `gorm:"not null;uniqueIndex" json:"email"` // 用于流量统计的唯一 key
-	Level     int       `gorm:"default:0" json:"level"`
-	ExpireAt  *time.Time `json:"expireAt"` // nil = 永不过期
-	Enabled   bool      `gorm:"default:true" json:"enabled"`
-	Remark    string    `json:"remark"`
-
-	// 流量统计（字节）
-	UploadTotal   int64 `gorm:"default:0" json:"uploadTotal"`
-	DownloadTotal int64 `gorm:"default:0" json:"downloadTotal"`
 }

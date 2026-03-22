@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -49,7 +50,7 @@ type IXrayService interface {
 	// 流量历史
 	GetTrafficHistory(userID uint, days int) ([]dto.XrayTrafficDaily, error)
 	SnapshotDailyTraffic()
-	// 内部：定时流量同步 & 过期检查
+	// 定时任务
 	SyncTraffic()
 	CheckExpiredUsers()
 }
@@ -57,23 +58,22 @@ type IXrayService interface {
 func NewIXrayService() IXrayService { return &XrayService{} }
 
 type XrayService struct {
-	mu     sync.Mutex // 保护 config 写入和 reload
-	syncMu sync.Mutex // 保护流量同步，防止并发
+	mu     sync.Mutex // 保护配置写入 & reload
+	syncMu sync.Mutex // 防止并发流量同步
 }
 
-// 安装状态（进程级全局）
 var (
+	xrayNodeRepo = repo.NewIXrayNodeRepo()
+	xrayUserRepo = repo.NewIXrayUserRepo()
+
 	installLog     strings.Builder
 	installRunning bool
 	installMu      sync.Mutex
 )
 
-var (
-	xrayNodeRepo = repo.NewIXrayNodeRepo()
-	xrayUserRepo = repo.NewIXrayUserRepo()
-)
-
-// ==================== 状态 & 安装 ====================
+// ============================================================
+// 状态 & 安装
+// ============================================================
 
 func (s *XrayService) IsInstalled() bool {
 	_, err := os.Stat(xrayBin)
@@ -108,10 +108,9 @@ func (s *XrayService) StartInstall() error {
 		installMu.Lock()
 		installLog.WriteString("\n[DONE] Xray installed successfully.\n")
 		installMu.Unlock()
-		// 安装完成后写入初始配置
-		if err := s.initConfig(); err != nil {
-			global.LOG.Warnf("xray: init config after install: %v", err)
-		}
+		s.mu.Lock()
+		_ = s.reloadConfig()
+		s.mu.Unlock()
 	}()
 	return nil
 }
@@ -120,13 +119,6 @@ func (s *XrayService) GetInstallLog() string {
 	installMu.Lock()
 	defer installMu.Unlock()
 	return installLog.String()
-}
-
-// initConfig 写入包含 Stats API 的基础配置（首次安装时调用）
-func (s *XrayService) initConfig() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.reloadConfig()
 }
 
 func (s *XrayService) GetStatus() dto.XrayStatusResponse {
@@ -139,18 +131,22 @@ func (s *XrayService) GetStatus() dto.XrayStatusResponse {
 	out, _ := cmd.Output()
 	resp.Running = strings.TrimSpace(string(out)) == "active"
 
-	verCmd := exec.Command(xrayBin, "version")
-	verOut, _ := verCmd.Output()
-	if len(verOut) > 0 {
-		lines := strings.Split(string(verOut), "\n")
-		if len(lines) > 0 {
-			resp.Version = strings.TrimSpace(lines[0])
+	if resp.Running {
+		verCmd := exec.Command(xrayBin, "version")
+		verOut, _ := verCmd.Output()
+		if len(verOut) > 0 {
+			lines := strings.Split(string(verOut), "\n")
+			if len(lines) > 0 {
+				resp.Version = strings.TrimSpace(lines[0])
+			}
 		}
 	}
 	return resp
 }
 
-// ==================== 节点管理 ====================
+// ============================================================
+// 节点管理
+// ============================================================
 
 func (s *XrayService) ListNodes() ([]dto.XrayNodeResponse, error) {
 	nodes, err := xrayNodeRepo.GetList()
@@ -160,24 +156,9 @@ func (s *XrayService) ListNodes() ([]dto.XrayNodeResponse, error) {
 	var result []dto.XrayNodeResponse
 	for _, n := range nodes {
 		count, _ := xrayUserRepo.Count(repo.WithXrayNodeID(n.ID))
-		result = append(result, dto.XrayNodeResponse{
-			ID:                 n.ID,
-			Name:               n.Name,
-			Protocol:           n.Protocol,
-			Port:               n.Port,
-			Transport:          n.Transport,
-			Security:           n.Security,
-			Domain:             n.Domain,
-			RealityPublicKey:   n.RealityPublicKey,
-			RealityShortIds:    n.RealityShortIds,
-			RealityServerNames: n.RealityServerNames,
-			Path:               n.Path,
-			ServiceName:        n.ServiceName,
-			Remark:             n.Remark,
-			Enabled:            n.Enabled,
-			UserCount:          count,
-			CreatedAt:          n.CreatedAt,
-		})
+		resp := nodeToResponse(n)
+		resp.UserCount = count
+		result = append(result, resp)
 	}
 	return result, nil
 }
@@ -186,26 +167,40 @@ func (s *XrayService) CreateNode(req dto.XrayNodeCreate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	node := &model.XrayNode{
-		Name:               req.Name,
-		Protocol:           req.Protocol,
-		Port:               req.Port,
-		Transport:          req.Transport,
-		Security:           req.Security,
-		Domain:             req.Domain,
-		TLSCert:            req.TLSCert,
-		TLSKey:             req.TLSKey,
-		RealityPrivateKey:  req.RealityPrivateKey,
-		RealityPublicKey:   req.RealityPublicKey,
-		RealityShortIds:    req.RealityShortIds,
-		RealityServerNames: req.RealityServerNames,
-		Path:               req.Path,
-		ServiceName:        req.ServiceName,
-		Remark:             req.Remark,
-		Enabled:            true,
+	// 规范化 network：tcp 别名为 raw
+	if req.Network == "tcp" {
+		req.Network = "raw"
 	}
-	if node.Path == "" {
-		node.Path = "/"
+	if req.ListenAddr == "" {
+		req.ListenAddr = "0.0.0.0"
+	}
+
+	netJSON, secJSON, err := marshalNodeSettings(req.Network, req.Security,
+		req.RawSettings, req.WSSettings, req.GRPCSettings, req.XHTTPSettings, req.HTTPUpgradeSettings,
+		req.TLSSettings, req.RealitySettings)
+	if err != nil {
+		return err
+	}
+
+	sniffDest, _ := json.Marshal(req.SniffDestOverride)
+	if len(req.SniffDestOverride) == 0 {
+		sniffDest = []byte(`["http","tls"]`)
+	}
+
+	node := &model.XrayNode{
+		Name:             req.Name,
+		Protocol:         req.Protocol,
+		ListenAddr:       req.ListenAddr,
+		Port:             req.Port,
+		Network:          req.Network,
+		Security:         req.Security,
+		NetworkSettings:  netJSON,
+		SecuritySettings: secJSON,
+		Flow:             req.Flow,
+		SniffEnabled:     req.SniffEnabled,
+		SniffDestOverride: string(sniffDest),
+		Remark:           req.Remark,
+		Enabled:          true,
 	}
 	if err := xrayNodeRepo.Create(node); err != nil {
 		return err
@@ -217,24 +212,42 @@ func (s *XrayService) UpdateNode(req dto.XrayNodeUpdate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if req.Network == "tcp" {
+		req.Network = "raw"
+	}
+
 	node, err := xrayNodeRepo.Get(repo.WithByID(req.ID))
 	if err != nil {
 		return err
 	}
+
+	netJSON, secJSON, err := marshalNodeSettings(req.Network, req.Security,
+		req.RawSettings, req.WSSettings, req.GRPCSettings, req.XHTTPSettings, req.HTTPUpgradeSettings,
+		req.TLSSettings, req.RealitySettings)
+	if err != nil {
+		return err
+	}
+
+	sniffDest, _ := json.Marshal(req.SniffDestOverride)
+	if len(req.SniffDestOverride) == 0 {
+		sniffDest = []byte(`["http","tls"]`)
+	}
+
 	node.Name = req.Name
-	node.Transport = req.Transport
+	node.ListenAddr = req.ListenAddr
+	if node.ListenAddr == "" {
+		node.ListenAddr = "0.0.0.0"
+	}
+	node.Network = req.Network
 	node.Security = req.Security
-	node.Domain = req.Domain
-	node.TLSCert = req.TLSCert
-	node.TLSKey = req.TLSKey
-	node.RealityPrivateKey = req.RealityPrivateKey
-	node.RealityPublicKey = req.RealityPublicKey
-	node.RealityShortIds = req.RealityShortIds
-	node.RealityServerNames = req.RealityServerNames
-	node.Path = req.Path
-	node.ServiceName = req.ServiceName
+	node.NetworkSettings = netJSON
+	node.SecuritySettings = secJSON
+	node.Flow = req.Flow
+	node.SniffEnabled = req.SniffEnabled
+	node.SniffDestOverride = string(sniffDest)
 	node.Remark = req.Remark
 	node.Enabled = req.Enabled
+
 	if err := xrayNodeRepo.Save(&node); err != nil {
 		return err
 	}
@@ -244,7 +257,6 @@ func (s *XrayService) UpdateNode(req dto.XrayNodeUpdate) error {
 func (s *XrayService) DeleteNode(id uint) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if err := xrayUserRepo.Delete(repo.WithXrayNodeID(id)); err != nil {
 		return err
 	}
@@ -257,7 +269,6 @@ func (s *XrayService) DeleteNode(id uint) error {
 func (s *XrayService) ToggleNode(id uint) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	node, err := xrayNodeRepo.Get(repo.WithByID(id))
 	if err != nil {
 		return err
@@ -269,7 +280,9 @@ func (s *XrayService) ToggleNode(id uint) error {
 	return s.reloadConfig()
 }
 
-// ==================== 用户管理 ====================
+// ============================================================
+// 用户管理
+// ============================================================
 
 func (s *XrayService) SearchUsers(req dto.XrayUserSearch) (int64, []dto.XrayUserResponse, error) {
 	opts := []repo.DBOption{}
@@ -280,14 +293,11 @@ func (s *XrayService) SearchUsers(req dto.XrayUserSearch) (int64, []dto.XrayUser
 	if err != nil {
 		return 0, nil, err
 	}
-
-	// 批量查节点名称
 	nodeNames := map[uint]string{}
 	nodes, _ := xrayNodeRepo.GetList()
 	for _, n := range nodes {
 		nodeNames[n.ID] = n.Name
 	}
-
 	var result []dto.XrayUserResponse
 	for _, u := range users {
 		result = append(result, dto.XrayUserResponse{
@@ -297,6 +307,7 @@ func (s *XrayService) SearchUsers(req dto.XrayUserSearch) (int64, []dto.XrayUser
 			Name:          u.Name,
 			UUID:          u.UUID,
 			Email:         u.Email,
+			Flow:          u.Flow,
 			Level:         u.Level,
 			ExpireAt:      u.ExpireAt,
 			Enabled:       u.Enabled,
@@ -317,13 +328,19 @@ func (s *XrayService) CreateUser(req dto.XrayUserCreate) error {
 	if uid == "" {
 		uid = uuid.New().String()
 	}
-	email := fmt.Sprintf("%s@xpanel", strings.ReplaceAll(uid, "-", "")[:8])
+	// email 用 uuid 前8位 + @xpanel 确保唯一
+	emailPrefix := strings.ReplaceAll(uid, "-", "")
+	if len(emailPrefix) > 8 {
+		emailPrefix = emailPrefix[:8]
+	}
+	email := fmt.Sprintf("%s@xpanel", emailPrefix)
 
 	user := &model.XrayUser{
 		NodeID:   req.NodeID,
 		Name:     req.Name,
 		UUID:     uid,
 		Email:    email,
+		Flow:     req.Flow,
 		Level:    req.Level,
 		ExpireAt: req.ExpireAt,
 		Remark:   req.Remark,
@@ -344,6 +361,7 @@ func (s *XrayService) UpdateUser(req dto.XrayUserUpdate) error {
 		return err
 	}
 	user.Name = req.Name
+	user.Flow = req.Flow
 	user.Level = req.Level
 	user.ExpireAt = req.ExpireAt
 	user.Enabled = req.Enabled
@@ -357,14 +375,15 @@ func (s *XrayService) UpdateUser(req dto.XrayUserUpdate) error {
 func (s *XrayService) DeleteUser(id uint) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if err := xrayUserRepo.Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
 	return s.reloadConfig()
 }
 
-// ==================== 工具 ====================
+// ============================================================
+// 工具
+// ============================================================
 
 func (s *XrayService) GenerateRealityKeys() (dto.XrayGenerateKeyResponse, error) {
 	out, err := exec.Command(xrayBin, "x25519").Output()
@@ -393,18 +412,19 @@ func (s *XrayService) GetShareLink(userID uint) (dto.XrayShareLinkResponse, erro
 		return dto.XrayShareLinkResponse{}, err
 	}
 
-	// 使用节点配置的域名，若未配置则提示管理员手动填写
-	host := node.Domain
+	// 节点域名作为连接地址，未填则提示用户手动替换
+	host := nodeHost(node)
 	if host == "" {
-		host = "YOUR_SERVER_ADDRESS"
+		host = "YOUR_SERVER_DOMAIN_OR_IP"
 	}
 	link := buildShareLink(node, user, host)
 	return dto.XrayShareLinkResponse{Link: link}, nil
 }
 
-// ==================== 配置生成 ====================
+// ============================================================
+// 配置生成 & reload
+// ============================================================
 
-// reloadConfig 重新生成 config.json 并 reload xray（调用前需持有锁）
 func (s *XrayService) reloadConfig() error {
 	nodes, err := xrayNodeRepo.GetList()
 	if err != nil {
@@ -414,38 +434,32 @@ func (s *XrayService) reloadConfig() error {
 	if err != nil {
 		return err
 	}
-
 	cfg := buildXrayConfig(nodes, users)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-
 	if err := os.WriteFile(xrayConfigPath, data, 0644); err != nil {
 		return err
 	}
-
 	return reloadXray()
 }
 
-// reloadXray 通知 xray 重载配置
 func reloadXray() error {
 	cmd := exec.Command("systemctl", "reload", "xray")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		// reload 失败尝试 restart
 		restartCmd := exec.Command("systemctl", "restart", "xray")
 		if rerr := restartCmd.Run(); rerr != nil {
-			return fmt.Errorf("reload xray failed: %s, restart also failed: %v", stderr.String(), rerr)
+			return fmt.Errorf("reload xray failed: %s; restart also failed: %v", stderr.String(), rerr)
 		}
 	}
 	return nil
 }
 
-// buildXrayConfig 从节点和用户列表构建完整的 Xray 配置
+// buildXrayConfig 从数据库生成完整 Xray config.json
 func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]interface{} {
-	// 按节点 ID 分组用户
 	usersByNode := map[uint][]model.XrayUser{}
 	for _, u := range users {
 		if u.Enabled {
@@ -453,9 +467,8 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 		}
 	}
 
-	// 构建入站列表
 	inbounds := []map[string]interface{}{
-		// Stats API inbound
+		// Stats API dokodemo-door（固定 127.0.0.1:10085）
 		{
 			"listen":   "127.0.0.1",
 			"port":     xrayAPIPort,
@@ -469,9 +482,8 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 		if !node.Enabled {
 			continue
 		}
-		inbound := buildInbound(node, usersByNode[node.ID])
-		if inbound != nil {
-			inbounds = append(inbounds, inbound)
+		if ib := buildInbound(node, usersByNode[node.ID]); ib != nil {
+			inbounds = append(inbounds, ib)
 		}
 	}
 
@@ -487,9 +499,7 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 			"services": []string{"StatsService"},
 		},
 		"policy": map[string]interface{}{
-			"levels": map[string]interface{}{
-				"0": map[string]interface{}{},
-			},
+			"levels": map[string]interface{}{"0": map[string]interface{}{}},
 			"system": map[string]interface{}{
 				"statsUserUplink":   true,
 				"statsUserDownlink": true,
@@ -497,11 +507,7 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 		},
 		"routing": map[string]interface{}{
 			"rules": []map[string]interface{}{
-				{
-					"inboundTag":  []string{"api"},
-					"outboundTag": "api",
-					"type":        "field",
-				},
+				{"inboundTag": []string{"api"}, "outboundTag": "api", "type": "field"},
 			},
 		},
 		"inbounds": inbounds,
@@ -513,118 +519,153 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser) map[string]
 }
 
 func buildInbound(node model.XrayNode, users []model.XrayUser) map[string]interface{} {
-	// 构建 clients
+	settings := buildProtocolSettings(node, users)
+	streamSettings := buildStreamSettings(node)
+	sniffing := buildSniffing(node)
+
+	return map[string]interface{}{
+		"listen":         node.ListenAddr,
+		"port":           node.Port,
+		"protocol":       node.Protocol,
+		"settings":       settings,
+		"streamSettings": streamSettings,
+		"sniffing":       sniffing,
+		"tag":            fmt.Sprintf("inbound-%d", node.ID),
+	}
+}
+
+func buildProtocolSettings(node model.XrayNode, users []model.XrayUser) map[string]interface{} {
 	var clients []map[string]interface{}
 	for _, u := range users {
+		// 用户 flow 优先，为空则继承节点 flow
+		flow := u.Flow
+		if flow == "" {
+			flow = node.Flow
+		}
 		client := map[string]interface{}{
 			"id":    u.UUID,
 			"email": u.Email,
 			"level": u.Level,
 		}
-		if node.Protocol == "vmess" {
-			client["alterId"] = 0
+		if flow != "" {
+			client["flow"] = flow
 		}
 		clients = append(clients, client)
 	}
 
-	// 构建 settings
-	settings := map[string]interface{}{}
 	switch node.Protocol {
 	case "vless":
-		settings["clients"] = clients
-		settings["decryption"] = "none"
+		return map[string]interface{}{
+			"clients":    clients,
+			"decryption": "none",
+		}
 	case "vmess":
-		settings["clients"] = clients
+		for i := range clients {
+			clients[i]["alterId"] = 0
+		}
+		return map[string]interface{}{"clients": clients}
 	case "trojan":
-		settings["clients"] = clients
+		return map[string]interface{}{"clients": clients}
+	case "shadowsocks":
+		// Shadowsocks 配置暂不支持多用户（保留扩展）
+		return map[string]interface{}{"method": "aes-256-gcm", "password": "placeholder"}
 	}
-
-	// 构建 streamSettings
-	streamSettings := buildStreamSettings(node)
-
-	inbound := map[string]interface{}{
-		"listen":         "0.0.0.0",
-		"port":           node.Port,
-		"protocol":       node.Protocol,
-		"settings":       settings,
-		"streamSettings": streamSettings,
-		"tag":            fmt.Sprintf("inbound-%d", node.ID),
-		"sniffing": map[string]interface{}{
-			"enabled":      true,
-			"destOverride": []string{"http", "tls"},
-		},
-	}
-	return inbound
+	return map[string]interface{}{"clients": clients}
 }
 
 func buildStreamSettings(node model.XrayNode) map[string]interface{} {
-	ss := map[string]interface{}{}
+	ss := map[string]interface{}{
+		"network":  node.Network,
+		"security": node.Security,
+	}
 
-	switch node.Transport {
-	case "tcp":
-		ss["network"] = "tcp"
-	case "ws":
-		ss["network"] = "ws"
-		ss["wsSettings"] = map[string]interface{}{
-			"path": node.Path,
-		}
-	case "grpc":
-		ss["network"] = "grpc"
-		ss["grpcSettings"] = map[string]interface{}{
-			"serviceName": node.ServiceName,
+	// 传输方式配置
+	netKey := node.Network + "Settings"
+	if node.Network == "raw" {
+		netKey = "rawSettings"
+	}
+	if node.NetworkSettings != "" && node.NetworkSettings != "{}" {
+		var raw interface{}
+		if err := json.Unmarshal([]byte(node.NetworkSettings), &raw); err == nil {
+			ss[netKey] = raw
 		}
 	}
 
+	// 安全配置
 	switch node.Security {
 	case "tls":
-		ss["security"] = "tls"
-		tlsSettings := map[string]interface{}{}
-		if node.Domain != "" {
-			tlsSettings["serverName"] = node.Domain
-		}
-		if node.TLSCert != "" && node.TLSKey != "" {
-			tlsSettings["certificates"] = []map[string]interface{}{
-				{
-					"certificateFile": node.TLSCert,
-					"keyFile":         node.TLSKey,
-				},
+		if node.SecuritySettings != "" && node.SecuritySettings != "{}" {
+			var tls dto.XrayTLSSettings
+			if err := json.Unmarshal([]byte(node.SecuritySettings), &tls); err == nil {
+				tlsCfg := map[string]interface{}{}
+				if tls.ServerName != "" {
+					tlsCfg["serverName"] = tls.ServerName
+				}
+				if tls.CertFile != "" && tls.KeyFile != "" {
+					tlsCfg["certificates"] = []map[string]interface{}{
+						{"certificateFile": tls.CertFile, "keyFile": tls.KeyFile},
+					}
+				}
+				if len(tls.ALPN) > 0 {
+					tlsCfg["alpn"] = tls.ALPN
+				}
+				if tls.Fingerprint != "" {
+					tlsCfg["fingerprint"] = tls.Fingerprint
+				}
+				if tls.MinVersion != "" {
+					tlsCfg["minVersion"] = tls.MinVersion
+				}
+				if tls.RejectUnknownSni {
+					tlsCfg["rejectUnknownSni"] = true
+				}
+				ss["tlsSettings"] = tlsCfg
 			}
 		}
-		ss["tlsSettings"] = tlsSettings
 	case "reality":
-		ss["security"] = "reality"
-		var shortIds []string
-		if node.RealityShortIds != "" {
-			_ = json.Unmarshal([]byte(node.RealityShortIds), &shortIds)
+		if node.SecuritySettings != "" && node.SecuritySettings != "{}" {
+			var r dto.XrayRealitySettings
+			if err := json.Unmarshal([]byte(node.SecuritySettings), &r); err == nil {
+				realityCfg := map[string]interface{}{
+					"show":        r.Show,
+					"dest":        r.Dest,
+					"xver":        r.Xver,
+					"serverNames": r.ServerNames,
+					"privateKey":  r.PrivateKey,
+					"shortIds":    r.ShortIds,
+				}
+				if r.Fingerprint != "" {
+					realityCfg["fingerprint"] = r.Fingerprint
+				}
+				if r.SpiderX != "" {
+					realityCfg["spiderX"] = r.SpiderX
+				}
+				ss["realitySettings"] = realityCfg
+			}
 		}
-		var serverNames []string
-		if node.RealityServerNames != "" {
-			_ = json.Unmarshal([]byte(node.RealityServerNames), &serverNames)
-		}
-		dest := "www.apple.com:443"
-		if len(serverNames) > 0 {
-			dest = serverNames[0] + ":443"
-		}
-		ss["realitySettings"] = map[string]interface{}{
-			"show":        false,
-			"dest":        dest,
-			"xver":        0,
-			"serverNames": serverNames,
-			"privateKey":  node.RealityPrivateKey,
-			"shortIds":    shortIds,
-		}
-	default:
-		ss["security"] = "none"
 	}
 
 	return ss
 }
 
-// ==================== 流量同步 ====================
+func buildSniffing(node model.XrayNode) map[string]interface{} {
+	var destOverride []string
+	if node.SniffDestOverride != "" {
+		_ = json.Unmarshal([]byte(node.SniffDestOverride), &destOverride)
+	}
+	if len(destOverride) == 0 {
+		destOverride = []string{"http", "tls"}
+	}
+	return map[string]interface{}{
+		"enabled":      node.SniffEnabled,
+		"destOverride": destOverride,
+	}
+}
 
-// SyncTraffic 从 Xray Stats API 拉取流量数据并累加到 DB
+// ============================================================
+// 流量同步 & 过期检查
+// ============================================================
+
 func (s *XrayService) SyncTraffic() {
-	// 防止并发执行（例如定时任务积压时）
 	if !s.syncMu.TryLock() {
 		return
 	}
@@ -647,11 +688,9 @@ func (s *XrayService) SyncTraffic() {
 		return
 	}
 
-	// 汇总每个 email 的流量
 	uploads := map[string]int64{}
 	downloads := map[string]int64{}
 	for _, stat := range result.Stat {
-		// name 格式: user>>>email>>>traffic>>>uplink / downlink
 		parts := strings.Split(stat.Name, ">>>")
 		if len(parts) != 4 || parts[0] != "user" || parts[2] != "traffic" {
 			continue
@@ -667,7 +706,6 @@ func (s *XrayService) SyncTraffic() {
 		}
 	}
 
-	// 汇总所有 email 的集合
 	allEmails := map[string]bool{}
 	for e := range uploads {
 		allEmails[e] = true
@@ -675,8 +713,6 @@ func (s *XrayService) SyncTraffic() {
 	for e := range downloads {
 		allEmails[e] = true
 	}
-
-	// 更新数据库（使用原生 SQL 原子累加）
 	for email := range allEmails {
 		up := uploads[email]
 		dl := downloads[email]
@@ -690,29 +726,24 @@ func (s *XrayService) SyncTraffic() {
 	}
 }
 
-// CheckExpiredUsers 检查并禁用已到期用户
 func (s *XrayService) CheckExpiredUsers() {
 	now := time.Now()
-	var expiredUsers []model.XrayUser
+	var count int64
 	global.DB.Model(&model.XrayUser{}).
 		Where("expire_at IS NOT NULL AND expire_at < ? AND enabled = ?", now, true).
-		Find(&expiredUsers)
-
-	if len(expiredUsers) == 0 {
+		Count(&count)
+	if count == 0 {
 		return
 	}
-
-	global.LOG.Infof("Found %d expired xray users, disabling...", len(expiredUsers))
+	global.LOG.Infof("xray: disabling %d expired users", count)
 	global.DB.Model(&model.XrayUser{}).
 		Where("expire_at IS NOT NULL AND expire_at < ? AND enabled = ?", now, true).
 		Update("enabled", false)
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_ = s.reloadConfig()
 }
 
-// SnapshotDailyTraffic 每日零点快照当前累计流量（供历史图表使用）
 func (s *XrayService) SnapshotDailyTraffic() {
 	today := time.Now().Format("2006-01-02")
 	var users []model.XrayUser
@@ -720,7 +751,6 @@ func (s *XrayService) SnapshotDailyTraffic() {
 		return
 	}
 	for _, u := range users {
-		// upsert：同一天只保留一条
 		global.DB.Exec(`
 			INSERT INTO xray_traffic_dailies (user_id, date, upload, download, created_at, updated_at)
 			VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
@@ -732,85 +762,286 @@ func (s *XrayService) SnapshotDailyTraffic() {
 	}
 }
 
-// GetTrafficHistory 返回某用户最近 N 天的每日流量增量
 func (s *XrayService) GetTrafficHistory(userID uint, days int) ([]dto.XrayTrafficDaily, error) {
 	if days <= 0 || days > 90 {
 		days = 30
 	}
 	var rows []model.XrayTrafficDaily
 	err := global.DB.Where("user_id = ?", userID).
-		Order("date DESC").
-		Limit(days).
-		Find(&rows).Error
+		Order("date DESC").Limit(days).Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-
-	// 转换为增量（每天相比前一天的新增流量）
 	result := make([]dto.XrayTrafficDaily, len(rows))
 	for i, r := range rows {
-		upload, download := r.Upload, r.Download
+		up, dl := r.Upload, r.Download
 		if i+1 < len(rows) {
 			prev := rows[i+1]
 			if r.Upload >= prev.Upload {
-				upload = r.Upload - prev.Upload
+				up = r.Upload - prev.Upload
 			}
 			if r.Download >= prev.Download {
-				download = r.Download - prev.Download
+				dl = r.Download - prev.Download
 			}
 		}
-		result[i] = dto.XrayTrafficDaily{
-			Date:     r.Date,
-			Upload:   upload,
-			Download: download,
-		}
+		result[i] = dto.XrayTrafficDaily{Date: r.Date, Upload: up, Download: dl}
 	}
-	// 按日期正序返回
 	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
 		result[i], result[j] = result[j], result[i]
 	}
 	return result, nil
 }
 
-// ==================== 工具函数 ====================
+// ============================================================
+// 辅助函数
+// ============================================================
 
-func buildShareLink(node model.XrayNode, user model.XrayUser, serverIP string) string {
-	host := serverIP
-	if node.Domain != "" {
-		host = node.Domain
+// marshalNodeSettings 序列化网络/安全子配置为 JSON 字符串
+func marshalNodeSettings(
+	network, security string,
+	raw *dto.XrayRawSettings,
+	ws *dto.XrayWSSettings,
+	grpc *dto.XrayGRPCSettings,
+	xhttp *dto.XrayXHTTPSettings,
+	httpUpgrade *dto.XrayHTTPUpgradeSettings,
+	tls *dto.XrayTLSSettings,
+	reality *dto.XrayRealitySettings,
+) (netJSON, secJSON string, err error) {
+	// 网络配置
+	var netObj interface{}
+	switch network {
+	case "raw", "tcp":
+		if raw != nil {
+			netObj = raw
+		}
+	case "ws":
+		if ws != nil {
+			netObj = ws
+		}
+	case "grpc":
+		if grpc != nil {
+			netObj = grpc
+		}
+	case "xhttp":
+		if xhttp != nil {
+			netObj = xhttp
+		}
+	case "httpupgrade":
+		if httpUpgrade != nil {
+			netObj = httpUpgrade
+		}
+	}
+	if netObj != nil {
+		b, e := json.Marshal(netObj)
+		if e != nil {
+			return "", "", e
+		}
+		netJSON = string(b)
+	} else {
+		netJSON = "{}"
+	}
+
+	// 安全配置
+	var secObj interface{}
+	switch security {
+	case "tls":
+		if tls != nil {
+			secObj = tls
+		}
+	case "reality":
+		if reality != nil {
+			secObj = reality
+		}
+	}
+	if secObj != nil {
+		b, e := json.Marshal(secObj)
+		if e != nil {
+			return "", "", e
+		}
+		secJSON = string(b)
+	} else {
+		secJSON = "{}"
+	}
+	return netJSON, secJSON, nil
+}
+
+// nodeToResponse 将 model.XrayNode 转为 DTO，解析 JSON 子配置
+func nodeToResponse(n model.XrayNode) dto.XrayNodeResponse {
+	resp := dto.XrayNodeResponse{
+		ID:         n.ID,
+		Name:       n.Name,
+		Protocol:   n.Protocol,
+		ListenAddr: n.ListenAddr,
+		Port:       n.Port,
+		Network:    n.Network,
+		Security:   n.Security,
+		Flow:       n.Flow,
+		SniffEnabled: n.SniffEnabled,
+		Remark:     n.Remark,
+		Enabled:    n.Enabled,
+		CreatedAt:  n.CreatedAt,
+	}
+	// 解析 sniffDestOverride
+	if n.SniffDestOverride != "" {
+		_ = json.Unmarshal([]byte(n.SniffDestOverride), &resp.SniffDestOverride)
+	}
+	// 解析网络子配置
+	if n.NetworkSettings != "" && n.NetworkSettings != "{}" {
+		switch n.Network {
+		case "raw", "tcp":
+			var v dto.XrayRawSettings
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
+				resp.RawSettings = &v
+			}
+		case "ws":
+			var v dto.XrayWSSettings
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
+				resp.WSSettings = &v
+			}
+		case "grpc":
+			var v dto.XrayGRPCSettings
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
+				resp.GRPCSettings = &v
+			}
+		case "xhttp":
+			var v dto.XrayXHTTPSettings
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
+				resp.XHTTPSettings = &v
+			}
+		case "httpupgrade":
+			var v dto.XrayHTTPUpgradeSettings
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
+				resp.HTTPUpgradeSettings = &v
+			}
+		}
+	}
+	// 解析安全子配置
+	if n.SecuritySettings != "" && n.SecuritySettings != "{}" {
+		switch n.Security {
+		case "tls":
+			var v dto.XrayTLSSettings
+			if json.Unmarshal([]byte(n.SecuritySettings), &v) == nil {
+				resp.TLSSettings = &v
+			}
+		case "reality":
+			var v dto.XrayRealitySettings
+			if json.Unmarshal([]byte(n.SecuritySettings), &v) == nil {
+				resp.RealitySettings = &v
+			}
+		}
+	}
+	return resp
+}
+
+// nodeHost 从节点提取连接域名（从 TLS ServerName 或 Reality ServerNames 中取）
+func nodeHost(n model.XrayNode) string {
+	switch n.Security {
+	case "tls":
+		var tls dto.XrayTLSSettings
+		if json.Unmarshal([]byte(n.SecuritySettings), &tls) == nil && tls.ServerName != "" {
+			return tls.ServerName
+		}
+	case "reality":
+		var r dto.XrayRealitySettings
+		if json.Unmarshal([]byte(n.SecuritySettings), &r) == nil && len(r.ServerNames) > 0 {
+			return r.ServerNames[0]
+		}
+	}
+	return ""
+}
+
+// buildShareLink 生成 VLESS/VMess/Trojan 分享 URI
+func buildShareLink(node model.XrayNode, user model.XrayUser, host string) string {
+	userFlow := user.Flow
+	if userFlow == "" {
+		userFlow = node.Flow
 	}
 
 	switch node.Protocol {
 	case "vless":
-		params := fmt.Sprintf("type=%s&security=%s", node.Transport, node.Security)
-		if node.Transport == "ws" {
-			params += fmt.Sprintf("&path=%s", node.Path)
+		params := url.Values{}
+		params.Set("type", node.Network)
+		params.Set("security", node.Security)
+		// flow
+		if userFlow != "" {
+			params.Set("flow", userFlow)
 		}
-		if node.Transport == "grpc" {
-			params += fmt.Sprintf("&serviceName=%s&mode=gun", node.ServiceName)
+		// 传输参数
+		switch node.Network {
+		case "ws":
+			var ws dto.XrayWSSettings
+			if json.Unmarshal([]byte(node.NetworkSettings), &ws) == nil {
+				if ws.Path != "" {
+					params.Set("path", ws.Path)
+				}
+				if ws.Host != "" {
+					params.Set("host", ws.Host)
+				}
+			}
+		case "grpc":
+			var g dto.XrayGRPCSettings
+			if json.Unmarshal([]byte(node.NetworkSettings), &g) == nil {
+				params.Set("serviceName", g.ServiceName)
+				params.Set("mode", "gun")
+			}
+		case "xhttp":
+			var x dto.XrayXHTTPSettings
+			if json.Unmarshal([]byte(node.NetworkSettings), &x) == nil {
+				if x.Path != "" {
+					params.Set("path", x.Path)
+				}
+				if x.Host != "" {
+					params.Set("host", x.Host)
+				}
+				if x.Mode != "" {
+					params.Set("mode", x.Mode)
+				}
+			}
+		case "httpupgrade":
+			var h dto.XrayHTTPUpgradeSettings
+			if json.Unmarshal([]byte(node.NetworkSettings), &h) == nil {
+				if h.Path != "" {
+					params.Set("path", h.Path)
+				}
+				if h.Host != "" {
+					params.Set("host", h.Host)
+				}
+			}
 		}
-		if node.Security == "reality" {
-			params += fmt.Sprintf("&pbk=%s&fp=chrome", node.RealityPublicKey)
-			var sids []string
-			if node.RealityShortIds != "" {
-				_ = json.Unmarshal([]byte(node.RealityShortIds), &sids)
+		// 安全参数
+		switch node.Security {
+		case "reality":
+			var r dto.XrayRealitySettings
+			if json.Unmarshal([]byte(node.SecuritySettings), &r) == nil {
+				params.Set("pbk", r.PublicKey)
+				if r.Fingerprint != "" {
+					params.Set("fp", r.Fingerprint)
+				} else {
+					params.Set("fp", "chrome")
+				}
+				if len(r.ShortIds) > 0 {
+					params.Set("sid", r.ShortIds[0])
+				}
+				if len(r.ServerNames) > 0 {
+					params.Set("sni", r.ServerNames[0])
+				}
 			}
-			if len(sids) > 0 {
-				params += fmt.Sprintf("&sid=%s", sids[0])
-			}
-			var sns []string
-			if node.RealityServerNames != "" {
-				_ = json.Unmarshal([]byte(node.RealityServerNames), &sns)
-			}
-			if len(sns) > 0 {
-				params += fmt.Sprintf("&sni=%s", sns[0])
+		case "tls":
+			var t dto.XrayTLSSettings
+			if json.Unmarshal([]byte(node.SecuritySettings), &t) == nil {
+				if t.ServerName != "" {
+					params.Set("sni", t.ServerName)
+				}
+				if t.Fingerprint != "" {
+					params.Set("fp", t.Fingerprint)
+				}
+				if len(t.ALPN) > 0 {
+					params.Set("alpn", strings.Join(t.ALPN, ","))
+				}
 			}
 		}
-		if node.Security == "tls" && node.Domain != "" {
-			params += fmt.Sprintf("&sni=%s", node.Domain)
-		}
-		return fmt.Sprintf("vless://%s@%s:%d?%s#%s",
-			user.UUID, host, node.Port, params, user.Name)
+		name := url.PathEscape(user.Name)
+		return fmt.Sprintf("vless://%s@%s:%d?%s#%s", user.UUID, host, node.Port, params.Encode(), name)
 
 	case "vmess":
 		v := map[string]interface{}{
@@ -820,23 +1051,39 @@ func buildShareLink(node model.XrayNode, user model.XrayUser, serverIP string) s
 			"port": fmt.Sprintf("%d", node.Port),
 			"id":   user.UUID,
 			"aid":  "0",
-			"net":  node.Transport,
-			"type": "none",
+			"scy":  "auto",
+			"net":  node.Network,
 			"tls":  node.Security,
 		}
-		if node.Transport == "ws" {
-			v["path"] = node.Path
+		if node.Network == "ws" {
+			var ws dto.XrayWSSettings
+			if json.Unmarshal([]byte(node.NetworkSettings), &ws) == nil {
+				v["path"] = ws.Path
+				v["host"] = ws.Host
+			}
+		}
+		if node.Security == "tls" {
+			var t dto.XrayTLSSettings
+			if json.Unmarshal([]byte(node.SecuritySettings), &t) == nil {
+				v["sni"] = t.ServerName
+			}
 		}
 		data, _ := json.Marshal(v)
-		return "vmess://" + encodeBase64(string(data))
+		return "vmess://" + b64.StdEncoding.EncodeToString(data)
 
 	case "trojan":
-		params := fmt.Sprintf("type=%s", node.Transport)
-		if node.Security == "tls" && node.Domain != "" {
-			params += fmt.Sprintf("&sni=%s", node.Domain)
+		params := url.Values{}
+		params.Set("type", node.Network)
+		if node.Security == "tls" {
+			var t dto.XrayTLSSettings
+			if json.Unmarshal([]byte(node.SecuritySettings), &t) == nil {
+				if t.ServerName != "" {
+					params.Set("sni", t.ServerName)
+				}
+			}
 		}
-		return fmt.Sprintf("trojan://%s@%s:%d?%s#%s",
-			user.UUID, host, node.Port, params, user.Name)
+		name := url.PathEscape(user.Name)
+		return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", user.UUID, host, node.Port, params.Encode(), name)
 	}
 	return ""
 }
