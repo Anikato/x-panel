@@ -1706,15 +1706,79 @@ const handleDeleteOutbound = async (id: number) => {
 
 // 出站协议对应的默认 settings 模板
 const outboundSettingsTemplate = (protocol: string): string => {
+  // 严格按照 Xray 官方文档格式：https://xtls.github.io/config/outbounds/
   const templates: Record<string, object> = {
+    // freedom/blackhole 无需 settings
     freedom: {},
     blackhole: {},
-    socks: { servers: [{ address: '127.0.0.1', port: 1080, users: [] }] },
-    http: { servers: [{ address: '127.0.0.1', port: 8080, users: [] }] },
-    shadowsocks: { servers: [{ address: '127.0.0.1', port: 8388, method: 'aes-256-gcm', password: '' }] },
-    vmess: { vnext: [{ address: '', port: 443, users: [{ id: '', security: 'auto' }] }] },
-    vless: { vnext: [{ address: '', port: 443, users: [{ id: '', encryption: 'none' }] }] },
-    trojan: { servers: [{ address: '', port: 443, password: '' }] },
+    // SOCKS5 出站：平铺结构，address/port/user/pass 直接在顶层
+    // 文档：https://xtls.github.io/config/outbounds/socks.html
+    socks: {
+      address: '127.0.0.1',
+      port: 1080
+      // user: 'username',  // 有认证时才填
+      // pass: 'password'
+    },
+    // HTTP 出站：servers 数组
+    // 文档：https://xtls.github.io/config/outbounds/http.html
+    http: {
+      servers: [{
+        address: '127.0.0.1',
+        port: 8080
+        // user: 'username',
+        // pass: 'password'
+      }]
+    },
+    // Shadowsocks 出站：servers 数组
+    // 文档：https://xtls.github.io/config/outbounds/shadowsocks.html
+    shadowsocks: {
+      servers: [{
+        address: '127.0.0.1',
+        port: 8388,
+        method: 'aes-256-gcm',
+        password: 'your-password',
+        email: 'ss@xray',
+        level: 0
+      }]
+    },
+    // VMess 出站：vnext 数组
+    // 文档：https://xtls.github.io/config/outbounds/vmess.html
+    vmess: {
+      vnext: [{
+        address: 'example.com',
+        port: 443,
+        users: [{
+          id: '00000000-0000-0000-0000-000000000000',
+          security: 'auto',
+          level: 0
+        }]
+      }]
+    },
+    // VLESS 出站：vnext 数组
+    // 文档：https://xtls.github.io/config/outbounds/vless.html
+    vless: {
+      vnext: [{
+        address: 'example.com',
+        port: 443,
+        users: [{
+          id: '00000000-0000-0000-0000-000000000000',
+          encryption: 'none',
+          flow: '',
+          level: 0
+        }]
+      }]
+    },
+    // Trojan 出站：servers 数组
+    // 文档：https://xtls.github.io/config/outbounds/trojan.html
+    trojan: {
+      servers: [{
+        address: 'example.com',
+        port: 443,
+        password: 'your-password',
+        email: 'trojan@xray',
+        level: 0
+      }]
+    },
   }
   return JSON.stringify(templates[protocol] ?? {}, null, 2)
 }
