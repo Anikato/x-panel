@@ -13,6 +13,21 @@ type XrayAPI struct{}
 
 var xrayService = service.NewIXrayService()
 
+func (a *XrayAPI) ControlXrayService(c *gin.Context) {
+	var req struct {
+		Action string `json:"action" binding:"required,oneof=start stop restart enable disable"`
+	}
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := xrayService.ControlService(req.Action); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, xrayService.GetStatus())
+}
+
 func (a *XrayAPI) GetXrayStatus(c *gin.Context) {
 	helper.SuccessWithData(c, xrayService.GetStatus())
 }

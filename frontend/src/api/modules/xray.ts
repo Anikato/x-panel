@@ -162,6 +162,7 @@ export interface XrayUserSearch {
 export interface XrayStatus {
   installed: boolean
   running: boolean
+  enabledOnBoot: boolean
   version: string
   configPath: string
   binPath: string
@@ -190,6 +191,8 @@ export interface XrayRealityKeys {
 export const getXrayStatus = () => http.get<XrayStatus>('/xray/status')
 export const startXrayInstall = () => http.post('/xray/install', {})
 export const getXrayInstallLog = () => http.get<XrayInstallStatus>('/xray/install/log')
+export const controlXrayService = (action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') =>
+  http.post<XrayStatus>('/xray/service/control', { action })
 
 export const listXrayNodes = () => http.get<XrayNode[]>('/xray/nodes')
 export const createXrayNode = (data: object) => http.post('/xray/nodes', data)

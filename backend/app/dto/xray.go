@@ -245,11 +245,12 @@ type XrayUserResponse struct {
 // ============================================================
 
 type XrayStatusResponse struct {
-	Installed  bool   `json:"installed"`
-	Running    bool   `json:"running"`
-	Version    string `json:"version"`
-	ConfigPath string `json:"configPath"`
-	BinPath    string `json:"binPath"`
+	Installed     bool   `json:"installed"`
+	Running       bool   `json:"running"`
+	EnabledOnBoot bool   `json:"enabledOnBoot"`
+	Version       string `json:"version"`
+	ConfigPath    string `json:"configPath"`
+	BinPath       string `json:"binPath"`
 }
 
 type XrayInstallStatus struct {

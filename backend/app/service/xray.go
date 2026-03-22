@@ -33,6 +33,8 @@ type IXrayService interface {
 	IsInstalled() bool
 	StartInstall() error
 	GetInstallLog() string
+	// 服务控制
+	ControlService(action string) error
 	// 节点管理
 	ListNodes() ([]dto.XrayNodeResponse, error)
 	CreateNode(req dto.XrayNodeCreate) error
@@ -127,13 +129,14 @@ func (s *XrayService) GetStatus() dto.XrayStatusResponse {
 		ConfigPath: xrayConfigPath,
 		BinPath:    xrayBin,
 	}
-	cmd := exec.Command("systemctl", "is-active", "xray")
-	out, _ := cmd.Output()
+	out, _ := exec.Command("systemctl", "is-active", "xray").Output()
 	resp.Running = strings.TrimSpace(string(out)) == "active"
 
+	out2, _ := exec.Command("systemctl", "is-enabled", "xray").Output()
+	resp.EnabledOnBoot = strings.TrimSpace(string(out2)) == "enabled"
+
 	if resp.Running {
-		verCmd := exec.Command(xrayBin, "version")
-		verOut, _ := verCmd.Output()
+		verOut, _ := exec.Command(xrayBin, "version").Output()
 		if len(verOut) > 0 {
 			lines := strings.Split(string(verOut), "\n")
 			if len(lines) > 0 {
@@ -142,6 +145,21 @@ func (s *XrayService) GetStatus() dto.XrayStatusResponse {
 		}
 	}
 	return resp
+}
+
+// ControlService 控制 Xray systemd 服务
+func (s *XrayService) ControlService(action string) error {
+	var args []string
+	switch action {
+	case "start", "stop", "restart", "enable", "disable":
+		args = []string{action, "xray"}
+	default:
+		return fmt.Errorf("unknown action: %s", action)
+	}
+	if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl %s: %s", action, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // ============================================================

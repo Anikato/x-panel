@@ -276,6 +276,7 @@ func Setup(mode string) *gin.Engine {
 
 		// Xray 管理
 		privateGroup.GET("/xray/status", api.GetXrayStatus)
+		privateGroup.POST("/xray/service/control", api.ControlXrayService)
 		privateGroup.POST("/xray/install", api.StartInstall)
 		privateGroup.GET("/xray/install/log", api.GetInstallLog)
 		privateGroup.GET("/xray/nodes", api.ListXrayNodes)

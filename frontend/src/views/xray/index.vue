@@ -28,6 +28,9 @@
             <el-icon class="mr-1"><CircleCheck v-if="xrayStatus.running" /><CircleClose v-else /></el-icon>
             {{ xrayStatus.running ? t('xray.running') : t('xray.stopped') }}
           </el-tag>
+          <el-tag :type="xrayStatus.enabledOnBoot ? 'success' : 'info'" size="small">
+            {{ xrayStatus.enabledOnBoot ? t('xray.bootEnabled') : t('xray.bootDisabled') }}
+          </el-tag>
           <span v-if="xrayStatus.version" class="version-text">{{ xrayStatus.version }}</span>
           <span class="config-path">{{ xrayStatus.configPath }}</span>
           <el-tooltip :content="t('xray.singleProcessNote')" placement="bottom">
@@ -36,7 +39,31 @@
             </el-tag>
           </el-tooltip>
         </div>
-        <el-button size="small" @click="loadStatus">{{ t('commons.refresh') }}</el-button>
+        <div class="status-actions">
+          <el-button-group>
+            <el-button
+              size="small" type="success" :loading="serviceControlLoading"
+              :disabled="xrayStatus.running"
+              @click="handleControlService('start')"
+            >{{ t('xray.serviceStart') }}</el-button>
+            <el-button
+              size="small" type="warning" :loading="serviceControlLoading"
+              @click="handleControlService('restart')"
+            >{{ t('xray.serviceRestart') }}</el-button>
+            <el-button
+              size="small" type="danger" :loading="serviceControlLoading"
+              :disabled="!xrayStatus.running"
+              @click="handleControlService('stop')"
+            >{{ t('xray.serviceStop') }}</el-button>
+          </el-button-group>
+          <el-button
+            size="small"
+            :type="xrayStatus.enabledOnBoot ? 'primary' : 'info'"
+            :loading="serviceControlLoading"
+            @click="handleControlService(xrayStatus.enabledOnBoot ? 'disable' : 'enable')"
+          >{{ xrayStatus.enabledOnBoot ? t('xray.bootDisableBtn') : t('xray.bootEnableBtn') }}</el-button>
+          <el-button size="small" @click="loadStatus">{{ t('commons.refresh') }}</el-button>
+        </div>
       </el-card>
 
       <el-row :gutter="16" class="main-layout">
@@ -566,7 +593,7 @@
 
     <!-- 分享链接 -->
     <el-dialog v-model="shareLinkVisible" :title="t('xray.shareLink')" width="600px" destroy-on-close>
-      <el-form label-width="90px" size="default">
+      <el-form label-width="100px" size="default">
         <el-form-item :label="t('xray.shareLinkHost')">
           <el-input
             v-model="shareLinkHost"
@@ -577,10 +604,42 @@
         <el-form-item :label="t('xray.shareLinkPort')">
           <el-input-number v-model="shareLinkPort" :min="1" :max="65535" style="width:100%" />
         </el-form-item>
-        <div class="share-hint">{{ t('xray.shareLinkHostHint') }}</div>
+
+        <!-- 节点 security=none 时（nginx 反代场景），提供客户端加密覆盖 -->
+        <template v-if="shareLinkNode?.security === 'none'">
+          <el-divider content-position="left">{{ t('xray.clientEncryption') }}</el-divider>
+          <el-alert
+            type="info" :closable="false"
+            :description="t('xray.clientEncryptionHint')"
+            style="margin-bottom: 12px"
+          />
+          <el-form-item :label="t('xray.clientSecurity')">
+            <el-radio-group v-model="shareLinkOverrideSec">
+              <el-radio value="none">{{ t('xray.securityNone') }}</el-radio>
+              <el-radio value="tls">TLS (via nginx)</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <template v-if="shareLinkOverrideSec === 'tls'">
+            <el-form-item :label="t('xray.tlsSni')">
+              <el-input v-model="shareLinkOverrideSni" placeholder="example.com" clearable />
+            </el-form-item>
+            <el-form-item :label="t('xray.alpn')">
+              <el-checkbox-group v-model="shareLinkOverrideAlpn">
+                <el-checkbox value="h2">h2</el-checkbox>
+                <el-checkbox value="http/1.1">http/1.1</el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+            <el-form-item :label="t('xray.fingerprint')">
+              <el-select v-model="shareLinkOverrideFp" clearable style="width:100%" :placeholder="t('xray.fingerprintPlaceholder')">
+                <el-option v-for="fp in fingerprintOptions" :key="fp.value" :value="fp.value" :label="fp.label" />
+              </el-select>
+            </el-form-item>
+          </template>
+        </template>
       </el-form>
+      <div class="share-hint">{{ t('xray.shareLinkHostHint') }}</div>
       <el-divider />
-      <el-input v-model="computedShareLink" readonly type="textarea" :rows="5" class="share-link-text" resize="none" />
+      <el-input :model-value="computedShareLink" readonly type="textarea" :rows="5" class="share-link-text" resize="none" />
       <template #footer>
         <el-button type="primary" :disabled="!computedShareLink" @click="copyText(computedShareLink)">{{ t('commons.copy') }}</el-button>
         <el-button @click="shareLinkVisible = false">{{ t('commons.close') }}</el-button>
@@ -629,7 +688,7 @@
         <el-button size="small" type="primary" @click="copyText(generatedNginxConfig)">{{ t('commons.copy') }}</el-button>
       </div>
       <el-input
-        v-model="generatedNginxConfig"
+        :model-value="generatedNginxConfig"
         type="textarea"
         :rows="nginxConfigRows"
         readonly
@@ -655,7 +714,7 @@ import * as echarts from 'echarts'
 import { v4 as uuidv4 } from 'uuid'
 import type { FormInstance } from 'element-plus'
 import {
-  getXrayStatus, startXrayInstall, getXrayInstallLog,
+  getXrayStatus, startXrayInstall, getXrayInstallLog, controlXrayService,
   listXrayNodes, createXrayNode, updateXrayNode, deleteXrayNode, toggleXrayNode,
   searchXrayUsers, createXrayUser, updateXrayUser, deleteXrayUser,
   generateRealityKeys, getXrayShareLink, getXrayTrafficHistory
@@ -685,16 +744,28 @@ const fingerprintOptions = [
 // 状态 & 安装
 // ============================================================
 
-const xrayStatus = ref<XrayStatus>({ installed: false, running: false, version: '', configPath: '', binPath: '' })
+const xrayStatus = ref<XrayStatus>({ installed: false, running: false, enabledOnBoot: false, version: '', configPath: '', binPath: '' })
 const installing = ref(false)
 const installLog = ref('')
 const logRef = ref<HTMLElement>()
 let installPollTimer: ReturnType<typeof setInterval> | null = null
+const serviceControlLoading = ref(false)
 
 const loadStatus = async () => {
   const res = await getXrayStatus()
   xrayStatus.value = res.data
   if (xrayStatus.value.installed) loadNodes()
+}
+
+const handleControlService = async (action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') => {
+  serviceControlLoading.value = true
+  try {
+    const res = await controlXrayService(action)
+    xrayStatus.value = res.data
+    ElMessage.success(t('commons.operationSuccess'))
+  } finally {
+    serviceControlLoading.value = false
+  }
 }
 
 const handleInstall = async () => {
@@ -997,6 +1068,11 @@ const shareLinkHost = ref('')
 const shareLinkPort = ref(443)
 const shareLinkUser = ref<XrayUser | null>(null)
 const shareLinkNode = ref<XrayNode | null>(null)
+// 当节点 security=none 时，允许覆盖客户端加密（用于 nginx 反代场景）
+const shareLinkOverrideSec = ref<'none' | 'tls'>('none')
+const shareLinkOverrideSni = ref('')
+const shareLinkOverrideAlpn = ref<string[]>([])
+const shareLinkOverrideFp = ref('')
 
 // 实时计算分享链接
 const computedShareLink = computed(() => {
@@ -1005,7 +1081,12 @@ const computedShareLink = computed(() => {
   const host = shareLinkHost.value.trim()
   const port = shareLinkPort.value
   if (!user || !node || !host) return ''
-  return buildShareLinkClient(node, user, host, port)
+  return buildShareLinkClient(node, user, host, port, {
+    security: node.security === 'none' ? shareLinkOverrideSec.value : undefined,
+    sni: shareLinkOverrideSni.value,
+    alpn: shareLinkOverrideAlpn.value,
+    fingerprint: shareLinkOverrideFp.value,
+  })
 })
 
 const getShareLink = (user: XrayUser) => {
@@ -1022,19 +1103,38 @@ const getShareLink = (user: XrayUser) => {
   }
   shareLinkHost.value = defaultHost
   shareLinkPort.value = node.port
+  // 当节点 security=none 时，默认建议使用 TLS（nginx 反代场景）
+  shareLinkOverrideSec.value = 'tls'
+  shareLinkOverrideSni.value = ''
+  shareLinkOverrideAlpn.value = ['h2', 'http/1.1']
+  shareLinkOverrideFp.value = 'chrome'
   shareLinkVisible.value = true
 }
 
 // 客户端分享链接生成器
-function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port: number): string {
+interface ShareLinkOverride {
+  security?: 'none' | 'tls'
+  sni?: string
+  alpn?: string[]
+  fingerprint?: string
+}
+
+function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port: number, override?: ShareLinkOverride): string {
   const userFlow = user.flow || node.flow || ''
   const name = encodeURIComponent(user.name)
+
+  // 计算实际生效的安全设置
+  const effectiveSecurity = override?.security ?? node.security
+  // 构建 TLS 参数（可能来自节点设置或覆盖）
+  const tlsSni = override?.sni || node.tlsSettings?.serverName || ''
+  const tlsAlpn = (override?.alpn && override.alpn.length > 0) ? override.alpn : (node.tlsSettings?.alpn ?? [])
+  const tlsFp = override?.fingerprint || node.tlsSettings?.fingerprint || ''
 
   switch (node.protocol) {
     case 'vless': {
       const p = new URLSearchParams()
       p.set('type', node.network === 'raw' ? 'tcp' : node.network)
-      p.set('security', node.security)
+      p.set('security', effectiveSecurity)
       if (userFlow) p.set('flow', userFlow)
       // 传输参数
       switch (node.network) {
@@ -1044,7 +1144,6 @@ function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port
           break
         case 'grpc':
           if (node.grpcSettings?.serviceName) p.set('serviceName', node.grpcSettings.serviceName)
-          // gun = 单路（multiMode:false），multi = 多路（multiMode:true）
           p.set('mode', node.grpcSettings?.multiMode ? 'multi' : 'gun')
           break
         case 'xhttp':
@@ -1058,23 +1157,16 @@ function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port
           break
       }
       // 安全参数
-      switch (node.security) {
-        case 'reality':
-          if (node.realitySettings) {
-            p.set('pbk', node.realitySettings.publicKey)
-            p.set('fp', node.realitySettings.fingerprint || 'chrome')
-            if (node.realitySettings.shortIds?.length) p.set('sid', node.realitySettings.shortIds[0])
-            if (node.realitySettings.serverNames?.length) p.set('sni', node.realitySettings.serverNames[0])
-            p.set('spx', node.realitySettings.spiderX || '/')
-          }
-          break
-        case 'tls':
-          if (node.tlsSettings) {
-            if (node.tlsSettings.serverName) p.set('sni', node.tlsSettings.serverName)
-            if (node.tlsSettings.fingerprint) p.set('fp', node.tlsSettings.fingerprint)
-            if (node.tlsSettings.alpn?.length) p.set('alpn', node.tlsSettings.alpn.join(','))
-          }
-          break
+      if (effectiveSecurity === 'reality' && node.realitySettings) {
+        p.set('pbk', node.realitySettings.publicKey)
+        p.set('fp', node.realitySettings.fingerprint || 'chrome')
+        if (node.realitySettings.shortIds?.length) p.set('sid', node.realitySettings.shortIds[0])
+        if (node.realitySettings.serverNames?.length) p.set('sni', node.realitySettings.serverNames[0])
+        p.set('spx', node.realitySettings.spiderX || '/')
+      } else if (effectiveSecurity === 'tls') {
+        if (tlsSni) p.set('sni', tlsSni)
+        if (tlsFp) p.set('fp', tlsFp)
+        if (tlsAlpn.length) p.set('alpn', tlsAlpn.join(','))
       }
       return `vless://${user.uuid}@${host}:${port}?${p.toString()}#${name}`
     }
@@ -1084,7 +1176,7 @@ function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port
         v: '2', ps: user.name, add: host, port: String(port),
         id: user.uuid, aid: '0', scy: 'auto',
         net: node.network === 'raw' ? 'tcp' : node.network,
-        tls: node.security === 'tls' ? 'tls' : '',
+        tls: effectiveSecurity === 'tls' ? 'tls' : '',
       }
       if (node.network === 'ws') {
         v.path = node.wsSettings?.path || '/'
@@ -1093,16 +1185,18 @@ function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port
         v.path = node.grpcSettings?.serviceName || 'grpc'
         v.type = node.grpcSettings?.multiMode ? 'multi' : 'gun'
       }
-      if (node.security === 'tls' && node.tlsSettings?.serverName) v.sni = node.tlsSettings.serverName
+      if (effectiveSecurity === 'tls' && tlsSni) v.sni = tlsSni
       return 'vmess://' + btoa(unescape(encodeURIComponent(JSON.stringify(v))))
     }
 
     case 'trojan': {
       const p = new URLSearchParams()
       p.set('type', node.network === 'raw' ? 'tcp' : node.network)
-      if (node.security === 'tls' && node.tlsSettings) {
-        if (node.tlsSettings.serverName) p.set('sni', node.tlsSettings.serverName)
-        if (node.tlsSettings.fingerprint) p.set('fp', node.tlsSettings.fingerprint)
+      p.set('security', effectiveSecurity === 'none' ? 'none' : 'tls')
+      if (effectiveSecurity === 'tls') {
+        if (tlsSni) p.set('sni', tlsSni)
+        if (tlsFp) p.set('fp', tlsFp)
+        if (tlsAlpn.length) p.set('alpn', tlsAlpn.join(','))
       }
       if (node.network === 'ws' && node.wsSettings?.path) p.set('path', node.wsSettings.path)
       if (node.network === 'grpc' && node.grpcSettings?.serviceName) {
@@ -1212,7 +1306,7 @@ function generateNginxConfig(): string {
 
     case 'grpc': {
       const svc = f.grpcServiceName || 'grpc'
-      return `# ⚠ 需确保 server 块已包含: listen 443 ssl; + http2 on;
+      return `# [!] 需确保 server 块已包含: listen 443 ssl; + http2 on;
 location /${svc} {
     grpc_pass           grpc://${upstream};
     grpc_set_header     Host               $host;
@@ -1311,9 +1405,10 @@ onMounted(() => { loadStatus() })
 .install-log { margin-top: 16px; background: #1e1e1e; border-radius: 6px; padding: 12px; max-height: 400px; overflow-y: auto; }
 .install-log pre { color: #d4d4d4; font-family: monospace; font-size: 13px; white-space: pre-wrap; margin: 0; }
 
-.status-bar :deep(.el-card__body) { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; }
+.status-bar :deep(.el-card__body) { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; flex-wrap: wrap; gap: 8px; }
 .status-bar { margin-bottom: 16px; }
-.status-info { display: flex; align-items: center; gap: 12px; }
+.status-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.status-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .version-text { font-size: 13px; color: #606266; }
 .config-path { font-size: 12px; color: #909399; font-family: monospace; }
 
