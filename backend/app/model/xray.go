@@ -27,9 +27,17 @@ type XrayNode struct {
 	// VLESS flow：""（普通 TLS）| "xtls-rprx-vision"（仅 TCP+TLS/Reality）
 	Flow string `gorm:"default:''" json:"flow"`
 
+	// Shadowsocks 专属
+	SSMethod   string `gorm:"default:'aes-256-gcm'" json:"ssMethod"`
+	SSPassword string `gorm:"default:''" json:"ssPassword"`
+
+	// Fallbacks（VLESS/Trojan TCP 模式，JSON 数组）
+	Fallbacks string `gorm:"type:text;default:'[]'" json:"fallbacks"`
+
 	// 流量探测
-	SniffEnabled     bool   `gorm:"default:true" json:"sniffEnabled"`
+	SniffEnabled      bool   `gorm:"default:true" json:"sniffEnabled"`
 	SniffDestOverride string `gorm:"type:text;default:'[\"http\",\"tls\"]'" json:"sniffDestOverride"` // JSON 数组
+	SniffMetadataOnly bool   `gorm:"default:false" json:"sniffMetadataOnly"`
 
 	Remark  string `json:"remark"`
 	Enabled bool   `gorm:"default:true" json:"enabled"`

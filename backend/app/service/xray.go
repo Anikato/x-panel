@@ -186,21 +186,29 @@ func (s *XrayService) CreateNode(req dto.XrayNodeCreate) error {
 	if len(req.SniffDestOverride) == 0 {
 		sniffDest = []byte(`["http","tls"]`)
 	}
+	fallbacksJSON, _ := json.Marshal(req.Fallbacks)
+	if fallbacksJSON == nil {
+		fallbacksJSON = []byte("[]")
+	}
 
 	node := &model.XrayNode{
-		Name:             req.Name,
-		Protocol:         req.Protocol,
-		ListenAddr:       req.ListenAddr,
-		Port:             req.Port,
-		Network:          req.Network,
-		Security:         req.Security,
-		NetworkSettings:  netJSON,
-		SecuritySettings: secJSON,
-		Flow:             req.Flow,
-		SniffEnabled:     req.SniffEnabled,
+		Name:              req.Name,
+		Protocol:          req.Protocol,
+		ListenAddr:        req.ListenAddr,
+		Port:              req.Port,
+		Network:           req.Network,
+		Security:          req.Security,
+		NetworkSettings:   netJSON,
+		SecuritySettings:  secJSON,
+		Flow:              req.Flow,
+		SSMethod:          req.SSMethod,
+		SSPassword:        req.SSPassword,
+		Fallbacks:         string(fallbacksJSON),
+		SniffEnabled:      req.SniffEnabled,
 		SniffDestOverride: string(sniffDest),
-		Remark:           req.Remark,
-		Enabled:          true,
+		SniffMetadataOnly: req.SniffMetadataOnly,
+		Remark:            req.Remark,
+		Enabled:           true,
 	}
 	if err := xrayNodeRepo.Create(node); err != nil {
 		return err
@@ -232,6 +240,10 @@ func (s *XrayService) UpdateNode(req dto.XrayNodeUpdate) error {
 	if len(req.SniffDestOverride) == 0 {
 		sniffDest = []byte(`["http","tls"]`)
 	}
+	fallbacksJSON, _ := json.Marshal(req.Fallbacks)
+	if fallbacksJSON == nil {
+		fallbacksJSON = []byte("[]")
+	}
 
 	node.Name = req.Name
 	node.ListenAddr = req.ListenAddr
@@ -243,8 +255,12 @@ func (s *XrayService) UpdateNode(req dto.XrayNodeUpdate) error {
 	node.NetworkSettings = netJSON
 	node.SecuritySettings = secJSON
 	node.Flow = req.Flow
+	node.SSMethod = req.SSMethod
+	node.SSPassword = req.SSPassword
+	node.Fallbacks = string(fallbacksJSON)
 	node.SniffEnabled = req.SniffEnabled
 	node.SniffDestOverride = string(sniffDest)
+	node.SniffMetadataOnly = req.SniffMetadataOnly
 	node.Remark = req.Remark
 	node.Enabled = req.Enabled
 
@@ -537,7 +553,6 @@ func buildInbound(node model.XrayNode, users []model.XrayUser) map[string]interf
 func buildProtocolSettings(node model.XrayNode, users []model.XrayUser) map[string]interface{} {
 	var clients []map[string]interface{}
 	for _, u := range users {
-		// 用户 flow 优先，为空则继承节点 flow
 		flow := u.Flow
 		if flow == "" {
 			flow = node.Flow
@@ -553,22 +568,81 @@ func buildProtocolSettings(node model.XrayNode, users []model.XrayUser) map[stri
 		clients = append(clients, client)
 	}
 
+	// 解析 fallbacks
+	var fallbacks []dto.XrayFallback
+	if node.Fallbacks != "" && node.Fallbacks != "[]" {
+		_ = json.Unmarshal([]byte(node.Fallbacks), &fallbacks)
+	}
+
 	switch node.Protocol {
 	case "vless":
-		return map[string]interface{}{
+		settings := map[string]interface{}{
 			"clients":    clients,
 			"decryption": "none",
 		}
+		if len(fallbacks) > 0 {
+			var fbList []map[string]interface{}
+			for _, fb := range fallbacks {
+				item := map[string]interface{}{"dest": fb.Dest}
+				if fb.Path != "" {
+					item["path"] = fb.Path
+				}
+				if fb.ALPN != "" {
+					item["alpn"] = fb.ALPN
+				}
+				fbList = append(fbList, item)
+			}
+			settings["fallbacks"] = fbList
+		}
+		return settings
+
 	case "vmess":
 		for i := range clients {
 			clients[i]["alterId"] = 0
 		}
 		return map[string]interface{}{"clients": clients}
+
 	case "trojan":
-		return map[string]interface{}{"clients": clients}
+		// Trojan 客户端使用 password 字段
+		var trojanClients []map[string]interface{}
+		for _, u := range users {
+			client := map[string]interface{}{
+				"password": u.UUID, // 存 UUID 字段但用作 password
+				"email":    u.Email,
+				"level":    u.Level,
+			}
+			trojanClients = append(trojanClients, client)
+		}
+		settings := map[string]interface{}{"clients": trojanClients}
+		if len(fallbacks) > 0 {
+			var fbList []map[string]interface{}
+			for _, fb := range fallbacks {
+				item := map[string]interface{}{"dest": fb.Dest}
+				if fb.Path != "" {
+					item["path"] = fb.Path
+				}
+				if fb.ALPN != "" {
+					item["alpn"] = fb.ALPN
+				}
+				fbList = append(fbList, item)
+			}
+			settings["fallbacks"] = fbList
+		}
+		return settings
+
 	case "shadowsocks":
-		// Shadowsocks 配置暂不支持多用户（保留扩展）
-		return map[string]interface{}{"method": "aes-256-gcm", "password": "placeholder"}
+		method := node.SSMethod
+		if method == "" {
+			method = "aes-256-gcm"
+		}
+		password := node.SSPassword
+		if password == "" && len(users) > 0 {
+			password = users[0].UUID
+		}
+		return map[string]interface{}{
+			"method":   method,
+			"password": password,
+		}
 	}
 	return map[string]interface{}{"clients": clients}
 }
@@ -658,6 +732,7 @@ func buildSniffing(node model.XrayNode) map[string]interface{} {
 	return map[string]interface{}{
 		"enabled":      node.SniffEnabled,
 		"destOverride": destOverride,
+		"metadataOnly": node.SniffMetadataOnly,
 	}
 }
 
@@ -865,69 +940,64 @@ func marshalNodeSettings(
 	return netJSON, secJSON, nil
 }
 
-// nodeToResponse 将 model.XrayNode 转为 DTO，解析 JSON 子配置
 func nodeToResponse(n model.XrayNode) dto.XrayNodeResponse {
 	resp := dto.XrayNodeResponse{
-		ID:         n.ID,
-		Name:       n.Name,
-		Protocol:   n.Protocol,
-		ListenAddr: n.ListenAddr,
-		Port:       n.Port,
-		Network:    n.Network,
-		Security:   n.Security,
-		Flow:       n.Flow,
-		SniffEnabled: n.SniffEnabled,
-		Remark:     n.Remark,
-		Enabled:    n.Enabled,
-		CreatedAt:  n.CreatedAt,
+		ID:                n.ID,
+		Name:              n.Name,
+		Protocol:          n.Protocol,
+		ListenAddr:        n.ListenAddr,
+		Port:              n.Port,
+		Network:           n.Network,
+		Security:          n.Security,
+		Flow:              n.Flow,
+		SSMethod:          n.SSMethod,
+		SSPassword:        n.SSPassword,
+		SniffEnabled:      n.SniffEnabled,
+		SniffMetadataOnly: n.SniffMetadataOnly,
+		Remark:            n.Remark,
+		Enabled:           n.Enabled,
+		CreatedAt:         n.CreatedAt,
 	}
-	// 解析 sniffDestOverride
+	// sniffDestOverride
 	if n.SniffDestOverride != "" {
 		_ = json.Unmarshal([]byte(n.SniffDestOverride), &resp.SniffDestOverride)
 	}
-	// 解析网络子配置
+	// fallbacks
+	if n.Fallbacks != "" && n.Fallbacks != "[]" {
+		_ = json.Unmarshal([]byte(n.Fallbacks), &resp.Fallbacks)
+	}
+	if resp.Fallbacks == nil {
+		resp.Fallbacks = []dto.XrayFallback{}
+	}
+	// 网络子配置
 	if n.NetworkSettings != "" && n.NetworkSettings != "{}" {
 		switch n.Network {
 		case "raw", "tcp":
 			var v dto.XrayRawSettings
-			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
-				resp.RawSettings = &v
-			}
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil { resp.RawSettings = &v }
 		case "ws":
 			var v dto.XrayWSSettings
-			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
-				resp.WSSettings = &v
-			}
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil { resp.WSSettings = &v }
 		case "grpc":
 			var v dto.XrayGRPCSettings
-			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
-				resp.GRPCSettings = &v
-			}
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil { resp.GRPCSettings = &v }
 		case "xhttp":
 			var v dto.XrayXHTTPSettings
-			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
-				resp.XHTTPSettings = &v
-			}
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil { resp.XHTTPSettings = &v }
 		case "httpupgrade":
 			var v dto.XrayHTTPUpgradeSettings
-			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil {
-				resp.HTTPUpgradeSettings = &v
-			}
+			if json.Unmarshal([]byte(n.NetworkSettings), &v) == nil { resp.HTTPUpgradeSettings = &v }
 		}
 	}
-	// 解析安全子配置
+	// 安全子配置
 	if n.SecuritySettings != "" && n.SecuritySettings != "{}" {
 		switch n.Security {
 		case "tls":
 			var v dto.XrayTLSSettings
-			if json.Unmarshal([]byte(n.SecuritySettings), &v) == nil {
-				resp.TLSSettings = &v
-			}
+			if json.Unmarshal([]byte(n.SecuritySettings), &v) == nil { resp.TLSSettings = &v }
 		case "reality":
 			var v dto.XrayRealitySettings
-			if json.Unmarshal([]byte(n.SecuritySettings), &v) == nil {
-				resp.RealitySettings = &v
-			}
+			if json.Unmarshal([]byte(n.SecuritySettings), &v) == nil { resp.RealitySettings = &v }
 		}
 	}
 	return resp

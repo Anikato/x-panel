@@ -82,20 +82,29 @@ type XrayRealitySettings struct {
 // Node DTOs
 // ============================================================
 
+// XrayNodeCreate 创建节点请求
 type XrayNodeCreate struct {
 	Name       string `json:"name" binding:"required"`
 	Protocol   string `json:"protocol" binding:"required,oneof=vless vmess trojan shadowsocks"`
-	ListenAddr string `json:"listenAddr"` // 默认 0.0.0.0
+	ListenAddr string `json:"listenAddr"`
 	Port       int    `json:"port" binding:"required,min=1,max=65535"`
 	Network    string `json:"network" binding:"required,oneof=raw tcp ws grpc xhttp httpupgrade"`
 	Security   string `json:"security" binding:"required,oneof=none tls reality"`
 
-	// VLESS flow，仅 VLESS+TCP(RAW)+TLS/Reality 时有效
-	Flow string `json:"flow"` // "" | "xtls-rprx-vision"
+	// VLESS flow
+	Flow string `json:"flow"`
+
+	// Shadowsocks 专属
+	SSMethod   string `json:"ssMethod"`
+	SSPassword string `json:"ssPassword"`
 
 	// 流量探测
-	SniffEnabled     bool     `json:"sniffEnabled"`
+	SniffEnabled      bool     `json:"sniffEnabled"`
 	SniffDestOverride []string `json:"sniffDestOverride"`
+	SniffMetadataOnly bool     `json:"sniffMetadataOnly"`
+
+	// Fallbacks（VLESS/Trojan TCP 模式）
+	Fallbacks []XrayFallback `json:"fallbacks,omitempty"`
 
 	// 传输方式配置（只填对应 network 的那一项）
 	RawSettings         *XrayRawSettings         `json:"rawSettings,omitempty"`
@@ -104,13 +113,21 @@ type XrayNodeCreate struct {
 	XHTTPSettings       *XrayXHTTPSettings       `json:"xhttpSettings,omitempty"`
 	HTTPUpgradeSettings *XrayHTTPUpgradeSettings `json:"httpUpgradeSettings,omitempty"`
 
-	// 安全配置（只填对应 security 的那一项）
+	// 安全配置
 	TLSSettings     *XrayTLSSettings     `json:"tlsSettings,omitempty"`
 	RealitySettings *XrayRealitySettings `json:"realitySettings,omitempty"`
 
 	Remark string `json:"remark"`
 }
 
+// XrayFallback 回落配置
+type XrayFallback struct {
+	Dest string `json:"dest"` // 回落目标，如 80 或 "127.0.0.1:80"
+	Path string `json:"path"` // 触发路径（可选）
+	ALPN string `json:"alpn"` // 触发 ALPN（可选）
+}
+
+// XrayNodeUpdate 更新节点请求
 type XrayNodeUpdate struct {
 	ID         uint   `json:"id" binding:"required"`
 	Name       string `json:"name" binding:"required"`
@@ -119,8 +136,14 @@ type XrayNodeUpdate struct {
 	Security   string `json:"security" binding:"required,oneof=none tls reality"`
 	Flow       string `json:"flow"`
 
-	SniffEnabled     bool     `json:"sniffEnabled"`
+	SSMethod   string `json:"ssMethod"`
+	SSPassword string `json:"ssPassword"`
+
+	SniffEnabled      bool     `json:"sniffEnabled"`
 	SniffDestOverride []string `json:"sniffDestOverride"`
+	SniffMetadataOnly bool     `json:"sniffMetadataOnly"`
+
+	Fallbacks []XrayFallback `json:"fallbacks,omitempty"`
 
 	RawSettings         *XrayRawSettings         `json:"rawSettings,omitempty"`
 	WSSettings          *XrayWSSettings          `json:"wsSettings,omitempty"`
@@ -145,8 +168,14 @@ type XrayNodeResponse struct {
 	Security   string    `json:"security"`
 	Flow       string    `json:"flow"`
 
-	SniffEnabled     bool     `json:"sniffEnabled"`
+	SSMethod   string `json:"ssMethod"`
+	SSPassword string `json:"ssPassword"`
+
+	SniffEnabled      bool     `json:"sniffEnabled"`
 	SniffDestOverride []string `json:"sniffDestOverride"`
+	SniffMetadataOnly bool     `json:"sniffMetadataOnly"`
+
+	Fallbacks []XrayFallback `json:"fallbacks"`
 
 	// 解析后的子配置，方便前端展示/编辑
 	RawSettings         *XrayRawSettings         `json:"rawSettings,omitempty"`
