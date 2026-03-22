@@ -4,7 +4,44 @@
 
 ---
 
-## 2026-03-21 — Session #35：Xray 服务控制、nginx 对话框修复、分享链接 TLS 覆盖
+## 2026-03-21 — Session #36：Xray 权限/日志/更新/出站代理/UI 全面升级
+
+### 完成内容
+
+- [x] **权限修复（nobody 兼容）**
+  - `FixPermissions()` 方法：`MkdirAll` 创建 `/data/xray/log` 和 `/data/xray/etc`，然后 `chown -R nobody:nogroup`（Debian），失败时自动回退 `nobody:nobody`（RHEL）
+  - 安装/升级完成后自动调用权限修复
+  - 写入 `config.json` 后自动 `chmod 640`
+  - 前端状态栏新增"修复权限"按钮（带 tooltip 说明）
+
+- [x] **日志配置（可视化管理）**
+  - 日志设置存入 `settings` 表（`XrayLogLevel` / `XrayAccessLog` / `XrayErrorLog`）
+  - Migration 添加默认值（warning / /data/xray/log/access.log / /data/xray/log/error.log）
+  - `GetLogSettings()` / `UpdateLogSettings()` 接口；修改后自动 reload config
+  - `buildXrayConfig` 从 DB 读取日志设置，支持 `none` 和空值禁用日志
+  - 前端"设置"抽屉 → 日志 tab：级别下拉、路径输入、logrotate 建议文案
+
+- [x] **版本更新与升级**
+  - `CheckUpdate()`：调 GitHub API `repos/XTLS/Xray-core/releases/latest`，比较版本号
+  - `DoUpgrade()`：复用安装脚本，完成后自动修权 + reload
+  - 前端"设置"抽屉 → 版本/更新 tab：显示当前/最新版本，"检查更新"按钮，有更新时出现"立即升级"按钮，升级时展示日志
+
+- [x] **出站代理（全套实现）**
+  - 新增 `XrayOutbound` 模型（name/tag/protocol/settings JSON/enabled/remark）
+  - `OutboundTag` 字段加入 `XrayNode`（空 = direct 直连）
+  - `buildXrayConfig` 中：加载所有启用的出站代理，按 `node.OutboundTag` 生成路由规则
+  - 全套 CRUD API：`/xray/outbounds` GET/POST/POST/update/del
+  - 前端"设置"抽屉 → 出站代理 tab：表格管理，编辑对话框（协议选择 + JSON settings 模板自动填充）
+  - 节点编辑"高级设置"tab 新增出站路由下拉（可选 direct/blocked/自定义出站）
+  - 更换协议时自动填充对应 settings JSON 模板
+
+- [x] **UI 修复**
+  - 状态栏标签加 `white-space: nowrap` 防换行，version-text/config-path 加 `max-width + text-overflow: ellipsis`
+  - 新增"设置"按钮（齿轮图标），打开全局设置抽屉（日志/版本更新/出站代理三个 tab）
+
+### 版本
+- `v0.5.9` 已推送 GitHub，CI 自动构建中
+
 
 ### 完成内容
 
