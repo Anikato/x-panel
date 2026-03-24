@@ -337,7 +337,7 @@ const sysInfoItems = computed(() => {
     { label: t('home.kernel'), value: h.kernelVersion || '-' },
     { label: t('home.arch'), value: h.kernelArch || '-' },
     { label: t('home.timezone'), value: h.timezone || '-' },
-    { label: t('home.virtualization'), value: h.virtualization || t('home.physicalMachine') },
+    { label: t('home.virtualization'), value: h.virtualization || '-' },
     { label: t('home.cpuModel'), value: stats.value.cpu?.modelName || '-' },
     { label: t('home.cpuCores'), value: stats.value.cpu ? `${stats.value.cpu.cores} ${t('home.physical')} / ${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-' },
     { label: t('home.totalMemory'), value: formatBytes(stats.value.memory?.total) },

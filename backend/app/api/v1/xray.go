@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"strings"
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
 	"xpanel/app/service"
@@ -195,7 +194,7 @@ func (a *XrayAPI) GetInstallLog(c *gin.Context) {
 	log := xrayService.GetInstallLog()
 	helper.SuccessWithData(c, gin.H{
 		"log":     log,
-		"running": log != "" && !strings.HasSuffix(strings.TrimSpace(log), "[DONE] Xray installed successfully.") && !strings.Contains(log, "[ERROR]"),
+		"running": xrayService.IsInstallRunning(),
 	})
 }
 

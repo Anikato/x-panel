@@ -964,6 +964,9 @@ const handleInstall = async () => {
       if (!res.data.running) {
         clearInterval(installPollTimer!)
         installing.value = false
+        if (res.data.log && res.data.log.includes('[ERROR]')) {
+          ElMessage.error('安装失败，请查看日志')
+        }
         await loadStatus()
       }
     }, 1500)

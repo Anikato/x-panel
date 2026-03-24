@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -129,20 +130,23 @@ func (c *MysqlClient) Backup(database, outFile string) error {
 }
 
 func (c *MysqlClient) Restore(database, inFile string) error {
+	f, err := os.Open(inFile)
+	if err != nil {
+		return fmt.Errorf("open sql file: %v", err)
+	}
+	defer f.Close()
+
 	cmd := exec.Command("mysql",
-		fmt.Sprintf("-h%s", c.Address),
-		fmt.Sprintf("-P%d", c.Port),
-		fmt.Sprintf("-u%s", c.Username),
-		fmt.Sprintf("-p%s", c.Password),
+		"-h", c.Address,
+		"-P", fmt.Sprintf("%d", c.Port),
+		"-u", c.Username,
 		database,
 	)
-	file, err := exec.Command("cat", inFile).Output()
+	cmd.Stdin = f
+	cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", c.Password))
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %s", err, string(output))
 	}
-	cmd.Stdin = nil
-	_ = file
-	shellCmd := fmt.Sprintf("mysql -h%s -P%d -u%s -p%s %s < %s",
-		c.Address, c.Port, c.Username, c.Password, database, inFile)
-	return exec.Command("bash", "-c", shellCmd).Run()
+	return nil
 }

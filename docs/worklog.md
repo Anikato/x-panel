@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-03-24 — Session #40：安全修复与稳定性改进
+
+### 完成内容
+
+- [x] **MySQL Restore 命令注入修复（高危）**
+  - 移除 `bash -c` + `fmt.Sprintf` 拼接命令的危险实现
+  - 改为 `exec.Command("mysql", ...)` + `os.Open` 文件句柄传 stdin
+  - 密码通过 `MYSQL_PWD` 环境变量传递，不暴露到命令行参数
+  - 与 PostgreSQL Restore 实现模式对齐
+
+- [x] **Xray 安装竞态修复**
+  - 后端新增 `IsInstallRunning()` 方法，直接暴露 `installRunning` 状态
+  - API `GetInstallLog` 改用服务状态判断 `running`，替代日志内容推断
+  - 修复：安装初期日志为空时前端误判安装已结束的竞态问题
+  - 修复：升级场景下日志结束标记不匹配的问题
+  - 前端安装失败时增加 `ElMessage.error` 提示
+
+- [x] **虚拟化检测语义优化**
+  - 首页虚拟化字段：空值时显示 `-` 而非「物理机」
+  - 避免 VPS 漏检时误导用户以为是物理机
+
+### 关键决策
+
+- MySQL Restore 使用 `MYSQL_PWD` 环境变量而非 `-p` 参数传密码，避免进程列表泄露
+- Xray 安装状态用后端布尔值而非日志内容推断，彻底消除竞态
+
+---
+
 ## 2026-03-24 — Session #39：前端 `any` 类型彻底清零
 
 ### 完成内容

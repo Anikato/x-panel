@@ -36,6 +36,7 @@ type IXrayService interface {
 	IsInstalled() bool
 	StartInstall() error
 	GetInstallLog() string
+	IsInstallRunning() bool
 	// 服务控制
 	ControlService(action string) error
 	// 权限修复
@@ -164,6 +165,12 @@ func (s *XrayService) GetInstallLog() string {
 	installMu.Lock()
 	defer installMu.Unlock()
 	return installLog.String()
+}
+
+func (s *XrayService) IsInstallRunning() bool {
+	installMu.Lock()
+	defer installMu.Unlock()
+	return installRunning
 }
 
 func (s *XrayService) GetStatus() dto.XrayStatusResponse {
