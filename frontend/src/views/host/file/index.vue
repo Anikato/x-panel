@@ -571,7 +571,7 @@ const refreshFiles = async () => {
   }
 }
 
-const handleRowDblClick = (row: FileInfo) => {
+const handleRowDblClick = (row: FileInfo | null) => {
   if (!row) return
   if (row.isDir) {
     navigateTo(row.path)
@@ -645,6 +645,7 @@ function canEdit(row: FileInfo | null): boolean {
 }
 
 const openEditor = (row: FileInfo | null) => {
+  if (!row) return
   codeEditorRef.value?.open(row.path)
 }
 
@@ -677,7 +678,7 @@ const handleRename = async (row: FileInfo | null) => {
     const result = await ElMessageBox.prompt(t('file.renameTo'), t('file.rename'), {
       inputValue: row.name,
     })
-    const value = result.value
+    const value = (result as { value: string }).value
     if (!value || value === row.name) return
     const dir = currentTab.value?.path || '/'
     await renameFile({
@@ -815,8 +816,9 @@ async function handleDrop(e: DragEvent) {
 
 const clipboard = ref<{ type: 'copy' | 'cut'; paths: string[] }>({ type: 'copy', paths: [] })
 
-function setClipboard(type: 'copy' | 'cut', rows: FileInfo[]) {
-  clipboard.value = { type, paths: rows.map(r => r.path) }
+function setClipboard(type: 'copy' | 'cut', rows: (FileInfo | null)[]) {
+  const valid = rows.filter((r): r is FileInfo => r !== null)
+  clipboard.value = { type, paths: valid.map(r => r.path) }
   const msg = type === 'copy'
     ? t('file.clipboardCopy', { count: rows.length })
     : t('file.clipboardCut', { count: rows.length })
@@ -876,7 +878,7 @@ function openPermission(row: FileInfo | null) {
 
 // ===================== 所有者 =====================
 
-function openChown(row: FileInfo) {
+function openChown(row: FileInfo | null) {
   if (!row) return
   chownRef.value?.open(row.path, row.user, row.group)
 }
@@ -910,7 +912,7 @@ function handleMoreAction(cmd: string, row: FileInfo) {
   }
 }
 
-function copyPathToClipboard(row: FileInfo) {
+function copyPathToClipboard(row: FileInfo | null) {
   if (!row) return
   navigator.clipboard.writeText(row.path).then(() => {
     ElMessage.success(t('commons.success'))

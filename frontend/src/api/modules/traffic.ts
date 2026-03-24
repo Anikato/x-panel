@@ -57,10 +57,10 @@ export interface TrafficSummaryItem {
 }
 
 export const trafficApi = {
-  listConfigs: () => http.get<{ data: TrafficConfig[] }>('/traffic/configs'),
+  listConfigs: () => http.get<TrafficConfig[]>('/traffic/configs'),
   createConfig: (params: TrafficConfigCreate) => http.post('/traffic/configs', params),
   deleteConfig: (interfaceName: string) => http.post('/traffic/configs/del', { interfaceName }),
-  listInterfaces: () => http.get<{ data: InterfaceInfo[] }>('/traffic/interfaces'),
-  getStats: (params: TrafficStatsRequest) => http.post<{ data: TrafficStatsResponse }>('/traffic/stats', params),
-  getSummary: () => http.get<{ data: TrafficSummaryItem[] }>('/traffic/summary'),
+  listInterfaces: () => http.get<InterfaceInfo[]>('/traffic/interfaces'),
+  getStats: (params: TrafficStatsRequest) => http.post<TrafficStatsResponse>('/traffic/stats', params),
+  getSummary: () => http.get<TrafficSummaryItem[]>('/traffic/summary'),
 }

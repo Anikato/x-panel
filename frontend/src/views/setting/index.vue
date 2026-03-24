@@ -142,7 +142,7 @@
       <div class="appearance-section">
         <div class="appearance-row">
           <span class="appearance-label">{{ t('setting.themeMode') }}</span>
-          <el-radio-group v-model="globalStore.theme" @change="(val: string) => globalStore.setTheme(val)">
+          <el-radio-group v-model="globalStore.theme" @change="(val: ThemeMode) => globalStore.setTheme(val)">
             <el-radio-button value="dark">
               <el-icon><Moon /></el-icon> {{ t('header.themeDark') }}
             </el-radio-button>
@@ -330,7 +330,7 @@ import { Refresh, Setting, InfoFilled, Connection, User, Brush, Moon, Sunny, Che
 import { getSettingInfo, updateSetting, updatePort } from '@/api/modules/setting'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
 import { updatePassword } from '@/api/modules/auth'
-import { useGlobalStore } from '@/store/modules/global'
+import { useGlobalStore, type ThemeMode } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
 import type { UpgradeInfo } from '@/api/interface'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'

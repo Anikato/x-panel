@@ -148,7 +148,7 @@
             <div class="resource-detail">
               {{ formatBytes(stats.memory?.used) }} / {{ formatBytes(stats.memory?.total) }}
             </div>
-            <div class="resource-sub" v-if="stats.memory?.swapTotal > 0">
+            <div class="resource-sub" v-if="(stats.memory?.swapTotal ?? 0) > 0">
               Swap: {{ formatBytes(stats.memory?.swapUsed) }} / {{ formatBytes(stats.memory?.swapTotal) }}
               ({{ (stats.memory?.swapPercent ?? 0).toFixed(0) }}%)
             </div>
@@ -294,7 +294,7 @@ import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, shutdownServer, restartPanel } from '@/api/modules/setting'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { SystemStats } from '@/api/interface'
+import type { SystemStats, HostInfo } from '@/api/interface'
 import {
   Monitor, Clock, Refresh, Cpu, Coin, Odometer, Connection,
   Box, Compass, DataLine, CopyDocument, SwitchButton, RefreshRight,
@@ -330,7 +330,7 @@ const fetchVersion = async () => {
 
 // 系统信息项（带复制按钮）
 const sysInfoItems = computed(() => {
-  const h = stats.value.host || {}
+  const h = stats.value.host ?? ({} as Partial<HostInfo>)
   return [
     { label: t('home.hostname'), value: h.hostname || '-' },
     { label: t('home.os'), value: `${h.platform || ''} ${h.platformVersion || ''}`.trim() || '-' },

@@ -113,10 +113,10 @@ const handleLogin = async () => {
   await formRef.value.validate()
   loading.value = true
   try {
-    const payload: Record<string, string> = { name: form.name, password: form.password }
-    if (needCaptcha.value) {
-      payload.captchaID = captchaID.value
-      payload.captcha = form.captcha
+    const payload = {
+      name: form.name,
+      password: form.password,
+      ...(needCaptcha.value ? { captchaID: captchaID.value, captcha: form.captcha } : {}),
     }
     const res = await login(payload)
     if (res.data.needCaptcha && !res.data.token) {

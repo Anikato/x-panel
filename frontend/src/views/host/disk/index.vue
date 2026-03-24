@@ -120,12 +120,12 @@ import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote } from '@/api
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
-import type { DiskDetail, RemoteMountInfo } from '@/api/interface'
+import type { PartitionInfo, RemoteMountInfo } from '@/api/interface'
 
 const { t } = useI18n()
 const loading = ref(false)
 const remoteLoading = ref(false)
-const partitions = ref<DiskDetail[]>([])
+const partitions = ref<PartitionInfo[]>([])
 const remoteMounts = ref<RemoteMountInfo[]>([])
 const showMountDialog = ref(false)
 const mounting = ref(false)
