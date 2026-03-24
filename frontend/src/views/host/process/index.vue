@@ -90,17 +90,18 @@ import { Refresh } from '@element-plus/icons-vue'
 import { searchProcess, stopProcess, getConnections } from '@/api/modules/process'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import type { ProcessInfo, NetworkConn } from '@/api/interface'
 
 const { t } = useI18n()
 const activeTab = ref('process')
 const loading = ref(false)
-const processes = ref<any[]>([])
+const processes = ref<ProcessInfo[]>([])
 const searchName = ref('')
 const searchUser = ref('')
 const searchStatus = ref('')
 
 const connLoading = ref(false)
-const connections = ref<any[]>([])
+const connections = ref<NetworkConn[]>([])
 
 const loadProcesses = async () => {
   loading.value = true
@@ -125,7 +126,7 @@ const loadConnections = async () => {
   finally { connLoading.value = false }
 }
 
-const handleKill = async (row: any) => {
+const handleKill = async (row: ProcessInfo) => {
   await ElMessageBox.confirm(
     t('process.killConfirm', { pid: row.pid, name: row.name }),
     t('commons.tip'),
@@ -140,7 +141,7 @@ const handleKill = async (row: any) => {
 
 const statusType = (s: string) => {
   const map: Record<string, string> = { running: 'success', sleeping: 'info', stopped: 'warning', zombie: 'danger' }
-  return (map[s] || 'info') as any
+  return (map[s] || 'info') as '' | 'success' | 'info' | 'warning' | 'danger'
 }
 
 const statusLabel = (s: string) => {

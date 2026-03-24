@@ -354,11 +354,12 @@ import {
   getSSLDir, updateSSLDir, getDnsProviders,
 } from '@/api/modules/ssl'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { Certificate, AcmeAccount, DnsAccount, DnsProvider } from '@/api/interface'
 
 const activeTab = ref('certs')
 
 // --- 证书 ---
-const certs = ref<any[]>([])
+const certs = ref<Certificate[]>([])
 const certTotal = ref(0)
 const certPage = ref(1)
 const certPageSize = ref(20)
@@ -368,7 +369,7 @@ const certSubmitting = ref(false)
 const uploadVisible = ref(false)
 const uploadSubmitting = ref(false)
 const detailVisible = ref(false)
-const certDetail = ref<any>(null)
+const certDetail = ref<Certificate | null>(null)
 
 const defaultCertForm = () => ({
   primaryDomain: '',
@@ -385,17 +386,17 @@ const certForm = ref(defaultCertForm())
 const uploadForm = ref({ certificate: '', privateKey: '', description: '' })
 
 // --- ACME 账户 ---
-const acmeAccounts = ref<any[]>([])
+const acmeAccounts = ref<AcmeAccount[]>([])
 const acmeDialogVisible = ref(false)
 const acmeSubmitting = ref(false)
 const acmeForm = ref({ email: '', type: 'letsencrypt', keyType: '2048', caDirURL: '' })
 
 // --- DNS 账户 ---
-const dnsAccounts = ref<any[]>([])
+const dnsAccounts = ref<DnsAccount[]>([])
 const dnsDialogVisible = ref(false)
 const dnsSubmitting = ref(false)
 const dnsEditMode = ref(false)
-const dnsProviders = ref<any[]>([])
+const dnsProviders = ref<DnsProvider[]>([])
 const dnsForm = ref({ id: 0, name: '', type: '', authorization: {} as Record<string, string> })
 
 // --- SSL 路径 ---
@@ -416,7 +417,7 @@ let logPollTimer: ReturnType<typeof setInterval> | null = null
 let applyingPollTimer: ReturnType<typeof setInterval> | null = null
 
 const currentDnsFields = computed(() => {
-  const p = dnsProviders.value.find((x: any) => x.value === dnsForm.value.type)
+  const p = dnsProviders.value.find((x: DnsProvider) => x.value === dnsForm.value.type)
   return p ? p.fields.split(',') : []
 })
 
@@ -470,7 +471,7 @@ const handleCreateCert = async () => {
   if (!certForm.value.acmeAccountID) { ElMessage.warning('请选择 ACME 账户'); return }
   certSubmitting.value = true
   try {
-    await createCertificate(certForm.value as any)
+    await createCertificate(certForm.value)
     ElMessage.success('创建成功')
     certDialogVisible.value = false
     loadCerts()
@@ -540,7 +541,7 @@ const handleViewLog = async (id: number) => {
   finally { logLoading.value = false }
 
   // 如果证书正在申请中，自动轮询日志
-  const cert = certs.value.find((c: any) => c.id === id)
+  const cert = certs.value.find((c: Certificate) => c.id === id)
   if (cert && cert.status === 'applying') {
     startLogPoll(id)
   }
@@ -564,7 +565,7 @@ const startLogPoll = (id: number) => {
       logContent.value = res.data || '暂无日志'
     } catch { /* ignore */ }
     // 检查是否还在 applying
-    const cert = certs.value.find((c: any) => c.id === id)
+    const cert = certs.value.find((c: Certificate) => c.id === id)
     if (!cert || cert.status !== 'applying') {
       stopLogPoll()
       loadCerts() // 刷新列表以更新状态
@@ -580,7 +581,7 @@ const stopLogPoll = () => {
 const startApplyingPoll = () => {
   stopApplyingPoll()
   applyingPollTimer = setInterval(() => {
-    const hasApplying = certs.value.some((c: any) => c.status === 'applying')
+    const hasApplying = certs.value.some((c: Certificate) => c.status === 'applying')
     if (hasApplying) {
       loadCerts()
     } else {
@@ -616,7 +617,7 @@ const handleDeleteAcme = async (id: number) => {
 }
 
 // --- DNS 账户操作 ---
-const openDnsDialog = (row?: any) => {
+const openDnsDialog = (row?: DnsAccount) => {
   if (row) {
     dnsEditMode.value = true
     dnsForm.value = { id: row.id, name: row.name, type: row.type, authorization: { ...(row.authorization || {}) } }
@@ -636,9 +637,9 @@ const handleSubmitDns = async () => {
   dnsSubmitting.value = true
   try {
     if (dnsEditMode.value) {
-      await updateDnsAccount(dnsForm.value as any)
+      await updateDnsAccount(dnsForm.value)
     } else {
-      await createDnsAccount(dnsForm.value as any)
+      await createDnsAccount(dnsForm.value)
     }
     ElMessage.success('操作成功')
     dnsDialogVisible.value = false
@@ -705,7 +706,7 @@ const handleImportFile = (e: Event) => {
 // --- 工具函数 ---
 const statusType = (s: string) => {
   const map: Record<string, string> = { applied: 'success', applying: 'warning', error: 'danger', ready: 'info' }
-  return (map[s] || 'info') as any
+  return (map[s] || 'info') as '' | 'success' | 'warning' | 'danger' | 'info'
 }
 
 const statusLabel = (s: string) => {

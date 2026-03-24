@@ -47,7 +47,7 @@ const { t } = useI18n()
 
 // Setup Monaco Environment
 self.MonacoEnvironment = {
-  getWorker(_: any, label: string) {
+  getWorker(_: string, label: string) {
     if (label === 'json') return new jsonWorker()
     if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker()
     if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker()
@@ -137,7 +137,7 @@ const open = async (path: string) => {
   language.value = detectLanguage(name)
 
   try {
-    const res: any = await getFileContent({ path })
+    const res = await getFileContent({ path })
     originalContent.value = res.data?.content || ''
     visible.value = true
     await nextTick()

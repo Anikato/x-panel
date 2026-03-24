@@ -380,6 +380,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Plus } from '@element-plus/icons-vue'
 import { getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog, getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog } from '@/api/modules/website'
 import { searchCertificate } from '@/api/modules/ssl'
+import type { Certificate } from '@/api/interface'
 import * as monaco from 'monaco-editor'
 import * as echarts from 'echarts/core'
 import { BarChart, PieChart, LineChart } from 'echarts/charts'
@@ -388,6 +389,65 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 echarts.use([BarChart, PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
+interface WebsiteDetail {
+  id: number
+  primaryDomain: string
+  domains: string
+  type: string
+  status: string
+  sslEnable: boolean
+  remark: string
+  siteDir: string
+  proxyPass: string
+  indexFile: string
+  defaultServer: boolean
+  webSocket: boolean
+  certificateID: number
+  httpConfig: string
+  http2Enable: boolean
+  hsts: boolean
+  sslProtocols: string
+  rewrite: string
+  redirects: string
+  limitRate: string
+  limitConn: number
+  basicAuth: boolean
+  basicUser: string
+  basicPassword: string
+  antiLeech: boolean
+  leechReferers: string
+  accessLog: boolean
+  errorLog: boolean
+  customNginx: string
+  nginxConfig: string
+  alias: string
+  configMode: string
+}
+
+interface RedirectItem {
+  source: string
+  target: string
+  type: number
+}
+
+interface TimeStat {
+  time: string
+  requests: number
+  bytes: number
+}
+
+interface LogAnalysisData {
+  totalRequests: number
+  uniqueIPs: number
+  totalBytes: number
+  errorRate: number
+  hourlyStats: TimeStat[]
+  dailyStats: TimeStat[]
+  statusCodes: Record<string, number>
+  topUrls: { name: string; count: number }[]
+  topIps: { name: string; count: number }[]
+}
+
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
@@ -395,9 +455,9 @@ const { t } = useI18n()
 const loading = ref(false)
 const saving = ref(false)
 const activeTab = ref('basic')
-const detail = ref<any>({})
-const certList = ref<any[]>([])
-const redirects = ref<any[]>([])
+const detail = ref<Partial<WebsiteDetail>>({})
+const certList = ref<Certificate[]>([])
+const redirects = ref<RedirectItem[]>([])
 
 // Config mode
 const configMode = ref<'managed' | 'source'>('managed')
@@ -412,7 +472,7 @@ const logContent = ref<string | null>(null)
 // 日志分析
 const analysisDays = ref(1)
 const analysisLoading = ref(false)
-const logAnalysisData = ref<any>(null)
+const logAnalysisData = ref<LogAnalysisData | null>(null)
 const trendChartRef = ref<HTMLElement>()
 const statusChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
@@ -519,7 +579,7 @@ const renderTrendChart = () => {
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
       type: 'category',
-      data: data.map((p: any) => analysisDays.value <= 1 ? p.time.slice(11) : p.time.slice(5)),
+      data: data.map((p: TimeStat) => analysisDays.value <= 1 ? p.time.slice(11) : p.time.slice(5)),
       axisLabel: { fontSize: 11 },
     },
     yAxis: [
@@ -527,8 +587,8 @@ const renderTrendChart = () => {
       { type: 'value', name: '流量', axisLabel: { fontSize: 11, formatter: (v: number) => formatBytes(v) } },
     ],
     series: [
-      { name: '请求数', type: 'bar', data: data.map((p: any) => p.requests), itemStyle: { color: '#409EFF' } },
-      { name: '流量', type: 'line', yAxisIndex: 1, data: data.map((p: any) => p.bytes), itemStyle: { color: '#67C23A' }, smooth: true },
+      { name: '请求数', type: 'bar', data: data.map((p: TimeStat) => p.requests), itemStyle: { color: '#409EFF' } },
+      { name: '流量', type: 'line', yAxisIndex: 1, data: data.map((p: TimeStat) => p.bytes), itemStyle: { color: '#67C23A' }, smooth: true },
     ],
   })
 }
@@ -626,7 +686,7 @@ const handleSaveSource = async () => {
   finally { sourceSaving.value = false }
 }
 
-const handleModeSwitch = async (val: any) => {
+const handleModeSwitch = async (val: string | number | boolean) => {
   const mode = val as string
   if (mode === 'source') {
     try {

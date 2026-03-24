@@ -171,7 +171,7 @@ let chart: echarts.ECharts | null = null
 const loadSummary = async () => {
   loading.value = true
   try {
-    const res: any = await trafficApi.getSummary()
+    const res = await trafficApi.getSummary()
     summary.value = res.data || []
     if (summary.value.length > 0 && !selectedInterface.value) {
       selectedInterface.value = summary.value[0].interfaceName
@@ -194,7 +194,7 @@ const initDateRange = () => {
 const loadStats = async () => {
   if (!selectedInterface.value || !dateRange.value) return
   try {
-    const res: any = await trafficApi.getStats({
+    const res = await trafficApi.getStats({
       interfaceName: selectedInterface.value,
       startTime: dateRange.value[0],
       endTime: dateRange.value[1],
@@ -229,11 +229,12 @@ const renderChart = () => {
   chart.setOption({
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
-        const time = params[0]?.axisValue || ''
+      formatter: (params: Record<string, unknown>[]) => {
+        const first = params[0] as Record<string, unknown> | undefined
+        const time = (first?.axisValue as string) || ''
         let html = `<div style="font-weight:600;margin-bottom:4px">${time}</div>`
         for (const p of params) {
-          html += `<div>${p.marker} ${p.seriesName}: ${formatBytes(p.value)}</div>`
+          html += `<div>${p.marker} ${p.seriesName}: ${formatBytes(p.value as number)}</div>`
         }
         return html
       },
@@ -300,7 +301,7 @@ const formatDate = (dateStr: string) => {
   return dateStr.substring(0, 10)
 }
 
-const openConfigDialog = (item?: any) => {
+const openConfigDialog = (item?: TrafficSummaryItem) => {
   const config = item ? {
     id: 0,
     interfaceName: item.interfaceName,

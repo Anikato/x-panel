@@ -64,7 +64,7 @@ const activeMenu = computed(() => route.path)
 
 onMounted(async () => {
   try {
-    const res: any = await getCurrentVersion()
+    const res = await getCurrentVersion()
     if (res.data) {
       globalStore.setVersion(res.data.version === 'dev' ? 'dev' : res.data.version)
     }

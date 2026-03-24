@@ -19,6 +19,15 @@
         </el-radio-group>
       </div>
       <div class="header-right" v-if="currentView === 'terminal'">
+        <div class="term-settings">
+          <el-tooltip :content="$t('terminal.fontSize')" placement="bottom">
+            <div class="font-size-control">
+              <el-icon :size="12" @click="changeFontSize(-1)" class="fs-btn"><Minus /></el-icon>
+              <span class="fs-value">{{ termFontSize }}</span>
+              <el-icon :size="12" @click="changeFontSize(1)" class="fs-btn"><Plus /></el-icon>
+            </div>
+          </el-tooltip>
+        </div>
         <el-button size="small" type="primary" plain @click="showCommandPalette = true">
           <el-icon><Search /></el-icon>
           {{ $t('terminal.quickCommand') }}
@@ -48,7 +57,7 @@
                   v-for="tab in tabs"
                   :key="tab.id"
                   :model-value="batchTargets.has(tab.id)"
-                  @change="(v: any) => toggleBatchTarget(tab.id, v as boolean)"
+                  @change="(v: boolean | string | number) => toggleBatchTarget(tab.id, v as boolean)"
                   size="small"
                 >
                   {{ tab.title }}
@@ -158,7 +167,7 @@
           <div
             v-for="tab in tabs"
             :key="tab.id"
-            :ref="(el: any) => setTermRef(tab.id, el as HTMLElement)"
+            :ref="(el: unknown) => setTermRef(tab.id, el as HTMLElement)"
             class="terminal-instance"
             :class="{ active: activeTab === tab.id }"
           />
@@ -224,12 +233,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { getHostTree, getCommandTree } from '@/api/modules/host'
 import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import type { HostTreeGroup, CommandItem, CommandGroup } from '@/api/interface'
+import { Search, Minus } from '@element-plus/icons-vue'
 import HostManage from './host/index.vue'
 import CommandManage from './command/index.vue'
 
@@ -243,20 +254,34 @@ interface TermTab {
   _resizeObserver?: ResizeObserver
 }
 
+const { t } = useI18n()
 const currentView = ref<'terminal' | 'hosts' | 'commands'>('terminal')
 const tabs = ref<TermTab[]>([])
 const activeTab = ref('')
+const termFontSize = ref(14)
+
+const changeFontSize = (delta: number) => {
+  const newSize = Math.max(10, Math.min(24, termFontSize.value + delta))
+  if (newSize === termFontSize.value) return
+  termFontSize.value = newSize
+  for (const tab of tabs.value) {
+    if (tab.terminal) {
+      tab.terminal.options.fontSize = newSize
+      tab.fitAddon?.fit()
+    }
+  }
+}
 const termRefs: Record<string, HTMLElement | null> = {}
 let tabCounter = 0
 const batchCommand = ref('')
-const hostTree = ref<any[]>([])
-const commandList = ref<any[]>([])
+const hostTree = ref<HostTreeGroup[]>([])
+const commandList = ref<CommandItem[]>([])
 
 // 批量输入目标选择
 const batchTargets = ref<Set<string>>(new Set())
 const batchAllTerminals = ref(true)
 
-const toggleBatchAll = (val: any) => {
+const toggleBatchAll = (val: boolean | string | number) => {
   batchTargets.value.clear()
   if (val) {
     for (const tab of tabs.value) batchTargets.value.add(tab.id)
@@ -276,12 +301,12 @@ const toggleBatchTarget = (id: string, checked: boolean) => {
 const showCommandPalette = ref(false)
 const paletteSearch = ref('')
 const paletteIndex = ref(0)
-const paletteInputRef = ref<any>(null)
+const paletteInputRef = ref<{ focus: () => void } | null>(null)
 
 const filteredCommands = computed(() => {
   const q = paletteSearch.value.toLowerCase()
   if (!q) return commandList.value
-  return commandList.value.filter((cmd: any) =>
+  return commandList.value.filter((cmd) =>
     cmd.name.toLowerCase().includes(q) || cmd.command.toLowerCase().includes(q)
   )
 })
@@ -314,7 +339,7 @@ const executePaletteCommand = () => {
   }
 }
 
-const executePaletteItem = (cmd: any) => {
+const executePaletteItem = (cmd: CommandItem) => {
   showCommandPalette.value = false
   executeCommand(cmd.command)
 }
@@ -364,8 +389,8 @@ const createTerminal = async (tab: TermTab) => {
   const terminal = new Terminal({
     cursorBlink: true,
     cursorStyle: 'bar',
-    fontSize: 14,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+    fontSize: termFontSize.value,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
     theme: terminalTheme,
     scrollback: 10000,
     allowProposedApi: true,
@@ -425,11 +450,11 @@ const createTerminal = async (tab: TermTab) => {
   }
 
   ws.onclose = () => {
-    terminal.write('\r\n\x1b[31m连接已断开\x1b[0m\r\n')
+    terminal.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
   }
 
   ws.onerror = () => {
-    terminal.write('\r\n\x1b[31m连接错误\x1b[0m\r\n')
+    terminal.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
   }
 
   terminal.onData((data: string) => {
@@ -449,7 +474,7 @@ const addLocalTab = async () => {
   tabCounter++
   const tab: TermTab = {
     id: `term-${tabCounter}`,
-    title: `本地终端 ${tabCounter}`,
+    title: `${t('terminal.localTerminal')} ${tabCounter}`,
   }
   tabs.value.push(tab)
   activeTab.value = tab.id
@@ -504,9 +529,9 @@ const sendBatchCommand = () => {
   }
   batchCommand.value = ''
   if (count > 0) {
-    ElMessage.success(`命令已发送到 ${count} 个终端`)
+    ElMessage.success(t('terminal.batchSent', { count }))
   } else {
-    ElMessage.warning('没有可用的终端')
+    ElMessage.warning(t('terminal.noActiveTerminal'))
   }
 }
 
@@ -515,7 +540,7 @@ const executeCommand = (cmd: string) => {
   if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
     tab.ws.send(cmd + '\n')
   } else {
-    ElMessage.warning('当前没有活跃的终端连接')
+    ElMessage.warning(t('terminal.noActiveTerminal'))
   }
 }
 
@@ -540,8 +565,8 @@ const loadHostTree = async () => {
 const loadCommands = async () => {
   try {
     const res = await getCommandTree()
-    const tree = res.data || []
-    const flat: any[] = []
+    const tree: CommandGroup[] = res.data || []
+    const flat: CommandItem[] = []
     for (const g of tree) {
       if (g.children) {
         flat.push(...g.children)
@@ -613,6 +638,44 @@ onBeforeUnmount(() => {
       color: var(--xp-accent);
       box-shadow: -1px 0 0 0 var(--xp-accent);
     }
+  }
+}
+
+.term-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.font-size-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  padding: 2px 6px;
+  height: 28px;
+
+  .fs-btn {
+    cursor: pointer;
+    color: var(--xp-text-muted);
+    padding: 2px;
+    border-radius: 3px;
+    transition: all 0.15s;
+
+    &:hover {
+      color: var(--xp-accent);
+      background: var(--xp-accent-muted);
+    }
+  }
+
+  .fs-value {
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--xp-text-secondary);
+    min-width: 18px;
+    text-align: center;
   }
 }
 

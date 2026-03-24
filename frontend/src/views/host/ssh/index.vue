@@ -108,12 +108,13 @@ import { getSSHInfo, operateSSH, updateSSHConfig, searchSSHLog, getSSHDConfig, s
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import * as monaco from 'monaco-editor'
+import type { SSHInfo, SSHLogEntry } from '@/api/interface'
 
 const { t } = useI18n()
 const activeTab = ref('config')
 const loading = ref(false)
 
-const sshInfo = ref<any>({})
+const sshInfo = ref<SSHInfo>({} as SSHInfo)
 const passwordAuth = computed({
   get: () => sshInfo.value.passwordAuthentication === 'yes',
   set: () => {},
@@ -129,7 +130,7 @@ const useDNS = computed({
 
 // 日志
 const logLoading = ref(false)
-const sshLogs = ref<any[]>([])
+const sshLogs = ref<SSHLogEntry[]>([])
 const logTotal = ref(0)
 const logPage = ref(1)
 const logPageSize = ref(20)

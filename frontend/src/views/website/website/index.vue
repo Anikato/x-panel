@@ -107,12 +107,13 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { searchWebsite, createWebsite, deleteWebsite, enableWebsite, disableWebsite } from '@/api/modules/website'
+import type { Website } from '@/api/interface'
 
 const router = useRouter()
 const { t } = useI18n()
 
 const loading = ref(false)
-const websites = ref<any[]>([])
+const websites = ref<Website[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
@@ -165,7 +166,7 @@ const handleCreate = async () => {
   finally { createLoading.value = false }
 }
 
-const handleEnable = async (row: any) => {
+const handleEnable = async (row: Website) => {
   try {
     await ElMessageBox.confirm(t('website.enableConfirm'), t('commons.tip'), { type: 'info' })
     await enableWebsite(row.id)
@@ -174,7 +175,7 @@ const handleEnable = async (row: any) => {
   } catch {}
 }
 
-const handleDisable = async (row: any) => {
+const handleDisable = async (row: Website) => {
   try {
     await ElMessageBox.confirm(t('website.disableConfirm'), t('commons.tip'), { type: 'warning' })
     await disableWebsite(row.id)
@@ -183,7 +184,7 @@ const handleDisable = async (row: any) => {
   } catch {}
 }
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: Website) => {
   try {
     await ElMessageBox.confirm(t('website.deleteConfirm'), t('commons.tip'), { type: 'error' })
     await deleteWebsite(row.id)

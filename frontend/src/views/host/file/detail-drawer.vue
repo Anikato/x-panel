@@ -44,10 +44,19 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDirSize } from '@/api/modules/file'
+import type { FileInfo } from '@/api/interface'
+
+interface FileDetailInfo extends FileInfo {
+  extension?: string
+  linkPath?: string
+  modeNum?: string
+  uid?: number
+  gid?: number
+}
 
 const { t } = useI18n()
 const visible = ref(false)
-const info = ref<any>(null)
+const info = ref<FileDetailInfo | null>(null)
 const dirSize = ref(0)
 const dirSizeLoaded = ref(false)
 const dirSizeLoading = ref(false)
@@ -68,7 +77,7 @@ const calcDirSize = async () => {
   if (!info.value) return
   dirSizeLoading.value = true
   try {
-    const res: any = await getDirSize({ path: info.value.path })
+    const res = await getDirSize({ path: info.value.path })
     dirSize.value = res.data?.size || 0
     dirSizeLoaded.value = true
   } catch { /* */ } finally {
@@ -76,7 +85,7 @@ const calcDirSize = async () => {
   }
 }
 
-const open = (row: any) => {
+const open = (row: FileDetailInfo) => {
   info.value = row
   dirSize.value = 0
   dirSizeLoaded.value = false

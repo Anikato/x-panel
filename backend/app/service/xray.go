@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +93,28 @@ var (
 	installMu      sync.Mutex
 )
 
+// getXrayInstallScript 动态获取 xray-install.sh 路径，基于可执行文件自身位置
+func getXrayInstallScript() string {
+	exe, err := os.Executable()
+	if err == nil {
+		exe, _ = filepath.EvalSymlinks(exe)
+		dir := filepath.Dir(exe)
+		// 可执行文件在 cmd/server/ 或根目录下，脚本在项目根目录
+		candidates := []string{
+			filepath.Join(dir, "xray-install.sh"),
+			filepath.Join(dir, "..", "xray-install.sh"),
+			filepath.Join(dir, "..", "..", "xray-install.sh"),
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				abs, _ := filepath.Abs(c)
+				return abs
+			}
+		}
+	}
+	return "/data/X-Panel/xray-install.sh"
+}
+
 // ============================================================
 // 状态 & 安装
 // ============================================================
@@ -110,7 +133,7 @@ func (s *XrayService) StartInstall() error {
 	installRunning = true
 	installLog.Reset()
 
-	scriptPath := "/data/X-Panel/xray-install.sh"
+	scriptPath := getXrayInstallScript()
 	go func() {
 		defer func() {
 			installMu.Lock()
@@ -279,7 +302,7 @@ func (s *XrayService) DoUpgrade() error {
 	installRunning = true
 	installLog.Reset()
 
-	scriptPath := "/data/X-Panel/xray-install.sh"
+	scriptPath := getXrayInstallScript()
 	go func() {
 		defer func() {
 			installMu.Lock()

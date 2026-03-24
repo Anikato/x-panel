@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -54,22 +55,18 @@ func OperationLog() gin.HandlerFunc {
 			message = c.Errors.Last().Error()
 		}
 
-		// 记录耗时
-		if message == "" {
-			message = duration.String()
-		}
-
 		// 异步写入日志
 		log := &model.OperationLog{
-			Group:  group,
-			Source: source,
-			Action: action,
-			IP:     c.ClientIP(),
-			Path:   path,
-			Method: method,
-			Body:   body,
-			Status: status,
+			Group:   group,
+			Source:  source,
+			Action:  action,
+			IP:      c.ClientIP(),
+			Path:    path,
+			Method:  method,
+			Body:    body,
+			Status:  status,
 			Message: message,
+			Latency: formatLatency(duration),
 		}
 
 		go func() {
@@ -93,6 +90,17 @@ func parsePathInfo(path string) (group, source, action string) {
 	}
 	source = group
 	return
+}
+
+// formatLatency 将 duration 格式化为人类可读的字符串
+func formatLatency(d time.Duration) string {
+	if d < time.Millisecond {
+		return fmt.Sprintf("%.0fµs", float64(d.Microseconds()))
+	}
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	return fmt.Sprintf("%.2fs", d.Seconds())
 }
 
 // maskSensitiveFields 脱敏敏感字段

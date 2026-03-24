@@ -45,17 +45,18 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { getLoginLogs, cleanLoginLogs } from '@/api/modules/log'
+import type { LoginLog } from '@/api/interface'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const loading = ref(false)
-const tableData = ref<any[]>([])
+const tableData = ref<LoginLog[]>([])
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const fetchData = async () => {
   loading.value = true
   try {
-    const res: any = await getLoginLogs({ page: pagination.page, pageSize: pagination.pageSize })
+    const res = await getLoginLogs({ page: pagination.page, pageSize: pagination.pageSize })
     tableData.value = res.data?.items || []
     pagination.total = res.data?.total || 0
   } catch { /* */ } finally { loading.value = false }

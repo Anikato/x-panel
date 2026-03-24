@@ -48,7 +48,7 @@ const groups = ref<string[]>([])
 const loadUsersAndGroups = async () => {
   loadingUsers.value = true
   try {
-    const res: any = await getUsersAndGroups()
+    const res = await getUsersAndGroups()
     users.value = res.data?.users || []
     groups.value = res.data?.groups || []
   } catch { /* */ } finally {

@@ -25,25 +25,27 @@
       </el-select>
 
       <!-- 主题色选择 -->
-      <el-popover placement="bottom" :width="280" trigger="click">
+      <el-popover placement="bottom" :width="240" trigger="click" :show-arrow="true">
         <template #reference>
           <div class="theme-btn">
             <div class="accent-dot" :style="{ background: currentAccentColor }"></div>
           </div>
         </template>
         <div class="accent-panel">
-          <div class="accent-panel-title">{{ t('header.accentColor') }}</div>
-          <div class="accent-grid">
-            <div
-              v-for="preset in ACCENT_PRESETS"
-              :key="preset.key"
-              class="accent-swatch"
-              :class="{ active: globalStore.accentKey === preset.key }"
-              :style="{ background: preset.primary }"
-              :title="preset.name"
-              @click="selectAccent(preset.key)"
-            >
-              <el-icon v-if="globalStore.accentKey === preset.key" :size="14"><Check /></el-icon>
+          <div class="accent-section">
+            <div class="accent-panel-title">{{ t('header.accentColor') }}</div>
+            <div class="accent-grid">
+              <div
+                v-for="preset in ACCENT_PRESETS"
+                :key="preset.key"
+                class="accent-swatch"
+                :class="{ active: globalStore.accentKey === preset.key }"
+                :style="{ background: preset.primary }"
+                :title="preset.name"
+                @click="selectAccent(preset.key)"
+              >
+                <el-icon v-if="globalStore.accentKey === preset.key" :size="12"><Check /></el-icon>
+              </div>
             </div>
           </div>
           <div class="accent-custom-row">
@@ -101,6 +103,7 @@ import { useUserStore } from '@/store/modules/user'
 import { logout as logoutApi } from '@/api/modules/auth'
 import { listNodes } from '@/api/modules/node'
 import { useI18n } from 'vue-i18n'
+import type { NodeItem } from '@/api/interface'
 import { Moon, Sunny, Check } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
@@ -132,18 +135,18 @@ const onCustomColor = (e: Event) => {
   applyAccentPalette(generatePaletteFromHex(hex))
 }
 
-const nodes = ref<any[]>([])
+const nodes = ref<NodeItem[]>([])
 const currentNode = ref(globalStore.currentNodeID || 0)
 
 const loadNodes = async () => {
   try {
-    const res: any = await listNodes()
+    const res = await listNodes()
     nodes.value = res.data || []
   } catch { /* ignore */ }
 }
 
 const onNodeChange = (val: number) => {
-  const node = nodes.value.find((n: any) => n.id === val)
+  const node = nodes.value.find((n: NodeItem) => n.id === val)
   globalStore.setCurrentNode(val, node ? node.name : '')
   window.location.reload()
 }
@@ -288,25 +291,29 @@ const handleCommand = async (command: string) => {
 
 // Accent picker popover (not scoped — rendered in teleport)
 :global(.accent-panel) {
+  .accent-section {
+    margin-bottom: 12px;
+  }
+
   .accent-panel-title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--xp-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
   .accent-grid {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 8px;
-    margin-bottom: 12px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    justify-items: center;
   }
 
   .accent-swatch {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     cursor: pointer;
     display: flex;
@@ -315,6 +322,7 @@ const handleCommand = async (command: string) => {
     color: #fff;
     transition: all 0.2s;
     border: 2px solid transparent;
+    flex-shrink: 0;
 
     &:hover {
       transform: scale(1.15);
@@ -322,7 +330,7 @@ const handleCommand = async (command: string) => {
 
     &.active {
       border-color: var(--xp-text-primary);
-      box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 4px var(--xp-accent);
+      box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 3px var(--xp-accent);
     }
   }
 

@@ -137,6 +137,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import type { DatabaseServer, DatabaseInstance } from '@/api/interface'
 import {
   searchDatabaseServer, createDatabaseServer, updateDatabaseServer, deleteDatabaseServer,
   testDatabaseConnection, searchDatabaseInstance, createDatabaseInstance, deleteDatabaseInstance,
@@ -147,14 +148,14 @@ const props = defineProps<{ dbType: string }>()
 const { t } = useI18n()
 
 const loading = ref(false)
-const servers = ref<any[]>([])
+const servers = ref<DatabaseServer[]>([])
 const submitting = ref(false)
 const testing = ref(false)
 
 const loadServers = async () => {
   loading.value = true
   try {
-    const res: any = await searchDatabaseServer({ page: 1, pageSize: 100, type: props.dbType })
+    const res = await searchDatabaseServer({ page: 1, pageSize: 100, type: props.dbType })
     const items = res.data.items || []
     for (const s of items) {
       s._instances = []
@@ -167,10 +168,10 @@ const loadServers = async () => {
   } finally { loading.value = false }
 }
 
-const loadInstancesForServer = async (server: any) => {
+const loadInstancesForServer = async (server: DatabaseServer) => {
   server._loading = true
   try {
-    const res: any = await searchDatabaseInstance({ page: 1, pageSize: 100, serverID: server.id })
+    const res = await searchDatabaseInstance({ page: 1, pageSize: 100, serverID: server.id })
     server._instances = res.data.items || []
   } finally { server._loading = false }
 }
@@ -200,7 +201,7 @@ const openCreateServer = () => {
   serverDrawer.value = true
 }
 
-const openEditServer = (row: any) => {
+const openEditServer = (row: DatabaseServer) => {
   Object.assign(serverForm, { ...row, password: '' })
   editServerMode.value = true
   serverDrawer.value = true
@@ -237,14 +238,14 @@ const submitServer = async () => {
   } finally { submitting.value = false }
 }
 
-const handleDeleteServer = async (row: any) => {
+const handleDeleteServer = async (row: DatabaseServer) => {
   await ElMessageBox.confirm(t('database.deleteServerConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteDatabaseServer({ id: row.id })
   ElMessage.success(t('commons.success'))
   await loadServers()
 }
 
-const testConn = async (row: any) => {
+const testConn = async (row: DatabaseServer) => {
   try {
     await testDatabaseConnection({ id: row.id })
     ElMessage.success(t('database.testSuccess'))
@@ -258,16 +259,16 @@ const instanceCreateDialog = ref(false)
 const instFormRef = ref<FormInstance>()
 const instForm = reactive({ name: '', charset: 'utf8mb4', password: '', owner: '' })
 const instRules: FormRules = { name: [{ required: true, trigger: 'blur' }] }
-let currentServer: any = null
+let currentServer: DatabaseServer | null = null
 
-const openCreateInstance = (server: any) => {
+const openCreateInstance = (server: DatabaseServer) => {
   currentServer = server
   Object.assign(instForm, { name: '', charset: 'utf8mb4', password: '', owner: '' })
   instanceCreateDialog.value = true
 }
 
 const submitInstance = async () => {
-  if (!instFormRef.value) return
+  if (!instFormRef.value || !currentServer) return
   await instFormRef.value.validate()
   submitting.value = true
   try {
@@ -278,14 +279,14 @@ const submitInstance = async () => {
   } finally { submitting.value = false }
 }
 
-const handleDeleteInstance = async (server: any, inst: any) => {
+const handleDeleteInstance = async (server: DatabaseServer, inst: DatabaseInstance) => {
   await ElMessageBox.confirm(t('database.deleteDBConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteDatabaseInstance({ id: inst.id })
   ElMessage.success(t('commons.success'))
   await loadInstancesForServer(server)
 }
 
-const syncInstances = async (server: any) => {
+const syncInstances = async (server: DatabaseServer) => {
   server._loading = true
   try {
     await syncDatabaseInstances({ id: server.id })
@@ -297,9 +298,9 @@ const syncInstances = async (server: any) => {
 // Change Password
 const passwordDialog = ref(false)
 const passwordForm = reactive({ id: 0, dbName: '', password: '' })
-let passwordServer: any = null
+let passwordServer: DatabaseServer | null = null
 
-const openChangePassword = (server: any, inst: any) => {
+const openChangePassword = (server: DatabaseServer, inst: DatabaseInstance) => {
   passwordServer = server
   passwordForm.id = inst.id
   passwordForm.dbName = inst.name
@@ -321,12 +322,12 @@ const submitChangePassword = async () => {
 }
 
 // Backup
-const handleBackup = async (server: any, inst: any) => {
+const handleBackup = async (server: DatabaseServer, inst: DatabaseInstance) => {
   try {
     await ElMessageBox.confirm(t('database.backupConfirm', { name: inst.name }), t('commons.tip'))
   } catch { return }
   try {
-    const res: any = await backupDatabaseInstance({ id: inst.id })
+    const res = await backupDatabaseInstance({ id: inst.id })
     ElMessage.success(t('database.backupSuccess', { file: res.data.file }))
   } catch { /* handled by interceptor */ }
 }

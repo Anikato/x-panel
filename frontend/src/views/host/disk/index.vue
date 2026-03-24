@@ -2,9 +2,10 @@
   <div class="disk-page">
     <div class="page-header">
       <h3>{{ $t('disk.title') }}</h3>
-      <el-button size="small" :icon="Refresh" @click="loadDisk" :loading="loading">{{ $t('commons.refresh') }}</el-button>
+      <el-button size="small" :icon="Refresh" @click="loadAll" :loading="loading">{{ $t('commons.refresh') }}</el-button>
     </div>
 
+    <!-- 本地磁盘 -->
     <el-row :gutter="16">
       <el-col :span="24" v-for="(part, idx) in partitions" :key="idx">
         <el-card shadow="never" class="disk-card">
@@ -39,16 +40,113 @@
     </el-row>
 
     <el-empty v-if="!loading && partitions.length === 0" />
+
+    <!-- 远程挂载 -->
+    <div class="page-header" style="margin-top: 20px;">
+      <h3>{{ $t('disk.remoteMount') }}</h3>
+      <el-button size="small" type="primary" :icon="Plus" @click="showMountDialog = true">
+        {{ $t('disk.addMount') }}
+      </el-button>
+    </div>
+
+    <el-table :data="remoteMounts" v-loading="remoteLoading" v-if="remoteMounts.length > 0">
+      <el-table-column prop="device" :label="$t('disk.remoteSource')" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="mountPoint" :label="$t('disk.mountPoint')" min-width="160" />
+      <el-table-column prop="fsType" :label="$t('disk.fsType')" width="100" />
+      <el-table-column :label="$t('disk.usage')" width="200">
+        <template #default="{ row }">
+          <template v-if="row.total > 0">
+            <el-progress :percentage="Math.round(row.percent)" :color="progressColor" :stroke-width="12" :text-inside="true" />
+            <span class="remote-size">{{ formatBytes(row.used) }} / {{ formatBytes(row.total) }}</span>
+          </template>
+          <span v-else class="text-muted">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('commons.actions')" width="100" align="center">
+        <template #default="{ row }">
+          <el-popconfirm :title="$t('disk.unmountConfirm')" @confirm="handleUnmount(row.mountPoint)">
+            <template #reference>
+              <el-button type="danger" text size="small">{{ $t('disk.unmount') }}</el-button>
+            </template>
+          </el-popconfirm>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <el-empty v-else-if="!remoteLoading" :description="$t('disk.noRemoteMount')" :image-size="60" />
+
+    <!-- 挂载对话框 -->
+    <el-dialog v-model="showMountDialog" :title="$t('disk.addMount')" width="520px" :close-on-click-modal="false">
+      <el-form ref="mountFormRef" :model="mountForm" :rules="mountRules" label-width="100px">
+        <el-form-item :label="$t('disk.protocol')" prop="protocol">
+          <el-select v-model="mountForm.protocol" style="width: 100%">
+            <el-option label="NFS" value="nfs" />
+            <el-option label="SMB / CIFS" value="cifs" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('disk.server')" prop="server">
+          <el-input v-model="mountForm.server" placeholder="192.168.1.100" />
+        </el-form-item>
+        <el-form-item :label="$t('disk.sharePath')" prop="sharePath">
+          <el-input v-model="mountForm.sharePath" :placeholder="mountForm.protocol === 'nfs' ? '/data/share' : 'share_name'" />
+        </el-form-item>
+        <el-form-item :label="$t('disk.mountPoint')" prop="mountPoint">
+          <el-input v-model="mountForm.mountPoint" placeholder="/mnt/remote" />
+        </el-form-item>
+        <template v-if="mountForm.protocol === 'cifs'">
+          <el-form-item :label="$t('disk.username')">
+            <el-input v-model="mountForm.username" :placeholder="$t('disk.usernameHint')" />
+          </el-form-item>
+          <el-form-item :label="$t('disk.password')">
+            <el-input v-model="mountForm.password" type="password" show-password :placeholder="$t('disk.passwordHint')" />
+          </el-form-item>
+        </template>
+        <el-form-item :label="$t('disk.mountOptions')">
+          <el-input v-model="mountForm.options" :placeholder="$t('disk.mountOptionsHint')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showMountDialog = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button type="primary" @click="handleMount" :loading="mounting">{{ $t('disk.mount') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Refresh, Coin } from '@element-plus/icons-vue'
-import { getDiskInfo } from '@/api/modules/disk'
+import { ref, reactive, onMounted } from 'vue'
+import { Refresh, Coin, Plus } from '@element-plus/icons-vue'
+import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote } from '@/api/modules/disk'
+import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+import type { FormInstance, FormRules } from 'element-plus'
+import type { DiskDetail, RemoteMountInfo } from '@/api/interface'
 
+const { t } = useI18n()
 const loading = ref(false)
-const partitions = ref<any[]>([])
+const remoteLoading = ref(false)
+const partitions = ref<DiskDetail[]>([])
+const remoteMounts = ref<RemoteMountInfo[]>([])
+const showMountDialog = ref(false)
+const mounting = ref(false)
+const mountFormRef = ref<FormInstance>()
+
+const mountForm = reactive({
+  protocol: 'nfs',
+  server: '',
+  sharePath: '',
+  mountPoint: '',
+  username: '',
+  password: '',
+  options: '',
+})
+
+const mountRules = reactive<FormRules>({
+  protocol: [{ required: true, trigger: 'change' }],
+  server: [{ required: true, message: t('disk.serverRequired'), trigger: 'blur' }],
+  sharePath: [{ required: true, message: t('disk.sharePathRequired'), trigger: 'blur' }],
+  mountPoint: [{ required: true, message: t('disk.mountPointRequired'), trigger: 'blur' }],
+})
 
 const loadDisk = async () => {
   loading.value = true
@@ -57,6 +155,49 @@ const loadDisk = async () => {
     partitions.value = res.data || []
   } catch { partitions.value = [] }
   finally { loading.value = false }
+}
+
+const loadRemote = async () => {
+  remoteLoading.value = true
+  try {
+    const res = await listRemoteMounts()
+    remoteMounts.value = res.data || []
+  } catch { remoteMounts.value = [] }
+  finally { remoteLoading.value = false }
+}
+
+const loadAll = () => {
+  loadDisk()
+  loadRemote()
+}
+
+const handleMount = async () => {
+  await mountFormRef.value?.validate()
+  mounting.value = true
+  try {
+    await mountRemote({
+      protocol: mountForm.protocol,
+      server: mountForm.server,
+      sharePath: mountForm.sharePath,
+      mountPoint: mountForm.mountPoint,
+      username: mountForm.username || undefined,
+      password: mountForm.password || undefined,
+      options: mountForm.options || undefined,
+    })
+    ElMessage.success(t('commons.success'))
+    showMountDialog.value = false
+    Object.assign(mountForm, { server: '', sharePath: '', mountPoint: '', username: '', password: '', options: '' })
+    loadAll()
+  } catch { /* handled by interceptor */ }
+  finally { mounting.value = false }
+}
+
+const handleUnmount = async (mountPoint: string) => {
+  try {
+    await unmountRemote({ mountPoint })
+    ElMessage.success(t('commons.success'))
+    loadAll()
+  } catch { /* handled */ }
 }
 
 const progressColor = (percentage: number) => {
@@ -77,7 +218,7 @@ const formatNumber = (n?: number) => {
   return n.toLocaleString()
 }
 
-onMounted(() => loadDisk())
+onMounted(() => loadAll())
 </script>
 
 <style lang="scss" scoped>
@@ -145,5 +286,14 @@ onMounted(() => loadDisk())
     font-size: 12px;
     color: var(--xp-text-secondary);
   }
+}
+
+.remote-size {
+  font-size: 11px;
+  color: var(--xp-text-muted);
+}
+
+.text-muted {
+  color: var(--xp-text-muted);
 }
 </style>

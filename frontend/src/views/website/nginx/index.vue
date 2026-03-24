@@ -243,6 +243,7 @@ import {
   getNginxConfFile,
   saveNginxConfFile,
 } from '@/api/modules/website'
+import type { NginxStatus, NginxVersion, NginxTestResult, NginxInstallProgress, ConfFile } from '@/api/interface'
 
 const { t } = useI18n()
 
@@ -250,17 +251,17 @@ const mainTab = ref('status')
 
 // 状态数据
 const loading = ref(false)
-const status = ref<any>({})
+const status = ref<Partial<NginxStatus>>({})
 const operateLoading = ref('')
 const testLoading = ref(false)
-const testResult = ref<any>(null)
+const testResult = ref<NginxTestResult | null>(null)
 const autoStartLoading = ref(false)
 
 // 安装相关
 const showInstallDialog = ref(false)
 const installLoading = ref(false)
 const installing = ref(false)
-const installProgress = ref<any>({ phase: 'idle', message: '', percent: 0 })
+const installProgress = ref<NginxInstallProgress>({ phase: 'idle', message: '', percent: 0 })
 let progressTimer: ReturnType<typeof setInterval> | null = null
 
 const installForm = reactive({
@@ -268,7 +269,7 @@ const installForm = reactive({
 })
 
 // 可用版本列表
-const availableVersions = ref<any[]>([])
+const availableVersions = ref<NginxVersion[]>([])
 const versionsLoading = ref(false)
 
 // 加载状态
@@ -307,7 +308,7 @@ const handleOperate = async (operation: string) => {
 }
 
 // 开机自启
-const handleAutoStart = async (val: any) => {
+const handleAutoStart = async (val: boolean) => {
   autoStartLoading.value = true
   try {
     await setNginxAutoStart(val as boolean)
@@ -455,7 +456,7 @@ const formatDate = (dateStr?: string) => {
 }
 
 // --- 配置文件编辑 ---
-const confFiles = ref<any[]>([])
+const confFiles = ref<ConfFile[]>([])
 const activeConfFile = ref('')
 const confContent = ref('')
 const confSaving = ref(false)

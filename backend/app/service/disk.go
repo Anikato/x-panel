@@ -1,6 +1,11 @@
 package service
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
 	"xpanel/app/dto"
 
 	"github.com/shirou/gopsutil/v4/disk"
@@ -8,6 +13,9 @@ import (
 
 type IDiskService interface {
 	GetDiskInfo() ([]dto.PartitionInfo, error)
+	MountRemote(req dto.RemoteMountRequest) error
+	UnmountRemote(req dto.RemoteUnmountRequest) error
+	ListRemoteMounts() ([]dto.RemoteMountInfo, error)
 }
 
 type DiskService struct{}
@@ -21,14 +29,13 @@ func (s *DiskService) GetDiskInfo() ([]dto.PartitionInfo, error) {
 	}
 
 	var result []dto.PartitionInfo
-	seen := make(map[string]bool) // 避免同一挂载点重复
+	seen := make(map[string]bool)
 
 	for _, p := range partitions {
 		if seen[p.Mountpoint] {
 			continue
 		}
 
-		// 跳过虚拟文件系统
 		if isVirtualFS(p.Fstype) {
 			continue
 		}
@@ -52,6 +59,88 @@ func (s *DiskService) GetDiskInfo() ([]dto.PartitionInfo, error) {
 		}
 		result = append(result, info)
 		seen[p.Mountpoint] = true
+	}
+	return result, nil
+}
+
+func (s *DiskService) MountRemote(req dto.RemoteMountRequest) error {
+	if err := os.MkdirAll(req.MountPoint, 0755); err != nil {
+		return fmt.Errorf("failed to create mount point: %v", err)
+	}
+
+	var cmd *exec.Cmd
+	switch req.Protocol {
+	case "nfs":
+		source := fmt.Sprintf("%s:%s", req.Server, req.SharePath)
+		opts := "rw,soft,timeo=30"
+		if req.Options != "" {
+			opts = req.Options
+		}
+		cmd = exec.Command("mount", "-t", "nfs", "-o", opts, source, req.MountPoint)
+
+	case "smb", "cifs":
+		source := fmt.Sprintf("//%s/%s", req.Server, strings.TrimPrefix(req.SharePath, "/"))
+		opts := "rw"
+		if req.Username != "" {
+			opts += fmt.Sprintf(",username=%s", req.Username)
+			if req.Password != "" {
+				opts += fmt.Sprintf(",password=%s", req.Password)
+			}
+		} else {
+			opts += ",guest"
+		}
+		if req.Options != "" {
+			opts += "," + req.Options
+		}
+		cmd = exec.Command("mount", "-t", "cifs", "-o", opts, source, req.MountPoint)
+
+	default:
+		return fmt.Errorf("unsupported protocol: %s", req.Protocol)
+	}
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mount failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func (s *DiskService) UnmountRemote(req dto.RemoteUnmountRequest) error {
+	out, err := exec.Command("umount", req.MountPoint).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func (s *DiskService) ListRemoteMounts() ([]dto.RemoteMountInfo, error) {
+	partitions, err := disk.Partitions(true)
+	if err != nil {
+		return nil, err
+	}
+
+	remoteFS := map[string]bool{
+		"nfs": true, "nfs4": true, "cifs": true, "smb": true, "smbfs": true, "fuse.sshfs": true,
+	}
+
+	var result []dto.RemoteMountInfo
+	for _, p := range partitions {
+		if !remoteFS[p.Fstype] {
+			continue
+		}
+		info := dto.RemoteMountInfo{
+			Device:     p.Device,
+			MountPoint: p.Mountpoint,
+			FSType:     p.Fstype,
+			Options:    strings.Join(p.Opts, ","),
+		}
+		if usage, err := disk.Usage(p.Mountpoint); err == nil {
+			info.Total = usage.Total
+			info.Used = usage.Used
+			info.Free = usage.Free
+			info.Percent = usage.UsedPercent
+		}
+		result = append(result, info)
 	}
 	return result, nil
 }

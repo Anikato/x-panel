@@ -4,6 +4,94 @@
 
 ---
 
+## 2026-03-24 — Session #39：前端 `any` 类型彻底清零
+
+### 完成内容
+
+- [x] `api/interface/index.ts`：新增 `SSHInfo`、`SSHLogEntry`、`DiskDetail`、`PartitionInfo`、`RemoteMountInfo` 5 个接口，与后端 DTO 对齐
+- [x] `views/host/process/index.vue`：`processes` → `ProcessInfo[]`、`connections` → `NetworkConn[]`、`handleKill(row)` → `ProcessInfo`、`statusType` 返回值改为 Element Plus 联合类型
+- [x] `views/website/nginx/index.vue`：`availableVersions` → `NginxVersion[]`、`confFiles` → `ConfFile[]`、`handleAutoStart(val)` → `boolean`
+- [x] `views/host/disk/index.vue`：`partitions` → `DiskDetail[]`、`remoteMounts` → `RemoteMountInfo[]`
+- [x] `views/host/ssh/index.vue`：`sshInfo` → `SSHInfo`、`sshLogs` → `SSHLogEntry[]`
+- [x] `views/terminal/index.vue`：模板 ref 回调 `el: any` → `el: unknown`
+- [x] `views/website/website/config.vue`：`handleModeSwitch(val)` → `string | number | boolean`
+- [x] `views/host/monitor/index.vue`：`stats` → `SystemStats`
+
+### 结果
+
+- **`.vue` 文件 `any` 出现次数：14 → 0**
+- **`.ts` 文件 `any` 出现次数：0（Session #38 已清零）**
+- **前端 `any` 总数：0，问题彻底解决**
+- Lint 检查通过，无新增错误
+
+---
+
+## 2026-03-24 — Session #38：前端 API 模块去除 `any`
+
+### 完成内容
+
+- [x] `api/modules`：`container`、`node`、`database`、`backup`、`cronjob`、`ssl` 请求体改用 `../interface` 或显式对象类型，移除 `any`
+- [x] `api/interface/index.ts`：新增 `CronjobCreateForm`、`CronjobUpdateForm`（与后端 `dto.CronjobCreate` / `CronjobUpdate` 对齐）；`createCronjob`/`updateCronjob` 不用含 `status` 的 `Cronjob`，避免 `vue-tsc` 与表单不一致
+
+---
+
+## 2026-03-24 — Session #37：多项 UI/UX 优化与功能增强
+
+### 完成内容
+
+- [x] **虚拟化检测增强**
+  - 后端 `monitor.go` 新增 `detectVirtualization()` 函数
+  - gopsutil 结果为空时回退：`systemd-detect-virt` → DMI 产品名 → `/proc/cpuinfo` hypervisor 标记
+  - 解决了部分 VPS 环境虚拟化类型显示为空的问题
+
+- [x] **Xray 安装脚本路径动态化**
+  - `xray.go` 新增 `getXrayInstallScript()` 动态获取安装脚本路径
+  - 基于可执行文件位置向上搜索 `xray-install.sh`，不再硬编码 `/data/X-Panel/`
+  - 解决了在非 `/data/X-Panel` 路径部署时安装脚本找不到的问题
+
+- [x] **主题色选择器样式修复**
+  - 修正 Header.vue popover 宽度和网格布局（6列代替8列）
+  - 修复色块和自定义颜色区域的间距和层级问题
+
+- [x] **流量统计 i18n 缺失修复**
+  - 添加 `traffic.addConfig: '添加监控'` 翻译 key
+  - 按钮不再显示 "traffic.addConfig" 原始 key
+
+- [x] **操作日志优化**
+  - 后端：`OperationLog` model 新增 `Latency` 字段，中间件独立记录格式化耗时
+  - 前端：增加人性化操作描述（API 路径映射为中文描述）
+  - 时间格式优化：今天/昨天/月日 + 时分秒格式
+  - 状态显示：Success/Failed → 成功/失败
+
+- [x] **磁盘管理远程挂载功能**
+  - 后端：`disk.go` 新增 `MountRemote`/`UnmountRemote`/`ListRemoteMounts` 方法
+  - 支持 NFS 和 SMB/CIFS 协议
+  - 前端：磁盘管理页增加远程挂载列表 + 挂载对话框（协议/服务器/路径/认证/选项）
+  - 新增 3 条 API 路由
+
+- [x] **终端美化**
+  - 添加字体大小调节控制（+/- 按钮，10-24px 范围）
+  - 字体列表增加 Cascadia Code
+  - 硬编码中文迁入 i18n（连接断开/连接错误/批量发送提示等）
+
+- [x] **Xray 页面 i18n 补全**
+  - 补充 11 个缺失 key：ssMethod/ssPassword/clientEncryption 等
+
+### 关键决策
+
+- 虚拟化检测采用多级回退策略，而非仅依赖 gopsutil
+- 远程挂载功能直接调用系统 mount/umount 命令
+- 操作日志描述采用前端映射而非后端翻译，保持后端无状态
+
+### 遗留问题
+
+- SSL 管理页面仍有大量硬编码中文
+- MySQL Restore 存在命令注入风险需重构
+- ~~前端大量 `any` 类型需要逐步替换为接口类型~~（Session #38 + #39 已彻底清零）
+- 英文翻译文件 `en.ts` 尚未创建
+
+---
+
 ## 2026-03-21 — Session #36：Xray 权限/日志/更新/出站代理/UI 全面升级
 
 ### 完成内容

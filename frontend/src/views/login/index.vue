@@ -93,16 +93,16 @@ const rules: FormRules = {
 
 onMounted(async () => {
   try {
-    const initRes: any = await checkIsInit()
+    const initRes = await checkIsInit()
     if (!initRes.data) { router.push('/init'); return }
-    const settingRes: any = await getLoginSetting()
+    const settingRes = await getLoginSetting()
     if (settingRes.data?.panelName) panelName.value = settingRes.data.panelName
   } catch { /* backend not ready */ }
 })
 
 const loadCaptcha = async () => {
   try {
-    const res: any = await getCaptcha()
+    const res = await getCaptcha()
     captchaID.value = res.data.captchaID
     captchaImage.value = res.data.imageData
   } catch { /* ignore */ }
@@ -113,12 +113,12 @@ const handleLogin = async () => {
   await formRef.value.validate()
   loading.value = true
   try {
-    const payload: any = { name: form.name, password: form.password }
+    const payload: Record<string, string> = { name: form.name, password: form.password }
     if (needCaptcha.value) {
       payload.captchaID = captchaID.value
       payload.captcha = form.captcha
     }
-    const res: any = await login(payload)
+    const res = await login(payload)
     if (res.data.needCaptcha && !res.data.token) {
       needCaptcha.value = true
       form.captcha = ''

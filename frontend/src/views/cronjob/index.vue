@@ -180,6 +180,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import type { Cronjob, CronjobRecord } from '@/api/interface'
 import {
   searchCronjob, createCronjob, updateCronjob, deleteCronjob,
   updateCronjobStatus, handleOnceCronjob, searchCronjobRecords
@@ -192,7 +193,7 @@ const typeTagMap: Record<string, string> = {
 }
 
 const loading = ref(false)
-const data = ref<any[]>([])
+const data = ref<Cronjob[]>([])
 const searchType = ref('')
 const searchInfo = ref('')
 const pager = reactive({ page: 1, pageSize: 20, total: 0 })
@@ -302,7 +303,7 @@ const describeCron = (spec: string): string => {
 const recordDrawer = ref(false)
 const recordTitle = ref('')
 const recordsLoading = ref(false)
-const records = ref<any[]>([])
+const records = ref<CronjobRecord[]>([])
 const recordPager = reactive({ page: 1, pageSize: 20, total: 0 })
 let currentRecordCronjobID = 0
 
@@ -311,7 +312,7 @@ const formatTime = (t: string) => t ? new Date(t).toLocaleString() : ''
 const search = async () => {
   loading.value = true
   try {
-    const res: any = await searchCronjob({
+    const res = await searchCronjob({
       page: pager.page, pageSize: pager.pageSize,
       type: searchType.value, info: searchInfo.value,
     })
@@ -328,7 +329,7 @@ const openCreate = () => {
   drawerVisible.value = true
 }
 
-const openEdit = (row: any) => {
+const openEdit = (row: Cronjob) => {
   Object.assign(form, { ...row })
   editMode.value = true
   parseCronToBuilder(row.spec)
@@ -355,25 +356,25 @@ const submit = async () => {
   } finally { submitting.value = false }
 }
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: Cronjob) => {
   await ElMessageBox.confirm(t('cronjob.deleteConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteCronjob({ id: row.id })
   ElMessage.success(t('commons.success'))
   await search()
 }
 
-const toggleStatus = async (row: any, val: boolean) => {
+const toggleStatus = async (row: Cronjob, val: boolean) => {
   await updateCronjobStatus({ id: row.id, status: val ? 'Enable' : 'Disable' })
   ElMessage.success(t('commons.success'))
   await search()
 }
 
-const handleOnce = async (row: any) => {
+const handleOnce = async (row: Cronjob) => {
   await handleOnceCronjob({ id: row.id })
   ElMessage.success(t('cronjob.triggered'))
 }
 
-const openRecords = (row: any) => {
+const openRecords = (row: Cronjob) => {
   currentRecordCronjobID = row.id
   recordTitle.value = row.name + ' - ' + t('cronjob.records')
   recordPager.page = 1
@@ -384,7 +385,7 @@ const openRecords = (row: any) => {
 const loadRecords = async () => {
   recordsLoading.value = true
   try {
-    const res: any = await searchCronjobRecords({
+    const res = await searchCronjobRecords({
       page: recordPager.page, pageSize: recordPager.pageSize,
       cronjobID: currentRecordCronjobID,
     })

@@ -92,11 +92,12 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import type { NodeItem } from '@/api/interface'
 import { listNodes, createNode, updateNode, deleteNode, testNodeConnection, testSSH, agentAction } from '@/api/modules/node'
 
 const { t } = useI18n()
 const loading = ref(false)
-const nodes = ref<any[]>([])
+const nodes = ref<NodeItem[]>([])
 
 const drawerVisible = ref(false)
 const editMode = ref(false)
@@ -131,8 +132,8 @@ const generateToken = () => {
 const load = async () => {
   loading.value = true
   try {
-    const res: any = await listNodes()
-    const items = (res.data || []).map((n: any) => ({ ...n, _actionLoading: false }))
+    const res = await listNodes()
+    const items = (res.data || []).map((n: NodeItem) => ({ ...n, _actionLoading: false }))
     nodes.value = items
   } finally { loading.value = false }
 }
@@ -145,7 +146,7 @@ const openCreate = () => {
   drawerVisible.value = true
 }
 
-const openEdit = (row: any) => {
+const openEdit = (row: NodeItem) => {
   Object.assign(form, {
     id: row.id, name: row.name,
     sshHost: row.sshHost, sshPort: row.sshPort || 22, sshUser: row.sshUser, sshPassword: '',
@@ -189,14 +190,14 @@ const submit = async () => {
   } finally { submitting.value = false }
 }
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: NodeItem) => {
   await ElMessageBox.confirm(t('node.deleteConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteNode({ id: row.id })
   ElMessage.success(t('commons.success'))
   await load()
 }
 
-const testPanelConn = async (row: any) => {
+const testPanelConn = async (row: NodeItem) => {
   try {
     await testNodeConnection({ id: row.id })
     ElMessage.success(t('node.testSuccess'))
@@ -205,7 +206,7 @@ const testPanelConn = async (row: any) => {
   }
 }
 
-const handleAgentAction = async (row: any, action: string) => {
+const handleAgentAction = async (row: NodeItem, action: string) => {
   const actionLabels: Record<string, string> = {
     install: t('node.install'), uninstall: t('node.uninstall'), update: t('node.update'),
   }
@@ -223,7 +224,7 @@ const handleAgentAction = async (row: any, action: string) => {
   outputDialog.value = true
 
   try {
-    const res: any = await agentAction({ id: row.id, action })
+    const res = await agentAction({ id: row.id, action })
     actionOutput.value = res.data.output || ''
     if (res.data.success) {
       ElMessage.success(t('node.actionSuccess'))

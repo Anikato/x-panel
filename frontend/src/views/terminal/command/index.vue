@@ -150,18 +150,32 @@ import {
 } from '@/api/modules/host'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+interface CommandListItem {
+  id: number
+  groupID: number
+  name: string
+  command: string
+  groupName?: string
+}
+
+interface GroupItem {
+  id: number
+  name: string
+  type?: string
+}
+
 const emit = defineEmits<{
   execute: [cmd: string]
   back: []
 }>()
 
-const commands = ref<any[]>([])
+const commands = ref<CommandListItem[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(50)
 const searchInfo = ref('')
 const searchGroupID = ref(0)
-const groups = ref<any[]>([])
+const groups = ref<GroupItem[]>([])
 
 const dialogVisible = ref(false)
 const editMode = ref(false)
@@ -212,7 +226,7 @@ const handlePageChange = (p: number) => {
   loadData()
 }
 
-const openDialog = (row?: any) => {
+const openDialog = (row?: CommandListItem) => {
   if (row) {
     editMode.value = true
     form.value = { ...defaultForm(), ...row }
@@ -231,9 +245,9 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (editMode.value) {
-      await updateCommand(form.value as any)
+      await updateCommand(form.value)
     } else {
-      await createCommand(form.value as any)
+      await createCommand(form.value)
     }
     ElMessage.success('操作成功')
     dialogVisible.value = false
@@ -245,7 +259,7 @@ const handleSubmit = async () => {
   }
 }
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: CommandListItem) => {
   await ElMessageBox.confirm('确定要删除该命令吗？', '提示', { type: 'warning' })
   try {
     await deleteCommand(row.id)

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
@@ -56,7 +57,7 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 			PlatformVersion: hostInfo.PlatformVersion,
 			KernelVersion:   hostInfo.KernelVersion,
 			KernelArch:      hostInfo.KernelArch,
-			Virtualization:  hostInfo.VirtualizationSystem,
+			Virtualization:  detectVirtualization(hostInfo.VirtualizationSystem),
 		}
 	}
 
@@ -355,6 +356,49 @@ func getTopProcesses(n int) []dto.ProcessBrief {
 		briefs = briefs[:n]
 	}
 	return briefs
+}
+
+// detectVirtualization 增强虚拟化类型检测，gopsutil 结果为空时使用回退方法
+func detectVirtualization(gopsutilResult string) string {
+	if gopsutilResult != "" {
+		return gopsutilResult
+	}
+	// 回退 1: systemd-detect-virt
+	if out, err := exec.Command("systemd-detect-virt").Output(); err == nil {
+		virt := strings.TrimSpace(string(out))
+		if virt != "" && virt != "none" {
+			return virt
+		}
+	}
+	// 回退 2: 检查 DMI 产品名
+	if data, err := os.ReadFile("/sys/class/dmi/id/product_name"); err == nil {
+		product := strings.TrimSpace(string(data))
+		lower := strings.ToLower(product)
+		switch {
+		case strings.Contains(lower, "virtualbox"):
+			return "virtualbox"
+		case strings.Contains(lower, "vmware"):
+			return "vmware"
+		case strings.Contains(lower, "kvm"), strings.Contains(lower, "qemu"):
+			return "kvm"
+		case strings.Contains(lower, "hyper-v"):
+			return "hyperv"
+		case strings.Contains(lower, "xen"):
+			return "xen"
+		case strings.Contains(lower, "parallels"):
+			return "parallels"
+		case product != "":
+			return product
+		}
+	}
+	// 回退 3: 检查 /proc/cpuinfo 中的虚拟化标记
+	if data, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		content := strings.ToLower(string(data))
+		if strings.Contains(content, "hypervisor") {
+			return "virtual"
+		}
+	}
+	return ""
 }
 
 func shouldSkipPartition(p disk.PartitionStat) bool {

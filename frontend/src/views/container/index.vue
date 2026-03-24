@@ -152,6 +152,7 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import type { Container, ContainerImage, ContainerNetwork, ContainerVolume } from '@/api/interface'
 import {
   searchContainers, createContainer, operateContainer, containerLogs, removeContainer,
   listImages, pullImage, removeImage,
@@ -163,18 +164,18 @@ const { t } = useI18n()
 const activeTab = ref('containers')
 
 const containerLoading = ref(false)
-const containers = ref<any[]>([])
+const containers = ref<Container[]>([])
 const containerName = ref('')
 const containerPager = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const imageLoading = ref(false)
-const images = ref<any[]>([])
+const images = ref<ContainerImage[]>([])
 
 const networkLoading = ref(false)
-const networks = ref<any[]>([])
+const networks = ref<ContainerNetwork[]>([])
 
 const volumeLoading = ref(false)
-const volumes = ref<any[]>([])
+const volumes = ref<ContainerVolume[]>([])
 
 const submitting = ref(false)
 const createContainerDrawer = ref(false)
@@ -204,7 +205,7 @@ const formatSize = (bytes: number) => {
 const loadContainers = async () => {
   containerLoading.value = true
   try {
-    const res: any = await searchContainers({ page: containerPager.page, pageSize: containerPager.pageSize, name: containerName.value })
+    const res = await searchContainers({ page: containerPager.page, pageSize: containerPager.pageSize, name: containerName.value })
     containers.value = res.data.items || []
     containerPager.total = res.data.total
   } finally { containerLoading.value = false }
@@ -213,7 +214,7 @@ const loadContainers = async () => {
 const loadImages = async () => {
   imageLoading.value = true
   try {
-    const res: any = await listImages()
+    const res = await listImages()
     images.value = res.data || []
   } finally { imageLoading.value = false }
 }
@@ -221,7 +222,7 @@ const loadImages = async () => {
 const loadNetworks = async () => {
   networkLoading.value = true
   try {
-    const res: any = await listNetworks()
+    const res = await listNetworks()
     networks.value = res.data || []
   } finally { networkLoading.value = false }
 }
@@ -229,7 +230,7 @@ const loadNetworks = async () => {
 const loadVolumes = async () => {
   volumeLoading.value = true
   try {
-    const res: any = await listVolumes()
+    const res = await listVolumes()
     volumes.value = res.data || []
   } finally { volumeLoading.value = false }
 }
@@ -241,19 +242,19 @@ watch(activeTab, (tab) => {
   else if (tab === 'volumes') loadVolumes()
 })
 
-const operate = async (row: any, op: string) => {
+const operate = async (row: Container, op: string) => {
   await operateContainer({ containerID: row.id, operation: op })
   ElMessage.success(t('commons.success'))
   await loadContainers()
 }
 
-const viewLogs = async (row: any) => {
-  const res: any = await containerLogs({ containerID: row.id, tail: '200' })
+const viewLogs = async (row: Container) => {
+  const res = await containerLogs({ containerID: row.id, tail: '200' })
   logContent.value = res.data || ''
   logsDrawer.value = true
 }
 
-const handleRemoveContainer = async (row: any) => {
+const handleRemoveContainer = async (row: Container) => {
   await ElMessageBox.confirm(t('container.deleteContainerConfirm'), t('commons.tip'), { type: 'warning' })
   await removeContainer({ containerID: row.id })
   ElMessage.success(t('commons.success'))
@@ -285,7 +286,7 @@ const handlePullImage = async () => {
   } finally { pulling.value = false }
 }
 
-const handleRemoveImage = async (row: any) => {
+const handleRemoveImage = async (row: ContainerImage) => {
   await ElMessageBox.confirm(t('container.deleteImageConfirm'), t('commons.tip'), { type: 'warning' })
   await removeImage({ imageID: row.id })
   ElMessage.success(t('commons.success'))
@@ -302,7 +303,7 @@ const handleCreateNetwork = async () => {
   } finally { submitting.value = false }
 }
 
-const handleRemoveNetwork = async (row: any) => {
+const handleRemoveNetwork = async (row: ContainerNetwork) => {
   await ElMessageBox.confirm(t('container.deleteNetworkConfirm'), t('commons.tip'), { type: 'warning' })
   await removeNetwork({ networkID: row.id })
   ElMessage.success(t('commons.success'))
@@ -319,7 +320,7 @@ const handleCreateVolume = async () => {
   } finally { submitting.value = false }
 }
 
-const handleRemoveVolume = async (row: any) => {
+const handleRemoveVolume = async (row: ContainerVolume) => {
   await ElMessageBox.confirm(t('container.deleteVolumeConfirm'), t('commons.tip'), { type: 'warning' })
   await removeVolume({ name: row.name })
   ElMessage.success(t('commons.success'))

@@ -365,6 +365,7 @@ import {
   moveFile, getDownloadUrl, uploadFile, getDirSize,
 } from '@/api/modules/file'
 import { useI18n } from 'vue-i18n'
+import type { FileInfo } from '@/api/interface'
 import {
   Back, Right, Top, Refresh, FolderOpened, FolderAdd, DocumentAdd, Upload, Monitor, Search,
   Delete, Download, EditPen, CopyDocument, DocumentCopy, InfoFilled, User,
@@ -382,8 +383,8 @@ import DetailDrawer from './detail-drawer.vue'
 const { t } = useI18n()
 const loading = ref(false)
 const showHidden = ref(false)
-const fileList = ref<any[]>([])
-const selectedRows = ref<any[]>([])
+const fileList = ref<FileInfo[]>([])
+const selectedRows = ref<FileInfo[]>([])
 const tableHeight = ref(500)
 const pathInput = ref('/')
 const searchKeyword = ref('')
@@ -396,7 +397,7 @@ const dirSizeMap = ref<Record<string, { loading: boolean; size: number | null }>
 async function calcDirSize(path: string) {
   dirSizeMap.value[path] = { loading: true, size: null }
   try {
-    const res: any = await getDirSize({ path })
+    const res = await getDirSize({ path })
     dirSizeMap.value[path] = { loading: false, size: res.data?.size ?? null }
   } catch {
     dirSizeMap.value[path] = { loading: false, size: null }
@@ -555,7 +556,7 @@ const refreshFiles = async () => {
   loading.value = true
   dirSizeMap.value = {}
   try {
-    const res: any = await listFiles({
+    const res = await listFiles({
       path: tab.path,
       showHidden: showHidden.value,
       search: searchKeyword.value || undefined,
@@ -570,7 +571,7 @@ const refreshFiles = async () => {
   }
 }
 
-const handleRowDblClick = (row: any) => {
+const handleRowDblClick = (row: FileInfo) => {
   if (!row) return
   if (row.isDir) {
     navigateTo(row.path)
@@ -579,11 +580,11 @@ const handleRowDblClick = (row: any) => {
   }
 }
 
-const handleSelectionChange = (rows: any[]) => {
+const handleSelectionChange = (rows: FileInfo[]) => {
   selectedRows.value = rows
 }
 
-const sortByName = (a: any, b: any) => {
+const sortByName = (a: FileInfo, b: FileInfo) => {
   if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
   return a.name.localeCompare(b.name)
 }
@@ -601,7 +602,7 @@ function getExt(name: string): string {
   return (name.split('.').pop() || '').toLowerCase()
 }
 
-function getFileIcon(row: any) {
+function getFileIcon(row: FileInfo) {
   if (row.isDir) return Folder
   const ext = getExt(row.name)
   if (imageExts.has(ext)) return Picture
@@ -614,7 +615,7 @@ function getFileIcon(row: any) {
   return Document
 }
 
-function getFileIconColor(row: any) {
+function getFileIconColor(row: FileInfo) {
   if (row.isDir) return 'var(--xp-accent)'
   const ext = getExt(row.name)
   if (imageExts.has(ext)) return '#f472b6'
@@ -637,13 +638,13 @@ const detailRef = ref<InstanceType<typeof DetailDrawer>>()
 
 // ===================== 编辑 =====================
 
-function canEdit(row: any): boolean {
+function canEdit(row: FileInfo | null): boolean {
   if (!row || row.isDir) return false
   if (row.size > 10 * 1024 * 1024) return false
   return true
 }
 
-const openEditor = (row: any) => {
+const openEditor = (row: FileInfo | null) => {
   codeEditorRef.value?.open(row.path)
 }
 
@@ -655,7 +656,7 @@ const openTerminal = () => {
 
 // ===================== 下载 =====================
 
-const handleDownload = (row: any) => {
+const handleDownload = (row: FileInfo | null) => {
   if (!row || row.isDir) return
   const url = getDownloadUrl(row.path)
   window.open(url, '_blank')
@@ -663,17 +664,17 @@ const handleDownload = (row: any) => {
 
 // ===================== 详情 =====================
 
-const openDetail = (row: any) => {
+const openDetail = (row: FileInfo | null) => {
   if (!row) return
   detailRef.value?.open(row)
 }
 
 // ===================== 重命名 =====================
 
-const handleRename = async (row: any) => {
+const handleRename = async (row: FileInfo | null) => {
   if (!row) return
   try {
-    const result: any = await ElMessageBox.prompt(t('file.renameTo'), t('file.rename'), {
+    const result = await ElMessageBox.prompt(t('file.renameTo'), t('file.rename'), {
       inputValue: row.name,
     })
     const value = result.value
@@ -690,7 +691,7 @@ const handleRename = async (row: any) => {
 
 // ===================== 删除 =====================
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: FileInfo | null) => {
   if (!row) return
   try {
     await ElMessageBox.confirm(t('file.deleteConfirm'), t('commons.tip'), { type: 'warning' })
@@ -703,7 +704,7 @@ const handleDelete = async (row: any) => {
 const handleBatchDelete = async () => {
   try {
     await ElMessageBox.confirm(t('file.deleteConfirm'), t('commons.tip'), { type: 'warning' })
-    await batchDeleteFile({ paths: selectedRows.value.map((r: any) => r.path) })
+    await batchDeleteFile({ paths: selectedRows.value.map((r) => r.path) })
     ElMessage.success(t('commons.success'))
     refreshFiles()
   } catch { /* cancelled */ }
@@ -739,7 +740,7 @@ const handleCreate = async () => {
 
 // ===================== 上传 =====================
 
-const handleUploadChange = async (file: any) => {
+const handleUploadChange = async (file: { raw?: File }) => {
   if (!file?.raw) return
   loading.value = true
   try {
@@ -764,7 +765,7 @@ async function doRemoteDownload() {
   try {
     const dir = currentTab.value?.path || '/'
     // 使用 wget/curl 下载到当前目录
-    const resp: any = await import('@/api/http').then(m =>
+    await import('@/api/http').then(m =>
       m.default.post('/files/wget', { url: remoteUrl.value, path: dir })
     )
     ElMessage.success(t('commons.success'))
@@ -814,7 +815,7 @@ async function handleDrop(e: DragEvent) {
 
 const clipboard = ref<{ type: 'copy' | 'cut'; paths: string[] }>({ type: 'copy', paths: [] })
 
-function setClipboard(type: 'copy' | 'cut', rows: any[]) {
+function setClipboard(type: 'copy' | 'cut', rows: FileInfo[]) {
   clipboard.value = { type, paths: rows.map(r => r.path) }
   const msg = type === 'copy'
     ? t('file.clipboardCopy', { count: rows.length })
@@ -845,13 +846,13 @@ async function doPaste() {
 
 // ===================== 压缩/解压 =====================
 
-function isCompressFile(row: any): boolean {
+function isCompressFile(row: FileInfo | null): boolean {
   if (!row || row.isDir) return false
   const ext = getExt(row.name)
   return archiveExts.has(ext)
 }
 
-function handleCompressSingle(row: any) {
+function handleCompressSingle(row: FileInfo | null) {
   if (!row) return
   compressRef.value?.openCompress([row.path], currentTab.value?.path || '/')
 }
@@ -861,30 +862,30 @@ function batchCompress() {
   compressRef.value?.openCompress(paths, currentTab.value?.path || '/')
 }
 
-function handleDecompress(row: any) {
+function handleDecompress(row: FileInfo | null) {
   if (!row) return
   compressRef.value?.openDecompress(row.path, currentTab.value?.path || '/')
 }
 
 // ===================== 权限 =====================
 
-function openPermission(row: any) {
+function openPermission(row: FileInfo | null) {
   if (!row) return
   permissionRef.value?.open(row.path, row.mode)
 }
 
 // ===================== 所有者 =====================
 
-function openChown(row: any) {
+function openChown(row: FileInfo) {
   if (!row) return
   chownRef.value?.open(row.path, row.user, row.group)
 }
 
 // ===================== 右键菜单 =====================
 
-const contextMenu = ref({ visible: false, x: 0, y: 0, row: null as any })
+const contextMenu = ref({ visible: false, x: 0, y: 0, row: null as FileInfo | null })
 
-function handleContextMenu(row: any, _col: any, e: MouseEvent) {
+function handleContextMenu(row: FileInfo, _col: unknown, e: MouseEvent) {
   e.preventDefault()
   contextMenu.value = { visible: true, x: e.clientX, y: e.clientY, row }
 }
@@ -895,7 +896,7 @@ function closeContextMenu() {
 
 // ===================== 更多操作 =====================
 
-function handleMoreAction(cmd: string, row: any) {
+function handleMoreAction(cmd: string, row: FileInfo) {
   switch (cmd) {
     case 'rename': handleRename(row); break
     case 'copyPath': copyPathToClipboard(row); break
@@ -909,7 +910,7 @@ function handleMoreAction(cmd: string, row: any) {
   }
 }
 
-function copyPathToClipboard(row: any) {
+function copyPathToClipboard(row: FileInfo) {
   if (!row) return
   navigator.clipboard.writeText(row.path).then(() => {
     ElMessage.success(t('commons.success'))

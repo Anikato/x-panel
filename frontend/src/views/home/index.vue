@@ -294,6 +294,7 @@ import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, shutdownServer, restartPanel } from '@/api/modules/setting'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { SystemStats } from '@/api/interface'
 import {
   Monitor, Clock, Refresh, Cpu, Coin, Odometer, Connection,
   Box, Compass, DataLine, CopyDocument, SwitchButton, RefreshRight,
@@ -303,7 +304,7 @@ const router = useRouter()
 const { t } = useI18n()
 
 const loading = ref(false)
-const stats = ref<any>({})
+const stats = ref<Partial<SystemStats>>({})
 const panelVersion = ref('...')
 let timer: ReturnType<typeof setInterval> | null = null
 
@@ -318,7 +319,7 @@ const loadStats = async () => {
 
 const fetchVersion = async () => {
   try {
-    const res: any = await getCurrentVersion()
+    const res = await getCurrentVersion()
     if (res.data) {
       panelVersion.value = res.data.version === 'dev' ? 'dev' : res.data.version
     }
@@ -350,7 +351,7 @@ const loadPercent = computed(() => {
 })
 
 const mainNics = computed(() => {
-  return (stats.value.netIO || []).filter((n: any) => n.name !== 'lo').slice(0, 4)
+  return (stats.value.netIO || []).filter((n) => n.name !== 'lo').slice(0, 4)
 })
 
 const quickEntries = computed(() => [

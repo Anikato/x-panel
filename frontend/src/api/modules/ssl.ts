@@ -93,7 +93,7 @@ export const exportAccounts = () => {
   return http.get('/ssl/accounts/export')
 }
 
-export const importAccounts = (data: any) => {
+export const importAccounts = (data: { acmeAccounts?: unknown[]; dnsAccounts?: unknown[] }) => {
   return http.post('/ssl/accounts/import', data)
 }
 

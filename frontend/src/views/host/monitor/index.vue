@@ -176,10 +176,11 @@ import { useI18n } from 'vue-i18n'
 import { Refresh, CopyDocument } from '@element-plus/icons-vue'
 import { getSystemStats } from '@/api/modules/monitor'
 import { ElMessage } from 'element-plus'
+import type { SystemStats } from '@/api/interface'
 
 const { t } = useI18n()
 const loading = ref(false)
-const stats = ref<any>({})
+const stats = ref<SystemStats>({} as SystemStats)
 let timer: ReturnType<typeof setInterval> | null = null
 
 const loadStats = async () => {

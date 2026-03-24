@@ -198,6 +198,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import type { BackupAccount, BackupRecord } from '@/api/interface'
 import {
   listBackupAccounts, createBackupAccount, updateBackupAccount, deleteBackupAccount,
   createBackup, searchBackupRecords, deleteBackupRecord,
@@ -216,7 +217,7 @@ const getVarField = (vars: string, field: string) => {
 }
 
 const accountLoading = ref(false)
-const accounts = ref<any[]>([])
+const accounts = ref<BackupAccount[]>([])
 const accountDrawer = ref(false)
 const editAccountMode = ref(false)
 const submitting = ref(false)
@@ -242,7 +243,7 @@ const onTypeChange = (type: string) => {
 }
 
 const recordLoading = ref(false)
-const records = ref<any[]>([])
+const records = ref<BackupRecord[]>([])
 const recordType = ref('')
 const recordPager = reactive({ page: 1, pageSize: 20, total: 0 })
 
@@ -254,7 +255,7 @@ const backupRules: FormRules = { type: [{ required: true }], name: [{ required: 
 const loadAccounts = async () => {
   accountLoading.value = true
   try {
-    const res: any = await listBackupAccounts()
+    const res = await listBackupAccounts()
     accounts.value = res.data || []
   } finally { accountLoading.value = false }
 }
@@ -267,7 +268,7 @@ const openCreateAccount = () => {
   accountDrawer.value = true
 }
 
-const openEditAccount = (row: any) => {
+const openEditAccount = (row: BackupAccount) => {
   Object.assign(accountForm, { ...row, credential: '' })
   try {
     const v = JSON.parse(row.vars || '{}')
@@ -292,7 +293,7 @@ const submitAccount = async () => {
   } finally { submitting.value = false }
 }
 
-const handleDeleteAccount = async (row: any) => {
+const handleDeleteAccount = async (row: BackupAccount) => {
   await ElMessageBox.confirm(t('backup.deleteAccountConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteBackupAccount({ id: row.id })
   ElMessage.success(t('commons.success'))
@@ -302,7 +303,7 @@ const handleDeleteAccount = async (row: any) => {
 const loadRecords = async () => {
   recordLoading.value = true
   try {
-    const res: any = await searchBackupRecords({ page: recordPager.page, pageSize: recordPager.pageSize, type: recordType.value })
+    const res = await searchBackupRecords({ page: recordPager.page, pageSize: recordPager.pageSize, type: recordType.value })
     records.value = res.data.items || []
     recordPager.total = res.data.total
   } finally { recordLoading.value = false }
@@ -319,7 +320,7 @@ const submitBackup = async () => {
   } finally { submitting.value = false }
 }
 
-const handleDeleteRecord = async (row: any) => {
+const handleDeleteRecord = async (row: BackupRecord) => {
   await ElMessageBox.confirm(t('backup.deleteRecordConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteBackupRecord({ id: row.id })
   ElMessage.success(t('commons.success'))

@@ -9,7 +9,7 @@ export const createWebsite = (params: { primaryDomain: string; domains?: string;
   return http.post('/websites', params)
 }
 
-export const updateWebsite = (params: any) => {
+export const updateWebsite = (params: Record<string, unknown>) => {
   return http.post('/websites/update', params)
 }
 

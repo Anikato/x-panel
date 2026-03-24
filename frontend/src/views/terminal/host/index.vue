@@ -182,18 +182,39 @@ import {
 } from '@/api/modules/host'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+interface HostItem {
+  id: number
+  groupID: number
+  name: string
+  addr: string
+  port: number
+  user: string
+  authMode: string
+  password?: string
+  privateKey?: string
+  passPhrase?: string
+  description?: string
+  groupName?: string
+}
+
+interface GroupItem {
+  id: number
+  name: string
+  type?: string
+}
+
 const emit = defineEmits<{
   connect: [hostId: number, label: string]
   back: []
 }>()
 
-const hosts = ref<any[]>([])
+const hosts = ref<HostItem[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const searchInfo = ref('')
 const searchGroupID = ref(0)
-const groups = ref<any[]>([])
+const groups = ref<GroupItem[]>([])
 
 const dialogVisible = ref(false)
 const editMode = ref(false)
@@ -252,7 +273,7 @@ const handlePageChange = (p: number) => {
   loadData()
 }
 
-const openDialog = (row?: any) => {
+const openDialog = (row?: HostItem) => {
   if (row) {
     editMode.value = true
     form.value = { ...defaultForm(), ...row }
@@ -271,9 +292,9 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (editMode.value) {
-      await updateHost(form.value as any)
+      await updateHost(form.value)
     } else {
-      await createHost(form.value as any)
+      await createHost(form.value)
     }
     ElMessage.success('操作成功')
     dialogVisible.value = false
@@ -285,7 +306,7 @@ const handleSubmit = async () => {
   }
 }
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: HostItem) => {
   await ElMessageBox.confirm('确定要删除该主机吗？', '提示', { type: 'warning' })
   try {
     await deleteHost(row.id)
@@ -312,7 +333,7 @@ const handleTestForm = async () => {
   }
   testing.value = true
   try {
-    const res = await testHostConn(form.value as any)
+    const res = await testHostConn(form.value)
     if (res.data) {
       ElMessage.success('连接成功')
     } else {

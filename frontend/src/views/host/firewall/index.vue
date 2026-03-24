@@ -132,14 +132,31 @@ import { getFirewallBase, operateFirewall, searchPortRules, createPortRule, dele
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 
+interface FirewallBase {
+  isExist: boolean
+  isActive: boolean
+}
+
+interface PortRule {
+  port: string
+  protocol: string
+  strategy: string
+  from?: string
+}
+
+interface IPRule {
+  address: string
+  strategy: string
+}
+
 const { t } = useI18n()
 const loading = ref(false)
 const activeTab = ref('port')
-const baseInfo = ref<any>({})
+const baseInfo = ref<FirewallBase>({ isExist: false, isActive: false })
 
 // 端口规则
 const portLoading = ref(false)
-const portRules = ref<any[]>([])
+const portRules = ref<PortRule[]>([])
 const portTotal = ref(0)
 const portPage = ref(1)
 const portPageSize = ref(20)
@@ -150,7 +167,7 @@ const portForm = ref({ port: '', protocol: 'tcp', strategy: 'allow', from: '' })
 
 // IP 规则
 const ipLoading = ref(false)
-const ipRules = ref<any[]>([])
+const ipRules = ref<IPRule[]>([])
 const ipDialogVisible = ref(false)
 const ipSubmitting = ref(false)
 const ipForm = ref({ address: '', strategy: 'deny' })
@@ -194,7 +211,7 @@ const handleCreatePort = async () => {
   finally { portSubmitting.value = false }
 }
 
-const handleDeletePort = async (row: any) => {
+const handleDeletePort = async (row: PortRule) => {
   await ElMessageBox.confirm(t('firewall.deleteConfirm'), t('commons.tip'), { type: 'warning' })
   try {
     await deletePortRule(row)
@@ -224,7 +241,7 @@ const handleCreateIP = async () => {
   finally { ipSubmitting.value = false }
 }
 
-const handleDeleteIP = async (row: any) => {
+const handleDeleteIP = async (row: IPRule) => {
   await ElMessageBox.confirm(t('firewall.deleteConfirm'), t('commons.tip'), { type: 'warning' })
   try {
     await deleteIPRule(row)

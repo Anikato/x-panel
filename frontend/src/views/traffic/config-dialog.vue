@@ -105,7 +105,7 @@ const formatIfaceLabel = (iface: InterfaceInfo) => {
 const acceptParams = async (config?: TrafficConfig) => {
   isEdit.value = !!config
   try {
-    const res: any = await trafficApi.listInterfaces()
+    const res = await trafficApi.listInterfaces()
     interfaces.value = res.data || []
   } catch { /* handled */ }
 

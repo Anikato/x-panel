@@ -142,7 +142,7 @@
       <div class="appearance-section">
         <div class="appearance-row">
           <span class="appearance-label">{{ t('setting.themeMode') }}</span>
-          <el-radio-group v-model="globalStore.theme" @change="(val: any) => globalStore.setTheme(val)">
+          <el-radio-group v-model="globalStore.theme" @change="(val: string) => globalStore.setTheme(val)">
             <el-radio-button value="dark">
               <el-icon><Moon /></el-icon> {{ t('header.themeDark') }}
             </el-radio-button>
@@ -332,6 +332,7 @@ import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/
 import { updatePassword } from '@/api/modules/auth'
 import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
+import type { UpgradeInfo } from '@/api/interface'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const { t } = useI18n()
@@ -380,13 +381,13 @@ const githubToken = ref('')
 const savingToken = ref(false)
 const checking = ref(false)
 const upgrading = ref(false)
-const upgradeInfo = ref<any>(null)
+const upgradeInfo = ref<UpgradeInfo | null>(null)
 const upgradeLog = ref('')
 
 // 加载当前版本信息
 const fetchVersion = async () => {
   try {
-    const res: any = await getCurrentVersion()
+    const res = await getCurrentVersion()
     if (res.data) {
       Object.assign(versionInfo, res.data)
     }
@@ -398,7 +399,7 @@ const handleCheckUpdate = async () => {
   checking.value = true
   upgradeInfo.value = null
   try {
-    const res: any = await checkUpdate({
+    const res = await checkUpdate({
       releaseUrl: upgradeUrl.value || undefined,
     })
     if (res.data) {
@@ -446,7 +447,7 @@ const pollUpgradeLog = () => {
   if (logTimer) clearInterval(logTimer)
   logTimer = setInterval(async () => {
     try {
-      const res: any = await getUpgradeLog()
+      const res = await getUpgradeLog()
       if (res.data) {
         upgradeLog.value = res.data
       }
@@ -473,7 +474,7 @@ const handleSaveToken = async () => {
 const fetchSettings = async () => {
   loading.value = true
   try {
-    const res: any = await getSettingInfo()
+    const res = await getSettingInfo()
     if (res.data) {
       form.panelName = res.data.panelName || 'X-Panel'
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
