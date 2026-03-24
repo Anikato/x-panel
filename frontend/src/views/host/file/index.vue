@@ -970,6 +970,15 @@ onBeforeUnmount(() => {
 
   :deep(.el-tabs__header) {
     margin-bottom: 0;
+    justify-content: flex-start;
+  }
+
+  :deep(.el-tabs__nav-wrap) {
+    flex: 0 1 auto;
+  }
+
+  :deep(.el-tabs__new-tab) {
+    margin-left: 4px;
   }
 }
 

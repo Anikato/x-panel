@@ -82,3 +82,40 @@ func (a *SSHManageAPI) SaveSSHDConfig(c *gin.Context) {
 	}
 	helper.SuccessWithOutData(c)
 }
+
+func (a *SSHManageAPI) ListAuthorizedKeys(c *gin.Context) {
+	keys, err := service.NewISSHManageService().ListAuthorizedKeys()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, keys)
+}
+
+func (a *SSHManageAPI) AddAuthorizedKey(c *gin.Context) {
+	var req dto.AuthorizedKeyCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISSHManageService().AddAuthorizedKey(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *SSHManageAPI) DeleteAuthorizedKey(c *gin.Context) {
+	var req struct {
+		Fingerprint string `json:"fingerprint" binding:"required"`
+	}
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISSHManageService().DeleteAuthorizedKey(req.Fingerprint); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}

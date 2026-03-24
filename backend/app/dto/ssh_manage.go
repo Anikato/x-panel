@@ -41,3 +41,17 @@ type SSHLogEntry struct {
 	Port    string `json:"port"`
 	Message string `json:"message"`
 }
+
+// AuthorizedKey SSH 公钥
+type AuthorizedKey struct {
+	KeyType     string `json:"keyType"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+// AuthorizedKeyCreate 添加公钥请求
+type AuthorizedKeyCreate struct {
+	Key  string `json:"key" binding:"required"`
+	Name string `json:"name"`
+}

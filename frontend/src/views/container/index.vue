@@ -1,6 +1,13 @@
 <template>
   <div>
-    <el-tabs v-model="activeTab">
+    <div v-if="dockerChecking" v-loading="true" style="height: 200px" />
+    <el-empty v-else-if="!dockerAvailable" description="Docker 未安装或未启动">
+      <template #default>
+        <p style="color: var(--xp-text-muted); margin-bottom: 16px">请先安装并启动 Docker 服务后刷新页面</p>
+        <el-button type="primary" @click="checkDocker">重新检测</el-button>
+      </template>
+    </el-empty>
+    <el-tabs v-else v-model="activeTab">
       <el-tab-pane :label="t('container.containers')" name="containers">
         <div class="app-toolbar">
           <el-button type="primary" @click="createContainerDrawer = true">{{ t('commons.create') }}</el-button>
@@ -154,6 +161,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { Container, ContainerImage, ContainerNetwork, ContainerVolume } from '@/api/interface'
 import {
+  getDockerStatus,
   searchContainers, createContainer, operateContainer, containerLogs, removeContainer,
   listImages, pullImage, removeImage,
   listNetworks, createNetwork, removeNetwork,
@@ -192,6 +200,9 @@ const networkForm = reactive({ name: '', driver: 'bridge', subnet: '', gateway: 
 
 const volumeCreateDialog = ref(false)
 const volumeForm = reactive({ name: '', driver: 'local' })
+
+const dockerAvailable = ref(true)
+const dockerChecking = ref(true)
 
 const logsDrawer = ref(false)
 const logContent = ref('')
@@ -327,7 +338,22 @@ const handleRemoveVolume = async (row: ContainerVolume) => {
   await loadVolumes()
 }
 
-onMounted(() => loadContainers())
+const checkDocker = async () => {
+  dockerChecking.value = true
+  try {
+    const res = await getDockerStatus()
+    dockerAvailable.value = res.data?.available === true
+  } catch {
+    dockerAvailable.value = false
+  } finally {
+    dockerChecking.value = false
+  }
+}
+
+onMounted(async () => {
+  await checkDocker()
+  if (dockerAvailable.value) loadContainers()
+})
 </script>
 
 <style scoped>

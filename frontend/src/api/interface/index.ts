@@ -553,6 +553,13 @@ export interface SSHLogEntry {
   message: string
 }
 
+export interface AuthorizedKey {
+  keyType: string
+  key: string
+  name: string
+  fingerprint: string
+}
+
 // ======================== Disk (Detail) ========================
 
 export interface DiskDetail {

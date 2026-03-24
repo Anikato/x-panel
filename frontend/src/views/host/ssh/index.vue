@@ -43,13 +43,13 @@
               </el-select>
             </el-form-item>
             <el-form-item :label="$t('sshManage.passwordAuth')">
-              <el-switch v-model="passwordAuth" @change="handleUpdate('PasswordAuthentication', passwordAuth ? 'yes' : 'no')" />
+              <el-switch :model-value="sshInfo.passwordAuthentication === 'yes'" @change="(v: boolean) => handleUpdate('PasswordAuthentication', v ? 'yes' : 'no')" />
             </el-form-item>
             <el-form-item :label="$t('sshManage.pubkeyAuth')">
-              <el-switch v-model="pubkeyAuth" @change="handleUpdate('PubkeyAuthentication', pubkeyAuth ? 'yes' : 'no')" />
+              <el-switch :model-value="sshInfo.pubkeyAuthentication === 'yes'" @change="(v: boolean) => handleUpdate('PubkeyAuthentication', v ? 'yes' : 'no')" />
             </el-form-item>
             <el-form-item :label="$t('sshManage.useDNS')">
-              <el-switch v-model="useDNS" @change="handleUpdate('UseDNS', useDNS ? 'yes' : 'no')" />
+              <el-switch :model-value="sshInfo.useDNS === 'yes'" @change="(v: boolean) => handleUpdate('UseDNS', v ? 'yes' : 'no')" />
             </el-form-item>
             <el-form-item :label="$t('sshManage.autoStart')">
               <el-switch v-model="sshInfo.autoStart" @change="handleOperate(sshInfo.autoStart ? 'enable' : 'disable')" />
@@ -57,6 +57,50 @@
           </el-form>
           <el-empty v-else :description="sshInfo.message || $t('sshManage.notInstalled')" />
         </el-card>
+      </el-tab-pane>
+
+      <!-- 公钥管理 -->
+      <el-tab-pane label="公钥管理" name="keys">
+        <el-card shadow="never">
+          <template #header>
+            <div class="card-header">
+              <span>authorized_keys</span>
+              <el-button type="primary" size="small" @click="showAddKeyDialog = true">添加公钥</el-button>
+            </div>
+          </template>
+          <el-table :data="authorizedKeys" v-loading="keysLoading" size="small">
+            <el-table-column prop="keyType" label="类型" width="120" />
+            <el-table-column prop="name" label="备注" min-width="200">
+              <template #default="{ row }">{{ row.name || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="fingerprint" label="指纹" width="180">
+              <template #default="{ row }">
+                <code class="fingerprint-text">{{ row.fingerprint }}...</code>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="danger" size="small" @click="handleDeleteKey(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!keysLoading && authorizedKeys.length === 0" description="暂无公钥" />
+        </el-card>
+
+        <el-dialog v-model="showAddKeyDialog" title="添加 SSH 公钥" width="560px" destroy-on-close>
+          <el-form label-width="80px">
+            <el-form-item label="公钥内容">
+              <el-input v-model="newKeyContent" type="textarea" :rows="5" placeholder="粘贴 SSH 公钥，如 ssh-rsa AAAA... user@host" />
+            </el-form-item>
+            <el-form-item label="备注">
+              <el-input v-model="newKeyName" placeholder="可选，用于标识此公钥" />
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="showAddKeyDialog = false">取消</el-button>
+            <el-button type="primary" :loading="addingKey" @click="handleAddKey">确认添加</el-button>
+          </template>
+        </el-dialog>
       </el-tab-pane>
 
       <!-- sshd_config 编辑 -->
@@ -102,39 +146,38 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
-import { getSSHInfo, operateSSH, updateSSHConfig, searchSSHLog, getSSHDConfig, saveSSHDConfig } from '@/api/modules/ssh-manage'
+import {
+  getSSHInfo, operateSSH, updateSSHConfig, searchSSHLog,
+  getSSHDConfig, saveSSHDConfig,
+  listAuthorizedKeys, addAuthorizedKey, deleteAuthorizedKey,
+} from '@/api/modules/ssh-manage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import * as monaco from 'monaco-editor'
-import type { SSHInfo, SSHLogEntry } from '@/api/interface'
+import type { SSHInfo, SSHLogEntry, AuthorizedKey } from '@/api/interface'
 
 const { t } = useI18n()
 const activeTab = ref('config')
 const loading = ref(false)
 
 const sshInfo = ref<SSHInfo>({} as SSHInfo)
-const passwordAuth = computed({
-  get: () => sshInfo.value.passwordAuthentication === 'yes',
-  set: () => {},
-})
-const pubkeyAuth = computed({
-  get: () => sshInfo.value.pubkeyAuthentication === 'yes',
-  set: () => {},
-})
-const useDNS = computed({
-  get: () => sshInfo.value.useDNS === 'yes',
-  set: () => {},
-})
 
-// 日志
 const logLoading = ref(false)
 const sshLogs = ref<SSHLogEntry[]>([])
 const logTotal = ref(0)
 const logPage = ref(1)
 const logPageSize = ref(20)
 const logStatus = ref('all')
+
+// 公钥管理
+const keysLoading = ref(false)
+const authorizedKeys = ref<AuthorizedKey[]>([])
+const showAddKeyDialog = ref(false)
+const newKeyContent = ref('')
+const newKeyName = ref('')
+const addingKey = ref(false)
 
 const loadSSH = async () => {
   loading.value = true
@@ -170,6 +213,42 @@ const loadSSHLog = async () => {
     logTotal.value = res.data?.total || 0
   } catch { sshLogs.value = [] }
   finally { logLoading.value = false }
+}
+
+// 公钥管理
+const loadAuthorizedKeys = async () => {
+  keysLoading.value = true
+  try {
+    const res = await listAuthorizedKeys()
+    authorizedKeys.value = res.data || []
+  } catch { authorizedKeys.value = [] }
+  finally { keysLoading.value = false }
+}
+
+const handleAddKey = async () => {
+  if (!newKeyContent.value.trim()) {
+    ElMessage.warning('请输入公钥内容')
+    return
+  }
+  addingKey.value = true
+  try {
+    await addAuthorizedKey({ key: newKeyContent.value, name: newKeyName.value })
+    ElMessage.success('公钥添加成功')
+    showAddKeyDialog.value = false
+    newKeyContent.value = ''
+    newKeyName.value = ''
+    loadAuthorizedKeys()
+  } catch { /* handled */ }
+  finally { addingKey.value = false }
+}
+
+const handleDeleteKey = async (row: AuthorizedKey) => {
+  await ElMessageBox.confirm('确认删除此公钥？', t('commons.tip'), { type: 'warning' })
+  try {
+    await deleteAuthorizedKey(row.fingerprint)
+    ElMessage.success(t('commons.success'))
+    loadAuthorizedKeys()
+  } catch { /* handled */ }
 }
 
 // sshd_config editor
@@ -220,6 +299,7 @@ const handleSaveSSHDConfig = async () => {
 watch(activeTab, (val) => {
   if (val === 'log' && sshLogs.value.length === 0) loadSSHLog()
   if (val === 'sshdConfig' && !sshdEditor) loadSSHDConfig()
+  if (val === 'keys' && authorizedKeys.value.length === 0) loadAuthorizedKeys()
 })
 
 onMounted(() => loadSSH())
@@ -288,6 +368,12 @@ onBeforeUnmount(() => {
 .sshd-hint {
   margin-top: 8px;
   font-size: 12px;
+  color: var(--xp-text-muted);
+}
+
+.fingerprint-text {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
   color: var(--xp-text-muted);
 }
 </style>

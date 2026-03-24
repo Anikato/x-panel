@@ -153,6 +153,9 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/ssh/log", api.LoadSSHLog)
 		privateGroup.GET("/ssh/sshd-config", api.GetSSHDConfig)
 		privateGroup.POST("/ssh/sshd-config", api.SaveSSHDConfig)
+		privateGroup.GET("/ssh/authorized-keys", api.ListAuthorizedKeys)
+		privateGroup.POST("/ssh/authorized-keys", api.AddAuthorizedKey)
+		privateGroup.POST("/ssh/authorized-keys/delete", api.DeleteAuthorizedKey)
 
 		// 防火墙
 		privateGroup.GET("/firewall/base", api.GetBaseInfo)

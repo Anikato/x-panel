@@ -19,11 +19,17 @@
         <el-table-column prop="agent" :label="t('log.agent')" min-width="200" show-overflow-tooltip />
         <el-table-column prop="status" :label="t('log.status')" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
+            <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">
+              {{ row.status === 'Success' ? '成功' : '失败' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="message" :label="t('log.message')" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="createdAt" :label="t('log.time')" width="180" />
+        <el-table-column :label="t('log.time')" width="170">
+          <template #default="{ row }">
+            <span class="time-text">{{ formatTime(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="table-footer">
@@ -71,8 +77,32 @@ const handleClean = async () => {
   } catch { /* cancelled */ }
 }
 
+const formatTime = (timeStr: string): string => {
+  if (!timeStr) return '-'
+  try {
+    const d = new Date(timeStr)
+    if (isNaN(d.getTime())) return timeStr
+    const now = new Date()
+    const isToday = d.toDateString() === now.toDateString()
+    const yesterday = new Date(now)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const isYesterday = d.toDateString() === yesterday.toDateString()
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+    if (isToday) return `今天 ${time}`
+    if (isYesterday) return `昨天 ${time}`
+    const month = d.getMonth() + 1
+    const day = d.getDate()
+    if (d.getFullYear() === now.getFullYear()) return `${month}月${day}日 ${time}`
+    return `${d.getFullYear()}/${month}/${day} ${time}`
+  } catch { return timeStr }
+}
+
 onMounted(() => fetchData())
 </script>
 
 <style lang="scss" scoped>
+.time-text {
+  font-size: 12px;
+  color: var(--xp-text-secondary);
+}
 </style>

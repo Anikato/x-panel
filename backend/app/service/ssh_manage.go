@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 )
 
 const sshdConfigPath = "/etc/ssh/sshd_config"
+const authorizedKeysPath = "/root/.ssh/authorized_keys"
 
 type ISSHManageService interface {
 	GetSSHInfo() (*dto.SSHInfo, error)
@@ -21,6 +23,9 @@ type ISSHManageService interface {
 	LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLogEntry, error)
 	GetSSHDConfig() (string, error)
 	SaveSSHDConfig(content string) error
+	ListAuthorizedKeys() ([]dto.AuthorizedKey, error)
+	AddAuthorizedKey(req dto.AuthorizedKeyCreate) error
+	DeleteAuthorizedKey(fingerprint string) error
 }
 
 type SSHManageService struct{}
@@ -37,7 +42,6 @@ func (s *SSHManageService) GetSSHInfo() (*dto.SSHInfo, error) {
 		UseDNS:                 "no",
 	}
 
-	// 检查 sshd 是否安装
 	serviceName := detectSSHService()
 	if serviceName == "" {
 		info.IsExist = false
@@ -46,14 +50,14 @@ func (s *SSHManageService) GetSSHInfo() (*dto.SSHInfo, error) {
 	}
 	info.IsExist = true
 
-	// 检查服务状态
 	active, _ := cmd.ExecWithOutput("systemctl", "is-active", serviceName)
 	info.IsActive = strings.TrimSpace(active) == "active"
 
 	enabled, _ := cmd.ExecWithOutput("systemctl", "is-enabled", serviceName)
-	info.AutoStart = strings.TrimSpace(enabled) == "enabled"
+	enabledStatus := strings.TrimSpace(enabled)
+	info.AutoStart = enabledStatus == "enabled" || enabledStatus == "static" ||
+		enabledStatus == "indirect" || enabledStatus == "alias"
 
-	// 读取配置
 	file, err := os.Open(sshdConfigPath)
 	if err != nil {
 		info.Message = "Cannot read sshd_config: " + err.Error()
@@ -100,16 +104,8 @@ func (s *SSHManageService) OperateSSH(operation string) error {
 
 	var args []string
 	switch operation {
-	case "start":
-		args = []string{"systemctl", "start", serviceName}
-	case "stop":
-		args = []string{"systemctl", "stop", serviceName}
-	case "restart":
-		args = []string{"systemctl", "restart", serviceName}
-	case "enable":
-		args = []string{"systemctl", "enable", serviceName}
-	case "disable":
-		args = []string{"systemctl", "disable", serviceName}
+	case "start", "stop", "restart", "enable", "disable":
+		args = []string{"systemctl", operation, serviceName}
 	default:
 		return fmt.Errorf("unsupported operation: %s", operation)
 	}
@@ -119,7 +115,6 @@ func (s *SSHManageService) OperateSSH(operation string) error {
 }
 
 func (s *SSHManageService) UpdateSSHConfig(key, value string) error {
-	// 允许修改的配置项白名单
 	allowedKeys := map[string]bool{
 		"Port": true, "ListenAddress": true,
 		"PasswordAuthentication": true, "PubkeyAuthentication": true,
@@ -153,11 +148,13 @@ func (s *SSHManageService) UpdateSSHConfig(key, value string) error {
 		return err
 	}
 
-	// 测试配置
 	if _, err := cmd.ExecWithOutput("sshd", "-t"); err != nil {
-		// 回滚
 		os.WriteFile(sshdConfigPath, content, 0644)
 		return fmt.Errorf("sshd config test failed: %v", err)
+	}
+
+	if err := reloadSSHService(); err != nil {
+		global.LOG.Warnf("SSH reload after config update failed: %v", err)
 	}
 
 	global.LOG.Infof("SSH config updated: %s = %s", key, value)
@@ -165,18 +162,15 @@ func (s *SSHManageService) UpdateSSHConfig(key, value string) error {
 }
 
 func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLogEntry, error) {
-	// 从 /var/log/auth.log (Debian) 或 journalctl 读取 SSH 日志
 	var lines []string
 
-	// 先尝试 journalctl
 	output, err := cmd.ExecWithOutput("journalctl", "-u", "ssh", "-u", "sshd", "--no-pager", "-n", "500", "--output=short-iso")
 	if err == nil && output != "" {
 		lines = strings.Split(strings.TrimSpace(output), "\n")
 	} else {
-		// 回退到 auth.log
 		content, err := os.ReadFile("/var/log/auth.log")
 		if err != nil {
-			return 0, nil, nil // 无日志可读，返回空
+			return 0, nil, nil
 		}
 		allLines := strings.Split(string(content), "\n")
 		for _, l := range allLines {
@@ -186,7 +180,6 @@ func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLog
 		}
 	}
 
-	// 解析日志行
 	var entries []dto.SSHLogEntry
 	acceptedRe := regexp.MustCompile(`Accepted\s+\w+\s+for\s+(\S+)\s+from\s+(\S+)\s+port\s+(\S+)`)
 	failedRe := regexp.MustCompile(`Failed\s+\w+\s+for\s+(?:invalid user\s+)?(\S+)\s+from\s+(\S+)\s+port\s+(\S+)`)
@@ -211,7 +204,6 @@ func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLog
 			continue
 		}
 
-		// 过滤
 		if req.Status != "" && req.Status != "all" && entry.Status != req.Status {
 			continue
 		}
@@ -219,7 +211,6 @@ func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLog
 			continue
 		}
 
-		// 提取日期部分
 		if len(line) > 20 {
 			entry.Date = line[:19]
 		}
@@ -228,12 +219,10 @@ func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLog
 		entries = append(entries, entry)
 	}
 
-	// 倒序排列（最新在前）
 	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
 		entries[i], entries[j] = entries[j], entries[i]
 	}
 
-	// 分页
 	total := int64(len(entries))
 	start := (req.Page - 1) * req.PageSize
 	end := start + req.PageSize
@@ -247,7 +236,6 @@ func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLog
 	return total, entries[start:end], nil
 }
 
-// GetSSHDConfig 读取 sshd_config 原始内容
 func (s *SSHManageService) GetSSHDConfig() (string, error) {
 	content, err := os.ReadFile(sshdConfigPath)
 	if err != nil {
@@ -256,7 +244,6 @@ func (s *SSHManageService) GetSSHDConfig() (string, error) {
 	return string(content), nil
 }
 
-// SaveSSHDConfig 保存 sshd_config（先测试再写入）
 func (s *SSHManageService) SaveSSHDConfig(content string) error {
 	backup, err := os.ReadFile(sshdConfigPath)
 	if err != nil {
@@ -272,16 +259,169 @@ func (s *SSHManageService) SaveSSHDConfig(content string) error {
 		return fmt.Errorf("sshd config test failed, changes rolled back: %v", err)
 	}
 
+	if err := reloadSSHService(); err != nil {
+		global.LOG.Warnf("SSH reload after config save failed: %v", err)
+	}
+
 	global.LOG.Info("sshd_config saved via raw editor")
 	return nil
 }
 
+// ============================================================
+// Authorized Keys 管理
+// ============================================================
+
+func (s *SSHManageService) ListAuthorizedKeys() ([]dto.AuthorizedKey, error) {
+	content, err := os.ReadFile(authorizedKeysPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []dto.AuthorizedKey{}, nil
+		}
+		return nil, fmt.Errorf("read authorized_keys: %v", err)
+	}
+
+	var keys []dto.AuthorizedKey
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key := parseAuthorizedKeyLine(line)
+		if key.KeyType != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil
+}
+
+func (s *SSHManageService) AddAuthorizedKey(req dto.AuthorizedKeyCreate) error {
+	keyLine := strings.TrimSpace(req.Key)
+	if keyLine == "" {
+		return fmt.Errorf("key content is empty")
+	}
+
+	parts := strings.Fields(keyLine)
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid SSH public key format")
+	}
+
+	dir := filepath.Dir(authorizedKeysPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create .ssh dir: %v", err)
+	}
+
+	existing, _ := os.ReadFile(authorizedKeysPath)
+	for _, line := range strings.Split(string(existing), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		existParts := strings.Fields(line)
+		if len(existParts) >= 2 && existParts[1] == parts[1] {
+			return fmt.Errorf("this key already exists")
+		}
+	}
+
+	f, err := os.OpenFile(authorizedKeysPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("open authorized_keys: %v", err)
+	}
+	defer f.Close()
+
+	content := keyLine
+	if !strings.HasSuffix(string(existing), "\n") && len(existing) > 0 {
+		content = "\n" + content
+	}
+	content += "\n"
+
+	if _, err := f.WriteString(content); err != nil {
+		return fmt.Errorf("write key: %v", err)
+	}
+
+	global.LOG.Infof("SSH authorized key added: %s", req.Name)
+	return nil
+}
+
+func (s *SSHManageService) DeleteAuthorizedKey(fingerprint string) error {
+	content, err := os.ReadFile(authorizedKeysPath)
+	if err != nil {
+		return fmt.Errorf("read authorized_keys: %v", err)
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var newLines []string
+	found := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			newLines = append(newLines, line)
+			continue
+		}
+		key := parseAuthorizedKeyLine(trimmed)
+		if key.Fingerprint == fingerprint {
+			found = true
+			continue
+		}
+		newLines = append(newLines, line)
+	}
+
+	if !found {
+		return fmt.Errorf("key not found")
+	}
+
+	if err := os.WriteFile(authorizedKeysPath, []byte(strings.Join(newLines, "\n")), 0600); err != nil {
+		return fmt.Errorf("write authorized_keys: %v", err)
+	}
+
+	global.LOG.Infof("SSH authorized key deleted: %s", fingerprint)
+	return nil
+}
+
+// ============================================================
+// 辅助函数
+// ============================================================
+
+func parseAuthorizedKeyLine(line string) dto.AuthorizedKey {
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return dto.AuthorizedKey{}
+	}
+
+	key := dto.AuthorizedKey{
+		KeyType: parts[0],
+		Key:     parts[1],
+	}
+	if len(parts) >= 3 {
+		key.Name = strings.Join(parts[2:], " ")
+	}
+
+	// 生成简单指纹用于标识（取 base64 前 16 字符）
+	if len(parts[1]) > 16 {
+		key.Fingerprint = parts[1][:16]
+	} else {
+		key.Fingerprint = parts[1]
+	}
+
+	return key
+}
+
 func detectSSHService() string {
-	for _, name := range []string{"sshd", "ssh"} {
+	// Debian/Ubuntu 用 ssh，RHEL/CentOS 用 sshd
+	for _, name := range []string{"ssh", "sshd"} {
 		output, _ := cmd.ExecWithOutput("systemctl", "status", name)
 		if output != "" && !strings.Contains(output, "could not be found") {
 			return name
 		}
 	}
 	return ""
+}
+
+func reloadSSHService() error {
+	serviceName := detectSSHService()
+	if serviceName == "" {
+		return fmt.Errorf("SSH service not found")
+	}
+	_, err := cmd.ExecWithOutput("systemctl", "restart", serviceName)
+	return err
 }

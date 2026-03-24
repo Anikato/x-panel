@@ -4,6 +4,46 @@
 
 ---
 
+## 2026-03-24 — Session #41：6 项 UI/UX 修复 + SSH 管理重构
+
+### 完成内容
+
+- [x] **主题色选择器样式修复**
+  - 根因：scoped 样式 + `:global()` 嵌套在 Teleport 场景下子选择器失效
+  - 改为独立非 scoped `<style>` 块，网格改为 4 列（8 个预设均匀排列）
+  - 色块尺寸从 26px 调整为 28px，间距优化
+
+- [x] **终端字号持久化**
+  - 字号保存到 `localStorage`，刷新页面不再重置为 14
+
+- [x] **登录日志时间人性化**
+  - 添加 `formatTime` 函数（今天/昨天/X月X日 + 时分秒）
+  - 状态标签显示"成功/失败"而非原始英文
+
+- [x] **文件管理 tab + 按钮位置**
+  - 覆盖 Element Plus `el-tabs__header` 默认 `space-between` 为 `flex-start`
+  - `nav-wrap` 改为 `flex: 0 1 auto`，+ 按钮紧跟最后一个标签
+
+- [x] **SSH 管理全面修复**
+  - 自启检测：支持 `enabled`/`static`/`indirect`/`alias` 多种状态
+  - 服务名检测：Debian 优先 `ssh`，RHEL 优先 `sshd`
+  - 配置修改后自动 `systemctl restart` 重载
+  - sshd_config 编辑器保存后同样自动重载
+  - 开关组件改用 `:model-value` + `@change` 事件驱动，消除只读 computed 的脆弱写法
+  - 新增公钥管理功能：列表、添加、删除 authorized_keys
+
+- [x] **容器 Docker 未安装友好引导**
+  - 进入页面先调 `getDockerStatus` 检测
+  - 未安装时显示 `el-empty` 引导页 + 重新检测按钮
+
+### 关键决策
+
+- 主题色选择器用独立非 scoped style 彻底解决 Teleport 样式问题
+- SSH 配置修改后用 restart 而非 reload，确保端口等变更立即生效
+- 公钥管理用 base64 前 16 字符作为指纹标识（简单可靠）
+
+---
+
 ## 2026-03-24 — Session #40：安全修复与稳定性改进
 
 ### 完成内容

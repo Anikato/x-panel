@@ -258,12 +258,14 @@ const { t } = useI18n()
 const currentView = ref<'terminal' | 'hosts' | 'commands'>('terminal')
 const tabs = ref<TermTab[]>([])
 const activeTab = ref('')
-const termFontSize = ref(14)
+const FONT_SIZE_KEY = 'xp-terminal-font-size'
+const termFontSize = ref(parseInt(localStorage.getItem(FONT_SIZE_KEY) || '14', 10))
 
 const changeFontSize = (delta: number) => {
   const newSize = Math.max(10, Math.min(24, termFontSize.value + delta))
   if (newSize === termFontSize.value) return
   termFontSize.value = newSize
+  localStorage.setItem(FONT_SIZE_KEY, String(newSize))
   for (const tab of tabs.value) {
     if (tab.terminal) {
       tab.terminal.options.fontSize = newSize

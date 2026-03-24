@@ -23,3 +23,15 @@ export const getSSHDConfig = () => {
 export const saveSSHDConfig = (content: string) => {
   return http.post('/ssh/sshd-config', { content })
 }
+
+export const listAuthorizedKeys = () => {
+  return http.get('/ssh/authorized-keys')
+}
+
+export const addAuthorizedKey = (data: { key: string; name?: string }) => {
+  return http.post('/ssh/authorized-keys', data)
+}
+
+export const deleteAuthorizedKey = (fingerprint: string) => {
+  return http.post('/ssh/authorized-keys/delete', { fingerprint })
+}

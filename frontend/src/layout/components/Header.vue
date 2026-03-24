@@ -289,31 +289,33 @@ const handleCommand = async (command: string) => {
   }
 }
 
-// Accent picker popover (not scoped — rendered in teleport)
-:global(.accent-panel) {
+}
+</style>
+
+<style lang="scss">
+.accent-panel {
   .accent-section {
     margin-bottom: 12px;
   }
 
   .accent-panel-title {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--xp-text-muted);
-    text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
 
   .accent-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
     justify-items: center;
   }
 
   .accent-swatch {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     cursor: pointer;
     display: flex;
