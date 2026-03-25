@@ -1,44 +1,5 @@
 <template>
   <div class="dashboard">
-    <!-- 顶部系统信息 -->
-    <div class="dashboard-header">
-      <div class="system-identity">
-        <div class="system-logo">
-          <el-icon :size="28"><Monitor /></el-icon>
-        </div>
-        <div class="system-meta">
-          <h2 class="hostname">{{ stats.host?.hostname || '...' }}</h2>
-          <div class="system-tags">
-            <el-tag size="small" effect="dark" round>{{ panelVersion }}</el-tag>
-            <el-tag size="small" effect="plain" round type="info">
-              {{ stats.host?.platform }} {{ stats.host?.platformVersion }}
-            </el-tag>
-            <el-tag size="small" effect="plain" round type="info">
-              {{ stats.host?.kernelArch }}
-            </el-tag>
-            <el-tag v-if="stats.host?.virtualization" size="small" effect="plain" round type="warning">
-              {{ stats.host?.virtualization }}
-            </el-tag>
-          </div>
-        </div>
-      </div>
-      <div class="header-right">
-        <div class="uptime-display">
-          <el-icon><Clock /></el-icon>
-          <span>{{ t('home.uptime') }}: {{ formatUptime(stats.uptime) }}</span>
-        </div>
-        <el-button-group size="small">
-          <el-button type="warning" plain @click="handleRestartPanel">
-            <el-icon><RefreshRight /></el-icon>{{ t('home.restartPanel') }}
-          </el-button>
-          <el-button type="danger" plain @click="handleRebootServer">
-            <el-icon><SwitchButton /></el-icon>{{ t('home.rebootServer') }}
-          </el-button>
-        </el-button-group>
-        <el-button text :icon="Refresh" @click="loadStats" :loading="loading" circle />
-      </div>
-    </div>
-
     <!-- 系统信息 + 网络信息 合并 -->
     <el-row :gutter="16" class="info-row">
       <el-col :xs="24" :lg="14">
@@ -291,13 +252,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getSystemStats } from '@/api/modules/monitor'
-import { getCurrentVersion } from '@/api/modules/upgrade'
-import { rebootServer, shutdownServer, restartPanel } from '@/api/modules/setting'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import type { SystemStats, HostInfo } from '@/api/interface'
 import {
-  Monitor, Clock, Refresh, Cpu, Coin, Odometer, Connection,
-  Box, Compass, DataLine, CopyDocument, SwitchButton, RefreshRight,
+  Monitor, Refresh, Cpu, Coin, Odometer, Connection,
+  Box, Compass, DataLine, CopyDocument,
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -305,7 +264,6 @@ const { t } = useI18n()
 
 const loading = ref(false)
 const stats = ref<Partial<SystemStats>>({})
-const panelVersion = ref('...')
 let timer: ReturnType<typeof setInterval> | null = null
 
 const loadStats = async () => {
@@ -315,17 +273,6 @@ const loadStats = async () => {
     stats.value = res.data || {}
   } catch { /* handled by interceptor */ }
   finally { loading.value = false }
-}
-
-const fetchVersion = async () => {
-  try {
-    const res = await getCurrentVersion()
-    if (res.data) {
-      panelVersion.value = res.data.version === 'dev' ? 'dev' : res.data.version
-    }
-  } catch {
-    panelVersion.value = '-'
-  }
 }
 
 // 系统信息项（带复制按钮）
@@ -364,24 +311,6 @@ const quickEntries = computed(() => [
   { path: '/setting', title: t('menu.setting'), icon: 'Setting' },
   { path: '/log/operation', title: t('menu.operationLog'), icon: 'Notebook' },
 ])
-
-const handleRebootServer = async () => {
-  await ElMessageBox.confirm(t('home.rebootConfirm'), t('commons.tip'), { type: 'warning', confirmButtonText: t('home.rebootServer') })
-  await rebootServer()
-  ElMessage.success(t('home.rebootSuccess'))
-}
-
-const handleShutdownServer = async () => {
-  await ElMessageBox.confirm(t('home.shutdownConfirm'), t('commons.tip'), { type: 'error', confirmButtonText: t('home.shutdownServer') })
-  await shutdownServer()
-  ElMessage.success(t('home.shutdownSuccess'))
-}
-
-const handleRestartPanel = async () => {
-  await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), { type: 'warning' })
-  await restartPanel()
-  ElMessage.success(t('home.restartPanelSuccess'))
-}
 
 const copyText = async (text: string) => {
   try {
@@ -436,25 +365,12 @@ const formatSpeed = (bytesPerSec?: number) => {
   return (bytesPerSec / 1024 / 1024).toFixed(2) + ' MB/s'
 }
 
-const formatUptime = (seconds?: number) => {
-  if (!seconds) return '-'
-  const d = Math.floor(seconds / 86400)
-  const h = Math.floor((seconds % 86400) / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const parts = []
-  if (d > 0) parts.push(`${d} ${t('monitor.days')}`)
-  if (h > 0) parts.push(`${h} ${t('monitor.hours')}`)
-  parts.push(`${m} ${t('monitor.minutes')}`)
-  return parts.join(' ')
-}
-
 const formatNumber = (n?: number) => {
   if (!n) return '0'
   return n.toLocaleString()
 }
 
 onMounted(() => {
-  fetchVersion()
   loadStats()
   timer = setInterval(loadStats, 5000)
 })
@@ -467,73 +383,6 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .dashboard {
   padding: 0;
-}
-
-.dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding: 20px 24px;
-  background: var(--xp-bg-surface);
-  border: 1px solid var(--xp-border-light);
-  border-radius: var(--xp-radius-lg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-  transition: box-shadow 0.3s;
-
-  &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  }
-}
-
-.system-identity {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.system-logo {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--xp-accent-muted);
-  border-radius: 12px;
-  color: var(--xp-accent);
-}
-
-.system-meta {
-  .hostname {
-    margin: 0 0 6px 0;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--xp-text-primary);
-    letter-spacing: 0.3px;
-  }
-  .system-tags {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.uptime-display {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--xp-accent);
-  font-weight: 500;
-  background: var(--xp-accent-muted);
-  padding: 6px 14px;
-  border-radius: 20px;
 }
 
 /* ===== 信息行 ===== */
@@ -888,11 +737,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .dashboard-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
   .sys-info-grid { grid-template-columns: repeat(2, 1fr); }
   .net-info-list { grid-template-columns: 1fr; }
   .quick-grid { grid-template-columns: repeat(3, 1fr); }

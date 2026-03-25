@@ -7,11 +7,35 @@
           <Expand v-else />
         </el-icon>
       </div>
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item v-for="item in breadcrumbs" :key="item.path">
-          {{ item.title }}
-        </el-breadcrumb-item>
-      </el-breadcrumb>
+      <!-- 服务器信息 -->
+      <div class="server-info" v-if="globalStore.serverInfo">
+        <div class="server-identity">
+          <el-icon :size="16" color="var(--xp-accent)"><Monitor /></el-icon>
+          <span class="server-hostname">{{ globalStore.serverInfo.hostname }}</span>
+        </div>
+        <el-tag size="small" effect="dark" round>{{ globalStore.version || '...' }}</el-tag>
+        <el-tag size="small" effect="plain" round type="info">
+          {{ globalStore.serverInfo.platform }} {{ globalStore.serverInfo.platformVersion }}
+        </el-tag>
+        <el-tag size="small" effect="plain" round type="info">
+          {{ globalStore.serverInfo.kernelArch }}
+        </el-tag>
+        <el-tag v-if="globalStore.serverInfo.virtualization" size="small" effect="plain" round type="warning">
+          {{ globalStore.serverInfo.virtualization }}
+        </el-tag>
+        <div class="server-uptime">
+          <el-icon :size="12"><Clock /></el-icon>
+          <span>{{ t('home.uptime') }}: {{ formatUptime(globalStore.serverInfo.uptime) }}</span>
+        </div>
+        <el-button-group size="small" class="server-actions">
+          <el-button type="warning" text size="small" @click="handleRestartPanel">
+            <el-icon><RefreshRight /></el-icon>{{ t('home.restartPanel') }}
+          </el-button>
+          <el-button type="danger" text size="small" @click="handleRebootServer">
+            <el-icon><SwitchButton /></el-icon>{{ t('home.rebootServer') }}
+          </el-button>
+        </el-button-group>
+      </div>
     </div>
     <div class="header-right">
       <el-select
@@ -95,16 +119,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useGlobalStore } from '@/store/modules/global'
 import { useUserStore } from '@/store/modules/user'
 import { logout as logoutApi } from '@/api/modules/auth'
 import { listNodes } from '@/api/modules/node'
+import { getSystemStats } from '@/api/modules/monitor'
+import { getCurrentVersion } from '@/api/modules/upgrade'
+import { rebootServer, restartPanel } from '@/api/modules/setting'
 import { useI18n } from 'vue-i18n'
 import type { NodeItem } from '@/api/interface'
-import { Moon, Sunny, Check } from '@element-plus/icons-vue'
+import { Moon, Sunny, Check, Clock, RefreshRight } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
@@ -151,7 +178,68 @@ const onNodeChange = (val: number) => {
   window.location.reload()
 }
 
-onMounted(() => loadNodes())
+let serverInfoTimer: ReturnType<typeof setInterval> | null = null
+
+const fetchServerInfo = async () => {
+  try {
+    const res = await getSystemStats()
+    const h = res.data?.host
+    if (h) {
+      globalStore.setServerInfo({
+        hostname: h.hostname || '',
+        platform: h.platform || '',
+        platformVersion: h.platformVersion || '',
+        kernelArch: h.kernelArch || '',
+        virtualization: h.virtualization || '',
+        uptime: res.data.uptime || 0,
+      })
+    }
+  } catch { /* ignore */ }
+}
+
+const fetchVersion = async () => {
+  try {
+    const res = await getCurrentVersion()
+    if (res.data) {
+      globalStore.setVersion(res.data.version === 'dev' ? 'dev' : res.data.version)
+    }
+  } catch { /* ignore */ }
+}
+
+const formatUptime = (seconds: number) => {
+  if (!seconds) return '-'
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const parts: string[] = []
+  if (d > 0) parts.push(`${d} ${t('monitor.days')}`)
+  if (h > 0) parts.push(`${h} ${t('monitor.hours')}`)
+  parts.push(`${m} ${t('monitor.minutes')}`)
+  return parts.join(' ')
+}
+
+const handleRebootServer = async () => {
+  await ElMessageBox.confirm(t('home.rebootConfirm'), t('commons.tip'), { type: 'warning', confirmButtonText: t('home.rebootServer') })
+  await rebootServer()
+  ElMessage.success(t('home.rebootSuccess'))
+}
+
+const handleRestartPanel = async () => {
+  await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), { type: 'warning' })
+  await restartPanel()
+  ElMessage.success(t('home.restartPanelSuccess'))
+}
+
+onMounted(() => {
+  loadNodes()
+  fetchServerInfo()
+  fetchVersion()
+  serverInfoTimer = setInterval(fetchServerInfo, 30000)
+})
+
+onUnmounted(() => {
+  if (serverInfoTimer) clearInterval(serverInfoTimer)
+})
 
 const breadcrumbs = computed(() => {
   return route.matched
@@ -200,7 +288,50 @@ const handleCommand = async (command: string) => {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+
+  .server-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .server-identity {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .server-hostname {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--xp-text-primary);
+    white-space: nowrap;
+  }
+
+  .server-uptime {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--xp-accent);
+    background: var(--xp-accent-muted);
+    padding: 2px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .server-actions {
+    flex-shrink: 0;
+  }
 
   .collapse-btn {
     width: 32px;

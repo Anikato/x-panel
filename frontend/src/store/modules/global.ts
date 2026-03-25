@@ -2,6 +2,15 @@ import { defineStore } from 'pinia'
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
 
+export interface ServerInfo {
+  hostname: string
+  platform: string
+  platformVersion: string
+  kernelArch: string
+  virtualization: string
+  uptime: number
+}
+
 export const useGlobalStore = defineStore('global', {
   state: () => ({
     isLogin: false,
@@ -14,6 +23,7 @@ export const useGlobalStore = defineStore('global', {
     version: '',
     currentNodeID: 0,
     currentNodeName: '',
+    serverInfo: null as ServerInfo | null,
   }),
   actions: {
     setLogin(status: boolean) {
@@ -47,6 +57,11 @@ export const useGlobalStore = defineStore('global', {
       this.accentKey = key
       this.accentCustom = customHex || ''
     },
+    setServerInfo(info: ServerInfo) {
+      this.serverInfo = info
+    },
   },
-  persist: true,
+  persist: {
+    pick: ['isLogin', 'menuCollapse', 'panelName', 'theme', 'accentKey', 'accentCustom', 'version', 'currentNodeID', 'currentNodeName'],
+  },
 })
