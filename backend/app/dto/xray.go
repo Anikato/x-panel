@@ -293,8 +293,8 @@ type XrayUpdateInfo struct {
 type XrayOutboundCreate struct {
 	Name     string `json:"name" binding:"required"`
 	Tag      string `json:"tag" binding:"required"`
-	Protocol string `json:"protocol" binding:"required"`
-	Settings string `json:"settings"` // JSON 字符串
+	Protocol string `json:"protocol" binding:"required,oneof=freedom blackhole socks http shadowsocks vmess vless trojan dns loopback"`
+	Settings string `json:"settings"`
 	Enabled  bool   `json:"enabled"`
 	Remark   string `json:"remark"`
 }
@@ -304,7 +304,7 @@ type XrayOutboundUpdate struct {
 	ID       uint   `json:"id" binding:"required"`
 	Name     string `json:"name" binding:"required"`
 	Tag      string `json:"tag" binding:"required"`
-	Protocol string `json:"protocol" binding:"required"`
+	Protocol string `json:"protocol" binding:"required,oneof=freedom blackhole socks http shadowsocks vmess vless trojan dns loopback"`
 	Settings string `json:"settings"`
 	Enabled  bool   `json:"enabled"`
 	Remark   string `json:"remark"`

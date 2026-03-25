@@ -74,6 +74,14 @@ ErrWebsiteApplyConfig:
 ErrWebsiteNotFound:
   other: "网站不存在"
 
+# Xray 错误
+ErrXrayInvalidSettings:
+  other: "出站代理 settings 不是合法的 JSON 对象: {{.detail}}"
+ErrXrayTagConflict:
+  other: "出站标签 '{{.tag}}' 与内置标签冲突，请使用其他名称"
+ErrXrayConfigTest:
+  other: "Xray 配置预检失败，变更已回滚: {{.detail}}"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"

@@ -45,4 +45,9 @@ const (
 
 	// 升级
 	ErrUpgradeInProgress = "ErrUpgradeInProgress"
+
+	// Xray
+	ErrXrayInvalidSettings = "ErrXrayInvalidSettings"
+	ErrXrayTagConflict     = "ErrXrayTagConflict"
+	ErrXrayConfigTest      = "ErrXrayConfigTest"
 )

@@ -18,6 +18,8 @@ import (
 	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/repo"
+	"xpanel/buserr"
+	"xpanel/constant"
 	"xpanel/global"
 
 	"github.com/google/uuid"
@@ -340,6 +342,28 @@ func (s *XrayService) DoUpgrade() error {
 // 出站代理管理
 // ============================================================
 
+var reservedOutboundTags = map[string]bool{
+	"direct":  true,
+	"blocked": true,
+	"api":     true,
+}
+
+func validateOutboundFields(tag, settings string) error {
+	if reservedOutboundTags[tag] {
+		return buserr.WithMap(constant.ErrXrayTagConflict, map[string]interface{}{"tag": tag}, nil)
+	}
+	if settings != "" && settings != "{}" {
+		if !json.Valid([]byte(settings)) {
+			return buserr.WithDetail(constant.ErrXrayInvalidSettings, "JSON 语法错误", nil)
+		}
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(settings), &obj); err != nil {
+			return buserr.WithDetail(constant.ErrXrayInvalidSettings, err.Error(), nil)
+		}
+	}
+	return nil
+}
+
 func (s *XrayService) ListOutbounds() ([]dto.XrayOutboundResponse, error) {
 	list, err := xrayOutboundRepo.GetList()
 	if err != nil {
@@ -357,6 +381,9 @@ func (s *XrayService) ListOutbounds() ([]dto.XrayOutboundResponse, error) {
 }
 
 func (s *XrayService) CreateOutbound(req dto.XrayOutboundCreate) error {
+	if err := validateOutboundFields(req.Tag, req.Settings); err != nil {
+		return err
+	}
 	m := &model.XrayOutbound{
 		Name: req.Name, Tag: req.Tag, Protocol: req.Protocol,
 		Settings: req.Settings, Enabled: req.Enabled, Remark: req.Remark,
@@ -369,14 +396,22 @@ func (s *XrayService) CreateOutbound(req dto.XrayOutboundCreate) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.reloadConfig()
+	if err := s.reloadConfig(); err != nil {
+		_ = xrayOutboundRepo.Delete(repo.WithByID(m.ID))
+		return err
+	}
+	return nil
 }
 
 func (s *XrayService) UpdateOutbound(req dto.XrayOutboundUpdate) error {
+	if err := validateOutboundFields(req.Tag, req.Settings); err != nil {
+		return err
+	}
 	m, err := xrayOutboundRepo.Get(repo.WithByID(req.ID))
 	if err != nil {
 		return err
 	}
+	snapshot := m
 	m.Name = req.Name
 	m.Tag = req.Tag
 	m.Protocol = req.Protocol
@@ -391,16 +426,29 @@ func (s *XrayService) UpdateOutbound(req dto.XrayOutboundUpdate) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.reloadConfig()
+	if err := s.reloadConfig(); err != nil {
+		_ = xrayOutboundRepo.Save(&snapshot)
+		return err
+	}
+	return nil
 }
 
 func (s *XrayService) DeleteOutbound(id uint) error {
+	old, err := xrayOutboundRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return err
+	}
 	if err := xrayOutboundRepo.Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.reloadConfig()
+	if err := s.reloadConfig(); err != nil {
+		old.ID = 0
+		_ = xrayOutboundRepo.Create(&old)
+		return err
+	}
+	return nil
 }
 
 // ============================================================
@@ -606,10 +654,9 @@ func (s *XrayService) CreateUser(req dto.XrayUserCreate) error {
 	if uid == "" {
 		uid = uuid.New().String()
 	}
-	// email 用 uuid 前8位 + @xpanel 确保唯一
 	emailPrefix := strings.ReplaceAll(uid, "-", "")
-	if len(emailPrefix) > 8 {
-		emailPrefix = emailPrefix[:8]
+	if len(emailPrefix) > 16 {
+		emailPrefix = emailPrefix[:16]
 	}
 	email := fmt.Sprintf("%s@xpanel", emailPrefix)
 
@@ -719,17 +766,50 @@ func (s *XrayService) reloadConfig() error {
 		return err
 	}
 	logSettings := s.GetLogSettings()
-	cfg := buildXrayConfig(nodes, users, outbounds, logSettings)
+	cfg, err := buildXrayConfig(nodes, users, outbounds, logSettings)
+	if err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(xrayConfigPath, data, 0644); err != nil {
+
+	tmpPath := xrayConfigPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return err
 	}
-	// 保持 nobody 可读
+
+	if err := testXrayConfig(tmpPath); err != nil {
+		os.Remove(tmpPath)
+		return buserr.WithDetail(constant.ErrXrayConfigTest, err.Error(), err)
+	}
+
+	if err := os.Rename(tmpPath, xrayConfigPath); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
 	exec.Command("chmod", "640", xrayConfigPath).Run()
 	return reloadXray()
+}
+
+// testXrayConfig 使用 xray -test 预检配置文件，若 xray 未安装则跳过
+func testXrayConfig(configPath string) error {
+	if _, err := os.Stat(xrayBin); err != nil {
+		return nil
+	}
+	cmd := exec.Command(xrayBin, "-test", "-c", configPath)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(out.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }
 
 func reloadXray() error {
@@ -746,7 +826,7 @@ func reloadXray() error {
 }
 
 // buildXrayConfig 从数据库生成完整 Xray config.json
-func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundModels []model.XrayOutbound, logSettings dto.XrayLogSettings) map[string]interface{} {
+func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundModels []model.XrayOutbound, logSettings dto.XrayLogSettings) (map[string]interface{}, error) {
 	usersByNode := map[uint][]model.XrayUser{}
 	for _, u := range users {
 		if u.Enabled {
@@ -796,15 +876,15 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundMod
 		if !ob.Enabled {
 			continue
 		}
-		var settings map[string]interface{}
-		if ob.Settings != "" && ob.Settings != "{}" {
-			_ = json.Unmarshal([]byte(ob.Settings), &settings)
-		}
 		entry := map[string]interface{}{
 			"protocol": ob.Protocol,
 			"tag":      ob.Tag,
 		}
-		if settings != nil {
+		if ob.Settings != "" && ob.Settings != "{}" {
+			var settings map[string]interface{}
+			if err := json.Unmarshal([]byte(ob.Settings), &settings); err != nil {
+				return nil, fmt.Errorf("outbound '%s' (tag=%s) settings JSON 解析失败: %v", ob.Name, ob.Tag, err)
+			}
 			entry["settings"] = settings
 		}
 		outboundList = append(outboundList, entry)
@@ -829,12 +909,7 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundMod
 			"services": []string{"StatsService"},
 		},
 		"policy": map[string]interface{}{
-			"levels": map[string]interface{}{
-				"0": map[string]interface{}{
-					"statsUserUplink":   true,
-					"statsUserDownlink": true,
-				},
-			},
+			"levels": buildPolicyLevels(users),
 			"system": map[string]interface{}{
 				"statsInboundUplink":   true,
 				"statsInboundDownlink": true,
@@ -845,7 +920,7 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundMod
 		},
 		"inbounds":  inbounds,
 		"outbounds": outboundList,
-	}
+	}, nil
 }
 
 func buildInbound(node model.XrayNode, users []model.XrayUser) map[string]interface{} {
@@ -953,10 +1028,16 @@ func buildProtocolSettings(node model.XrayNode, users []model.XrayUser) map[stri
 		if password == "" && len(users) > 0 {
 			password = users[0].UUID
 		}
-		return map[string]interface{}{
+		settings := map[string]interface{}{
 			"method":   method,
 			"password": password,
+			"network":  "tcp,udp",
 		}
+		if len(users) > 0 {
+			settings["email"] = users[0].Email
+			settings["level"] = users[0].Level
+		}
+		return settings
 	}
 	return map[string]interface{}{"clients": clients}
 }
@@ -1061,20 +1142,22 @@ func (s *XrayService) SyncTraffic() {
 	defer s.syncMu.Unlock()
 
 	out, err := exec.Command(xrayBin, "api", "statsquery",
-		"--server="+xrayAPIAddr, "-reset", "true").Output()
+		"--server="+xrayAPIAddr, "-reset").Output()
 	if err != nil {
 		global.LOG.Warnf("xray stats query failed: %v", err)
 		return
 	}
 
+	// Xray-core 的 creflect.MarshalToJson 输出 int64 为 JSON number（非 string），
+	// 使用 interface{} 兼容两种格式
 	var result struct {
 		Stat []struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
+			Name  string      `json:"name"`
+			Value interface{} `json:"value"`
 		} `json:"stat"`
 	}
 	if err := json.Unmarshal(out, &result); err != nil {
-		global.LOG.Warnf("xray stats JSON parse failed: %v", err)
+		global.LOG.Warnf("xray stats JSON parse failed: %v (raw: %s)", err, string(out[:min(len(out), 200)]))
 		return
 	}
 
@@ -1086,8 +1169,7 @@ func (s *XrayService) SyncTraffic() {
 			continue
 		}
 		email := parts[1]
-		var val int64
-		fmt.Sscanf(stat.Value, "%d", &val)
+		val := parseStatValue(stat.Value)
 		switch parts[3] {
 		case "uplink":
 			uploads[email] += val
@@ -1096,6 +1178,7 @@ func (s *XrayService) SyncTraffic() {
 		}
 	}
 
+	updated := 0
 	allEmails := map[string]bool{}
 	for e := range uploads {
 		allEmails[e] = true
@@ -1114,10 +1197,30 @@ func (s *XrayService) SyncTraffic() {
 			up, dl, email,
 		).Error; err != nil {
 			global.LOG.Warnf("xray sync traffic DB update failed for %s: %v", email, err)
+		} else {
+			updated++
 		}
+	}
+	if updated > 0 {
+		global.LOG.Debugf("xray traffic sync: %d stats entries, %d users updated", len(result.Stat), updated)
 	}
 
 	s.checkTrafficLimit()
+}
+
+// parseStatValue 兼容 Xray 输出的两种 JSON 格式：
+// - creflect.MarshalToJson 输出 int64 为 JSON number: {"value": 1234}
+// - protojson 输出 int64 为 JSON string: {"value": "1234"}
+func parseStatValue(v interface{}) int64 {
+	switch v := v.(type) {
+	case float64:
+		return int64(v)
+	case string:
+		var n int64
+		fmt.Sscanf(v, "%d", &n)
+		return n
+	}
+	return 0
 }
 
 func (s *XrayService) checkTrafficLimit() {
@@ -1188,19 +1291,21 @@ func (s *XrayService) GetTrafficHistory(userID uint, days int) ([]dto.XrayTraffi
 	if err != nil {
 		return nil, err
 	}
-	result := make([]dto.XrayTrafficDaily, len(rows))
+	result := make([]dto.XrayTrafficDaily, 0, len(rows))
 	for i, r := range rows {
-		up, dl := r.Upload, r.Download
-		if i+1 < len(rows) {
-			prev := rows[i+1]
-			if r.Upload >= prev.Upload {
-				up = r.Upload - prev.Upload
-			}
-			if r.Download >= prev.Download {
-				dl = r.Download - prev.Download
-			}
+		if i+1 >= len(rows) {
+			break // 最早一天无前日对比数据，跳过避免显示累计值
 		}
-		result[i] = dto.XrayTrafficDaily{Date: r.Date, Upload: up, Download: dl}
+		prev := rows[i+1]
+		up := int64(0)
+		dl := int64(0)
+		if r.Upload >= prev.Upload {
+			up = r.Upload - prev.Upload
+		}
+		if r.Download >= prev.Download {
+			dl = r.Download - prev.Download
+		}
+		result = append(result, dto.XrayTrafficDaily{Date: r.Date, Upload: up, Download: dl})
 	}
 	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
 		result[i], result[j] = result[j], result[i]
@@ -1211,6 +1316,22 @@ func (s *XrayService) GetTrafficHistory(userID uint, days int) ([]dto.XrayTraffi
 // ============================================================
 // 辅助函数
 // ============================================================
+
+// buildPolicyLevels 为所有用户使用到的 level 生成 stats 策略
+func buildPolicyLevels(users []model.XrayUser) map[string]interface{} {
+	levels := map[int]bool{0: true}
+	for _, u := range users {
+		levels[u.Level] = true
+	}
+	result := map[string]interface{}{}
+	for lvl := range levels {
+		result[fmt.Sprintf("%d", lvl)] = map[string]interface{}{
+			"statsUserUplink":   true,
+			"statsUserDownlink": true,
+		}
+	}
+	return result
+}
 
 // marshalNodeSettings 序列化网络/安全子配置为 JSON 字符串
 func marshalNodeSettings(
