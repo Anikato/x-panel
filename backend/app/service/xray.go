@@ -775,7 +775,7 @@ func (s *XrayService) reloadConfig() error {
 		return err
 	}
 
-	tmpPath := xrayConfigPath + ".tmp"
+	tmpPath := strings.TrimSuffix(xrayConfigPath, ".json") + ".tmp.json"
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return err
 	}
