@@ -75,6 +75,9 @@ type XrayUser struct {
 	// 累计流量（字节），由 SyncTraffic cron 更新
 	UploadTotal   int64 `gorm:"default:0" json:"uploadTotal"`
 	DownloadTotal int64 `gorm:"default:0" json:"downloadTotal"`
+
+	// 流量限额（字节），0 = 不限
+	TrafficLimit int64 `gorm:"default:0" json:"trafficLimit"`
 }
 
 // XrayTrafficDaily 每日流量快照（供历史图表使用）

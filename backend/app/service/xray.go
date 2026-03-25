@@ -591,6 +591,7 @@ func (s *XrayService) SearchUsers(req dto.XrayUserSearch) (int64, []dto.XrayUser
 			Remark:        u.Remark,
 			UploadTotal:   u.UploadTotal,
 			DownloadTotal: u.DownloadTotal,
+			TrafficLimit:  u.TrafficLimit,
 			CreatedAt:     u.CreatedAt,
 		})
 	}
@@ -613,15 +614,16 @@ func (s *XrayService) CreateUser(req dto.XrayUserCreate) error {
 	email := fmt.Sprintf("%s@xpanel", emailPrefix)
 
 	user := &model.XrayUser{
-		NodeID:   req.NodeID,
-		Name:     req.Name,
-		UUID:     uid,
-		Email:    email,
-		Flow:     req.Flow,
-		Level:    req.Level,
-		ExpireAt: req.ExpireAt,
-		Remark:   req.Remark,
-		Enabled:  true,
+		NodeID:       req.NodeID,
+		Name:         req.Name,
+		UUID:         uid,
+		Email:        email,
+		Flow:         req.Flow,
+		Level:        req.Level,
+		ExpireAt:     req.ExpireAt,
+		Remark:       req.Remark,
+		Enabled:      true,
+		TrafficLimit: req.TrafficLimit,
 	}
 	if err := xrayUserRepo.Create(user); err != nil {
 		return err
@@ -643,6 +645,7 @@ func (s *XrayService) UpdateUser(req dto.XrayUserUpdate) error {
 	user.ExpireAt = req.ExpireAt
 	user.Enabled = req.Enabled
 	user.Remark = req.Remark
+	user.TrafficLimit = req.TrafficLimit
 	if err := xrayUserRepo.Save(&user); err != nil {
 		return err
 	}
@@ -1055,7 +1058,7 @@ func (s *XrayService) SyncTraffic() {
 	out, err := exec.Command(xrayBin, "api", "statsquery",
 		"--server="+xrayAPIAddr, "-reset", "true").Output()
 	if err != nil {
-		global.LOG.Debugf("xray stats query failed: %v", err)
+		global.LOG.Warnf("xray stats query failed: %v", err)
 		return
 	}
 
@@ -1066,6 +1069,7 @@ func (s *XrayService) SyncTraffic() {
 		} `json:"stat"`
 	}
 	if err := json.Unmarshal(out, &result); err != nil {
+		global.LOG.Warnf("xray stats JSON parse failed: %v", err)
 		return
 	}
 
@@ -1100,10 +1104,33 @@ func (s *XrayService) SyncTraffic() {
 		if up == 0 && dl == 0 {
 			continue
 		}
-		global.DB.Exec(
+		if err := global.DB.Exec(
 			"UPDATE xray_users SET upload_total = upload_total + ?, download_total = download_total + ? WHERE email = ?",
 			up, dl, email,
-		)
+		).Error; err != nil {
+			global.LOG.Warnf("xray sync traffic DB update failed for %s: %v", email, err)
+		}
+	}
+
+	s.checkTrafficLimit()
+}
+
+func (s *XrayService) checkTrafficLimit() {
+	var count int64
+	global.DB.Model(&model.XrayUser{}).
+		Where("traffic_limit > 0 AND (upload_total + download_total) >= traffic_limit AND enabled = ?", true).
+		Count(&count)
+	if count == 0 {
+		return
+	}
+	global.LOG.Infof("xray: disabling %d users over traffic limit", count)
+	global.DB.Model(&model.XrayUser{}).
+		Where("traffic_limit > 0 AND (upload_total + download_total) >= traffic_limit AND enabled = ?", true).
+		Update("enabled", false)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.reloadConfig(); err != nil {
+		global.LOG.Warnf("xray reload after traffic limit check failed: %v", err)
 	}
 }
 
@@ -1122,13 +1149,16 @@ func (s *XrayService) CheckExpiredUsers() {
 		Update("enabled", false)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_ = s.reloadConfig()
+	if err := s.reloadConfig(); err != nil {
+		global.LOG.Warnf("xray reload after disabling expired users failed: %v", err)
+	}
 }
 
 func (s *XrayService) SnapshotDailyTraffic() {
 	today := time.Now().Format("2006-01-02")
 	var users []model.XrayUser
 	if err := global.DB.Find(&users).Error; err != nil {
+		global.LOG.Warnf("xray snapshot daily traffic: failed to load users: %v", err)
 		return
 	}
 	for _, u := range users {

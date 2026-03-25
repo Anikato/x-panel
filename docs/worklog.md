@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-03-25 — Session #42：Xray 模块全面优化
+
+### 完成内容
+
+- [x] **流量实时化**：SyncTraffic cron 从 5 分钟缩短到 1 分钟；前端用户表格 30 秒自动轮询（可开关）
+- [x] **流量限额功能**：Model/DTO/Service 全链路新增 TrafficLimit 字段；SyncTraffic 后自动检查超限用户并禁用
+- [x] **修复 SS 节点编辑丢数据**：openNodeDrawer 回填 ssMethod/ssPassword/fallbacks/sniffMetadataOnly；XrayNode 类型补全
+- [x] **错误处理完善**：SyncTraffic 日志从 Debug 改 Warn；toggleNode/generateRealityKeys 加错误提示；流量图表加 loading；停止/重启服务加二次确认
+- [x] **UI/UX 优化**：用户表格加备注列、空状态、分页 sizes；流量列有限额时显示进度条；节点卡片显示 remark；流量图表 loading
+- [x] **i18n 补全**：约 50+ 处硬编码中文改为 t() 调用，覆盖 SS 加密、监听地址、传输设置标题、TLS/Reality、日志级别、出站协议等
+- [x] 修复 Nginx 反代配置生成按钮 SyntaxError（vue-i18n `{}` 转义问题）
+- [x] 清理死代码：移除未使用的 getXrayShareLink 前端导入
+- [x] onUnmounted 清理所有定时器（轮询/安装日志/图表）
+
+### 关键决策
+
+- 流量限额单位：后端字节，前端以 GB 输入并换算
+- 自动刷新默认开启，30 秒间隔，用户可通过开关关闭
+- SyncTraffic 后自动检查超限，无需额外 cron 任务
+- Nginx 配置生成器中的中文注释保留不走 i18n（属于配置文件注释）
+
+---
+
 ## 2026-03-24 — Session #41：6 项 UI/UX 修复 + SSH 管理重构
 
 ### 完成内容

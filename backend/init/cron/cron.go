@@ -18,7 +18,7 @@ func Init() {
 	trafficService.StartCollector()
 
 	xrayService := service.NewIXrayService()
-	global.CRON.AddFunc("*/5 * * * *", func() {
+	global.CRON.AddFunc("*/1 * * * *", func() {
 		xrayService.SyncTraffic()
 	})
 	global.CRON.AddFunc("0 * * * *", func() {

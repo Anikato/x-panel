@@ -15,6 +15,7 @@ export default {
     saveSuccess: '保存成功',
     deleteSuccess: '删除成功',
     operationSuccess: '操作成功',
+    operationFailed: '操作失败',
     copySuccess: '已复制到剪贴板',
     copyFailed: '复制失败，请手动复制',
     tip: '提示',
@@ -1099,6 +1100,76 @@ export default {
     alpn: 'ALPN',
     fingerprint: '浏览器指纹',
     fingerprintPlaceholder: '留空使用默认值',
+    // 流量限额
+    trafficLimit: '流量限额',
+    trafficLimitHint: '单位 GB，0 表示不限',
+    trafficHistoryDays: '30 天流量',
+    // 自动刷新
+    autoRefresh: '自动刷新',
+    // 空状态
+    noUsers: '暂无用户',
+    selectNodeFirst: '请先选择一个节点',
+    // 安装
+    installFailed: '安装失败，请查看日志',
+    // 分享链接
+    nodeNotFound: '找不到对应节点',
+    unsupportedUriFormat: '暂不支持 URI 格式',
+    uuidAutoGenerate: '留空自动生成',
+    // 服务确认
+    stopConfirm: '停止 Xray 将中断所有代理连接，确定继续？',
+    restartConfirm: '重启 Xray 期间代理连接将短暂中断，确定继续？',
+    // 单进程标签
+    singleProcess: '单进程多节点',
+    // 指纹选项
+    fpRecommended: '（推荐）',
+    fpRandom: '（随机浏览器）',
+    fpFullRandom: '（完全随机）',
+    // SS 加密
+    ssAes256: 'AES-256-GCM（推荐）',
+    ssChacha: 'ChaCha20-Poly1305（推荐，移动端）',
+    ssSs2022: '2022-blake3-aes-256-gcm（SS2022）',
+    // 监听地址
+    listenAll: '0.0.0.0（所有网卡，直连）',
+    listenLocal: '127.0.0.1（仅本机，适合 nginx 反代）',
+    // 传输设置标题
+    rawSettingsTitle: 'TCP (RAW) 设置',
+    wsSettingsTitle: 'WebSocket 设置',
+    grpcSettingsTitle: 'gRPC 设置',
+    xhttpSettingsTitle: 'XHTTP (SplitHTTP) 设置',
+    httpUpgradeSettingsTitle: 'HTTPUpgrade 设置',
+    httpCamouflage: 'HTTP 伪装',
+    default60: '（默认 60）',
+    default20: '（默认 20）',
+    // XHTTP 模式
+    xhttpAuto: 'auto（自动，推荐）',
+    xhttpPacketUp: 'packet-up（上行分包）',
+    xhttpStreamUp: 'stream-up（上行流式）',
+    xhttpStreamOne: 'stream-one（单连接）',
+    // TLS/Reality 设置标题
+    tlsSettingsTitle: 'TLS 设置',
+    tlsDefaultFp: '默认（Go 原生 TLS）',
+    tls12Recommended: 'TLS 1.2（推荐）',
+    realitySettingsTitle: 'Reality 设置',
+    realityPubKeyPlaceholder: '公钥（提供给客户端）',
+    xver0: '0（不启用）',
+    xver1: '1（Proxy Protocol v1）',
+    xver2: '2（Proxy Protocol v2）',
+    // Fallback
+    fallbackPath: '/path（可选）',
+    fallbackAlpn: 'alpn（可选）',
+    // 出站
+    outDirect: 'direct（直连）',
+    outBlocked: 'blocked（屏蔽）',
+    outFreedom: 'freedom（直连）',
+    outBlackhole: 'blackhole（丢弃/屏蔽）',
+    outSocks: 'SOCKS5 代理',
+    outHttp: 'HTTP 代理',
+    // 日志级别
+    logDebug: 'debug（最详细）',
+    logInfo: 'info（一般信息）',
+    logWarning: 'warning（推荐）',
+    logError: 'error（仅错误）',
+    logNone: 'none（禁用日志）',
   },
   traffic: {
     title: '流量统计',

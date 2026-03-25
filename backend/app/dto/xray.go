@@ -207,23 +207,25 @@ type XrayNodeResponse struct {
 // ============================================================
 
 type XrayUserCreate struct {
-	NodeID   uint       `json:"nodeId" binding:"required"`
-	Name     string     `json:"name" binding:"required"`
-	UUID     string     `json:"uuid"`      // 留空则自动生成
-	Flow     string     `json:"flow"`      // 留空则继承节点 flow
-	Level    int        `json:"level"`
-	ExpireAt *time.Time `json:"expireAt"`
-	Remark   string     `json:"remark"`
+	NodeID       uint       `json:"nodeId" binding:"required"`
+	Name         string     `json:"name" binding:"required"`
+	UUID         string     `json:"uuid"`
+	Flow         string     `json:"flow"`
+	Level        int        `json:"level"`
+	ExpireAt     *time.Time `json:"expireAt"`
+	Remark       string     `json:"remark"`
+	TrafficLimit int64      `json:"trafficLimit"` // 字节，0=不限
 }
 
 type XrayUserUpdate struct {
-	ID       uint       `json:"id" binding:"required"`
-	Name     string     `json:"name" binding:"required"`
-	Flow     string     `json:"flow"`
-	Level    int        `json:"level"`
-	ExpireAt *time.Time `json:"expireAt"`
-	Enabled  bool       `json:"enabled"`
-	Remark   string     `json:"remark"`
+	ID           uint       `json:"id" binding:"required"`
+	Name         string     `json:"name" binding:"required"`
+	Flow         string     `json:"flow"`
+	Level        int        `json:"level"`
+	ExpireAt     *time.Time `json:"expireAt"`
+	Enabled      bool       `json:"enabled"`
+	Remark       string     `json:"remark"`
+	TrafficLimit int64      `json:"trafficLimit"`
 }
 
 type XrayUserSearch struct {
@@ -246,6 +248,7 @@ type XrayUserResponse struct {
 	Remark        string     `json:"remark"`
 	UploadTotal   int64      `json:"uploadTotal"`
 	DownloadTotal int64      `json:"downloadTotal"`
+	TrafficLimit  int64      `json:"trafficLimit"`
 	CreatedAt     time.Time  `json:"createdAt"`
 }
 

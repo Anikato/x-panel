@@ -35,7 +35,7 @@
           <span class="config-path">{{ xrayStatus.configPath }}</span>
           <el-tooltip :content="t('xray.singleProcessNote')" placement="bottom">
             <el-tag type="info" size="small" style="cursor:help">
-              <el-icon><InfoFilled /></el-icon> 单进程多节点
+              <el-icon><InfoFilled /></el-icon> {{ t('xray.singleProcess') }}
             </el-tag>
           </el-tooltip>
         </div>
@@ -121,6 +121,7 @@
                   Vision
                 </span>
               </div>
+              <div v-if="node.remark" class="node-remark">{{ node.remark }}</div>
               <div class="node-actions" @click.stop>
                 <el-button size="small" text @click="openNodeDrawer(node)">{{ t('commons.edit') }}</el-button>
                 <el-button size="small" text type="primary" @click="openNginxDialog(node)">Nginx</el-button>
@@ -141,15 +142,18 @@
                     {{ nodes.find(n => n.id === selectedNodeId)?.name }}
                   </el-tag>
                 </span>
-                <el-button type="primary" size="small" :disabled="!selectedNodeId" @click="openUserDialog()">
-                  <el-icon><Plus /></el-icon>{{ t('xray.addUser') }}
-                </el-button>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <el-switch v-model="autoRefresh" size="small" :active-text="t('xray.autoRefresh')" />
+                  <el-button type="primary" size="small" :disabled="!selectedNodeId" @click="openUserDialog()">
+                    <el-icon><Plus /></el-icon>{{ t('xray.addUser') }}
+                  </el-button>
+                </div>
               </div>
             </template>
 
             <el-table :data="users" v-loading="userLoading" size="default">
-              <el-table-column prop="name" :label="t('xray.userName')" min-width="120" />
-              <el-table-column :label="t('xray.uuid')" min-width="260">
+              <el-table-column prop="name" :label="t('xray.userName')" min-width="100" />
+              <el-table-column :label="t('xray.uuid')" min-width="230">
                 <template #default="{ row }">
                   <div class="uuid-cell">
                     <span class="uuid-text" :title="row.uuid">{{ row.uuid }}</span>
@@ -157,17 +161,24 @@
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column prop="flow" :label="t('xray.flow')" width="120">
-                <template #default="{ row }">
-                  <el-tag v-if="row.flow" size="small" type="warning">Vision</el-tag>
-                  <span v-else class="text-muted">—</span>
-                </template>
-              </el-table-column>
-              <el-table-column :label="t('xray.traffic')" width="160">
+              <el-table-column :label="t('xray.traffic')" width="180">
                 <template #default="{ row }">
                   <div class="traffic-cell" @click="openTrafficChart(row)" style="cursor:pointer">
-                    <div class="traffic-up">↑ {{ formatBytes(row.uploadTotal) }}</div>
-                    <div class="traffic-down">↓ {{ formatBytes(row.downloadTotal) }}</div>
+                    <div v-if="row.trafficLimit > 0" style="margin-bottom:2px">
+                      <el-progress
+                        :percentage="Math.min(100, Math.round((row.uploadTotal + row.downloadTotal) / row.trafficLimit * 100))"
+                        :stroke-width="14"
+                        :text-inside="true"
+                        :status="(row.uploadTotal + row.downloadTotal) >= row.trafficLimit ? 'exception' : ''"
+                      />
+                      <div class="traffic-limit-text">
+                        {{ formatBytes(row.uploadTotal + row.downloadTotal) }} / {{ formatBytes(row.trafficLimit) }}
+                      </div>
+                    </div>
+                    <template v-else>
+                      <div class="traffic-up">↑ {{ formatBytes(row.uploadTotal) }}</div>
+                      <div class="traffic-down">↓ {{ formatBytes(row.downloadTotal) }}</div>
+                    </template>
                   </div>
                 </template>
               </el-table-column>
@@ -186,6 +197,7 @@
                   </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column prop="remark" :label="t('xray.remark')" min-width="100" show-overflow-tooltip />
               <el-table-column :label="t('commons.operations')" width="160" fixed="right">
                 <template #default="{ row }">
                   <el-button size="small" text @click="openUserDialog(row)">{{ t('commons.edit') }}</el-button>
@@ -193,6 +205,9 @@
                   <el-button size="small" text type="danger" @click="handleDeleteUser(row.id)">{{ t('commons.delete') }}</el-button>
                 </template>
               </el-table-column>
+              <template #empty>
+                <el-empty :description="selectedNodeId ? t('xray.noUsers') : t('xray.selectNodeFirst')" :image-size="80" />
+              </template>
             </el-table>
 
             <el-pagination
@@ -201,7 +216,8 @@
               v-model:current-page="userPage"
               v-model:page-size="userPageSize"
               :total="userTotal"
-              layout="total, prev, pager, next"
+              :page-sizes="[20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
               @change="loadUsers"
             />
           </el-card>
@@ -244,10 +260,10 @@
             <template v-if="nodeForm.protocol === 'shadowsocks'">
               <el-form-item :label="t('xray.ssMethod')" prop="ssMethod">
                 <el-select v-model="nodeForm.ssMethod" style="width:100%">
-                  <el-option value="aes-256-gcm" label="AES-256-GCM（推荐）" />
+                  <el-option value="aes-256-gcm" :label="t('xray.ssAes256')" />
                   <el-option value="aes-128-gcm" label="AES-128-GCM" />
-                  <el-option value="chacha20-poly1305" label="ChaCha20-Poly1305（推荐，移动端）" />
-                  <el-option value="2022-blake3-aes-256-gcm" label="2022-blake3-aes-256-gcm（SS2022）" />
+                  <el-option value="chacha20-poly1305" :label="t('xray.ssChacha')" />
+                  <el-option value="2022-blake3-aes-256-gcm" :label="t('xray.ssSs2022')" />
                 </el-select>
               </el-form-item>
               <el-form-item :label="t('xray.ssPassword')" prop="ssPassword">
@@ -256,8 +272,8 @@
             </template>
             <el-form-item :label="t('xray.listenAddr')" prop="listenAddr">
               <el-select v-model="nodeForm.listenAddr" style="width:100%">
-                <el-option value="0.0.0.0" label="0.0.0.0（所有网卡，直连）" />
-                <el-option value="127.0.0.1" label="127.0.0.1（仅本机，适合 nginx 反代）" />
+                <el-option value="0.0.0.0" :label="t('xray.listenAll')" />
+                <el-option value="127.0.0.1" :label="t('xray.listenLocal')" />
               </el-select>
             </el-form-item>
             <el-form-item :label="t('xray.port')" prop="port">
@@ -290,11 +306,11 @@
 
             <!-- RAW/TCP -->
             <template v-if="nodeForm.network === 'raw'">
-              <el-divider content-position="left">TCP (RAW) 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.rawSettingsTitle') }}</el-divider>
               <el-form-item :label="t('xray.headerType')">
                 <el-radio-group v-model="nodeForm.rawSettings.headerType">
                   <el-radio-button value="none">None</el-radio-button>
-                  <el-radio-button value="http">HTTP 伪装</el-radio-button>
+                  <el-radio-button value="http">{{ t('xray.httpCamouflage') }}</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item :label="t('xray.acceptProxyProtocol')">
@@ -305,7 +321,7 @@
 
             <!-- WebSocket -->
             <template v-if="nodeForm.network === 'ws'">
-              <el-divider content-position="left">WebSocket 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.wsSettingsTitle') }}</el-divider>
               <el-form-item :label="t('xray.path')">
                 <el-input v-model="nodeForm.wsSettings.path" placeholder="/ws" />
               </el-form-item>
@@ -320,7 +336,7 @@
 
             <!-- gRPC -->
             <template v-if="nodeForm.network === 'grpc'">
-              <el-divider content-position="left">gRPC 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.grpcSettingsTitle') }}</el-divider>
               <el-form-item :label="t('xray.grpcServiceName')">
                 <el-input v-model="nodeForm.grpcSettings.serviceName" placeholder="grpc" />
               </el-form-item>
@@ -330,11 +346,11 @@
               </el-form-item>
               <el-form-item :label="t('xray.grpcIdleTimeout')">
                 <el-input-number v-model="nodeForm.grpcSettings.idleTimeout" :min="0" style="width:160px" />
-                <span class="form-hint"> {{ t('xray.seconds') }}（默认 60）</span>
+                <span class="form-hint"> {{ t('xray.seconds') }}{{ t('xray.default60') }}</span>
               </el-form-item>
               <el-form-item :label="t('xray.grpcHealthTimeout')">
                 <el-input-number v-model="nodeForm.grpcSettings.healthCheckTimeout" :min="0" style="width:160px" />
-                <span class="form-hint"> {{ t('xray.seconds') }}（默认 20）</span>
+                <span class="form-hint"> {{ t('xray.seconds') }}{{ t('xray.default20') }}</span>
               </el-form-item>
               <el-form-item :label="t('xray.grpcPermitWithoutStream')">
                 <el-switch v-model="nodeForm.grpcSettings.permitWithoutStream" />
@@ -343,7 +359,7 @@
 
             <!-- XHTTP -->
             <template v-if="nodeForm.network === 'xhttp'">
-              <el-divider content-position="left">XHTTP (SplitHTTP) 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.xhttpSettingsTitle') }}</el-divider>
               <el-form-item :label="t('xray.path')">
                 <el-input v-model="nodeForm.xhttpSettings.path" placeholder="/xhttp" />
               </el-form-item>
@@ -352,10 +368,10 @@
               </el-form-item>
               <el-form-item :label="t('xray.xhttpMode')">
                 <el-select v-model="nodeForm.xhttpSettings.mode" style="width:100%">
-                  <el-option value="auto" label="auto（自动，推荐）" />
-                  <el-option value="packet-up" label="packet-up（上行分包）" />
-                  <el-option value="stream-up" label="stream-up（上行流式）" />
-                  <el-option value="stream-one" label="stream-one（单连接）" />
+                  <el-option value="auto" :label="t('xray.xhttpAuto')" />
+                  <el-option value="packet-up" :label="t('xray.xhttpPacketUp')" />
+                  <el-option value="stream-up" :label="t('xray.xhttpStreamUp')" />
+                  <el-option value="stream-one" :label="t('xray.xhttpStreamOne')" />
                 </el-select>
               </el-form-item>
               <el-form-item :label="t('xray.xhttpPadding')">
@@ -369,7 +385,7 @@
 
             <!-- HTTPUpgrade -->
             <template v-if="nodeForm.network === 'httpupgrade'">
-              <el-divider content-position="left">HTTPUpgrade 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.httpUpgradeSettingsTitle') }}</el-divider>
               <el-form-item :label="t('xray.path')">
                 <el-input v-model="nodeForm.httpUpgradeSettings.path" placeholder="/" />
               </el-form-item>
@@ -394,7 +410,7 @@
 
             <!-- TLS -->
             <template v-if="nodeForm.security === 'tls'">
-              <el-divider content-position="left">TLS 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.tlsSettingsTitle') }}</el-divider>
               <el-form-item :label="t('xray.tlsServerName')">
                 <el-input v-model="nodeForm.tlsSettings.serverName" placeholder="example.com" />
                 <span class="form-hint">{{ t('xray.tlsServerNameHint') }}</span>
@@ -413,7 +429,7 @@
               </el-form-item>
               <el-form-item :label="t('xray.tlsFingerprint')">
                 <el-select v-model="nodeForm.tlsSettings.fingerprint" clearable style="width:100%">
-                  <el-option value="" label="默认（Go 原生 TLS）" />
+                  <el-option value="" :label="t('xray.tlsDefaultFp')" />
                   <el-option v-for="fp in fingerprintOptions" :key="fp.value" :value="fp.value" :label="fp.label" />
                 </el-select>
               </el-form-item>
@@ -421,7 +437,7 @@
                 <el-select v-model="nodeForm.tlsSettings.minVersion" style="width:100%">
                   <el-option value="1.0" label="TLS 1.0" />
                   <el-option value="1.1" label="TLS 1.1" />
-                  <el-option value="1.2" label="TLS 1.2（推荐）" />
+                  <el-option value="1.2" :label="t('xray.tls12Recommended')" />
                   <el-option value="1.3" label="TLS 1.3" />
                 </el-select>
               </el-form-item>
@@ -433,14 +449,14 @@
 
             <!-- Reality -->
             <template v-if="nodeForm.security === 'reality'">
-              <el-divider content-position="left">Reality 设置</el-divider>
+              <el-divider content-position="left">{{ t('xray.realitySettingsTitle') }}</el-divider>
               <el-alert type="info" :closable="false" style="margin-bottom:16px" :description="t('xray.realityTip')" />
               <el-form-item :label="t('xray.realityPrivKey')">
-                <el-input v-model="nodeForm.realitySettings.privateKey" placeholder="私钥" />
+                <el-input v-model="nodeForm.realitySettings.privateKey" :placeholder="t('xray.realityPrivKey')" />
               </el-form-item>
               <el-form-item :label="t('xray.realityPubKey')">
                 <div class="key-row">
-                  <el-input v-model="nodeForm.realitySettings.publicKey" placeholder="公钥（提供给客户端）" readonly />
+                  <el-input v-model="nodeForm.realitySettings.publicKey" :placeholder="t('xray.realityPubKeyPlaceholder')" readonly />
                   <el-button @click="generateRealityKeyPair" :loading="generatingKeys">{{ t('xray.generateKeys') }}</el-button>
                 </div>
               </el-form-item>
@@ -471,9 +487,9 @@
               </el-form-item>
               <el-form-item :label="t('xray.realityXver')">
                 <el-select v-model="nodeForm.realitySettings.xver" style="width:100%">
-                  <el-option :value="0" label="0（不启用）" />
-                  <el-option :value="1" label="1（Proxy Protocol v1）" />
-                  <el-option :value="2" label="2（Proxy Protocol v2）" />
+                  <el-option :value="0" :label="t('xray.xver0')" />
+                  <el-option :value="1" :label="t('xray.xver1')" />
+                  <el-option :value="2" :label="t('xray.xver2')" />
                 </el-select>
               </el-form-item>
               <el-form-item :label="t('xray.realitySpiderX')">
@@ -502,8 +518,8 @@
               <el-alert type="info" :closable="false" :description="t('xray.fallbacksHint')" style="margin-bottom:12px" />
               <div v-for="(fb, i) in nodeForm.fallbacks" :key="i" class="fallback-row">
                 <el-input v-model="fb.dest" :placeholder="t('xray.fallbackDest')" style="width:180px" />
-                <el-input v-model="fb.path" placeholder="/path（可选）" style="width:130px" />
-                <el-input v-model="fb.alpn" placeholder="alpn（可选）" style="width:100px" />
+                <el-input v-model="fb.path" :placeholder="t('xray.fallbackPath')" style="width:130px" />
+                <el-input v-model="fb.alpn" :placeholder="t('xray.fallbackAlpn')" style="width:100px" />
                 <el-button type="danger" size="small" text @click="nodeForm.fallbacks.splice(i,1)">{{ t('commons.delete') }}</el-button>
               </div>
               <el-button size="small" @click="addFallback" style="margin-top:8px">+ {{ t('xray.addFallback') }}</el-button>
@@ -531,8 +547,8 @@
             <el-divider content-position="left">{{ t('xray.outboundRouting') }}</el-divider>
             <el-form-item :label="t('xray.outboundTag')">
               <el-select v-model="nodeForm.outboundTag" clearable style="width:100%" :placeholder="t('xray.outboundTagDefault')">
-                <el-option value="direct" label="direct（直连）" />
-                <el-option value="blocked" label="blocked（屏蔽）" />
+                <el-option value="direct" :label="t('xray.outDirect')" />
+                <el-option value="blocked" :label="t('xray.outBlocked')" />
                 <el-option
                   v-for="ob in outbounds"
                   :key="ob.tag"
@@ -576,7 +592,7 @@
         <template v-else>
           <el-form-item :label="t('xray.uuid')">
             <div class="key-row">
-              <el-input v-model="userForm.uuid" placeholder="留空自动生成" />
+              <el-input v-model="userForm.uuid" :placeholder="t('xray.uuidAutoGenerate')" />
               <el-button @click="generateUUID">{{ t('xray.generateUUID') }}</el-button>
             </div>
             <span class="form-hint">{{ t('xray.uuidHint') }}</span>
@@ -598,6 +614,10 @@
             value-format="YYYY-MM-DDTHH:mm:ssZ"
             clearable
           />
+        </el-form-item>
+        <el-form-item :label="t('xray.trafficLimit')">
+          <el-input-number v-model="userForm.trafficLimit" :min="0" :precision="1" :step="1" style="width:100%" />
+          <span class="form-hint">{{ t('xray.trafficLimitHint') }}</span>
         </el-form-item>
         <el-form-item :label="t('xray.level')">
           <el-input-number v-model="userForm.level" :min="0" :max="100" style="width:100%" />
@@ -672,7 +692,7 @@
 
     <!-- 流量历史图表 -->
     <el-dialog v-model="trafficDialogVisible" :title="t('xray.trafficHistory')" width="700px" destroy-on-close>
-      <div ref="chartRef" style="height: 320px" />
+      <div ref="chartRef" v-loading="trafficChartLoading" style="height: 320px" />
     </el-dialog>
 
     <!-- ============================================================ -->
@@ -740,11 +760,11 @@
           <el-form :model="logSettings" label-width="120px" style="margin-top:8px">
             <el-form-item :label="t('xray.logLevel')">
               <el-select v-model="logSettings.logLevel" style="width:100%">
-                <el-option value="debug" label="debug（最详细）" />
-                <el-option value="info" label="info（一般信息）" />
-                <el-option value="warning" label="warning（推荐）" />
-                <el-option value="error" label="error（仅错误）" />
-                <el-option value="none" label="none（禁用日志）" />
+                <el-option value="debug" :label="t('xray.logDebug')" />
+                <el-option value="info" :label="t('xray.logInfo')" />
+                <el-option value="warning" :label="t('xray.logWarning')" />
+                <el-option value="error" :label="t('xray.logError')" />
+                <el-option value="none" :label="t('xray.logNone')" />
               </el-select>
             </el-form-item>
             <el-form-item :label="t('xray.accessLog')">
@@ -849,10 +869,10 @@
         </el-form-item>
         <el-form-item :label="t('xray.protocol')">
           <el-select v-model="outboundForm.protocol" style="width:100%">
-            <el-option value="freedom" label="freedom（直连）" />
-            <el-option value="blackhole" label="blackhole（丢弃/屏蔽）" />
-            <el-option value="socks" label="SOCKS5 代理" />
-            <el-option value="http" label="HTTP 代理" />
+            <el-option value="freedom" :label="t('xray.outFreedom')" />
+            <el-option value="blackhole" :label="t('xray.outBlackhole')" />
+            <el-option value="socks" :label="t('xray.outSocks')" />
+            <el-option value="http" :label="t('xray.outHttp')" />
             <el-option value="shadowsocks" label="Shadowsocks" />
             <el-option value="vmess" label="VMess" />
             <el-option value="vless" label="VLESS" />
@@ -886,7 +906,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -901,7 +921,7 @@ import {
   checkXrayUpdate, doXrayUpgrade,
   listXrayNodes, createXrayNode, updateXrayNode, deleteXrayNode, toggleXrayNode,
   searchXrayUsers, createXrayUser, updateXrayUser, deleteXrayUser,
-  generateRealityKeys, getXrayShareLink, getXrayTrafficHistory,
+  generateRealityKeys, getXrayTrafficHistory,
   listXrayOutbounds, createXrayOutbound, updateXrayOutbound, deleteXrayOutbound
 } from '@/api/modules/xray'
 import type { XrayNode, XrayUser, XrayStatus, XrayOutbound, XrayLogSettings, XrayUpdateInfo } from '@/api/modules/xray'
@@ -912,8 +932,8 @@ const { t } = useI18n()
 // 常量
 // ============================================================
 
-const fingerprintOptions = [
-  { value: 'chrome', label: 'Chrome（推荐）' },
+const fingerprintOptions = computed(() => [
+  { value: 'chrome', label: `Chrome${t('xray.fpRecommended')}` },
   { value: 'firefox', label: 'Firefox' },
   { value: 'safari', label: 'Safari' },
   { value: 'ios', label: 'iOS' },
@@ -921,9 +941,9 @@ const fingerprintOptions = [
   { value: 'edge', label: 'Edge' },
   { value: '360', label: '360' },
   { value: 'qq', label: 'QQ' },
-  { value: 'random', label: 'random（随机浏览器）' },
-  { value: 'randomized', label: 'randomized（完全随机）' },
-]
+  { value: 'random', label: `random${t('xray.fpRandom')}` },
+  { value: 'randomized', label: `randomized${t('xray.fpFullRandom')}` },
+])
 
 // ============================================================
 // 状态 & 安装
@@ -943,6 +963,12 @@ const loadStatus = async () => {
 }
 
 const handleControlService = async (action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') => {
+  if (action === 'stop' || action === 'restart') {
+    await ElMessageBox.confirm(
+      t(action === 'stop' ? 'xray.stopConfirm' : 'xray.restartConfirm'),
+      t('commons.warning'), { type: 'warning' }
+    )
+  }
   serviceControlLoading.value = true
   try {
     const res = await controlXrayService(action)
@@ -965,7 +991,7 @@ const handleInstall = async () => {
         clearInterval(installPollTimer!)
         installing.value = false
         if (res.data.log && res.data.log.includes('[ERROR]')) {
-          ElMessage.error('安装失败，请查看日志')
+          ElMessage.error(t('xray.installFailed'))
         }
         await loadStatus()
       }
@@ -1003,7 +1029,10 @@ const handleToggleNode = async (node: XrayNode) => {
   try {
     await toggleXrayNode(node.id)
     ElMessage.success(t('commons.operationSuccess'))
-  } catch { node.enabled = !node.enabled }
+  } catch (e: unknown) {
+    node.enabled = !node.enabled
+    ElMessage.error((e as Error).message || t('commons.operationFailed'))
+  }
 }
 
 const handleDeleteNode = async (id: number) => {
@@ -1084,6 +1113,10 @@ const openNodeDrawer = (node?: XrayNode) => {
       flow: node.flow || '',
       sniffEnabled: node.sniffEnabled,
       sniffDestOverride: node.sniffDestOverride || ['http', 'tls'],
+      sniffMetadataOnly: node.sniffMetadataOnly ?? false,
+      ssMethod: node.ssMethod || 'aes-256-gcm',
+      ssPassword: node.ssPassword || '',
+      fallbacks: node.fallbacks?.length ? node.fallbacks : [],
       remark: node.remark || '',
       enabled: node.enabled,
       outboundTag: node.outboundTag || '',
@@ -1105,6 +1138,8 @@ const generateRealityKeyPair = async () => {
     const res = await generateRealityKeys()
     nodeForm.value.realitySettings.privateKey = res.data.privateKey
     nodeForm.value.realitySettings.publicKey = res.data.publicKey
+  } catch (e: unknown) {
+    ElMessage.error((e as Error).message || t('commons.operationFailed'))
   } finally { generatingKeys.value = false }
 }
 
@@ -1186,6 +1221,8 @@ const userLoading = ref(false)
 const userTotal = ref(0)
 const userPage = ref(1)
 const userPageSize = ref(20)
+const autoRefresh = ref(true)
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const loadUsers = async () => {
   if (!selectedNodeId.value) { users.value = []; return }
@@ -1196,6 +1233,21 @@ const loadUsers = async () => {
     userTotal.value = res.data.total
   } finally { userLoading.value = false }
 }
+
+const startAutoRefresh = () => {
+  stopAutoRefresh()
+  if (autoRefresh.value) {
+    autoRefreshTimer = setInterval(() => {
+      if (selectedNodeId.value && !userLoading.value) loadUsers()
+    }, 30000)
+  }
+}
+
+const stopAutoRefresh = () => {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null }
+}
+
+watch(autoRefresh, (v) => { if (v) startAutoRefresh(); else stopAutoRefresh() })
 
 const userDialogVisible = ref(false)
 const userSubmitting = ref(false)
@@ -1211,6 +1263,7 @@ const emptyUserForm = () => ({
   expireAt: null as string | null,
   enabled: true,
   remark: '',
+  trafficLimit: 0,
 })
 const userForm = ref(emptyUserForm())
 
@@ -1225,6 +1278,7 @@ const openUserDialog = (user?: XrayUser) => {
       id: user.id, nodeId: user.nodeId, name: user.name, uuid: user.uuid,
       flow: user.flow || '', level: user.level, expireAt: user.expireAt,
       enabled: user.enabled, remark: user.remark,
+      trafficLimit: user.trafficLimit ? +(user.trafficLimit / 1073741824).toFixed(1) : 0,
     })
   }
   userDialogVisible.value = true
@@ -1237,7 +1291,11 @@ const submitUserForm = async () => {
   await userFormRef.value.validate()
   userSubmitting.value = true
   try {
-    const payload = { ...userForm.value, nodeId: selectedNodeId.value }
+    const payload = {
+      ...userForm.value,
+      nodeId: selectedNodeId.value,
+      trafficLimit: Math.round(userForm.value.trafficLimit * 1073741824),
+    }
     if (userForm.value.id) await updateXrayUser(payload)
     else await createXrayUser(payload)
     ElMessage.success(t('commons.saveSuccess'))
@@ -1285,7 +1343,7 @@ const computedShareLink = computed(() => {
 
 const getShareLink = (user: XrayUser) => {
   const node = nodes.value.find(n => n.id === user.nodeId)
-  if (!node) { ElMessage.error('找不到对应节点'); return }
+  if (!node) { ElMessage.error(t('xray.nodeNotFound')); return }
   shareLinkUser.value = user
   shareLinkNode.value = node
   // 自动填充连接地址
@@ -1401,7 +1459,7 @@ function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port
     }
 
     default:
-      return `# ${node.protocol} 暂不支持 URI 格式`
+      return `# ${node.protocol} ${t('xray.unsupportedUriFormat')}`
   }
 }
 
@@ -1410,33 +1468,42 @@ function buildShareLinkClient(node: XrayNode, user: XrayUser, host: string, port
 // ============================================================
 
 const trafficDialogVisible = ref(false)
+const trafficChartLoading = ref(false)
 const chartRef = ref<HTMLElement>()
 let chartInstance: echarts.ECharts | null = null
 
 const openTrafficChart = async (user: XrayUser) => {
   trafficDialogVisible.value = true
-  const res = await getXrayTrafficHistory(user.id)
-  const data = res.data ?? []
-  await nextTick()
-  if (!chartRef.value) return
-  chartInstance?.dispose()
-  chartInstance = echarts.init(chartRef.value)
-  chartInstance.setOption({
-    title: { text: `${user.name} - 30 天流量`, left: 'center', textStyle: { fontSize: 13 } },
-    tooltip: {
-      trigger: 'axis',
-      formatter: (params: Array<{seriesName: string; value: number}>) =>
-        params.map(p => `${p.seriesName}: ${formatBytes(p.value)}`).join('<br/>')
-    },
-    legend: { data: [t('xray.upload'), t('xray.download')], bottom: 0 },
-    xAxis: { type: 'category', data: data.map(d => d.date), axisLabel: { rotate: 30, fontSize: 11 } },
-    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatBytes(v) } },
-    series: [
-      { name: t('xray.upload'), type: 'line', data: data.map(d => d.upload), smooth: true, itemStyle: { color: '#409EFF' } },
-      { name: t('xray.download'), type: 'line', data: data.map(d => d.download), smooth: true, itemStyle: { color: '#67C23A' } },
-    ],
-    grid: { top: 48, left: 80, right: 16, bottom: 48 },
-  })
+  trafficChartLoading.value = true
+  try {
+    const res = await getXrayTrafficHistory(user.id)
+    const data = res.data ?? []
+    await nextTick()
+    if (!chartRef.value) return
+    chartInstance?.dispose()
+    chartInstance = echarts.init(chartRef.value)
+    chartInstance.setOption({
+      title: { text: `${user.name} - ${t('xray.trafficHistoryDays')}`, left: 'center', textStyle: { fontSize: 13 } },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: Array<{seriesName: string; value: number}>) =>
+          params.map(p => `${p.seriesName}: ${formatBytes(p.value)}`).join('<br/>')
+      },
+      legend: { data: [t('xray.upload'), t('xray.download')], bottom: 0 },
+      xAxis: { type: 'category', data: data.map(d => d.date), axisLabel: { rotate: 30, fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatBytes(v) } },
+      series: [
+        { name: t('xray.upload'), type: 'line', data: data.map(d => d.upload), smooth: true, itemStyle: { color: '#409EFF' } },
+        { name: t('xray.download'), type: 'line', data: data.map(d => d.download), smooth: true, itemStyle: { color: '#67C23A' } },
+      ],
+      grid: { top: 48, left: 80, right: 16, bottom: 48 },
+    })
+  } catch (e: unknown) {
+    ElMessage.error((e as Error).message || t('commons.operationFailed'))
+    trafficDialogVisible.value = false
+  } finally {
+    trafficChartLoading.value = false
+  }
 }
 
 watch(trafficDialogVisible, v => { if (!v) { chartInstance?.dispose(); chartInstance = null } })
@@ -1588,7 +1655,16 @@ const securityTagType = (s: string) => {
   return (m[s] ?? 'info') as 'primary' | 'success' | 'warning' | 'info'
 }
 
-onMounted(() => { loadStatus() })
+onMounted(() => {
+  loadStatus()
+  startAutoRefresh()
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
+  if (installPollTimer) { clearInterval(installPollTimer); installPollTimer = null }
+  chartInstance?.dispose()
+})
 
 // ============================================================
 // 全局设置抽屉（日志 + 出站 + 更新）
@@ -1828,6 +1904,7 @@ const openSettingsDrawer = () => {
 .node-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 2px; flex-wrap: wrap; }
 .meta-item { display: flex; align-items: center; gap: 2px; }
 .flow-badge { font-size: 11px; color: var(--el-color-warning); background: var(--el-color-warning-light-9); padding: 1px 6px; border-radius: 3px; }
+.node-remark { font-size: 11px; color: var(--el-text-color-placeholder); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
 .node-actions { margin-top: 6px; display: flex; gap: 2px; }
 .empty-text { text-align: center; color: var(--el-text-color-placeholder); padding: 32px 0; }
 
@@ -1836,6 +1913,7 @@ const openSettingsDrawer = () => {
 .traffic-cell { font-size: 12px; line-height: 1.6; }
 .traffic-up { color: var(--el-color-primary); }
 .traffic-down { color: var(--el-color-success); }
+.traffic-limit-text { font-size: 11px; color: var(--el-text-color-secondary); margin-top: 2px; }
 .text-muted { color: var(--el-text-color-placeholder); }
 .text-danger { color: var(--el-color-danger); }
 .pagination { margin-top: 12px; justify-content: flex-end; display: flex; }

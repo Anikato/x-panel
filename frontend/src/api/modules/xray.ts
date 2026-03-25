@@ -70,6 +70,12 @@ export interface XrayRealitySettings {
 // 节点
 // ============================================================
 
+export interface XrayFallback {
+  dest: string
+  path: string
+  alpn: string
+}
+
 export interface XrayNode {
   id: number
   name: string
@@ -81,6 +87,10 @@ export interface XrayNode {
   flow: string
   sniffEnabled: boolean
   sniffDestOverride: string[]
+  sniffMetadataOnly: boolean
+  ssMethod: string
+  ssPassword: string
+  fallbacks: XrayFallback[]
   rawSettings?: XrayRawSettings
   wsSettings?: XrayWSSettings
   grpcSettings?: XrayGRPCSettings
@@ -135,6 +145,7 @@ export interface XrayUser {
   remark: string
   uploadTotal: number
   downloadTotal: number
+  trafficLimit: number
   createdAt: string
 }
 
@@ -148,6 +159,7 @@ export interface XrayUserForm {
   expireAt: string | null
   enabled: boolean
   remark: string
+  trafficLimit: number
 }
 
 export interface XrayUserSearch {
