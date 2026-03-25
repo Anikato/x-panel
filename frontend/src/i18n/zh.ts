@@ -1031,7 +1031,7 @@ export default {
     shareLinkHostHint: '修改连接地址/端口后分享链接实时更新',
     // Nginx 反代
     nginxProxyTitle: 'Nginx 反代配置生成',
-    nginxProxyDesc: '根据节点参数生成 nginx location 块，粘贴到对应网站的 server {} 块内即可。gRPC 需确保 server 块已配置 http2。',
+    nginxProxyDesc: '根据节点参数生成 nginx location 块，可直接粘贴到网站 server 配置块内。gRPC 需确保 server 块已配置 http2。',
     nginxUpstreamAddr: '上游地址',
     nginxUpstreamAddrHint: 'Xray 节点监听地址，通常为 127.0.0.1',
     nginxUpstreamPort: '上游端口',
