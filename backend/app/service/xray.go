@@ -96,8 +96,10 @@ var (
 	installMu      sync.Mutex
 )
 
-// getXrayInstallScript 动态获取 xray-install.sh 路径，基于可执行文件自身位置
-func getXrayInstallScript() string {
+const xrayInstallScriptURL = "https://raw.githubusercontent.com/Anikato/x-panel/main/xray-install.sh"
+
+// ensureXrayInstallScript 确保 xray-install.sh 存在，优先本地，找不到则从 GitHub 拉取
+func ensureXrayInstallScript() (string, error) {
 	exe, err := os.Executable()
 	if err == nil {
 		exe, _ = filepath.EvalSymlinks(exe)
@@ -110,15 +112,35 @@ func getXrayInstallScript() string {
 		for _, c := range candidates {
 			if _, err := os.Stat(c); err == nil {
 				abs, _ := filepath.Abs(c)
-				return abs
+				return abs, nil
 			}
 		}
 	}
-	// fallback: 标准安装目录
-	if _, err := os.Stat("/opt/xpanel/xray-install.sh"); err == nil {
-		return "/opt/xpanel/xray-install.sh"
+
+	// 本地不存在，从 GitHub 拉取到可执行文件同级目录
+	targetDir := "/opt/xpanel"
+	if exe != "" {
+		targetDir = filepath.Dir(exe)
 	}
-	return "/opt/xpanel/xray-install.sh"
+	targetPath := filepath.Join(targetDir, "xray-install.sh")
+
+	resp, err := http.Get(xrayInstallScriptURL)
+	if err != nil {
+		return "", fmt.Errorf("download xray-install.sh: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download xray-install.sh: HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read xray-install.sh: %v", err)
+	}
+	if err := os.WriteFile(targetPath, data, 0755); err != nil {
+		return "", fmt.Errorf("save xray-install.sh: %v", err)
+	}
+	return targetPath, nil
 }
 
 // ============================================================
@@ -139,13 +161,19 @@ func (s *XrayService) StartInstall() error {
 	installRunning = true
 	installLog.Reset()
 
-	scriptPath := getXrayInstallScript()
 	go func() {
 		defer func() {
 			installMu.Lock()
 			installRunning = false
 			installMu.Unlock()
 		}()
+		scriptPath, err := ensureXrayInstallScript()
+		if err != nil {
+			installMu.Lock()
+			installLog.WriteString(fmt.Sprintf("\n[ERROR] fetch install script: %v\n", err))
+			installMu.Unlock()
+			return
+		}
 		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles", "--install-user", "root")
 		cmd.Stdout = &installLog
 		cmd.Stderr = &installLog
@@ -304,13 +332,19 @@ func (s *XrayService) DoUpgrade() error {
 	installRunning = true
 	installLog.Reset()
 
-	scriptPath := getXrayInstallScript()
 	go func() {
 		defer func() {
 			installMu.Lock()
 			installRunning = false
 			installMu.Unlock()
 		}()
+		scriptPath, err := ensureXrayInstallScript()
+		if err != nil {
+			installMu.Lock()
+			installLog.WriteString(fmt.Sprintf("\n[ERROR] fetch install script: %v\n", err))
+			installMu.Unlock()
+			return
+		}
 		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles", "--install-user", "root")
 		cmd.Stdout = &installLog
 		cmd.Stderr = &installLog
