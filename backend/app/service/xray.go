@@ -102,7 +102,6 @@ func getXrayInstallScript() string {
 	if err == nil {
 		exe, _ = filepath.EvalSymlinks(exe)
 		dir := filepath.Dir(exe)
-		// 可执行文件在 cmd/server/ 或根目录下，脚本在项目根目录
 		candidates := []string{
 			filepath.Join(dir, "xray-install.sh"),
 			filepath.Join(dir, "..", "xray-install.sh"),
@@ -115,7 +114,11 @@ func getXrayInstallScript() string {
 			}
 		}
 	}
-	return "/data/X-Panel/xray-install.sh"
+	// fallback: 标准安装目录
+	if _, err := os.Stat("/opt/xpanel/xray-install.sh"); err == nil {
+		return "/opt/xpanel/xray-install.sh"
+	}
+	return "/opt/xpanel/xray-install.sh"
 }
 
 // ============================================================

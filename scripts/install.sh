@@ -32,6 +32,13 @@ else
     exit 1
 fi
 
+# 复制 Xray 安装脚本
+if [ -f "./xray-install.sh" ]; then
+    echo ">>> 安装 Xray 安装脚本..."
+    cp -f ./xray-install.sh "$INSTALL_DIR/xray-install.sh"
+    chmod +x "$INSTALL_DIR/xray-install.sh"
+fi
+
 # 复制配置文件（不覆盖已有配置）
 if [ ! -f "$CONFIG_FILE" ]; then
     if [ -f "./config.yaml.example" ]; then

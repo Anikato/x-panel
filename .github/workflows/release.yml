@@ -99,6 +99,7 @@ jobs:
           cp backend/configs/config.yaml ${RELEASE_DIR}/config.yaml.example
           [ -f scripts/install.sh ] && cp scripts/install.sh ${RELEASE_DIR}/ || true
           [ -f scripts/xpanel.service ] && cp scripts/xpanel.service ${RELEASE_DIR}/ || true
+          [ -f xray-install.sh ] && cp xray-install.sh ${RELEASE_DIR}/ || true
 
           cd build
           tar -czf ${PKG_NAME}.tar.gz -C release .

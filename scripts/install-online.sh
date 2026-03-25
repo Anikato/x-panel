@@ -514,6 +514,12 @@ log_step "安装主程序..."
 cp -f "$TMP_DIR/extract/xpanel" "$INSTALL_DIR/xpanel"
 chmod +x "$INSTALL_DIR/xpanel"
 
+# 安装 Xray 安装脚本（面板内安装 Xray 时需要）
+if [ -f "$TMP_DIR/extract/xray-install.sh" ]; then
+    cp -f "$TMP_DIR/extract/xray-install.sh" "$INSTALL_DIR/xray-install.sh"
+    chmod +x "$INSTALL_DIR/xray-install.sh"
+fi
+
 # 保存安装脚本副本（方便后续卸载/升级）
 if [ -f "$0" ] && [ "$0" != "bash" ] && [ "$0" != "/dev/stdin" ]; then
     cp -f "$0" "$INSTALL_DIR/install.sh" 2>/dev/null || true
