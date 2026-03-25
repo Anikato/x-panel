@@ -829,10 +829,15 @@ func buildXrayConfig(nodes []model.XrayNode, users []model.XrayUser, outboundMod
 			"services": []string{"StatsService"},
 		},
 		"policy": map[string]interface{}{
-			"levels": map[string]interface{}{"0": map[string]interface{}{}},
+			"levels": map[string]interface{}{
+				"0": map[string]interface{}{
+					"statsUserUplink":   true,
+					"statsUserDownlink": true,
+				},
+			},
 			"system": map[string]interface{}{
-				"statsUserUplink":   true,
-				"statsUserDownlink": true,
+				"statsInboundUplink":   true,
+				"statsInboundDownlink": true,
 			},
 		},
 		"routing": map[string]interface{}{
