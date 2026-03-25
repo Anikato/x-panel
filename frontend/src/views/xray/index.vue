@@ -1790,13 +1790,17 @@ const outboundSettingsTemplate = (protocol: string): string => {
     // freedom/blackhole 无需 settings
     freedom: {},
     blackhole: {},
-    // SOCKS5 出站：平铺结构，address/port/user/pass 直接在顶层
+    // SOCKS5 出站：servers 数组格式（兼容性最好）
     // 文档：https://xtls.github.io/config/outbounds/socks.html
     socks: {
-      address: '127.0.0.1',
-      port: 1080
-      // user: 'username',  // 有认证时才填
-      // pass: 'password'
+      servers: [{
+        address: '127.0.0.1',
+        port: 1080,
+        users: [{
+          user: 'username',
+          pass: 'password'
+        }]
+      }]
     },
     // HTTP 出站：servers 数组
     // 文档：https://xtls.github.io/config/outbounds/http.html

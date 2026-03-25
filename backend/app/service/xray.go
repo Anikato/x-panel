@@ -143,7 +143,7 @@ func (s *XrayService) StartInstall() error {
 			installRunning = false
 			installMu.Unlock()
 		}()
-		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles")
+		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles", "--install-user", "root")
 		cmd.Stdout = &installLog
 		cmd.Stderr = &installLog
 		if err := cmd.Run(); err != nil {
@@ -155,7 +155,6 @@ func (s *XrayService) StartInstall() error {
 		installMu.Lock()
 		installLog.WriteString("\n[DONE] Xray installed successfully.\n")
 		installMu.Unlock()
-		_ = s.FixPermissions()
 		s.mu.Lock()
 		_ = s.reloadConfig()
 		s.mu.Unlock()
@@ -214,7 +213,7 @@ func (s *XrayService) ControlService(action string) error {
 	return nil
 }
 
-// FixPermissions 修复 /data/xray 目录权限（service 以 nobody 运行）
+// FixPermissions 确保 /data/xray 目录结构存在且权限正确（service 以 root 运行）
 func (s *XrayService) FixPermissions() error {
 	dirs := []string{"/data/xray/log", "/data/xray/etc"}
 	for _, dir := range dirs {
@@ -222,16 +221,7 @@ func (s *XrayService) FixPermissions() error {
 			return fmt.Errorf("mkdir %s: %v", dir, err)
 		}
 	}
-	// 尝试 nobody:nogroup（Debian/Ubuntu），失败则尝试 nobody:nobody（RHEL/CentOS）
-	for _, target := range []string{"/data/xray/log", "/data/xray/etc"} {
-		if out, err := exec.Command("chown", "-R", "nobody:nogroup", target).CombinedOutput(); err != nil {
-			if out2, err2 := exec.Command("chown", "-R", "nobody:nobody", target).CombinedOutput(); err2 != nil {
-				return fmt.Errorf("chown %s failed: %s / %s", target, out, out2)
-			}
-		}
-	}
-	// config.json 只读即可
-	exec.Command("chmod", "640", xrayConfigPath).Run()
+	exec.Command("chmod", "600", xrayConfigPath).Run()
 	return nil
 }
 
@@ -318,7 +308,7 @@ func (s *XrayService) DoUpgrade() error {
 			installRunning = false
 			installMu.Unlock()
 		}()
-		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles")
+		cmd := exec.Command("bash", scriptPath, "install", "--without-logfiles", "--install-user", "root")
 		cmd.Stdout = &installLog
 		cmd.Stderr = &installLog
 		if err := cmd.Run(); err != nil {
@@ -330,7 +320,6 @@ func (s *XrayService) DoUpgrade() error {
 		installMu.Lock()
 		installLog.WriteString("\n[DONE] Xray upgraded successfully.\n")
 		installMu.Unlock()
-		_ = s.FixPermissions()
 		s.mu.Lock()
 		_ = s.reloadConfig()
 		s.mu.Unlock()
