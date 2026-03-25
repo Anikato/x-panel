@@ -26,6 +26,9 @@ backend/data/
 # Environment
 *.env.local
 
+# Local notes
+待处理.md
+
 # SSH keys (never commit!)
 main_id_rsa
 *.pem
