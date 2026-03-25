@@ -288,8 +288,6 @@ const handleCommand = async (command: string) => {
     }
   }
 }
-
-}
 </style>
 
 <style lang="scss">
