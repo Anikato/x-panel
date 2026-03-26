@@ -278,8 +278,17 @@
           </el-select>
         </el-form-item>
         <template v-if="currentDnsFields.length > 0">
-          <el-form-item v-for="field in currentDnsFields" :key="field" :label="field">
-            <el-input v-model="dnsForm.authorization[field]" :type="field.includes('Key') || field.includes('Secret') || field.includes('Token') || field.includes('token') ? 'password' : 'text'" show-password />
+          <el-alert v-if="dnsForm.type === 'CloudFlare'" type="info" :closable="false" class="cf-tip" show-icon>
+            <template #title>
+              <div style="font-size:12px;line-height:1.6">
+                <b>API Token 模式（推荐）</b>：只填 apiKey，email 留空<br/>
+                <b>Global API Key 模式</b>：同时填 email 和 apiKey<br/>
+                <span style="color:var(--el-color-warning)">API Token 需要 Zone:DNS:Edit 权限</span>
+              </div>
+            </template>
+          </el-alert>
+          <el-form-item v-for="field in currentDnsFields" :key="field" :label="dnsFieldLabel(field)">
+            <el-input v-model="dnsForm.authorization[field]" :type="field.includes('Key') || field.includes('Secret') || field.includes('Token') || field.includes('token') ? 'password' : 'text'" show-password :placeholder="dnsFieldPlaceholder(field)" />
           </el-form-item>
         </template>
       </el-form>
@@ -723,6 +732,28 @@ const formatDate = (d: string) => {
   return new Date(d).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
+const dnsFieldLabel = (field: string) => {
+  const map: Record<string, string> = {
+    email: 'Email',
+    apiKey: 'API Key / Token',
+    accessKey: 'Access Key',
+    secretKey: 'Secret Key',
+    apiSecret: 'API Secret',
+    secretID: 'Secret ID',
+    region: 'Region',
+    id: 'ID',
+    token: 'Token',
+    apiUser: 'API User',
+  }
+  return map[field] || field
+}
+
+const dnsFieldPlaceholder = (field: string) => {
+  if (field === 'email') return 'API Token 模式留空，Global API Key 模式填写'
+  if (field === 'apiKey') return '填写 API Token 或 Global API Key'
+  return ''
+}
+
 const isExpiring = (d: string) => {
   if (!d) return false
   const diff = new Date(d).getTime() - Date.now()
@@ -851,6 +882,10 @@ onUnmounted(() => {
   text-align: center;
   color: var(--xp-text-muted);
   padding: 40px 0;
+}
+
+.cf-tip {
+  margin-bottom: 12px;
 }
 
 .cert-pem-section {

@@ -300,7 +300,12 @@ func (s *CertificateService) Apply(id uint) error {
 
 	// 申请证书
 	logger.Printf("[信息] 正在向 CA 发起证书申请（此步骤可能耗时数分钟）...")
-	certRes, err := client.ObtainCertificate(domains, cert.KeyType)
+	logger.Printf("[信息] DNS 验证中：等待 DNS 记录创建和传播（超时 10 分钟）...")
+	var logWriter *os.File
+	if logFile != nil {
+		logWriter = logFile
+	}
+	certRes, err := client.ObtainCertificate(domains, cert.KeyType, logWriter)
 	if err != nil {
 		logger.Printf("[错误] 证书申请失败: %v", err)
 		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
@@ -405,8 +410,13 @@ func (s *CertificateService) Renew(id uint) error {
 	}
 	logger.Printf("[信息] 续签域名: %s", strings.Join(renewDomains, ", "))
 	logger.Printf("[信息] 正在向 CA 发起续签请求...")
+	logger.Printf("[信息] DNS 验证中：等待 DNS 记录创建和传播（超时 10 分钟）...")
 
-	renewed, err := client.RenewCertificate(renewDomains, cert.KeyType)
+	var renewLogWriter *os.File
+	if logFile != nil {
+		renewLogWriter = logFile
+	}
+	renewed, err := client.RenewCertificate(renewDomains, cert.KeyType, renewLogWriter)
 	if err != nil {
 		logger.Printf("[错误] 续签失败: %v", err)
 		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": "续签失败: " + err.Error()})

@@ -7,6 +7,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
@@ -85,13 +88,6 @@ func NewAcmeClient(email, privateKeyPEM, keyType, caType, caDirURL, accountURL s
 	config.Certificate.Timeout = 60 * time.Second
 	config.UserAgent = "X-Panel"
 
-	// 调试日志：确认 kid 值
-	if reg := user.GetRegistration(); reg != nil {
-		fmt.Printf("[ACME DEBUG] kid (Registration.URI) = %q\n", reg.URI)
-	} else {
-		fmt.Println("[ACME DEBUG] WARNING: Registration is nil, kid will be empty!")
-	}
-
 	client, err := lego.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("create lego client: %v", err)
@@ -132,8 +128,22 @@ func RegisterAccount(email, keyType, caType, caDirURL string) (privateKeyPEM str
 	return string(keyPEM), reg.URI, nil
 }
 
-// ObtainCertificate 申请证书
-func (c *AcmeClient) ObtainCertificate(domains []string, keyType string) (*certificate.Resource, error) {
+// ObtainCertificate 申请证书，logWriter 可选，用于将 lego 内部日志重定向到调用方
+func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWriter ...io.Writer) (*certificate.Resource, error) {
+	if len(logWriter) > 0 && logWriter[0] != nil {
+		origOut := log.Writer()
+		origFlags := log.Flags()
+		origPrefix := log.Prefix()
+		log.SetOutput(io.MultiWriter(os.Stderr, logWriter[0]))
+		log.SetFlags(log.LstdFlags)
+		log.SetPrefix("[lego] ")
+		defer func() {
+			log.SetOutput(origOut)
+			log.SetFlags(origFlags)
+			log.SetPrefix(origPrefix)
+		}()
+	}
+
 	privKey, err := certcrypto.GeneratePrivateKey(certcrypto.KeyType(keyType))
 	if err != nil {
 		return nil, fmt.Errorf("generate cert key: %v", err)
@@ -160,13 +170,13 @@ func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 		return err
 	}
 	return c.Client.Challenge.SetDNS01Provider(provider,
-		dns01.AddDNSTimeout(30*time.Minute),
+		dns01.AddDNSTimeout(10*time.Minute),
 	)
 }
 
 // RenewCertificate 续签证书（重新申请方式）
-func (c *AcmeClient) RenewCertificate(domains []string, keyType string) (*certificate.Resource, error) {
-	return c.ObtainCertificate(domains, keyType)
+func (c *AcmeClient) RenewCertificate(domains []string, keyType string, logWriter ...io.Writer) (*certificate.Resource, error) {
+	return c.ObtainCertificate(domains, keyType, logWriter...)
 }
 
 // EncodePrivateKey 将私钥编码为 PEM

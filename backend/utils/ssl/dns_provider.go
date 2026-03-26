@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	propagationTimeout = 30 * time.Minute
+	propagationTimeout = 10 * time.Minute
 	pollingInterval    = 10 * time.Second
 	ttl                = 3600
 )
@@ -58,8 +58,14 @@ func GetDNSProvider(dnsType, authJSON string) (challenge.Provider, error) {
 	switch dnsType {
 	case "CloudFlare":
 		config := cloudflare.NewDefaultConfig()
-		config.AuthEmail = param.Email
-		config.AuthToken = param.APIKey
+		if param.Email != "" {
+			// Global API Key 模式: email + key
+			config.AuthEmail = param.Email
+			config.AuthKey = param.APIKey
+		} else {
+			// API Token 模式 (推荐): 只需 token
+			config.AuthToken = param.APIKey
+		}
 		config.PropagationTimeout = propagationTimeout
 		config.PollingInterval = pollingInterval
 		config.TTL = ttl
