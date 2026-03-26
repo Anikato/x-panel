@@ -69,19 +69,22 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 	}
 
 	site := model.Website{
-		PrimaryDomain: req.PrimaryDomain,
-		Domains:       req.Domains,
-		Alias:         alias,
-		Type:          req.Type,
-		Status:        "stopped",
-		Remark:        req.Remark,
-		SiteDir:       req.SiteDir,
-		ProxyPass:     req.ProxyPass,
-		IndexFile:     "index.html index.htm",
-		HttpConfig:    "HTTPSRedirect",
-		SSLProtocols:  "TLSv1.2 TLSv1.3",
-		AccessLog:     true,
-		ErrorLog:      true,
+		PrimaryDomain:     req.PrimaryDomain,
+		Domains:           req.Domains,
+		Alias:             alias,
+		Type:              req.Type,
+		Status:            "stopped",
+		Remark:            req.Remark,
+		SiteDir:           req.SiteDir,
+		ProxyPass:         req.ProxyPass,
+		IndexFile:         "index.html index.htm",
+		HttpConfig:        "HTTPSRedirect",
+		SSLProtocols:      "TLSv1.2 TLSv1.3",
+		AccessLog:         true,
+		ErrorLog:          true,
+		GzipEnable:        true,
+		SecurityHeaders:   true,
+		StaticCacheEnable: false,
 	}
 
 	if site.Type == "static" && site.SiteDir == "" {
@@ -161,6 +164,9 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.Redirects = req.Redirects
 	site.AccessLog = req.AccessLog
 	site.ErrorLog = req.ErrorLog
+	site.GzipEnable = req.GzipEnable
+	site.SecurityHeaders = req.SecurityHeaders
+	site.StaticCacheEnable = req.StaticCacheEnable
 	site.Upstream = req.Upstream
 	site.CustomNginx = req.CustomNginx
 	site.DefaultServer = req.DefaultServer

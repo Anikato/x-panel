@@ -50,7 +50,12 @@ type Website struct {
 	// Upstream block (for reverse proxy load balancing)
 	Upstream string `gorm:"type:text" json:"upstream"`
 
-	// Custom nginx directives
+	// Performance & Optimization
+	GzipEnable       bool `gorm:"default:true" json:"gzipEnable"`
+	SecurityHeaders  bool `gorm:"default:true" json:"securityHeaders"`
+	StaticCacheEnable bool `gorm:"default:false" json:"staticCacheEnable"`
+
+	// Custom nginx directives (server-level, inserted after managed directives)
 	CustomNginx string `gorm:"type:text" json:"customNginx"`
 
 	DefaultServer bool   `gorm:"default:false" json:"defaultServer"`

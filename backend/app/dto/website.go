@@ -60,6 +60,11 @@ type WebsiteUpdate struct {
 	AccessLog bool `json:"accessLog"`
 	ErrorLog  bool `json:"errorLog"`
 
+	// Performance & Optimization
+	GzipEnable        bool `json:"gzipEnable"`
+	SecurityHeaders   bool `json:"securityHeaders"`
+	StaticCacheEnable bool `json:"staticCacheEnable"`
+
 	// Upstream / Custom
 	Upstream      string `json:"upstream"`
 	CustomNginx   string `json:"customNginx"`
@@ -129,6 +134,10 @@ type WebsiteDetail struct {
 
 	AccessLog bool `json:"accessLog"`
 	ErrorLog  bool `json:"errorLog"`
+
+	GzipEnable        bool `json:"gzipEnable"`
+	SecurityHeaders   bool `json:"securityHeaders"`
+	StaticCacheEnable bool `json:"staticCacheEnable"`
 
 	Upstream      string `json:"upstream"`
 	CustomNginx   string `json:"customNginx"`

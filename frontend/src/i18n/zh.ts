@@ -665,9 +665,18 @@ export default {
     accessLog: '访问日志',
     errorLog: '错误日志',
     viewLog: '查看日志',
+    // 性能优化
+    performanceSetting: '性能优化',
+    gzipEnable: 'Gzip 压缩',
+    gzipEnableHint: '对文本/脚本/样式等资源启用 Gzip 压缩，减少传输体积（comp_level=6）',
+    securityHeaders: '安全响应头',
+    securityHeadersHint: '自动添加 X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy、server_tokens off',
+    staticCacheEnable: '静态资源缓存',
+    staticCacheEnableHint: '为图片/字体/CSS/JS 等静态资源添加浏览器缓存头（图片30天，CSS/JS/字体7天）',
+    proxyOptHint: '反向代理已内置 Buffer/Timeout 优化（connect 60s, read 600s, buffers 8x8k）',
     // 自定义
     customSetting: '自定义配置',
-    customNginxHint: '自定义 Nginx 指令，将直接插入 server 块内',
+    customNginxHint: '自定义 Nginx server 级指令。如与面板托管指令重复，面板会自动跳过冲突项。支持添加自定义 location 块、额外 header 等。',
     // Nginx 配置
     nginxConfig: 'Nginx 配置',
     configPreview: '配置预览',

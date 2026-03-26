@@ -154,8 +154,12 @@ func (g *NginxConfigGenerator) writeSSLBlock(b *strings.Builder, site model.Webs
 	}
 
 	if !customHasDirective(custom, "ssl_ciphers") {
-		b.WriteString("    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;\n")
-		b.WriteString("    ssl_prefer_server_ciphers on;\n")
+		b.WriteString("    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305;\n")
+		b.WriteString("    ssl_prefer_server_ciphers off;\n")
+	}
+
+	if !customHasDirective(custom, "ssl_ecdh_curve") {
+		b.WriteString("    ssl_ecdh_curve X25519:prime256v1:secp384r1;\n")
 	}
 
 	if !customHasDirective(custom, "ssl_session_cache") {
@@ -175,14 +179,93 @@ func (g *NginxConfigGenerator) writeSSLBlock(b *strings.Builder, site model.Webs
 	}
 
 	if !customHasDirective(custom, "resolver") {
-		b.WriteString("    resolver 1.1.1.1 8.8.8.8 valid=60s;\n")
-		b.WriteString("    resolver_timeout 2s;\n")
+		b.WriteString("    resolver 1.1.1.1 8.8.8.8 valid=300s;\n")
+		b.WriteString("    resolver_timeout 5s;\n")
 	}
 
 	if site.HSTS && !customHasDirective(custom, "add_header Strict-Transport-Security") {
-		b.WriteString("    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\n")
+		b.WriteString("    add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;\n")
 	}
 	b.WriteString("\n")
+}
+
+// writeGzipBlock 生成 Gzip 压缩配置
+func (g *NginxConfigGenerator) writeGzipBlock(b *strings.Builder, site model.Website) {
+	if !site.GzipEnable {
+		return
+	}
+	custom := site.CustomNginx
+	if customHasDirective(custom, "gzip") {
+		return
+	}
+	b.WriteString("    # Gzip Compression\n")
+	b.WriteString("    gzip on;\n")
+	b.WriteString("    gzip_vary on;\n")
+	b.WriteString("    gzip_proxied any;\n")
+	b.WriteString("    gzip_comp_level 6;\n")
+	b.WriteString("    gzip_min_length 256;\n")
+	b.WriteString("    gzip_buffers 16 8k;\n")
+	b.WriteString("    gzip_http_version 1.1;\n")
+	b.WriteString("    gzip_types text/plain text/css text/csv text/javascript text/xml application/javascript application/x-javascript application/json application/xml application/xml+rss application/atom+xml application/rss+xml application/xhtml+xml application/manifest+json application/vnd.ms-fontobject font/opentype font/ttf font/otf image/svg+xml image/x-icon;\n")
+	b.WriteString("\n")
+}
+
+// writeSecurityHeaders 生成安全响应头
+func (g *NginxConfigGenerator) writeSecurityHeaders(b *strings.Builder, site model.Website) {
+	if !site.SecurityHeaders {
+		return
+	}
+	custom := site.CustomNginx
+	b.WriteString("    # Security Headers\n")
+	if !customHasDirective(custom, "add_header X-Content-Type-Options") {
+		b.WriteString("    add_header X-Content-Type-Options \"nosniff\" always;\n")
+	}
+	if !customHasDirective(custom, "add_header X-Frame-Options") {
+		b.WriteString("    add_header X-Frame-Options \"SAMEORIGIN\" always;\n")
+	}
+	if !customHasDirective(custom, "add_header Referrer-Policy") {
+		b.WriteString("    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n")
+	}
+	if !customHasDirective(custom, "add_header Permissions-Policy") {
+		b.WriteString("    add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;\n")
+	}
+	if !customHasDirective(custom, "server_tokens") {
+		b.WriteString("    server_tokens off;\n")
+	}
+	b.WriteString("\n")
+}
+
+// writeStaticCacheBlock 生成静态资源缓存 location
+func (g *NginxConfigGenerator) writeStaticCacheBlock(b *strings.Builder, site model.Website) {
+	if !site.StaticCacheEnable {
+		return
+	}
+	custom := site.CustomNginx
+	if strings.Contains(custom, "~* \\.(jpg|") || strings.Contains(custom, "~* \\.(css|") {
+		return
+	}
+	b.WriteString("    # Static file caching\n")
+	b.WriteString("    location ~* \\.(jpg|jpeg|png|gif|ico|webp|avif|svg|svgz)$ {\n")
+	if site.Type == "static" {
+		b.WriteString("        expires 30d;\n")
+	} else {
+		b.WriteString("        proxy_pass " + site.ProxyPass + ";\n")
+		b.WriteString("        expires 30d;\n")
+	}
+	b.WriteString("        add_header Cache-Control \"public, immutable\";\n")
+	b.WriteString("        access_log off;\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    location ~* \\.(css|js|woff|woff2|ttf|otf|eot)$ {\n")
+	if site.Type == "static" {
+		b.WriteString("        expires 7d;\n")
+	} else {
+		b.WriteString("        proxy_pass " + site.ProxyPass + ";\n")
+		b.WriteString("        expires 7d;\n")
+	}
+	b.WriteString("        add_header Cache-Control \"public\";\n")
+	b.WriteString("        access_log off;\n")
+	b.WriteString("    }\n\n")
 }
 
 func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.Website, isHTTPS bool, certPath, keyPath string) {
@@ -237,6 +320,12 @@ func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.We
 		b.WriteString("\n")
 	}
 
+	// Gzip compression
+	g.writeGzipBlock(b, site)
+
+	// Security headers
+	g.writeSecurityHeaders(b, site)
+
 	// Site type specific config
 	switch site.Type {
 	case "static":
@@ -244,6 +333,9 @@ func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.We
 	case "reverse_proxy":
 		g.writeReverseProxy(b, site)
 	}
+
+	// Static file caching (after site-specific config)
+	g.writeStaticCacheBlock(b, site)
 
 	// Rewrite rules
 	if site.Rewrite != "" {
@@ -302,6 +394,14 @@ func (g *NginxConfigGenerator) writeReverseProxy(b *strings.Builder, site model.
 		b.WriteString("        proxy_set_header Connection \"upgrade\";\n")
 		b.WriteString("        proxy_read_timeout 86400s;\n")
 		b.WriteString("        proxy_send_timeout 86400s;\n")
+	} else {
+		b.WriteString("        proxy_connect_timeout 60s;\n")
+		b.WriteString("        proxy_send_timeout 60s;\n")
+		b.WriteString("        proxy_read_timeout 600s;\n")
+		b.WriteString("        proxy_buffering on;\n")
+		b.WriteString("        proxy_buffer_size 8k;\n")
+		b.WriteString("        proxy_buffers 8 8k;\n")
+		b.WriteString("        proxy_busy_buffers_size 16k;\n")
 	}
 	b.WriteString("    }\n\n")
 }

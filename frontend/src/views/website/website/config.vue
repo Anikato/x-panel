@@ -342,11 +342,41 @@
         </div>
       </el-tab-pane>
 
+      <!-- 性能优化 -->
+      <el-tab-pane :label="$t('website.performanceSetting')" name="performance">
+        <el-form :model="detail" label-width="140px" class="config-form">
+          <el-form-item :label="$t('website.gzipEnable')">
+            <el-switch v-model="detail.gzipEnable" />
+            <div class="form-tip">{{ $t('website.gzipEnableHint') }}</div>
+          </el-form-item>
+          <el-form-item :label="$t('website.securityHeaders')">
+            <el-switch v-model="detail.securityHeaders" />
+            <div class="form-tip">{{ $t('website.securityHeadersHint') }}</div>
+          </el-form-item>
+          <el-form-item :label="$t('website.staticCacheEnable')">
+            <el-switch v-model="detail.staticCacheEnable" />
+            <div class="form-tip">{{ $t('website.staticCacheEnableHint') }}</div>
+          </el-form-item>
+          <el-alert v-if="detail.type === 'reverse_proxy'" type="info" :closable="false" show-icon style="margin: 0 0 16px">
+            <template #title>
+              <span style="font-size:12px">{{ $t('website.proxyOptHint') }}</span>
+            </template>
+          </el-alert>
+          <el-form-item>
+            <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
       <!-- 自定义配置 -->
       <el-tab-pane :label="$t('website.customSetting')" name="custom">
-        <el-form :model="detail" label-width="0" class="config-form">
-          <div class="form-tip" style="margin-bottom: 8px">{{ $t('website.customNginxHint') }}</div>
-          <el-input v-model="detail.customNginx" type="textarea" :rows="12" class="code-textarea" />
+        <el-form :model="detail" label-width="0" class="config-form" style="max-width: 900px">
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom: 12px">
+            <template #title>
+              <span style="font-size:12px">{{ $t('website.customNginxHint') }}</span>
+            </template>
+          </el-alert>
+          <el-input v-model="detail.customNginx" type="textarea" :rows="16" class="code-textarea" :placeholder="customNginxPlaceholder" />
           <div style="margin-top: 12px">
             <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
           </div>
@@ -422,6 +452,9 @@ interface WebsiteDetail {
   leechReferers: string
   accessLog: boolean
   errorLog: boolean
+  gzipEnable: boolean
+  securityHeaders: boolean
+  staticCacheEnable: boolean
   upstream: string
   customNginx: string
   nginxConfig: string
@@ -490,6 +523,21 @@ const rewritePresets = [
   { name: 'WordPress', content: 'location / {\n    try_files $uri $uri/ /index.php?$args;\n}' },
   { name: 'Laravel', content: 'location / {\n    try_files $uri $uri/ /index.php?$query_string;\n}' },
 ]
+
+const customNginxPlaceholder = `# 自定义 location 块示例：
+location /api/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+}
+
+# 自定义 header 示例：
+add_header X-Custom-Header "value" always;
+
+# 覆盖面板默认的安全头：
+add_header X-Frame-Options "DENY" always;
+
+# 如需自定义 SSL 指令（如 ssl_ciphers），
+# 面板会自动跳过已存在的指令，避免冲突`
 
 const loadDetail = async () => {
   loading.value = true

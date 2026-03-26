@@ -36,8 +36,27 @@ func Init() {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
 
+	runOnceDataMigrations()
+
 	initDefaultSettings()
 	global.LOG.Info("Database migration completed")
+}
+
+func runOnceDataMigrations() {
+	migrated := func(key string) bool {
+		var count int64
+		global.DB.Model(&model.Setting{}).Where("`key` = ?", key).Count(&count)
+		return count > 0
+	}
+	markDone := func(key string) {
+		global.DB.Create(&model.Setting{Key: key, Value: "done"})
+	}
+
+	if !migrated("_mig_website_perf_defaults") {
+		global.DB.Exec("UPDATE websites SET gzip_enable = 1, security_headers = 1 WHERE gzip_enable = 0 AND security_headers = 0")
+		markDone("_mig_website_perf_defaults")
+		global.LOG.Info("Migration: enabled gzip & security headers for existing websites")
+	}
 }
 
 func initDefaultSettings() {
