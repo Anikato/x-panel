@@ -122,22 +122,64 @@ func (g *NginxConfigGenerator) writeListenHTTPS(b *strings.Builder, site model.W
 	fmt.Fprintf(b, "    listen [::]:443 ssl%s;\n", defaultStr)
 }
 
+// customHasDirective 检查自定义配置中是否已包含某个 Nginx 指令
+func customHasDirective(customNginx, directive string) bool {
+	for _, line := range strings.Split(customNginx, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, directive+" ") || strings.HasPrefix(trimmed, directive+"\t") {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *NginxConfigGenerator) writeSSLBlock(b *strings.Builder, site model.Website, certPath, keyPath string) {
-	if site.Http2Enable {
+	custom := site.CustomNginx
+
+	if site.Http2Enable && !customHasDirective(custom, "http2") {
 		b.WriteString("    http2 on;\n")
 	}
-	fmt.Fprintf(b, "    ssl_certificate %s;\n", certPath)
-	fmt.Fprintf(b, "    ssl_certificate_key %s;\n", keyPath)
-	protocols := site.SSLProtocols
-	if protocols == "" {
-		protocols = "TLSv1.2 TLSv1.3"
+
+	if !customHasDirective(custom, "ssl_certificate_key") {
+		fmt.Fprintf(b, "    ssl_certificate %s;\n", certPath)
+		fmt.Fprintf(b, "    ssl_certificate_key %s;\n", keyPath)
 	}
-	fmt.Fprintf(b, "    ssl_protocols %s;\n", protocols)
-	b.WriteString("    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;\n")
-	b.WriteString("    ssl_prefer_server_ciphers on;\n")
-	b.WriteString("    ssl_session_cache shared:SSL:10m;\n")
-	b.WriteString("    ssl_session_timeout 10m;\n")
-	if site.HSTS {
+
+	if !customHasDirective(custom, "ssl_protocols") {
+		protocols := site.SSLProtocols
+		if protocols == "" {
+			protocols = "TLSv1.2 TLSv1.3"
+		}
+		fmt.Fprintf(b, "    ssl_protocols %s;\n", protocols)
+	}
+
+	if !customHasDirective(custom, "ssl_ciphers") {
+		b.WriteString("    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;\n")
+		b.WriteString("    ssl_prefer_server_ciphers on;\n")
+	}
+
+	if !customHasDirective(custom, "ssl_session_cache") {
+		b.WriteString("    ssl_session_cache shared:MozSSL:10m;\n")
+	}
+	if !customHasDirective(custom, "ssl_session_timeout") {
+		b.WriteString("    ssl_session_timeout 1d;\n")
+	}
+	if !customHasDirective(custom, "ssl_session_tickets") {
+		b.WriteString("    ssl_session_tickets off;\n")
+	}
+
+	if !customHasDirective(custom, "ssl_stapling") {
+		b.WriteString("    ssl_stapling on;\n")
+		b.WriteString("    ssl_stapling_verify on;\n")
+		fmt.Fprintf(b, "    ssl_trusted_certificate %s;\n", certPath)
+	}
+
+	if !customHasDirective(custom, "resolver") {
+		b.WriteString("    resolver 1.1.1.1 8.8.8.8 valid=60s;\n")
+		b.WriteString("    resolver_timeout 2s;\n")
+	}
+
+	if site.HSTS && !customHasDirective(custom, "add_header Strict-Transport-Security") {
 		b.WriteString("    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\n")
 	}
 	b.WriteString("\n")
