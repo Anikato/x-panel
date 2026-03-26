@@ -392,6 +392,7 @@ export interface NginxStatus {
   autoStart: boolean
   systemMode: boolean
   hasBothInstalled: boolean
+  websiteCount: number
 }
 
 export interface NginxVersion {

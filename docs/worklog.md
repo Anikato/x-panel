@@ -4,6 +4,85 @@
 
 ---
 
+## 2026-03-25 — Session #45：Nginx Bug 修复 + 版本检查更新功能
+
+### 完成内容
+
+**Bug 修复**：
+- [x] **安装失败 UI 卡死**：error phase 时未重置 `installing` 状态，未弹错误提示 → 现在正确结束进度页并显示错误信息
+- [x] **网站删除配置残留**：停用状态网站删除不清理 nginx 配置文件、运行中删除不清理 `sites-available` → 统一删除所有配置文件（enabled + available/conf.d + htpasswd）
+- [x] **预编译安装后状态不同步**：`doInstall()` 结束后未调用 `DetectNginx()` → 安装完成后自动刷新检测
+- [x] **卸载错误码不规范**：使用 `fmt.Errorf` 字符串拼接而非 `buserr` → 新增 `ErrNginxHasSites`/`ErrNginxAlreadyInstalled` 常量
+
+**新功能 — 版本检查更新**：
+- [x] **后端 `CheckUpdate()`**：apt 模式通过 `apt-cache policy nginx` 检查可用版本；预编译模式通过 GitHub Release 列表对比
+- [x] **后端 `Upgrade()`**：apt 模式执行 `apt-get install --only-upgrade`；预编译模式先停止后覆盖安装
+- [x] **前端版本卡片**：添加「检查更新」按钮，有更新时显示新版本标签 + 升级按钮
+- [x] **进度复用**：升级过程复用安装进度轮询机制
+
+### 关键决策
+
+- apt 升级使用 `--only-upgrade` 而非 `dist-upgrade`，避免意外升级其他包
+- apt 升级完成后自动 `systemctl reload nginx`
+- 预编译升级先 `quit` 停止再覆盖安装（复用 `doInstall`）
+- 网站删除时无论状态都清理所有配置文件，只有运行中才 reload nginx
+
+### 涉及文件
+
+**后端**：
+- `backend/constant/errs.go` — 新增 `ErrNginxHasSites`、`ErrNginxAlreadyInstalled`
+- `backend/app/dto/nginx.go` — 新增 `NginxUpdateInfo`、`NginxUpgradeReq`
+- `backend/app/service/nginx_install.go` — 新增 `CheckUpdate()`/`Upgrade()`/`doUpgradeApt()`/`doUpgradePrecompiled()`/`checkAptUpdate()`，修复 `doInstall` 尾部、`Uninstall` 错误码
+- `backend/app/service/website.go` — `Delete` 方法统一清理所有配置文件
+- `backend/app/api/v1/nginx.go` — 新增 `CheckNginxUpdate`/`UpgradeNginx` handler
+- `backend/router/router.go` — 新增更新检查和升级路由
+
+**前端**：
+- `frontend/src/api/modules/nginx.ts` — 新增 `checkNginxUpdate`/`upgradeNginx`
+- `frontend/src/views/website/nginx/index.vue` — 安装错误处理修复 + 版本卡片更新 UI + 升级逻辑
+- `frontend/src/i18n/zh.ts` — 新增版本更新相关翻译
+
+---
+
+## 2026-03-25 — Session #44：Nginx 安装默认改为 apt + 卸载安全检查
+
+### 完成内容
+
+- [x] **安装方式重构**：Nginx 安装默认使用 `apt-get install nginx`，保留预编译版本为备选
+- [x] **后端 Install 方法**：`NginxInstallReq` 新增 `Method` 字段（`apt`/`precompiled`），默认 `apt`
+- [x] **apt 安装流程**：`doInstallApt()` 执行 `apt-get update` + `apt-get install -y nginx` + `systemctl enable/start`
+- [x] **卸载安全检查**：卸载前检查网站数量，有网站时拒绝卸载（需用户确认强制清理）
+- [x] **强制卸载清理**：`forceCleanup=true` 时先清理所有网站 nginx 配置和数据库记录，再执行卸载
+- [x] **前端卸载对话框**：有网站时显示醒目警告（含网站数量），需确认「强制卸载并清理」
+- [x] **NginxStatus 增加 websiteCount**：前端获取状态时即可判断是否有网站存在
+- [x] **前端安装对话框**：双模式 Radio 选择，apt 标记「推荐」，预编译才需选版本号
+- [x] **i18n 新增**：安装方式、卸载警告、强制卸载等新文案
+
+### 关键决策
+
+- `apt` 安装完成后自动调用 `DetectNginx()` 刷新运行时状态
+- 安装进度复用现有 `setProgress` + 前端轮询机制
+- 卸载 apt nginx 执行 `apt-get remove`（非 purge），保留 `/etc/nginx` 配置文件
+- 强制卸载清理逻辑：先遍历所有网站删除 nginx 配置文件（sites-enabled/sites-available/conf.d + htpasswd），再清空 DB 记录，最后执行卸载
+- 网站数量在 NginxStatus 中返回，避免额外 API 请求
+
+### 涉及文件
+
+**后端**：
+- `backend/app/dto/nginx.go` — `NginxInstallReq` 新增 `Method`，新增 `NginxUninstallReq`，`NginxStatus` 新增 `WebsiteCount`
+- `backend/app/service/nginx_install.go` — 新增 `doInstallApt()`/`cleanupAllSites()`，重写 `Install()`/`Uninstall()`
+- `backend/app/service/nginx.go` — `GetStatus` 返回网站数量
+- `backend/app/api/v1/nginx.go` — `InstallNginx`/`UninstallNginx` handler 适配新参数
+- `backend/app/repo/website.go` — 新增 `Count()` 方法
+
+**前端**：
+- `frontend/src/api/modules/nginx.ts` — `installNginx`/`uninstallNginx` 参数变更
+- `frontend/src/api/interface/index.ts` — `NginxStatus` 新增 `websiteCount`
+- `frontend/src/views/website/nginx/index.vue` — 安装对话框双模式 + 卸载安全检查
+- `frontend/src/i18n/zh.ts` — 新增安装方式/卸载警告翻译
+
+---
+
 ## 2026-03-25 — Session #43：容器功能增强 & Nginx 双模式重构
 
 ### 完成内容

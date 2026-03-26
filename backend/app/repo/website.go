@@ -10,6 +10,7 @@ type IWebsiteRepo interface {
 	Page(page, pageSize int, opts ...DBOption) (int64, []model.Website, error)
 	GetList(opts ...DBOption) ([]model.Website, error)
 	Get(opts ...DBOption) (model.Website, error)
+	Count(opts ...DBOption) (int64, error)
 	Create(item *model.Website) error
 	Save(item *model.Website) error
 	Delete(opts ...DBOption) error
@@ -59,6 +60,16 @@ func (r *WebsiteRepo) Create(item *model.Website) error {
 
 func (r *WebsiteRepo) Save(item *model.Website) error {
 	return getDB().Save(item).Error
+}
+
+func (r *WebsiteRepo) Count(opts ...DBOption) (int64, error) {
+	var count int64
+	db := getDB().Model(&model.Website{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	err := db.Count(&count).Error
+	return count, err
 }
 
 func (r *WebsiteRepo) Delete(opts ...DBOption) error {

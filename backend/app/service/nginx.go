@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xpanel/app/dto"
+	"xpanel/app/repo"
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
@@ -34,6 +35,9 @@ func (s *NginxService) GetStatus() (*dto.NginxStatus, error) {
 		SystemMode:       nc.IsSystemMode(),
 		HasBothInstalled: nc.HasBothInstalled(),
 	}
+
+	websiteRepo := repo.NewIWebsiteRepo()
+	status.WebsiteCount, _ = websiteRepo.Count()
 
 	if !status.IsInstalled {
 		return status, nil

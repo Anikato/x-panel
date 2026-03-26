@@ -190,15 +190,24 @@ func (s *WebsiteService) Delete(id uint) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 
-	// 先禁用
-	if site.Status == "running" {
-		s.removeConfig(site)
-		s.reloadNginx()
+	nc := global.CONF.Nginx
+	needReload := site.Status == "running"
+
+	// 清理所有 nginx 配置文件（无论网站状态）
+	if nc.IsSystemMode() {
+		os.Remove(filepath.Join(nc.GetSitesDir(), site.Alias+".conf"))
+		os.Remove(filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf"))
+	} else {
+		os.Remove(GetSiteConfPath(site.Alias))
 	}
 
 	// 删除 htpasswd 文件
-	authDir := filepath.Join(global.CONF.Nginx.GetConfDir(), "auth")
+	authDir := filepath.Join(nc.GetConfDir(), "auth")
 	os.Remove(filepath.Join(authDir, site.Alias+".htpasswd"))
+
+	if needReload {
+		s.reloadNginx()
+	}
 
 	return s.websiteRepo.Delete(repo.WithByID(id))
 }

@@ -15,6 +15,7 @@ type NginxStatus struct {
 	AutoStart        bool      `json:"autoStart"`
 	SystemMode       bool      `json:"systemMode"`
 	HasBothInstalled bool      `json:"hasBothInstalled"`
+	WebsiteCount     int64     `json:"websiteCount"`
 }
 
 type NginxAutoStartReq struct {
@@ -24,7 +25,12 @@ type NginxAutoStartReq struct {
 // ---- Nginx 安装 ----
 
 type NginxInstallReq struct {
-	Version string `json:"version" binding:"required"` // 目标版本号 (如 "1.26.2")
+	Method  string `json:"method"`  // "apt"(default) / "precompiled"
+	Version string `json:"version"` // 预编译模式必填
+}
+
+type NginxUninstallReq struct {
+	ForceCleanup bool `json:"forceCleanup"` // 强制卸载并清理所有网站配置和记录
 }
 
 type NginxInstallProgress struct {
@@ -39,6 +45,19 @@ type NginxVersionInfo struct {
 	Version     string `json:"version"`     // 版本号 (如 "1.26.2")
 	Tag         string `json:"tag"`         // Git 标签 (如 "v1.26.2")
 	PublishedAt string `json:"publishedAt"` // 发布时间
+}
+
+// ---- Nginx 版本更新 ----
+
+type NginxUpdateInfo struct {
+	HasUpdate        bool   `json:"hasUpdate"`
+	CurrentVersion   string `json:"currentVersion"`
+	AvailableVersion string `json:"availableVersion"`
+	SystemMode       bool   `json:"systemMode"`
+}
+
+type NginxUpgradeReq struct {
+	Version string `json:"version"` // 预编译模式需指定版本号
 }
 
 // ---- Nginx 操作 ----

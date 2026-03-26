@@ -64,8 +64,21 @@
         </el-col>
         <el-col :span="6">
           <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nginx.version') }}</div>
+            <div class="stat-title">
+              {{ $t('nginx.version') }}
+              <el-button link type="primary" size="small" :loading="updateCheckLoading" @click="handleCheckUpdate" style="margin-left: 6px">
+                {{ $t('nginx.checkUpdate') }}
+              </el-button>
+            </div>
             <div class="stat-value version-text">{{ status.version || '-' }}</div>
+            <div v-if="updateInfo.hasUpdate" class="update-hint">
+              <el-tag type="warning" size="small" effect="plain">
+                {{ $t('nginx.newVersionAvailable', { version: updateInfo.availableVersion }) }}
+              </el-tag>
+              <el-button type="warning" size="small" @click="handleUpgrade" :loading="upgradeLoading" style="margin-left: 6px">
+                <el-icon><Upload /></el-icon>{{ $t('nginx.upgrade') }}
+              </el-button>
+            </div>
           </el-card>
         </el-col>
         <el-col :span="6">
@@ -193,37 +206,56 @@
     </template>
 
     <!-- 安装对话框 -->
-    <el-dialog v-model="showInstallDialog" :title="$t('nginx.install')" width="500px" :close-on-click-modal="false">
+    <el-dialog v-model="showInstallDialog" :title="$t('nginx.install')" width="520px" :close-on-click-modal="false">
       <el-form :model="installForm" label-width="100px">
-        <el-form-item :label="$t('nginx.installVersion')">
-          <el-select
-            v-model="installForm.version"
-            :placeholder="$t('nginx.selectVersion')"
-            :loading="versionsLoading"
-            filterable
-            style="width: 100%"
-          >
-            <el-option
-              v-for="v in availableVersions"
-              :key="v.version"
-              :label="v.version"
-              :value="v.version"
+        <el-form-item :label="$t('nginx.installMethod')">
+          <el-radio-group v-model="installForm.method" @change="onInstallMethodChange">
+            <el-radio value="apt">
+              {{ $t('nginx.installMethodApt') }}
+              <el-tag type="success" size="small" style="margin-left: 6px">{{ $t('nginx.recommended') }}</el-tag>
+            </el-radio>
+            <el-radio value="precompiled">{{ $t('nginx.installMethodPrecompiled') }}</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="installForm.method === 'apt'">
+          <el-alert :title="$t('nginx.installAptDesc')" type="info" :closable="false" show-icon />
+        </el-form-item>
+        <template v-if="installForm.method === 'precompiled'">
+          <el-form-item :label="$t('nginx.installVersion')">
+            <el-select
+              v-model="installForm.version"
+              :placeholder="$t('nginx.selectVersion')"
+              :loading="versionsLoading"
+              filterable
+              style="width: 100%"
             >
-              <div class="version-option">
-                <span>{{ v.version }}</span>
-                <span class="version-date">{{ formatDate(v.publishedAt) }}</span>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="availableVersions.length === 0 && !versionsLoading">
-          <el-alert :title="$t('nginx.noVersions')" type="warning" :closable="false" show-icon />
-          <el-input v-model="installForm.version" :placeholder="$t('nginx.installVersionPlaceholder')" style="margin-top: 8px" />
-        </el-form-item>
+              <el-option
+                v-for="v in availableVersions"
+                :key="v.version"
+                :label="v.version"
+                :value="v.version"
+              >
+                <div class="version-option">
+                  <span>{{ v.version }}</span>
+                  <span class="version-date">{{ formatDate(v.publishedAt) }}</span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="availableVersions.length === 0 && !versionsLoading">
+            <el-alert :title="$t('nginx.noVersions')" type="warning" :closable="false" show-icon />
+            <el-input v-model="installForm.version" :placeholder="$t('nginx.installVersionPlaceholder')" style="margin-top: 8px" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="showInstallDialog = false">{{ $t('commons.cancel') }}</el-button>
-        <el-button type="primary" @click="handleInstall" :loading="installLoading" :disabled="!installForm.version">{{ $t('commons.confirm') }}</el-button>
+        <el-button
+          type="primary"
+          @click="handleInstall"
+          :loading="installLoading"
+          :disabled="installForm.method === 'precompiled' && !installForm.version"
+        >{{ $t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -235,7 +267,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, VideoPlay, VideoPause, RefreshRight, SwitchButton,
-  Document, Delete, Box, Checked, Setting,
+  Document, Delete, Box, Checked, Setting, Upload,
 } from '@element-plus/icons-vue'
 import {
   getNginxStatus,
@@ -246,6 +278,8 @@ import {
   uninstallNginx,
   listNginxVersions,
   setNginxAutoStart,
+  checkNginxUpdate,
+  upgradeNginx,
 } from '@/api/modules/nginx'
 import {
   getNginxMainConf,
@@ -276,8 +310,14 @@ const installProgress = ref<NginxInstallProgress>({ phase: 'idle', message: '', 
 let progressTimer: ReturnType<typeof setInterval> | null = null
 
 const installForm = reactive({
+  method: 'apt' as 'apt' | 'precompiled',
   version: '',
 })
+
+// 版本更新
+const updateCheckLoading = ref(false)
+const upgradeLoading = ref(false)
+const updateInfo = reactive({ hasUpdate: false, availableVersion: '' })
 
 // 可用版本列表
 const availableVersions = ref<NginxVersion[]>([])
@@ -345,29 +385,36 @@ const handleTestConfig = async () => {
   finally { testLoading.value = false }
 }
 
-// 显示安装对话框（同时加载版本列表）
+// 显示安装对话框
 const handleShowInstall = () => {
+  installForm.method = 'apt'
+  installForm.version = ''
   showInstallDialog.value = true
-  loadVersions()
+}
+
+// 切换安装方式
+const onInstallMethodChange = (val: string) => {
+  if (val === 'precompiled' && availableVersions.value.length === 0) {
+    loadVersions()
+  }
 }
 
 // 安装 Nginx
 const handleInstall = async () => {
-  if (!installForm.version) {
+  if (installForm.method === 'precompiled' && !installForm.version) {
     ElMessage.warning(t('nginx.selectVersion'))
     return
   }
+  const confirmMsg = installForm.method === 'apt'
+    ? t('nginx.installAptConfirm')
+    : t('nginx.installConfirm', { version: installForm.version })
   try {
-    await ElMessageBox.confirm(
-      t('nginx.installConfirm', { version: installForm.version }),
-      t('commons.tip'),
-      { type: 'warning' },
-    )
+    await ElMessageBox.confirm(confirmMsg, t('commons.tip'), { type: 'warning' })
   } catch { return }
 
   installLoading.value = true
   try {
-    await installNginx(installForm.version)
+    await installNginx(installForm.method, installForm.method === 'precompiled' ? installForm.version : undefined)
     showInstallDialog.value = false
     installing.value = true
     startProgressPolling()
@@ -377,20 +424,74 @@ const handleInstall = async () => {
 
 // 卸载 Nginx
 const handleUninstall = async () => {
-  try {
-    await ElMessageBox.confirm(t('nginx.uninstallConfirm'), t('commons.tip'), {
-      type: 'error',
-      confirmButtonText: t('commons.confirm'),
-      cancelButtonText: t('commons.cancel'),
-    })
-  } catch { return }
+  const siteCount = status.value.websiteCount || 0
+  let forceCleanup = false
+
+  if (siteCount > 0) {
+    try {
+      await ElMessageBox.confirm(
+        t('nginx.uninstallHasSites', { count: siteCount }),
+        t('commons.tip'),
+        {
+          type: 'error',
+          confirmButtonText: t('nginx.uninstallForce'),
+          cancelButtonText: t('commons.cancel'),
+          dangerouslyUseHTMLString: true,
+        },
+      )
+      forceCleanup = true
+    } catch { return }
+  } else {
+    try {
+      await ElMessageBox.confirm(t('nginx.uninstallConfirm'), t('commons.tip'), {
+        type: 'error',
+        confirmButtonText: t('commons.confirm'),
+        cancelButtonText: t('commons.cancel'),
+      })
+    } catch { return }
+  }
 
   try {
-    await uninstallNginx()
+    await uninstallNginx(forceCleanup)
     ElMessage.success(t('commons.success'))
     await loadStatus()
     testResult.value = null
   } catch { /* handled */ }
+}
+
+// 检查更新
+const handleCheckUpdate = async () => {
+  updateCheckLoading.value = true
+  try {
+    const res = await checkNginxUpdate()
+    const data = res.data
+    updateInfo.hasUpdate = data?.hasUpdate || false
+    updateInfo.availableVersion = data?.availableVersion || ''
+    if (!data?.hasUpdate) {
+      ElMessage.success(t('nginx.alreadyLatest'))
+    }
+  } catch { /* handled */ }
+  finally { updateCheckLoading.value = false }
+}
+
+// 升级 Nginx
+const handleUpgrade = async () => {
+  const ver = updateInfo.availableVersion
+  try {
+    await ElMessageBox.confirm(
+      t('nginx.upgradeConfirm', { current: status.value.version, target: ver }),
+      t('commons.tip'),
+      { type: 'warning' },
+    )
+  } catch { return }
+
+  upgradeLoading.value = true
+  try {
+    await upgradeNginx(status.value.systemMode ? undefined : ver)
+    installing.value = true
+    startProgressPolling()
+  } catch { /* handled */ }
+  finally { upgradeLoading.value = false }
 }
 
 // 安装进度轮询
@@ -404,9 +505,13 @@ const startProgressPolling = () => {
         stopProgressPolling()
         if (res.data?.phase === 'done') {
           ElMessage.success(res.data.message)
-          installing.value = false
-          await loadStatus()
+        } else {
+          ElMessage.error(res.data.message || t('nginx.installFailed'))
         }
+        installing.value = false
+        updateInfo.hasUpdate = false
+        updateInfo.availableVersion = ''
+        await loadStatus()
       }
     } catch { /* retry */ }
   }, 2000)
@@ -552,6 +657,13 @@ onUnmounted(() => stopProgressPolling())
     font-size: 22px;
     font-weight: 600;
     color: var(--xp-accent);
+  }
+
+  .update-hint {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 

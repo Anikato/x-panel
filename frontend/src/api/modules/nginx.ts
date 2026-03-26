@@ -15,9 +15,9 @@ export const testNginxConfig = () => {
   return http.get('/nginx/config-test')
 }
 
-// --- 安装 Nginx（从预编译仓库下载）---
-export const installNginx = (version: string) => {
-  return http.post('/nginx/install', { version })
+// --- 安装 Nginx ---
+export const installNginx = (method: string, version?: string) => {
+  return http.post('/nginx/install', { method, version })
 }
 
 // --- 安装进度 ---
@@ -26,13 +26,23 @@ export const getInstallProgress = () => {
 }
 
 // --- 卸载 Nginx ---
-export const uninstallNginx = () => {
-  return http.post('/nginx/uninstall')
+export const uninstallNginx = (forceCleanup = false) => {
+  return http.post('/nginx/uninstall', { forceCleanup })
 }
 
 // --- 获取可用的预编译版本列表 ---
 export const listNginxVersions = () => {
   return http.get('/nginx/versions')
+}
+
+// --- 检查 Nginx 更新 ---
+export const checkNginxUpdate = () => {
+  return http.get('/nginx/update/check')
+}
+
+// --- 升级 Nginx ---
+export const upgradeNginx = (version?: string) => {
+  return http.post('/nginx/update/upgrade', { version })
 }
 
 // --- 设置 Nginx 开机自启 ---

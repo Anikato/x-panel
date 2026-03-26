@@ -31,12 +31,14 @@ const (
 	ErrSSLRenew        = "ErrSSLRenew"
 
 	// Nginx
-	ErrNginxNotInstalled   = "ErrNginxNotInstalled"
-	ErrNginxAlreadyRunning = "ErrNginxAlreadyRunning"
-	ErrNginxNotRunning     = "ErrNginxNotRunning"
-	ErrNginxConfigTest     = "ErrNginxConfigTest"
-	ErrNginxInstall        = "ErrNginxInstall"
-	ErrNginxBuildDeps      = "ErrNginxBuildDeps"
+	ErrNginxNotInstalled    = "ErrNginxNotInstalled"
+	ErrNginxAlreadyRunning  = "ErrNginxAlreadyRunning"
+	ErrNginxAlreadyInstalled = "ErrNginxAlreadyInstalled"
+	ErrNginxNotRunning      = "ErrNginxNotRunning"
+	ErrNginxConfigTest      = "ErrNginxConfigTest"
+	ErrNginxInstall         = "ErrNginxInstall"
+	ErrNginxBuildDeps       = "ErrNginxBuildDeps"
+	ErrNginxHasSites        = "ErrNginxHasSites"
 
 	// Website
 	ErrWebsiteDomainExist = "ErrWebsiteDomainExist"

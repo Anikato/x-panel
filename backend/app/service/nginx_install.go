@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"xpanel/app/dto"
+	"xpanel/app/model"
+	"xpanel/app/repo"
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
@@ -23,28 +25,47 @@ import (
 type INginxInstallService interface {
 	Install(req dto.NginxInstallReq) error
 	GetProgress() *dto.NginxInstallProgress
-	Uninstall() error
+	Uninstall(req dto.NginxUninstallReq) error
 	ListVersions() ([]dto.NginxVersionInfo, error)
+	CheckUpdate() (*dto.NginxUpdateInfo, error)
+	Upgrade(req dto.NginxUpgradeReq) error
 }
 
 type NginxInstallService struct {
-	mu       sync.Mutex
-	progress *dto.NginxInstallProgress
+	mu          sync.Mutex
+	progress    *dto.NginxInstallProgress
+	websiteRepo repo.IWebsiteRepo
 }
 
 func NewINginxInstallService() INginxInstallService {
-	return &NginxInstallService{}
+	return &NginxInstallService{
+		websiteRepo: repo.NewIWebsiteRepo(),
+	}
 }
 
-// Install 从 GitHub Release 下载预编译 Nginx 并安装
+// Install 安装 Nginx，根据 Method 选择安装方式
 func (s *NginxInstallService) Install(req dto.NginxInstallReq) error {
-	installDir := global.CONF.Nginx.InstallDir
 	if global.CONF.Nginx.IsInstalled() {
-		return fmt.Errorf("nginx is already installed at %s", installDir)
+		return buserr.New(constant.ErrNginxAlreadyInstalled)
 	}
 
-	// 异步执行下载安装
-	go s.doInstall(req.Version, installDir)
+	method := strings.ToLower(req.Method)
+	if method == "" {
+		method = "apt"
+	}
+
+	switch method {
+	case "apt":
+		go s.doInstallApt()
+	case "precompiled":
+		if req.Version == "" {
+			return fmt.Errorf("version is required for precompiled install")
+		}
+		installDir := global.CONF.Nginx.InstallDir
+		go s.doInstall(req.Version, installDir)
+	default:
+		return fmt.Errorf("unsupported install method: %s", method)
+	}
 	return nil
 }
 
@@ -59,28 +80,121 @@ func (s *NginxInstallService) GetProgress() *dto.NginxInstallProgress {
 	return &cp
 }
 
-// Uninstall 卸载 Nginx（删除安装目录）
-func (s *NginxInstallService) Uninstall() error {
-	installDir := global.CONF.Nginx.InstallDir
+// doInstallApt 通过 apt 安装 Nginx（在 goroutine 中运行）
+func (s *NginxInstallService) doInstallApt() {
+	s.setProgress("download", "正在更新软件包索引...", 5)
+
+	// apt-get update
+	updateCmd := exec.Command("apt-get", "update", "-qq")
+	if output, err := updateCmd.CombinedOutput(); err != nil {
+		s.setProgress("error", fmt.Sprintf("apt-get update 失败: %s", strings.TrimSpace(string(output))), 0)
+		return
+	}
+	s.setProgress("download", "软件包索引已更新", 20)
+
+	// apt-get install -y nginx
+	s.setProgress("install", "正在安装 Nginx...", 30)
+	installCmd := exec.Command("apt-get", "install", "-y", "nginx")
+	output, err := installCmd.CombinedOutput()
+	if err != nil {
+		s.setProgress("error", fmt.Sprintf("安装失败: %s", strings.TrimSpace(string(output))), 0)
+		return
+	}
+	s.setProgress("install", "Nginx 已安装", 70)
+
+	// 启用并启动服务
+	s.setProgress("install", "正在启动 Nginx 服务...", 80)
+	if _, err := cmd.ExecWithOutput("systemctl", "enable", "nginx"); err != nil {
+		global.LOG.Warnf("Enable nginx autostart failed: %v", err)
+	}
+	if _, err := cmd.ExecWithOutput("systemctl", "start", "nginx"); err != nil {
+		global.LOG.Warnf("Start nginx failed: %v", err)
+	}
+	s.setProgress("install", "Nginx 服务已启动", 90)
+
+	// 重新检测 nginx 配置
+	global.CONF.Nginx.DetectNginx()
+
+	ver := global.CONF.Nginx.GetVersion()
+	s.setProgress("done", fmt.Sprintf("Nginx %s 安装成功（apt）", ver), 100)
+	global.LOG.Infof("Nginx installed via apt, version: %s", ver)
+}
+
+// Uninstall 卸载 Nginx
+func (s *NginxInstallService) Uninstall(req dto.NginxUninstallReq) error {
 	if !global.CONF.Nginx.IsInstalled() {
 		return buserr.New(constant.ErrNginxNotInstalled)
 	}
 
-	// 先确保 Nginx 已停止
-	nginxBin := global.CONF.Nginx.GetBinary()
-	pidPath := global.CONF.Nginx.GetPidPath()
-	if _, err := os.Stat(pidPath); err == nil {
-		_ = exec.Command(nginxBin, "-p", installDir, "-s", "quit").Run()
-		time.Sleep(2 * time.Second)
+	// 检查是否有网站记录
+	siteCount, _ := s.websiteRepo.Count()
+	if siteCount > 0 && !req.ForceCleanup {
+		return buserr.WithDetail(constant.ErrNginxHasSites,
+			fmt.Sprintf("%d websites exist", siteCount), nil)
 	}
 
-	if err := os.RemoveAll(installDir); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer,
-			fmt.Sprintf("failed to remove %s: %v", installDir, err), err)
+	// 强制卸载：先清理所有网站配置和数据库记录
+	if siteCount > 0 && req.ForceCleanup {
+		s.cleanupAllSites()
 	}
 
-	global.LOG.Infof("Nginx uninstalled from %s", installDir)
+	if global.CONF.Nginx.IsSystemMode() {
+		if _, err := cmd.ExecWithOutput("systemctl", "stop", "nginx"); err != nil {
+			global.LOG.Warnf("Stop nginx failed: %v", err)
+		}
+		output, err := exec.Command("apt-get", "remove", "-y", "nginx").CombinedOutput()
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer,
+				fmt.Sprintf("apt-get remove failed: %s", strings.TrimSpace(string(output))), err)
+		}
+		global.LOG.Infof("Nginx uninstalled via apt")
+	} else {
+		installDir := global.CONF.Nginx.InstallDir
+		nginxBin := global.CONF.Nginx.GetBinary()
+		pidPath := global.CONF.Nginx.GetPidPath()
+		if _, err := os.Stat(pidPath); err == nil {
+			_ = exec.Command(nginxBin, "-p", installDir, "-s", "quit").Run()
+			time.Sleep(2 * time.Second)
+		}
+		if err := os.RemoveAll(installDir); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer,
+				fmt.Sprintf("failed to remove %s: %v", installDir, err), err)
+		}
+		global.LOG.Infof("Nginx uninstalled from %s", installDir)
+	}
+
+	global.CONF.Nginx.DetectNginx()
 	return nil
+}
+
+// cleanupAllSites 清理所有网站的 nginx 配置文件和数据库记录
+func (s *NginxInstallService) cleanupAllSites() {
+	sites, err := s.websiteRepo.GetList()
+	if err != nil {
+		global.LOG.Warnf("Failed to list sites for cleanup: %v", err)
+		return
+	}
+
+	nc := global.CONF.Nginx
+	for _, site := range sites {
+		if nc.IsSystemMode() {
+			os.Remove(filepath.Join(nc.GetSitesDir(), site.Alias+".conf"))
+			os.Remove(filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf"))
+		} else {
+			os.Remove(filepath.Join(nc.GetConfDir(), "conf.d", site.Alias+".conf"))
+		}
+		authFile := filepath.Join(nc.GetConfDir(), "auth", site.Alias+".htpasswd")
+		os.Remove(authFile)
+
+		global.LOG.Infof("Cleaned up site config: %s", site.Alias)
+	}
+
+	// 清空网站数据库记录
+	if err := global.DB.Where("1 = 1").Delete(&model.Website{}).Error; err != nil {
+		global.LOG.Warnf("Failed to cleanup website records: %v", err)
+	} else {
+		global.LOG.Infof("Cleaned up %d website records from database", len(sites))
+	}
 }
 
 // ListVersions 从 GitHub Release 获取可用的 Nginx 预编译版本列表
@@ -145,6 +259,118 @@ func (s *NginxInstallService) ListVersions() ([]dto.NginxVersionInfo, error) {
 	}
 
 	return versions, nil
+}
+
+// CheckUpdate 检查 Nginx 是否有可用更新
+func (s *NginxInstallService) CheckUpdate() (*dto.NginxUpdateInfo, error) {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return nil, buserr.New(constant.ErrNginxNotInstalled)
+	}
+
+	info := &dto.NginxUpdateInfo{
+		CurrentVersion: nc.GetVersion(),
+		SystemMode:     nc.IsSystemMode(),
+	}
+
+	if nc.IsSystemMode() {
+		available := s.checkAptUpdate()
+		if available != "" && available != info.CurrentVersion {
+			info.HasUpdate = true
+			info.AvailableVersion = available
+		}
+	} else {
+		versions, err := s.ListVersions()
+		if err == nil && len(versions) > 0 {
+			latest := versions[0].Version
+			if latest != info.CurrentVersion {
+				info.HasUpdate = true
+				info.AvailableVersion = latest
+			}
+		}
+	}
+
+	return info, nil
+}
+
+// checkAptUpdate 检查 apt 仓库中 nginx 的可用版本
+func (s *NginxInstallService) checkAptUpdate() string {
+	exec.Command("apt-get", "update", "-qq").Run()
+	output, err := exec.Command("apt-cache", "policy", "nginx").CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Candidate:") {
+			ver := strings.TrimSpace(strings.TrimPrefix(line, "Candidate:"))
+			// apt 版本格式如 "1.22.1-1ubuntu1" → 提取主版本
+			if idx := strings.Index(ver, "-"); idx > 0 {
+				ver = ver[:idx]
+			}
+			return ver
+		}
+	}
+	return ""
+}
+
+// Upgrade 升级 Nginx
+func (s *NginxInstallService) Upgrade(req dto.NginxUpgradeReq) error {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return buserr.New(constant.ErrNginxNotInstalled)
+	}
+
+	if nc.IsSystemMode() {
+		go s.doUpgradeApt()
+	} else {
+		if req.Version == "" {
+			return fmt.Errorf("version is required for precompiled upgrade")
+		}
+		go s.doUpgradePrecompiled(req.Version)
+	}
+	return nil
+}
+
+// doUpgradeApt 通过 apt 升级 Nginx
+func (s *NginxInstallService) doUpgradeApt() {
+	s.setProgress("download", "正在更新软件包索引...", 5)
+	exec.Command("apt-get", "update", "-qq").Run()
+	s.setProgress("download", "索引已更新", 20)
+
+	s.setProgress("install", "正在升级 Nginx...", 30)
+	output, err := exec.Command("apt-get", "install", "--only-upgrade", "-y", "nginx").CombinedOutput()
+	if err != nil {
+		s.setProgress("error", fmt.Sprintf("升级失败: %s", strings.TrimSpace(string(output))), 0)
+		return
+	}
+	s.setProgress("install", "Nginx 已升级", 80)
+
+	if _, err := cmd.ExecWithOutput("systemctl", "reload", "nginx"); err != nil {
+		global.LOG.Warnf("Reload nginx after upgrade failed: %v", err)
+	}
+
+	global.CONF.Nginx.DetectNginx()
+	ver := global.CONF.Nginx.GetVersion()
+	s.setProgress("done", fmt.Sprintf("Nginx 已升级到 %s", ver), 100)
+	global.LOG.Infof("Nginx upgraded via apt to %s", ver)
+}
+
+// doUpgradePrecompiled 通过预编译包升级 Nginx
+func (s *NginxInstallService) doUpgradePrecompiled(version string) {
+	installDir := global.CONF.Nginx.InstallDir
+
+	// 先停止当前 nginx
+	s.setProgress("install", "正在停止 Nginx...", 5)
+	pidPath := global.CONF.Nginx.GetPidPath()
+	nginxBin := global.CONF.Nginx.GetBinary()
+	if _, err := os.Stat(pidPath); err == nil {
+		exec.Command(nginxBin, "-p", installDir, "-s", "quit").Run()
+		time.Sleep(2 * time.Second)
+	}
+
+	// 复用 doInstall 逻辑（它会覆盖安装目录）
+	s.doInstall(version, installDir)
 }
 
 // setProgress 线程安全地更新进度
@@ -307,7 +533,8 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 		}
 	}
 
-	// Step 8: 完成
+	// Step 8: 重新检测并完成
+	global.CONF.Nginx.DetectNginx()
 	s.setProgress("done", fmt.Sprintf("Nginx %s 安装成功", version), 100)
 	global.LOG.Infof("Nginx %s installed at %s (pre-compiled)", version, installDir)
 }

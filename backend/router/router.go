@@ -187,6 +187,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nginx/install/progress", api.GetInstallProgress)
 		privateGroup.POST("/nginx/uninstall", api.UninstallNginx)
 		privateGroup.GET("/nginx/versions", api.ListNginxVersions)
+		privateGroup.GET("/nginx/update/check", api.CheckNginxUpdate)
+		privateGroup.POST("/nginx/update/upgrade", api.UpgradeNginx)
 		privateGroup.POST("/nginx/autostart", api.SetNginxAutoStart)
 
 		// Nginx 配置文件管理

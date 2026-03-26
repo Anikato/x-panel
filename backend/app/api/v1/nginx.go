@@ -48,10 +48,11 @@ func (api *NginxAPI) TestNginxConfig(c *gin.Context) {
 	helper.SuccessWithData(c, result)
 }
 
-// InstallNginx 从预编译仓库安装 Nginx
+// InstallNginx 安装 Nginx（apt 或预编译）
 func (api *NginxAPI) InstallNginx(c *gin.Context) {
 	var req dto.NginxInstallReq
-	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := nginxInstallService.Install(req); err != nil {
@@ -69,7 +70,9 @@ func (api *NginxAPI) GetInstallProgress(c *gin.Context) {
 
 // UninstallNginx 卸载 Nginx
 func (api *NginxAPI) UninstallNginx(c *gin.Context) {
-	if err := nginxInstallService.Uninstall(); err != nil {
+	var req dto.NginxUninstallReq
+	_ = c.ShouldBindJSON(&req)
+	if err := nginxInstallService.Uninstall(req); err != nil {
 		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -97,4 +100,25 @@ func (api *NginxAPI) ListNginxVersions(c *gin.Context) {
 		return
 	}
 	helper.SuccessWithData(c, versions)
+}
+
+// CheckNginxUpdate 检查 Nginx 是否有可用更新
+func (api *NginxAPI) CheckNginxUpdate(c *gin.Context) {
+	info, err := nginxInstallService.CheckUpdate()
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, info)
+}
+
+// UpgradeNginx 升级 Nginx
+func (api *NginxAPI) UpgradeNginx(c *gin.Context) {
+	var req dto.NginxUpgradeReq
+	_ = c.ShouldBindJSON(&req)
+	if err := nginxInstallService.Upgrade(req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, nil)
 }
