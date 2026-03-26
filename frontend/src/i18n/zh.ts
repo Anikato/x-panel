@@ -610,6 +610,8 @@ export default {
     // 基本设置
     basicSetting: '基本设置',
     siteDir: '网站目录',
+    alias: '标识名称',
+    aliasHint: '用于配置文件名和目录名，留空则从域名自动生成。仅支持字母、数字、下划线、横线。',
     siteDirHint: '留空默认为 /var/www/{域名}',
     indexFile: '默认文档',
     indexFileHint: '空格分隔，如 index.html index.htm',
@@ -618,6 +620,9 @@ export default {
     proxyPass: '代理地址',
     proxyPassHint: '如 http://127.0.0.1:8080',
     webSocket: 'WebSocket 支持',
+    upstream: 'Upstream 负载均衡',
+    upstreamPlaceholder: 'upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n}',
+    upstreamHint: '定义 upstream 块后，可在代理地址中使用 http://backend 引用。留空表示不使用负载均衡。',
     // HTTPS
     httpsSetting: 'HTTPS',
     sslEnable: '启用 SSL',

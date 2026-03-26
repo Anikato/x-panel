@@ -86,6 +86,12 @@ func WithByPrimaryDomain(domain string) DBOption {
 	}
 }
 
+func WithByAlias(alias string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("alias = ?", alias)
+	}
+}
+
 func WithLikeWebsite(info string) DBOption {
 	return func(db *gorm.DB) *gorm.DB {
 		if info == "" {

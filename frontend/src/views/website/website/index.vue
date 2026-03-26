@@ -77,6 +77,10 @@
         <el-form-item :label="$t('website.domain')">
           <el-input v-model="createForm.primaryDomain" placeholder="example.com" />
         </el-form-item>
+        <el-form-item :label="$t('website.alias')">
+          <el-input v-model="createForm.alias" :placeholder="createForm.primaryDomain ? createForm.primaryDomain.replace(/\./g, '_') : 'example_com'" />
+          <div class="form-tip">{{ $t('website.aliasHint') }}</div>
+        </el-form-item>
         <el-form-item :label="$t('website.otherDomains')">
           <el-input v-model="createForm.domains" placeholder="www.example.com" />
           <div class="form-tip">{{ $t('website.otherDomainsHint') }}</div>
@@ -125,6 +129,7 @@ const createDialogVisible = ref(false)
 const createLoading = ref(false)
 const createForm = ref({
   primaryDomain: '',
+  alias: '',
   domains: '',
   type: 'static',
   remark: '',
@@ -149,7 +154,7 @@ const loadWebsites = async () => {
 }
 
 const openCreateDialog = () => {
-  createForm.value = { primaryDomain: '', domains: '', type: 'static', remark: '', siteDir: '', proxyPass: '' }
+  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', remark: '', siteDir: '', proxyPass: '' }
   createDialogVisible.value = true
 }
 

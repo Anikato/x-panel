@@ -45,6 +45,16 @@ func (g *NginxConfigGenerator) Generate(site model.Website) (string, error) {
 	needsHTTPBlock := !hasSSL || site.HttpConfig == "httpOnly" || site.HttpConfig == "HTTPAlso" || site.HttpConfig == "HTTPSRedirect"
 	needsHTTPSBlock := hasSSL && site.HttpConfig != "httpOnly"
 
+	// Upstream block (before server blocks)
+	if site.Upstream != "" {
+		for _, line := range strings.Split(site.Upstream, "\n") {
+			if line != "" {
+				b.WriteString(line + "\n")
+			}
+		}
+		b.WriteString("\n")
+	}
+
 	// HTTP -> HTTPS redirect server block
 	if needsHTTPRedirect {
 		b.WriteString("server {\n")
@@ -306,8 +316,7 @@ func (g *NginxConfigGenerator) getCertPaths(certID uint) (string, string, error)
 func (g *NginxConfigGenerator) getSSLDir() string {
 	dir, err := g.settingRepo.GetValueByKey("SSLDir")
 	if err != nil || dir == "" {
-		execPath, _ := os.Executable()
-		return filepath.Join(filepath.Dir(execPath), "ssl")
+		return global.CONF.Nginx.GetSSLDir()
 	}
 	return dir
 }

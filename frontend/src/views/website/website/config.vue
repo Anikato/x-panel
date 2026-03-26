@@ -73,6 +73,10 @@
           <el-form-item :label="$t('website.webSocket')">
             <el-switch v-model="detail.webSocket" />
           </el-form-item>
+          <el-form-item :label="$t('website.upstream')">
+            <el-input v-model="detail.upstream" type="textarea" :rows="6" class="code-textarea" :placeholder="$t('website.upstreamPlaceholder')" />
+            <div class="form-tip">{{ $t('website.upstreamHint') }}</div>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
           </el-form-item>
@@ -418,6 +422,7 @@ interface WebsiteDetail {
   leechReferers: string
   accessLog: boolean
   errorLog: boolean
+  upstream: string
   customNginx: string
   nginxConfig: string
   alias: string

@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-03-25 — Session #46：SSL 证书体系完善 + 网站管理增强
+
+### 完成内容
+
+**SSL 证书体系**：
+- [x] **证书路径统一**：`ssl.go` 和 `nginx_config.go` 的默认 SSLDir 统一使用 `global.CONF.Nginx.GetSSLDir()`（apt 模式为 `/etc/nginx/ssl`，prefix 模式为 `{installDir}/conf/ssl`），不再使用不可靠的 `os.Executable()` 路径
+- [x] **证书自动续期**：新增 cron 定时任务（每天凌晨 2 点），自动检查 `autoRenew=true` 且即将 7 天内过期的证书，调用 ACME 续期
+- [x] **续期后自动 reload nginx**：`Apply` 和 `Renew` 成功后自动调用 `reloadNginxGlobal()`，新证书即时生效，无需手动操作
+
+**网站管理增强**：
+- [x] **自定义 alias**：创建网站时可自定义标识名称（用于 nginx 配置文件名和目录名），留空自动从域名生成，后端检查唯一性
+- [x] **Upstream 块支持**：托管模式下反向代理可配置 upstream 块（负载均衡），生成器在 server 块之前输出 upstream 定义
+- [x] **前端 UI**：创建对话框新增 alias 输入；反向代理详情页新增 upstream textarea 编辑
+
+### 关键决策
+
+- SSLDir 默认值改为 `global.CONF.Nginx.GetSSLDir()`，保证 nginx 能直接读到证书文件，无路径不一致问题
+- 自动续期采用 7 天过期阈值，cron `0 2 * * *` 每天执行一次，失败只打日志不影响其他证书
+- `Apply` 也加了 reload — 新申请的证书如果已被网站引用，直接生效
+- upstream 块是完全自由的文本输入，用户可写任意 upstream 指令，不做结构化校验
+
+### 涉及文件
+
+**后端**：
+- `backend/app/service/ssl.go` — 证书路径统一、Renew/Apply 后 reload nginx、新增 `AutoRenewCerts()`/`reloadNginxGlobal()`
+- `backend/app/service/nginx_config.go` — 证书路径统一、Generate 支持 upstream 块输出
+- `backend/init/cron/cron.go` — 注册证书自动续期 cron 任务
+- `backend/app/dto/website.go` — WebsiteCreate 新增 Alias、WebsiteUpdate/Detail 新增 Upstream
+- `backend/app/model/website.go` — 新增 Upstream 字段
+- `backend/app/service/website.go` — Create 支持自定义 alias + 唯一性检查、Update/Detail 支持 Upstream
+- `backend/app/repo/website.go` — 新增 `WithByAlias`
+
+**前端**：
+- `frontend/src/views/website/website/index.vue` — 创建对话框新增 alias 输入
+- `frontend/src/views/website/website/config.vue` — 反向代理详情新增 upstream 编辑
+- `frontend/src/i18n/zh.ts` — alias/upstream/hint 翻译
+
+---
+
 ## 2026-03-25 — Session #45：Nginx Bug 修复 + 版本检查更新功能
 
 ### 完成内容

@@ -6,6 +6,7 @@ import "time"
 
 type WebsiteCreate struct {
 	PrimaryDomain string `json:"primaryDomain" binding:"required"`
+	Alias         string `json:"alias"`
 	Domains       string `json:"domains"`
 	Type          string `json:"type" binding:"required,oneof=static reverse_proxy"`
 	Remark        string `json:"remark"`
@@ -59,7 +60,8 @@ type WebsiteUpdate struct {
 	AccessLog bool `json:"accessLog"`
 	ErrorLog  bool `json:"errorLog"`
 
-	// Custom
+	// Upstream / Custom
+	Upstream      string `json:"upstream"`
 	CustomNginx   string `json:"customNginx"`
 	DefaultServer bool   `json:"defaultServer"`
 	Remark        string `json:"remark"`
@@ -128,6 +130,7 @@ type WebsiteDetail struct {
 	AccessLog bool `json:"accessLog"`
 	ErrorLog  bool `json:"errorLog"`
 
+	Upstream      string `json:"upstream"`
 	CustomNginx   string `json:"customNginx"`
 	DefaultServer bool   `json:"defaultServer"`
 	Remark        string `json:"remark"`

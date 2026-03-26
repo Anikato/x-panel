@@ -29,5 +29,10 @@ func Init() {
 		xrayService.SnapshotDailyTraffic()
 	})
 
+	// 每天凌晨 2 点检查证书续期
+	global.CRON.AddFunc("0 2 * * *", func() {
+		service.AutoRenewCerts()
+	})
+
 	global.LOG.Info("Cron scheduler initialized")
 }

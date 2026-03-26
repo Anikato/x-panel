@@ -47,6 +47,9 @@ type Website struct {
 	AccessLog bool `gorm:"default:true" json:"accessLog"`
 	ErrorLog  bool `gorm:"default:true" json:"errorLog"`
 
+	// Upstream block (for reverse proxy load balancing)
+	Upstream string `gorm:"type:text" json:"upstream"`
+
 	// Custom nginx directives
 	CustomNginx string `gorm:"type:text" json:"customNginx"`
 

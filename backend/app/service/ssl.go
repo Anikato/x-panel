@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -335,6 +336,16 @@ func (s *CertificateService) Apply(id uint) error {
 		logger.Printf("[成功] 证书文件已保存到: %s", filepath.Join(sslDir, "certs", cert.PrimaryDomain))
 	}
 
+	// 如果有网站正在使用此证书，自动 reload nginx
+	if global.CONF.Nginx.IsInstalled() {
+		logger.Printf("[信息] 正在重载 Nginx 配置...")
+		if err := reloadNginxGlobal(); err != nil {
+			logger.Printf("[警告] Nginx 重载失败: %v", err)
+		} else {
+			logger.Printf("[成功] Nginx 已重载")
+		}
+	}
+
 	logger.Printf("[完成] 证书申请流程结束")
 	global.LOG.Infof("Certificate applied successfully for: %s", cert.PrimaryDomain)
 	return nil
@@ -426,6 +437,16 @@ func (s *CertificateService) Renew(id uint) error {
 		logger.Printf("[成功] 证书文件已更新")
 	}
 
+	// 自动 reload nginx 使新证书生效
+	if global.CONF.Nginx.IsInstalled() {
+		logger.Printf("[信息] 正在重载 Nginx 配置...")
+		if err := reloadNginxGlobal(); err != nil {
+			logger.Printf("[警告] Nginx 重载失败: %v", err)
+		} else {
+			logger.Printf("[成功] Nginx 已重载，新证书已生效")
+		}
+	}
+
 	logger.Printf("[完成] 证书续签流程结束")
 	global.LOG.Infof("Certificate renewed for: %s", cert.PrimaryDomain)
 	return nil
@@ -434,9 +455,7 @@ func (s *CertificateService) Renew(id uint) error {
 func (s *CertificateService) GetSSLDir() string {
 	dir, err := s.settingRepo.GetValueByKey("SSLDir")
 	if err != nil || dir == "" {
-		// 默认使用安装路径下的 ssl 目录
-		execPath, _ := os.Executable()
-		return filepath.Join(filepath.Dir(execPath), "ssl")
+		return global.CONF.Nginx.GetSSLDir()
 	}
 	return dir
 }
@@ -551,4 +570,58 @@ func parseCertPEM(pemStr string) (*certParsed, error) {
 		expireDate:    cert.NotAfter,
 		startDate:     cert.NotBefore,
 	}, nil
+}
+
+// reloadNginxGlobal 全局 reload nginx（供证书申请/续期后调用）
+func reloadNginxGlobal() error {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return nil
+	}
+	pidPath := nc.GetPidPath()
+	if _, err := os.Stat(pidPath); os.IsNotExist(err) {
+		return nil
+	}
+	if nc.IsSystemMode() {
+		_, err := execCmd("systemctl", "reload", "nginx")
+		return err
+	}
+	_, err := execCmd(nc.GetBinary(), "-p", nc.InstallDir, "-s", "reload")
+	return err
+}
+
+func execCmd(name string, args ...string) (string, error) {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	return string(out), err
+}
+
+// AutoRenewCerts 自动续期即将过期的证书（由 cron 调用）
+func AutoRenewCerts() {
+	certService := NewICertificateService().(*CertificateService)
+	certs, err := certService.certRepo.GetList()
+	if err != nil {
+		global.LOG.Warnf("[auto-renew] Failed to list certificates: %v", err)
+		return
+	}
+
+	now := time.Now()
+	renewBefore := 7 * 24 * time.Hour // 过期前 7 天开始续期
+
+	for _, cert := range certs {
+		if !cert.AutoRenew || cert.Type == "upload" || cert.Status != "applied" {
+			continue
+		}
+		if cert.ExpireDate.IsZero() || cert.ExpireDate.Sub(now) > renewBefore {
+			continue
+		}
+
+		global.LOG.Infof("[auto-renew] Certificate %s (ID=%d) expires at %s, renewing...",
+			cert.PrimaryDomain, cert.ID, cert.ExpireDate.Format("2006-01-02"))
+
+		if err := certService.Renew(cert.ID); err != nil {
+			global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", cert.PrimaryDomain, err)
+		} else {
+			global.LOG.Infof("[auto-renew] Successfully renewed %s", cert.PrimaryDomain)
+		}
+	}
 }

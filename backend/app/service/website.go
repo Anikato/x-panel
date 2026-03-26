@@ -58,7 +58,15 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		return buserr.New(constant.ErrWebsiteDomainExist)
 	}
 
-	alias := domainToAlias(req.PrimaryDomain)
+	alias := strings.TrimSpace(req.Alias)
+	if alias == "" {
+		alias = domainToAlias(req.PrimaryDomain)
+	}
+	// 检查 alias 唯一性
+	existAlias, _ := s.websiteRepo.Get(repo.WithByAlias(alias))
+	if existAlias.ID > 0 {
+		return buserr.WithDetail(constant.ErrRecordExist, "alias already exists: "+alias, nil)
+	}
 
 	site := model.Website{
 		PrimaryDomain: req.PrimaryDomain,
@@ -153,6 +161,7 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.Redirects = req.Redirects
 	site.AccessLog = req.AccessLog
 	site.ErrorLog = req.ErrorLog
+	site.Upstream = req.Upstream
 	site.CustomNginx = req.CustomNginx
 	site.DefaultServer = req.DefaultServer
 	site.Remark = req.Remark
@@ -280,6 +289,7 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		Redirects:     site.Redirects,
 		AccessLog:     site.AccessLog,
 		ErrorLog:      site.ErrorLog,
+		Upstream:      site.Upstream,
 		CustomNginx:   site.CustomNginx,
 		DefaultServer: site.DefaultServer,
 		Remark:        site.Remark,
