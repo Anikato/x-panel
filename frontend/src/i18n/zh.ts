@@ -618,7 +618,8 @@ export default {
     // 反向代理
     proxySetting: '反向代理',
     proxyPass: '代理地址',
-    proxyPassHint: '如 http://127.0.0.1:8080',
+    proxyPassHint: '如 http://127.0.0.1:8080，填写后自动作为反向代理处理',
+    proxyOnStaticHint: '当前为静态网站类型，如果设置了反向代理地址，location / 将自动切换为反向代理模式',
     webSocket: 'WebSocket 支持',
     upstream: 'Upstream 负载均衡',
     upstreamPlaceholder: 'upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n}',

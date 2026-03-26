@@ -295,11 +295,14 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		Redirects:     site.Redirects,
 		AccessLog:     site.AccessLog,
 		ErrorLog:      site.ErrorLog,
-		Upstream:      site.Upstream,
-		CustomNginx:   site.CustomNginx,
-		DefaultServer: site.DefaultServer,
-		Remark:        site.Remark,
-		ConfigMode:    site.ConfigMode,
+		GzipEnable:        site.GzipEnable,
+		SecurityHeaders:   site.SecurityHeaders,
+		StaticCacheEnable: site.StaticCacheEnable,
+		Upstream:          site.Upstream,
+		CustomNginx:       site.CustomNginx,
+		DefaultServer:     site.DefaultServer,
+		Remark:            site.Remark,
+		ConfigMode:        site.ConfigMode,
 	}
 
 	if site.CertificateID > 0 {

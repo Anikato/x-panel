@@ -4,6 +4,61 @@
 
 ---
 
+## 2026-03-26 — Session #48：网站配置全面增强 + SSL 证书修复
+
+### 完成内容
+
+**SSL 证书申请修复**（v0.5.28 ~ v0.5.29）：
+- [x] 修复 Cloudflare `AuthToken` / `AuthKey` 混用导致 DNS 验证失败
+- [x] 支持 Global API Key 和 API Token 两种 Cloudflare 认证模式
+- [x] 添加 `DisableCompletePropagationRequirement` 跳过 DNS 传播轮询
+- [x] 缩短超时：propagation 3min、dns01 5min、polling 5s、TTL 600
+- [x] lego 内部日志重定向到证书日志文件（实时可查）
+- [x] 前端 DNS 账户增加 Cloudflare 认证模式说明
+
+**Nginx SSL 配置去重**（v0.5.30）：
+- [x] `customHasDirective()` 函数检测自定义配置中已有的指令，自动跳过面板生成
+- [x] 修复用户自定义 SSL 指令与面板默认 SSL 配置冲突（duplicate 报错）
+
+**网站配置全面增强**（v0.5.31）：
+- [x] **Gzip 压缩**：新建网站默认开启，comp_level=6，覆盖 text/css/js/json/xml/font/svg 等
+- [x] **安全响应头**：默认开启 X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy、server_tokens off
+- [x] **静态资源缓存**：可选功能，图片/字体 30天、CSS/JS/WOFF 7天，含 Cache-Control 和 access_log off
+- [x] **反向代理优化**：内置 proxy buffer（8x8k）、timeout（connect 60s / read 600s）、buffering on
+- [x] **SSL 升级到 Mozilla Intermediate v5.7**：ssl_ecdh_curve X25519、ssl_prefer_server_ciphers off、HSTS max-age 63072000+preload
+- [x] **前端「性能优化」Tab**：Gzip/安全头/静态缓存独立开关
+- [x] **自定义配置改进**：placeholder 示例 + 冲突说明
+
+### 关键决策
+
+- 研究了 1Panel 的配置管理方式（include 子文件 + 解析器操作配置树），X-Panel 采用更轻量的策略：把常用优化内置为可开关的功能模块 + `customHasDirective` 智能去重
+- `ssl_prefer_server_ciphers` 改为 `off` — 遵循 Mozilla Intermediate 指南，让客户端选择最优密码套件
+- Gzip 和安全头对新旧网站都默认开启（通过一次性数据迁移）
+- 静态缓存默认关闭 — 需要用户确认其部署策略支持 cache-busting
+- DNS 传播检查完全跳过（`DisableCompletePropagationRequirement`）— 对 Cloudflare 等主流 DNS 提供商，传播是秒级完成的
+
+### 涉及文件
+
+**后端**：
+- `backend/app/model/website.go` — 新增 GzipEnable、SecurityHeaders、StaticCacheEnable 字段
+- `backend/app/dto/website.go` — DTO 同步更新
+- `backend/app/service/nginx_config.go` — writeGzipBlock、writeSecurityHeaders、writeStaticCacheBlock、增强 writeSSLBlock 和 writeReverseProxy
+- `backend/app/service/website.go` — Create/Update 处理新字段
+- `backend/init/migration/migration.go` — 一次性迁移：已有网站开启 Gzip 和安全头
+- `backend/utils/ssl/acme.go` — ObtainCertificate 增加 logWriter、DisableCompletePropagation
+- `backend/utils/ssl/dns_provider.go` — Cloudflare AuthToken/AuthKey 修复、超时优化
+
+**前端**：
+- `frontend/src/views/website/website/config.vue` — 新增「性能优化」Tab、自定义配置改进
+- `frontend/src/views/website/ssl/index.vue` — Cloudflare 认证模式说明
+- `frontend/src/i18n/zh.ts` — 新增 i18n 条目
+
+### 版本
+
+`v0.5.28` ~ `v0.5.31`
+
+---
+
 ## 2026-03-25 — Session #47：修复 Cloudflare DNS 验证卡住问题
 
 ### 完成内容

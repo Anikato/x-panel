@@ -1,7 +1,9 @@
 package service
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -122,6 +124,38 @@ func (g *NginxConfigGenerator) writeListenHTTPS(b *strings.Builder, site model.W
 	fmt.Fprintf(b, "    listen [::]:443 ssl%s;\n", defaultStr)
 }
 
+// certHasOCSP 检查证书是否包含 OCSP responder URL
+func (g *NginxConfigGenerator) certHasOCSP(certID uint) bool {
+	if certID == 0 {
+		return false
+	}
+	cert, err := g.certRepo.Get(repo.WithByID(certID))
+	if err != nil || cert.Pem == "" {
+		return false
+	}
+	block, _ := pem.Decode([]byte(cert.Pem))
+	if block == nil {
+		return false
+	}
+	x509Cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false
+	}
+	return len(x509Cert.OCSPServer) > 0
+}
+
+// customHasLocationRoot 检查自定义配置中是否包含 location / 块
+func customHasLocationRoot(customNginx string) bool {
+	for _, line := range strings.Split(customNginx, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "location / {" || trimmed == "location /{" ||
+			strings.HasPrefix(trimmed, "location / {") || strings.HasPrefix(trimmed, "location /{") {
+			return true
+		}
+	}
+	return false
+}
+
 // customHasDirective 检查自定义配置中是否已包含某个 Nginx 指令
 func customHasDirective(customNginx, directive string) bool {
 	for _, line := range strings.Split(customNginx, "\n") {
@@ -172,7 +206,7 @@ func (g *NginxConfigGenerator) writeSSLBlock(b *strings.Builder, site model.Webs
 		b.WriteString("    ssl_session_tickets off;\n")
 	}
 
-	if !customHasDirective(custom, "ssl_stapling") {
+	if !customHasDirective(custom, "ssl_stapling") && g.certHasOCSP(site.CertificateID) {
 		b.WriteString("    ssl_stapling on;\n")
 		b.WriteString("    ssl_stapling_verify on;\n")
 		fmt.Fprintf(b, "    ssl_trusted_certificate %s;\n", certPath)
@@ -326,12 +360,14 @@ func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.We
 	// Security headers
 	g.writeSecurityHeaders(b, site)
 
-	// Site type specific config
-	switch site.Type {
-	case "static":
-		g.writeStaticSite(b, site)
-	case "reverse_proxy":
-		g.writeReverseProxy(b, site)
+	// Site type specific config (skip managed location / if custom config defines one)
+	hasCustomRootLocation := customHasLocationRoot(site.CustomNginx)
+	if !hasCustomRootLocation {
+		if site.ProxyPass != "" {
+			g.writeReverseProxy(b, site)
+		} else if site.Type == "static" {
+			g.writeStaticSite(b, site)
+		}
 	}
 
 	// Static file caching (after site-specific config)

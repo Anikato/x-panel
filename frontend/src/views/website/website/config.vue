@@ -63,8 +63,8 @@
         </el-form>
       </el-tab-pane>
 
-      <!-- 反向代理 (仅反向代理类型) -->
-      <el-tab-pane v-if="detail.type === 'reverse_proxy'" :label="$t('website.proxySetting')" name="proxy">
+      <!-- 反向代理 -->
+      <el-tab-pane :label="$t('website.proxySetting')" name="proxy">
         <el-form :model="detail" label-width="120px" class="config-form">
           <el-form-item :label="$t('website.proxyPass')">
             <el-input v-model="detail.proxyPass" placeholder="http://127.0.0.1:8080" />
@@ -77,6 +77,11 @@
             <el-input v-model="detail.upstream" type="textarea" :rows="6" class="code-textarea" :placeholder="$t('website.upstreamPlaceholder')" />
             <div class="form-tip">{{ $t('website.upstreamHint') }}</div>
           </el-form-item>
+          <el-alert v-if="detail.type === 'static'" type="info" :closable="false" show-icon style="margin: 0 0 16px">
+            <template #title>
+              <span style="font-size:12px">{{ $t('website.proxyOnStaticHint') }}</span>
+            </template>
+          </el-alert>
           <el-form-item>
             <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
           </el-form-item>
