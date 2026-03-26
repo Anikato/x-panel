@@ -26,6 +26,18 @@ func Start() {
 	// 2. 日志模块
 	initLog.Init()
 
+	// 2.5 Nginx 模式日志
+	if nc := global.CONF.Nginx; nc.IsInstalled() {
+		if nc.HasBothInstalled() {
+			global.LOG.Warnf("Detected both system nginx and prefix nginx, using %s mode (config nginx.mode=%s)",
+				map[bool]string{true: "system", false: "prefix"}[nc.IsSystemMode()], nc.Mode)
+		} else if nc.IsSystemMode() {
+			global.LOG.Info("Using system nginx (/etc/nginx)")
+		} else {
+			global.LOG.Infof("Using prefix nginx (%s)", nc.InstallDir)
+		}
+	}
+
 	// 3. 数据库连接
 	initDB.Init()
 

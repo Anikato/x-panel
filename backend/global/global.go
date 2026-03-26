@@ -68,33 +68,56 @@ type NginxConfig struct {
 	InstallDir string `mapstructure:"install_dir"`
 	Version    string `mapstructure:"version"`
 	BuildRepo  string `mapstructure:"build_repo"`
+	Mode       string `mapstructure:"mode"` // "auto"(default) / "system" / "prefix"
 	// 运行时检测结果（不从配置文件读取）
 	systemMode    bool
+	prefixExist   bool
+	systemExist   bool
 	systemBinary  string
 	systemConfDir string
 }
 
 // DetectNginx 检测 nginx 安装模式（启动时调用一次）
+//
+// 优先级规则：
+//   - mode=system  → 强制系统包模式（忽略自包含安装）
+//   - mode=prefix  → 强制自包含模式（忽略系统 nginx）
+//   - mode=auto/空 → 系统 nginx 优先，回退到自包含安装
 func (c *NginxConfig) DetectNginx() {
-	// 优先检测自包含安装
+	// 探测两种安装是否存在
 	if c.InstallDir != "" {
 		prefixBin := filepath.Join(c.InstallDir, "sbin", "nginx")
 		if _, err := os.Stat(prefixBin); err == nil {
-			c.systemMode = false
-			return
+			c.prefixExist = true
 		}
 	}
-
-	// 检测系统 apt/yum 安装的 nginx
 	binPath, err := exec.LookPath("nginx")
 	if err == nil {
-		c.systemMode = true
+		c.systemExist = true
 		c.systemBinary = binPath
-		// 检测系统 nginx 配置目录
 		if _, err := os.Stat("/etc/nginx/nginx.conf"); err == nil {
 			c.systemConfDir = "/etc/nginx"
 		}
 	}
+
+	// 根据 mode 决定使用哪种
+	switch strings.ToLower(c.Mode) {
+	case "system":
+		c.systemMode = true
+	case "prefix":
+		c.systemMode = false
+	default: // "auto" or empty — 系统 nginx 优先
+		if c.systemExist {
+			c.systemMode = true
+		} else {
+			c.systemMode = false
+		}
+	}
+}
+
+// HasBothInstalled 两种 nginx 是否同时存在
+func (c NginxConfig) HasBothInstalled() bool {
+	return c.prefixExist && c.systemExist
 }
 
 // IsSystemMode 是否使用系统包管理器安装的 nginx

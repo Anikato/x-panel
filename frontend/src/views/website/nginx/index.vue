@@ -41,6 +41,12 @@
 
     <!-- 已安装 — 状态面板 -->
     <template v-if="status.isInstalled && !installing">
+      <!-- 双安装警告 -->
+      <el-alert v-if="status.hasBothInstalled" type="warning" show-icon :closable="false" style="margin-bottom: 16px">
+        <template #title>{{ $t('nginx.bothInstalledTitle') }}</template>
+        {{ $t('nginx.bothInstalledDesc') }}
+      </el-alert>
+
       <el-tabs v-model="mainTab" class="nginx-tabs">
         <el-tab-pane :label="$t('nginx.status')" name="status">
 

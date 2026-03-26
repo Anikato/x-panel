@@ -391,6 +391,7 @@ export interface NginxStatus {
   startedAt: string
   autoStart: boolean
   systemMode: boolean
+  hasBothInstalled: boolean
 }
 
 export interface NginxVersion {

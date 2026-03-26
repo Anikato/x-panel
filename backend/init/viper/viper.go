@@ -36,6 +36,7 @@ func Init() {
 	v.SetDefault("nginx.install_dir", "/opt/xpanel/nginx")
 	v.SetDefault("nginx.version", "")
 	v.SetDefault("nginx.build_repo", "Anikato/nginx-build")
+	v.SetDefault("nginx.mode", "auto")
 
 	if err := v.ReadInConfig(); err != nil {
 		fmt.Printf("Using default config, config file not found: %v\n", err)

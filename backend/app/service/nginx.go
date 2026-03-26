@@ -29,9 +29,10 @@ func NewINginxService() INginxService { return &NginxService{} }
 func (s *NginxService) GetStatus() (*dto.NginxStatus, error) {
 	nc := global.CONF.Nginx
 	status := &dto.NginxStatus{
-		InstallDir:  nc.InstallDir,
-		IsInstalled: nc.IsInstalled(),
-		SystemMode:  nc.IsSystemMode(),
+		InstallDir:       nc.InstallDir,
+		IsInstalled:      nc.IsInstalled(),
+		SystemMode:       nc.IsSystemMode(),
+		HasBothInstalled: nc.HasBothInstalled(),
 	}
 
 	if !status.IsInstalled {

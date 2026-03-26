@@ -557,6 +557,8 @@ export default {
     mode: '运行模式',
     systemMode: '系统包 (apt)',
     prefixMode: '自包含安装',
+    bothInstalledTitle: '检测到两种 Nginx 安装',
+    bothInstalledDesc: '同时存在系统包安装 (apt) 和自包含安装的 Nginx。当前优先使用系统包模式。如需切换，可在配置文件 config.yaml 中设置 nginx.mode 为 system 或 prefix。建议卸载不使用的那个以避免冲突。',
     // 配置测试
     autoStart: '开机自启',
     testConfig: '测试配置',
