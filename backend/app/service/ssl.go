@@ -300,7 +300,7 @@ func (s *CertificateService) Apply(id uint) error {
 
 	// 申请证书
 	logger.Printf("[信息] 正在向 CA 发起证书申请（此步骤可能耗时数分钟）...")
-	logger.Printf("[信息] DNS 验证中：等待 DNS 记录创建和传播（超时 10 分钟）...")
+	logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
 	var logWriter *os.File
 	if logFile != nil {
 		logWriter = logFile
@@ -410,7 +410,7 @@ func (s *CertificateService) Renew(id uint) error {
 	}
 	logger.Printf("[信息] 续签域名: %s", strings.Join(renewDomains, ", "))
 	logger.Printf("[信息] 正在向 CA 发起续签请求...")
-	logger.Printf("[信息] DNS 验证中：等待 DNS 记录创建和传播（超时 10 分钟）...")
+	logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
 
 	var renewLogWriter *os.File
 	if logFile != nil {

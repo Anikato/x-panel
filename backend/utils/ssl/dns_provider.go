@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	propagationTimeout = 10 * time.Minute
-	pollingInterval    = 10 * time.Second
-	ttl                = 3600
+	propagationTimeout = 3 * time.Minute
+	pollingInterval    = 5 * time.Second
+	ttl                = 600
 )
 
 // DNSParam DNS 提供商通用参数

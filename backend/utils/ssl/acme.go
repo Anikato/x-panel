@@ -170,7 +170,8 @@ func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 		return err
 	}
 	return c.Client.Challenge.SetDNS01Provider(provider,
-		dns01.AddDNSTimeout(10*time.Minute),
+		dns01.AddDNSTimeout(5*time.Minute),
+		dns01.DisableCompletePropagationRequirement(),
 	)
 }
 

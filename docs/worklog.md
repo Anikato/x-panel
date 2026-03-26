@@ -4,6 +4,50 @@
 
 ---
 
+## 2026-03-25 — Session #47：修复 Cloudflare DNS 验证卡住问题
+
+### 完成内容
+
+**Cloudflare 认证修复**：
+- [x] 修复 `AuthToken` / `AuthKey` 混用导致 lego Cloudflare provider 认证失败
+- [x] 支持 Global API Key 模式（email + key）和 API Token 模式（仅 token）两种方式
+- [x] 后端根据 `email` 是否为空自动选择认证方式
+
+**DNS 验证超时优化**：
+- [x] `propagationTimeout` 从 30 分钟降到 10 分钟
+- [x] `dns01.AddDNSTimeout` 从 30 分钟降到 10 分钟
+- [x] 申请/续签时添加 DNS 验证阶段日志提示
+
+**lego 日志重定向**：
+- [x] `ObtainCertificate` / `RenewCertificate` 接受可选 `io.Writer` 参数
+- [x] 将 Go 标准 `log` 包输出重定向到证书日志文件（同时保留 stderr 输出）
+- [x] DNS 验证过程中 lego 内部日志（TXT 记录创建、轮询等）可在前端日志面板实时查看
+
+**前端 UI 改进**：
+- [x] DNS 账户创建对话框：Cloudflare 选项显示认证模式说明（API Token 推荐 / Global API Key）
+- [x] DNS 字段添加友好标签和 placeholder 提示
+
+**其他**：
+- [x] 清理 ACME 调试日志（`fmt.Printf` 的 DEBUG 输出）
+
+### 关键决策
+
+- Cloudflare 认证判断方式：email 为空 → API Token 模式（`AuthToken`），email 非空 → Global API Key 模式（`AuthEmail` + `AuthKey`）
+- 超时降到 10 分钟对 Cloudflare 足够（DNS 传播通常几秒），同时避免凭证错误时卡太久
+
+### 涉及文件
+
+- `backend/utils/ssl/acme.go` — ObtainCertificate/RenewCertificate 增加 logWriter 参数
+- `backend/utils/ssl/dns_provider.go` — Cloudflare 认证逻辑修复 + 超时调整
+- `backend/app/service/ssl.go` — Apply/Renew 传递 logWriter + DNS 阶段日志
+- `frontend/src/views/website/ssl/index.vue` — Cloudflare 认证模式提示 + 字段友好名称
+
+### 版本
+
+`v0.5.28`
+
+---
+
 ## 2026-03-25 — Session #46：SSL 证书体系完善 + 网站管理增强
 
 ### 完成内容
