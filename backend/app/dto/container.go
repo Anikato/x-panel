@@ -8,12 +8,25 @@ type ContainerSearch struct {
 }
 
 type ContainerInfo struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Image   string `json:"image"`
-	State   string `json:"state"`
-	Status  string `json:"status"`
-	Created int64  `json:"created"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Image      string `json:"image"`
+	State      string `json:"state"`
+	Status     string `json:"status"`
+	Created    int64  `json:"created"`
+	Ports      string `json:"ports"`
+	IPAddress  string `json:"ipAddress"`
+	CPUPercent float64 `json:"cpuPercent"`
+	MemUsage   int64   `json:"memUsage"`
+	MemLimit   int64   `json:"memLimit"`
+	MemPercent float64 `json:"memPercent"`
+	RunTime    string `json:"runTime"`
+}
+
+type DockerStatusResp struct {
+	IsExist bool   `json:"isExist"`
+	IsActive bool  `json:"isActive"`
+	Version  string `json:"version"`
 }
 
 type ContainerCreate struct {

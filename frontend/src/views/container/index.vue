@@ -1,96 +1,157 @@
 <template>
   <div>
     <div v-if="dockerChecking" v-loading="true" style="height: 200px" />
-    <el-empty v-else-if="!dockerAvailable" description="Docker 未安装或未启动">
-      <template #default>
-        <p style="color: var(--xp-text-muted); margin-bottom: 16px">请先安装并启动 Docker 服务后刷新页面</p>
-        <el-button type="primary" @click="checkDocker">重新检测</el-button>
-      </template>
-    </el-empty>
-    <el-tabs v-else v-model="activeTab">
-      <el-tab-pane :label="t('container.containers')" name="containers">
-        <div class="app-toolbar">
-          <el-button type="primary" @click="createContainerDrawer = true">{{ t('commons.create') }}</el-button>
-          <div style="flex:1" />
-          <el-input v-model="containerName" :placeholder="t('commons.search')" style="width:200px" clearable @clear="loadContainers" @keyup.enter="loadContainers" />
-        </div>
-        <el-table :data="containers" v-loading="containerLoading">
-          <el-table-column prop="name" :label="t('commons.name')" min-width="160" />
-          <el-table-column prop="image" :label="t('container.image')" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="state" :label="t('container.state')" width="100">
-            <template #default="{ row }">
-              <el-tag :type="row.state === 'running' ? 'success' : 'info'" size="small">{{ row.state }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" :label="t('container.status')" width="180" show-overflow-tooltip />
-          <el-table-column :label="t('commons.actions')" width="280" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="operate(row, 'start')" :disabled="row.state === 'running'">{{ t('container.start') }}</el-button>
-              <el-button link type="primary" @click="operate(row, 'stop')" :disabled="row.state !== 'running'">{{ t('container.stop') }}</el-button>
-              <el-button link type="primary" @click="operate(row, 'restart')">{{ t('container.restart') }}</el-button>
-              <el-button link type="primary" @click="viewLogs(row)">{{ t('container.logs') }}</el-button>
-              <el-button link type="danger" @click="handleRemoveContainer(row)">{{ t('commons.delete') }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="app-pagination">
-          <el-pagination v-model:current-page="containerPager.page" v-model:page-size="containerPager.pageSize" :total="containerPager.total" layout="total, sizes, prev, pager, next" :page-sizes="[20,50]" @size-change="loadContainers" @current-change="loadContainers" />
-        </div>
-      </el-tab-pane>
 
-      <el-tab-pane :label="t('container.images')" name="images">
-        <div class="app-toolbar">
-          <el-button type="primary" @click="pullDrawer = true">{{ t('container.pullImage') }}</el-button>
+    <!-- Docker Not Installed -->
+    <el-card v-else-if="!dockerStatus.isExist" class="docker-install-card">
+      <div class="docker-install-content">
+        <el-icon :size="64" color="var(--xp-text-muted)"><box /></el-icon>
+        <h2>{{ t('container.dockerNotInstalled') }}</h2>
+        <p>{{ t('container.dockerNotInstalledDesc') }}</p>
+        <el-button type="primary" size="large" :loading="installing" @click="handleInstallDocker">
+          <el-icon v-if="!installing"><download /></el-icon>
+          {{ installing ? t('container.installing') : t('container.installDocker') }}
+        </el-button>
+        <el-button @click="checkDocker">{{ t('container.recheck') }}</el-button>
+        <div v-if="installLog" class="install-log">
+          <div class="install-log-header">{{ t('container.installLog') }}</div>
+          <pre class="log-content">{{ installLog }}</pre>
         </div>
-        <el-table :data="images" v-loading="imageLoading">
-          <el-table-column prop="id" label="ID" width="140" />
-          <el-table-column :label="t('container.tags')" min-width="240">
-            <template #default="{ row }">{{ (row.tags || []).join(', ') || '-' }}</template>
-          </el-table-column>
-          <el-table-column :label="t('container.size')" width="120">
-            <template #default="{ row }">{{ formatSize(row.size) }}</template>
-          </el-table-column>
-          <el-table-column :label="t('commons.actions')" width="100">
-            <template #default="{ row }">
-              <el-button link type="danger" @click="handleRemoveImage(row)">{{ t('commons.delete') }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
+      </div>
+    </el-card>
 
-      <el-tab-pane :label="t('container.networks')" name="networks">
-        <div class="app-toolbar">
-          <el-button type="primary" @click="networkCreateDialog = true">{{ t('commons.create') }}</el-button>
-        </div>
-        <el-table :data="networks" v-loading="networkLoading">
-          <el-table-column prop="name" :label="t('commons.name')" min-width="160" />
-          <el-table-column prop="driver" label="Driver" width="120" />
-          <el-table-column prop="subnet" label="Subnet" width="160" />
-          <el-table-column prop="gateway" label="Gateway" width="160" />
-          <el-table-column :label="t('commons.actions')" width="100">
-            <template #default="{ row }">
-              <el-button link type="danger" @click="handleRemoveNetwork(row)">{{ t('commons.delete') }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
+    <!-- Docker Installed but Not Running -->
+    <el-card v-else-if="!dockerStatus.isActive" class="docker-install-card">
+      <div class="docker-install-content">
+        <el-icon :size="64" color="var(--el-color-warning)"><warning-filled /></el-icon>
+        <h2>{{ t('container.dockerNotRunning') }}</h2>
+        <p>{{ t('container.dockerNotRunningDesc') }}</p>
+        <el-button type="primary" @click="checkDocker">{{ t('container.recheck') }}</el-button>
+      </div>
+    </el-card>
 
-      <el-tab-pane :label="t('container.volumes')" name="volumes">
-        <div class="app-toolbar">
-          <el-button type="primary" @click="volumeCreateDialog = true">{{ t('commons.create') }}</el-button>
-        </div>
-        <el-table :data="volumes" v-loading="volumeLoading">
-          <el-table-column prop="name" :label="t('commons.name')" min-width="200" />
-          <el-table-column prop="driver" label="Driver" width="120" />
-          <el-table-column prop="mountPoint" :label="t('container.mountPoint')" min-width="240" show-overflow-tooltip />
-          <el-table-column :label="t('commons.actions')" width="100">
-            <template #default="{ row }">
-              <el-button link type="danger" @click="handleRemoveVolume(row)">{{ t('commons.delete') }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-    </el-tabs>
+    <!-- Docker Available -->
+    <template v-else>
+      <div class="docker-info-bar">
+        <span>Docker {{ dockerStatus.version }}</span>
+      </div>
+      <el-tabs v-model="activeTab">
+        <el-tab-pane :label="t('container.containers')" name="containers">
+          <div class="app-toolbar">
+            <el-button type="primary" @click="createContainerDrawer = true">{{ t('commons.create') }}</el-button>
+            <div style="flex:1" />
+            <el-input v-model="containerName" :placeholder="t('commons.search')" style="width:200px" clearable @clear="loadContainers" @keyup.enter="loadContainers" />
+          </div>
+          <el-table :data="containers" v-loading="containerLoading" :row-class-name="containerRowClass">
+            <el-table-column type="selection" width="40" />
+            <el-table-column prop="name" :label="t('commons.name')" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="image" :label="t('container.image')" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="state" :label="t('container.state')" width="90">
+              <template #default="{ row }">
+                <el-tag :type="stateTagType(row.state)" size="small">{{ row.state }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('container.resource')" min-width="150">
+              <template #default="{ row }">
+                <template v-if="row.state === 'running'">
+                  <div class="resource-cell">
+                    <span>CPU: {{ row.cpuPercent.toFixed(2) }}%</span>
+                    <span>{{ t('container.mem') }}: {{ formatBytes(row.memUsage) }}</span>
+                  </div>
+                </template>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="ipAddress" :label="t('container.ip')" width="130">
+              <template #default="{ row }">{{ row.ipAddress || '-' }}</template>
+            </el-table-column>
+            <el-table-column :label="t('container.ports')" min-width="200">
+              <template #default="{ row }">
+                <div v-if="row.ports" class="port-tags">
+                  <el-tag v-for="(port, idx) in splitPorts(row.ports)" :key="idx" size="small" type="info" class="port-tag">{{ port }}</el-tag>
+                </div>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" :label="t('container.runTime')" width="130" show-overflow-tooltip />
+            <el-table-column :label="t('commons.actions')" width="230" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="operate(row, 'start')" :disabled="row.state === 'running'">{{ t('container.start') }}</el-button>
+                <el-button link type="primary" @click="operate(row, 'stop')" :disabled="row.state !== 'running'">{{ t('container.stop') }}</el-button>
+                <el-button link type="primary" @click="operate(row, 'restart')">{{ t('container.restart') }}</el-button>
+                <el-dropdown trigger="click">
+                  <el-button link type="primary">{{ t('container.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon></el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item @click="viewLogs(row)">{{ t('container.logs') }}</el-dropdown-item>
+                      <el-dropdown-item divided @click="handleRemoveContainer(row)">
+                        <span style="color: var(--el-color-danger)">{{ t('commons.delete') }}</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="app-pagination">
+            <el-pagination v-model:current-page="containerPager.page" v-model:page-size="containerPager.pageSize" :total="containerPager.total" layout="total, sizes, prev, pager, next" :page-sizes="[20,50,100]" @size-change="loadContainers" @current-change="loadContainers" />
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane :label="t('container.images')" name="images">
+          <div class="app-toolbar">
+            <el-button type="primary" @click="pullDrawer = true">{{ t('container.pullImage') }}</el-button>
+          </div>
+          <el-table :data="images" v-loading="imageLoading">
+            <el-table-column prop="id" label="ID" width="140" />
+            <el-table-column :label="t('container.tags')" min-width="240">
+              <template #default="{ row }">{{ (row.tags || []).join(', ') || '-' }}</template>
+            </el-table-column>
+            <el-table-column :label="t('container.size')" width="120">
+              <template #default="{ row }">{{ formatSize(row.size) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('commons.actions')" width="100">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="handleRemoveImage(row)">{{ t('commons.delete') }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane :label="t('container.networks')" name="networks">
+          <div class="app-toolbar">
+            <el-button type="primary" @click="networkCreateDialog = true">{{ t('commons.create') }}</el-button>
+          </div>
+          <el-table :data="networks" v-loading="networkLoading">
+            <el-table-column prop="name" :label="t('commons.name')" min-width="160" />
+            <el-table-column prop="driver" label="Driver" width="120" />
+            <el-table-column prop="subnet" label="Subnet" width="160" />
+            <el-table-column prop="gateway" label="Gateway" width="160" />
+            <el-table-column :label="t('commons.actions')" width="100">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="handleRemoveNetwork(row)">{{ t('commons.delete') }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane :label="t('container.volumes')" name="volumes">
+          <div class="app-toolbar">
+            <el-button type="primary" @click="volumeCreateDialog = true">{{ t('commons.create') }}</el-button>
+          </div>
+          <el-table :data="volumes" v-loading="volumeLoading">
+            <el-table-column prop="name" :label="t('commons.name')" min-width="200" />
+            <el-table-column prop="driver" label="Driver" width="120" />
+            <el-table-column prop="mountPoint" :label="t('container.mountPoint')" min-width="240" show-overflow-tooltip />
+            <el-table-column :label="t('commons.actions')" width="100">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="handleRemoveVolume(row)">{{ t('commons.delete') }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
+    </template>
 
     <!-- Create Container Drawer -->
     <el-drawer v-model="createContainerDrawer" :title="t('container.createContainer')" size="560px" destroy-on-close>
@@ -156,12 +217,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import type { Container, ContainerImage, ContainerNetwork, ContainerVolume } from '@/api/interface'
+import { Box, Download, WarningFilled, ArrowDown } from '@element-plus/icons-vue'
+import type { Container, ContainerImage, ContainerNetwork, ContainerVolume, DockerStatus } from '@/api/interface'
 import {
   getDockerStatus,
+  installDocker, getDockerInstallLog,
   searchContainers, createContainer, operateContainer, containerLogs, removeContainer,
   listImages, pullImage, removeImage,
   listNetworks, createNetwork, removeNetwork,
@@ -201,8 +264,11 @@ const networkForm = reactive({ name: '', driver: 'bridge', subnet: '', gateway: 
 const volumeCreateDialog = ref(false)
 const volumeForm = reactive({ name: '', driver: 'local' })
 
-const dockerAvailable = ref(true)
+const dockerStatus = reactive<DockerStatus>({ isExist: false, isActive: false, version: '' })
 const dockerChecking = ref(true)
+const installing = ref(false)
+const installLog = ref('')
+let installLogTimer: ReturnType<typeof setInterval> | null = null
 
 const logsDrawer = ref(false)
 const logContent = ref('')
@@ -211,6 +277,33 @@ const formatSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+}
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+}
+
+const stateTagType = (state: string) => {
+  switch (state) {
+    case 'running': return 'success'
+    case 'exited': return 'danger'
+    case 'paused': return 'warning'
+    case 'created': return 'info'
+    default: return 'info'
+  }
+}
+
+const containerRowClass = ({ row }: { row: Container }) => {
+  return row.state === 'running' ? '' : 'row-stopped'
+}
+
+const splitPorts = (ports: string) => {
+  if (!ports) return []
+  return ports.split(', ').filter(Boolean)
 }
 
 const loadContainers = async () => {
@@ -338,13 +431,54 @@ const handleRemoveVolume = async (row: ContainerVolume) => {
   await loadVolumes()
 }
 
+const handleInstallDocker = async () => {
+  await ElMessageBox.confirm(t('container.installDockerConfirm'), t('commons.tip'), { type: 'info' })
+  installing.value = true
+  installLog.value = ''
+  try {
+    await installDocker()
+    ElMessage.success(t('container.installStarted'))
+    startInstallLogPolling()
+  } catch {
+    installing.value = false
+  }
+}
+
+const startInstallLogPolling = () => {
+  installLogTimer = setInterval(async () => {
+    try {
+      const res = await getDockerInstallLog()
+      installLog.value = res.data?.log || ''
+      if (!res.data?.running) {
+        stopInstallLogPolling()
+        installing.value = false
+        await checkDocker()
+        if (dockerStatus.isActive) {
+          ElMessage.success(t('container.installSuccess'))
+        }
+      }
+    } catch {
+      // ignore polling errors
+    }
+  }, 2000)
+}
+
+const stopInstallLogPolling = () => {
+  if (installLogTimer) {
+    clearInterval(installLogTimer)
+    installLogTimer = null
+  }
+}
+
 const checkDocker = async () => {
   dockerChecking.value = true
   try {
     const res = await getDockerStatus()
-    dockerAvailable.value = res.data?.available === true
+    Object.assign(dockerStatus, res.data || {})
   } catch {
-    dockerAvailable.value = false
+    dockerStatus.isExist = false
+    dockerStatus.isActive = false
+    dockerStatus.version = ''
   } finally {
     dockerChecking.value = false
   }
@@ -352,11 +486,75 @@ const checkDocker = async () => {
 
 onMounted(async () => {
   await checkDocker()
-  if (dockerAvailable.value) loadContainers()
+  if (dockerStatus.isActive) loadContainers()
+})
+
+onUnmounted(() => {
+  stopInstallLogPolling()
 })
 </script>
 
 <style scoped>
+.docker-install-card {
+  max-width: 700px;
+  margin: 40px auto;
+}
+.docker-install-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 0;
+  text-align: center;
+}
+.docker-install-content h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--xp-text-primary);
+}
+.docker-install-content p {
+  color: var(--xp-text-muted);
+  margin: 0;
+  max-width: 460px;
+}
+.install-log {
+  width: 100%;
+  margin-top: 16px;
+  text-align: left;
+}
+.install-log-header {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--xp-text-secondary);
+}
+.docker-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--xp-text-muted);
+}
+.resource-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.port-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.port-tag {
+  font-family: var(--xp-font-mono);
+  font-size: 11px;
+}
+.text-muted {
+  color: var(--xp-text-muted);
+}
 .log-content {
   background: var(--xp-bg-inset);
   color: var(--xp-text-primary);
@@ -366,7 +564,10 @@ onMounted(async () => {
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 70vh;
+  max-height: 400px;
   overflow-y: auto;
+}
+:deep(.row-stopped) {
+  opacity: 0.7;
 }
 </style>

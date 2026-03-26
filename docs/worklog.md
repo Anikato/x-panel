@@ -4,6 +4,69 @@
 
 ---
 
+## 2026-03-25 — Session #43：容器功能增强 & Nginx 双模式重构
+
+### 完成内容
+
+- [x] **容器列表增强**：新增端口映射、资源使用率 (CPU%/内存)、IP 地址、运行时长列，对齐 1Panel 容器列表展示
+- [x] **Docker 状态检测优化**：区分「未安装」和「已安装未启动」两种状态，分别给出不同引导
+- [x] **Docker 一键安装**：新增安装按钮，使用 `get.docker.com` 官方脚本安装，支持安装日志实时查看
+- [x] **容器资源统计**：通过 Docker Stats API (OneShot) 批量获取运行容器的 CPU/内存占用
+- [x] **Nginx 双模式架构**：重构 `NginxConfig`，自动检测并支持两种模式：
+  - 系统包模式 (apt)：`/etc/nginx/`、`sites-available`/`sites-enabled`、`systemctl`
+  - 自包含模式 (prefix)：`/opt/xpanel/nginx/`、`nginx -p`、自定义 systemd 服务
+- [x] **网站自动启用**：创建网站后自动生成配置并启用，无需手动启用
+- [x] **源码模式配置修复**：正确读取磁盘上的实际配置文件（系统模式优先 sites-available）
+- [x] **日志路径修复**：`nginx_log.go` 使用正确的日志路径 (`GetLogDir()/sites/`)
+- [x] **i18n 补全**：容器模块 Docker 安装相关、Nginx 运行模式等新文案
+
+### 关键决策
+
+- Nginx 检测策略：启动时 `DetectNginx()` 优先检查自包含安装目录，若不存在则检测系统 `nginx` 二进制
+- 系统模式下使用 `systemctl start/stop/reload nginx`，不加 `-p` 参数
+- 网站启用：系统模式写入 `sites-available/{alias}.conf` + symlink 到 `sites-enabled/`
+- 网站禁用：仅删除 `sites-enabled/` symlink，保留 `sites-available/` 文件
+- Docker 安装使用官方脚本 `curl -fsSL https://get.docker.com | bash`，异步执行并轮询日志
+
+### 涉及文件
+
+**后端**：
+- `backend/global/global.go` — NginxConfig 重构，添加 DetectNginx/IsSystemMode/各路径方法
+- `backend/app/dto/container.go` — ContainerInfo 新增端口/资源/IP 字段，DockerStatusResp
+- `backend/app/dto/nginx.go` — NginxStatus 新增 SystemMode 字段
+- `backend/app/service/container.go` — 列表填充端口/IP/资源，DockerStatus 区分安装/运行
+- `backend/app/service/docker_install.go` — 新增 Docker 安装服务
+- `backend/app/service/nginx.go` — 双模式操作（systemctl vs nginx -p）
+- `backend/app/service/website.go` — applyConfig 双模式、自动启用、源码模式修复
+- `backend/app/service/nginx_config.go` — EnsureNginxInclude 双模式
+- `backend/app/service/nginx_log.go` — 日志路径修复
+- `backend/utils/docker/client.go` — 新增 IsDockerInstalled/GetDockerVersion
+- `backend/app/api/v1/container.go` — 新增 InstallDocker/GetDockerInstallLog
+- `backend/router/router.go` — 新增 Docker 安装路由
+- `backend/server/server.go` — 启动时调用 DetectNginx
+
+**前端**：
+- `frontend/src/views/container/index.vue` — 全面重写，新增资源列/端口列/安装引导
+- `frontend/src/api/modules/container.ts` — 新增安装相关 API
+- `frontend/src/api/interface/index.ts` — Container/DockerStatus/NginxStatus 类型更新
+- `frontend/src/views/website/nginx/index.vue` — 显示 Nginx 运行模式
+- `frontend/src/i18n/zh.ts` — 新增容器/Nginx 模式相关翻译
+
+### 遗留问题
+
+- 容器创建表单尚未添加端口/卷映射字段（后端已支持，前端未暴露）
+- Compose 功能在前端仍未接入标签页
+- 系统模式下的 Nginx 安装按钮应隐藏或改为提示
+
+### 下一步计划
+
+- 完善容器创建表单（端口映射、卷映射、CPU/内存限制）
+- 接入 Compose 标签页
+- 考虑容器终端 WebSocket 功能
+- 容器批量操作
+
+---
+
 ## 2026-03-25 — Session #42：Xray 模块全面优化
 
 ### 完成内容

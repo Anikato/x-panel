@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"xpanel/app/dto"
 	dockerUtil "xpanel/utils/docker"
@@ -15,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/volume"
+	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -37,7 +40,7 @@ type IContainerService interface {
 	CreateVolume(req dto.VolumeCreate) error
 	RemoveVolume(name string) error
 
-	DockerAvailable() bool
+	DockerStatus() dto.DockerStatusResp
 }
 
 func NewIContainerService() IContainerService {
@@ -46,8 +49,17 @@ func NewIContainerService() IContainerService {
 
 type ContainerService struct{}
 
-func (s *ContainerService) DockerAvailable() bool {
-	return dockerUtil.IsDockerAvailable()
+func (s *ContainerService) DockerStatus() dto.DockerStatusResp {
+	resp := dto.DockerStatusResp{}
+	resp.IsExist = dockerUtil.IsDockerInstalled()
+	if !resp.IsExist {
+		return resp
+	}
+	resp.IsActive = dockerUtil.IsDockerAvailable()
+	if resp.IsActive {
+		resp.Version = dockerUtil.GetDockerVersion()
+	}
+	return resp
 }
 
 func (s *ContainerService) ListContainers(req dto.ContainerSearch) (int64, []dto.ContainerInfo, error) {
@@ -75,10 +87,40 @@ func (s *ContainerService) ListContainers(req dto.ContainerSearch) (int64, []dto
 		if req.Name != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(req.Name)) {
 			continue
 		}
-		items = append(items, dto.ContainerInfo{
-			ID: c.ID[:12], Name: name, Image: c.Image,
-			State: c.State, Status: c.Status, Created: c.Created,
-		})
+
+		info := dto.ContainerInfo{
+			ID:      c.ID[:12],
+			Name:    name,
+			Image:   c.Image,
+			State:   c.State,
+			Status:  c.Status,
+			Created: c.Created,
+			Ports:   formatPorts(c.Ports),
+			RunTime: c.Status,
+		}
+
+		// Extract IP from network settings
+		if c.NetworkSettings != nil && c.NetworkSettings.Networks != nil {
+			for _, net := range c.NetworkSettings.Networks {
+				if net.IPAddress != "" {
+					info.IPAddress = net.IPAddress
+					break
+				}
+			}
+		}
+
+		items = append(items, info)
+	}
+
+	// Batch collect stats for running containers
+	statsMap := s.batchContainerStats(cli, items)
+	for i, item := range items {
+		if st, ok := statsMap[item.ID]; ok {
+			items[i].CPUPercent = st.cpuPercent
+			items[i].MemUsage = st.memUsage
+			items[i].MemLimit = st.memLimit
+			items[i].MemPercent = st.memPercent
+		}
 	}
 
 	sort.Slice(items, func(i, j int) bool { return items[i].Created > items[j].Created })
@@ -92,6 +134,100 @@ func (s *ContainerService) ListContainers(req dto.ContainerSearch) (int64, []dto
 		end = int(total)
 	}
 	return total, items[start:end], nil
+}
+
+type containerStats struct {
+	cpuPercent float64
+	memUsage   int64
+	memLimit   int64
+	memPercent float64
+}
+
+func (s *ContainerService) batchContainerStats(cli *client.Client, items []dto.ContainerInfo) map[string]containerStats {
+	result := make(map[string]containerStats)
+	for _, item := range items {
+		if item.State != "running" {
+			continue
+		}
+		st, err := s.getOneContainerStats(cli, item.ID)
+		if err == nil {
+			result[item.ID] = st
+		}
+	}
+	return result
+}
+
+func (s *ContainerService) getOneContainerStats(cli *client.Client, id string) (containerStats, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	resp, err := cli.ContainerStatsOneShot(ctx, id)
+	if err != nil {
+		return containerStats{}, err
+	}
+	defer resp.Body.Close()
+
+	var stats struct {
+		CPUStats struct {
+			CPUUsage struct {
+				TotalUsage uint64 `json:"total_usage"`
+			} `json:"cpu_usage"`
+			SystemCPUUsage uint64 `json:"system_cpu_usage"`
+			OnlineCPUs     int    `json:"online_cpus"`
+		} `json:"cpu_stats"`
+		PreCPUStats struct {
+			CPUUsage struct {
+				TotalUsage uint64 `json:"total_usage"`
+			} `json:"cpu_usage"`
+			SystemCPUUsage uint64 `json:"system_cpu_usage"`
+		} `json:"precpu_stats"`
+		MemoryStats struct {
+			Usage uint64 `json:"usage"`
+			Limit uint64 `json:"limit"`
+		} `json:"memory_stats"`
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return containerStats{}, err
+	}
+	if err := json.Unmarshal(data, &stats); err != nil {
+		return containerStats{}, err
+	}
+
+	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage - stats.PreCPUStats.CPUUsage.TotalUsage)
+	sysDelta := float64(stats.CPUStats.SystemCPUUsage - stats.PreCPUStats.SystemCPUUsage)
+	cpuPercent := 0.0
+	if sysDelta > 0 && cpuDelta > 0 {
+		cpuPercent = (cpuDelta / sysDelta) * float64(stats.CPUStats.OnlineCPUs) * 100.0
+	}
+
+	memPercent := 0.0
+	if stats.MemoryStats.Limit > 0 {
+		memPercent = float64(stats.MemoryStats.Usage) / float64(stats.MemoryStats.Limit) * 100.0
+	}
+
+	return containerStats{
+		cpuPercent: cpuPercent,
+		memUsage:   int64(stats.MemoryStats.Usage),
+		memLimit:   int64(stats.MemoryStats.Limit),
+		memPercent: memPercent,
+	}, nil
+}
+
+func formatPorts(ports []container.Port) string {
+	if len(ports) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, p := range ports {
+		if p.PublicPort > 0 {
+			parts = append(parts, fmt.Sprintf("%s:%d->%d/%s", p.IP, p.PublicPort, p.PrivatePort, p.Type))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d/%s", p.PrivatePort, p.Type))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (s *ContainerService) CreateContainer(req dto.ContainerCreate) error {

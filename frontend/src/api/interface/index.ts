@@ -140,6 +140,19 @@ export interface Container {
   image: string
   state: string
   status: string
+  ports: string
+  ipAddress: string
+  cpuPercent: number
+  memUsage: number
+  memLimit: number
+  memPercent: number
+  runTime: string
+}
+
+export interface DockerStatus {
+  isExist: boolean
+  isActive: boolean
+  version: string
 }
 
 export interface ContainerImage {
@@ -377,6 +390,7 @@ export interface NginxStatus {
   installDir: string
   startedAt: string
   autoStart: boolean
+  systemMode: boolean
 }
 
 export interface NginxVersion {

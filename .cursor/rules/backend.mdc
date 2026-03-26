@@ -76,12 +76,13 @@ func (r *XxxRepo) Page(page, pageSize int, opts ...repo.DBOption) (int64, []mode
 - WebSocket 路由：`/api/v1/ws/*`
 
 ## Nginx 操作规则
-- Nginx 采用面板自包含安装，所有文件在 `{install_dir}/nginx/` 下
+- Nginx 支持两种模式：系统包安装 (apt) 和面板自包含安装
+- 系统模式：二进制 /usr/sbin/nginx，配置 /etc/nginx/，站点 sites-available/sites-enabled，日志 /var/log/nginx，使用 systemctl 管理
+- 自包含模式：所有文件在 `{install_dir}/` 下，使用 `nginx -p {install_dir}` 和直接信号控制
 - 路径通过 `global.CONF.Nginx.GetXxx()` 方法获取，禁止硬编码
-- 进程管理使用直接信号控制（`nginx -s reload/quit/stop`），不使用 systemctl
 - 所有配置变更后必须 `nginx -t` → 失败回滚 → 成功 reload
-- 使用 `utils/nginx/parser` 解析配置，`utils/nginx/dumper` 输出配置
-- SSL 证书文件统一放 `{nginx_dir}/conf/ssl/{websiteAlias}/`
+- 启动时 `DetectNginx()` 自动检测安装模式，优先检查自包含安装，其次检查系统 nginx
+- SSL 证书文件统一放 `{confDir}/ssl/{websiteAlias}/`
 
 ## 数据库规则
 - 面板自身用 SQLite，通过 `global.DB` 访问

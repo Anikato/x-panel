@@ -239,6 +239,8 @@ func Setup(mode string) *gin.Engine {
 
 		// 容器管理
 		privateGroup.GET("/containers/docker/status", api.DockerStatus)
+		privateGroup.POST("/containers/docker/install", api.InstallDocker)
+		privateGroup.GET("/containers/docker/install/log", api.GetDockerInstallLog)
 		privateGroup.POST("/containers/search", api.ListContainers)
 		privateGroup.POST("/containers", api.CreateContainer)
 		privateGroup.POST("/containers/operate", api.OperateContainer)

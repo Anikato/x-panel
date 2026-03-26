@@ -20,6 +20,9 @@ func Start() {
 	// 1. Viper 加载配置
 	initViper.Init()
 
+	// 1.5 检测 Nginx 安装模式
+	global.CONF.Nginx.DetectNginx()
+
 	// 2. 日志模块
 	initLog.Init()
 

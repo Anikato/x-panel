@@ -56,7 +56,8 @@ func (s *NginxLogService) Analyze(req dto.NginxLogAnalysisReq) (*dto.NginxLogAna
 		return nil, buserr.New(constant.ErrNginxNotInstalled)
 	}
 
-	logPath := fmt.Sprintf("%s/logs/%s.access.log", nc.InstallDir, site.Alias)
+	logDir := fmt.Sprintf("%s/sites", nc.GetLogDir())
+	logPath := fmt.Sprintf("%s/%s.access.log", logDir, site.PrimaryDomain)
 	if _, err := os.Stat(logPath); err != nil {
 		return &dto.NginxLogAnalysis{
 			StatusCodes: make(map[string]int64),

@@ -329,30 +329,50 @@ func GetSiteConfPath(alias string) string {
 	return filepath.Join(global.CONF.Nginx.GetSitesDir(), alias+".conf")
 }
 
-// EnsureNginxInclude 确保 nginx.conf 包含 conf.d/*.conf
+// EnsureNginxInclude 确保 nginx.conf 包含站点配置目录
 func EnsureNginxInclude() error {
-	mainConf := global.CONF.Nginx.GetMainConf()
+	nc := global.CONF.Nginx
+
+	// System mode: Debian/Ubuntu nginx already includes sites-enabled/*
+	if nc.IsSystemMode() {
+		mainConf := nc.GetMainConf()
+		data, err := os.ReadFile(mainConf)
+		if err != nil {
+			return nil
+		}
+		content := string(data)
+		if strings.Contains(content, "sites-enabled") {
+			// Ensure directories exist
+			os.MkdirAll(nc.GetSitesAvailableDir(), 0755)
+			os.MkdirAll(nc.GetSitesDir(), 0755)
+			return nil
+		}
+		// If sites-enabled not included, add it
+		return insertNginxInclude(mainConf, content, "include /etc/nginx/sites-enabled/*;")
+	}
+
+	// Prefix mode
+	mainConf := nc.GetMainConf()
 	data, err := os.ReadFile(mainConf)
 	if err != nil {
 		return err
 	}
 	content := string(data)
-	includeDir := "include conf.d/*.conf;"
-
-	if strings.Contains(content, includeDir) || strings.Contains(content, "include conf/conf.d/*.conf;") {
+	if strings.Contains(content, "conf.d/*.conf") || strings.Contains(content, "conf/conf.d/*.conf") {
 		return nil
 	}
+	return insertNginxInclude(mainConf, content, "include conf.d/*.conf;")
+}
 
-	// 在 http 块的最后一个 } 之前插入 include
-	httpIdx := strings.Index(content, "http {") // also matches "http  {" etc.
+func insertNginxInclude(mainConf, content, includeLine string) error {
+	httpIdx := strings.Index(content, "http {")
 	if httpIdx < 0 {
 		httpIdx = strings.Index(content, "http{")
 	}
 	if httpIdx < 0 {
-		return fmt.Errorf("nginx.conf 中未找到 http 块")
+		return fmt.Errorf("nginx.conf missing http block")
 	}
 
-	// 找到 http 块的最后一个 }
 	depth := 0
 	insertPos := -1
 	for i := httpIdx; i < len(content); i++ {
@@ -367,9 +387,9 @@ func EnsureNginxInclude() error {
 		}
 	}
 	if insertPos < 0 {
-		return fmt.Errorf("nginx.conf 格式异常")
+		return fmt.Errorf("nginx.conf malformed")
 	}
 
-	newContent := content[:insertPos] + "\n    " + includeDir + "\n" + content[insertPos:]
+	newContent := content[:insertPos] + "\n    " + includeLine + "\n" + content[insertPos:]
 	return os.WriteFile(mainConf, []byte(newContent), 0644)
 }

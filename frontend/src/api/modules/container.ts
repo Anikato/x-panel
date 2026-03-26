@@ -8,6 +8,8 @@ import type {
 } from '../interface'
 
 export const getDockerStatus = () => http.get('/containers/docker/status')
+export const installDocker = () => http.post('/containers/docker/install')
+export const getDockerInstallLog = () => http.get('/containers/docker/install/log')
 
 export const searchContainers = (data: ContainerSearchReq) => http.post('/containers/search', data)
 export const createContainer = (data: ContainerCreateForm) => http.post('/containers', data)

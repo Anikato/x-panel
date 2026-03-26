@@ -53,7 +53,6 @@ func NewIWebsiteService() IWebsiteService {
 }
 
 func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
-	// 检查域名唯一性
 	exist, _ := s.websiteRepo.Get(repo.WithByPrimaryDomain(req.PrimaryDomain))
 	if exist.ID > 0 {
 		return buserr.New(constant.ErrWebsiteDomainExist)
@@ -85,7 +84,6 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
-	// 为静态站点创建目录
 	if site.Type == "static" && site.SiteDir != "" {
 		os.MkdirAll(site.SiteDir, 0755)
 		indexPath := filepath.Join(site.SiteDir, "index.html")
@@ -96,7 +94,26 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 	}
 
 	global.LOG.Infof("Website created: %s (%s)", site.PrimaryDomain, site.Type)
+
+	// Auto-enable if nginx is installed
+	if global.CONF.Nginx.IsInstalled() {
+		if err := s.autoEnable(&site); err != nil {
+			global.LOG.Warnf("Auto-enable website %s failed: %v", site.PrimaryDomain, err)
+		}
+	}
+
 	return nil
+}
+
+func (s *WebsiteService) autoEnable(site *model.Website) error {
+	if err := EnsureNginxInclude(); err != nil {
+		global.LOG.Warnf("Ensure nginx include failed: %v", err)
+	}
+	if err := s.applyConfig(*site); err != nil {
+		return err
+	}
+	site.Status = "running"
+	return s.websiteRepo.Save(site)
 }
 
 func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
@@ -366,16 +383,36 @@ func (s *WebsiteService) GetSiteConfContent(id uint) (string, error) {
 		return "", buserr.New(constant.ErrRecordNotFound)
 	}
 
-	confPath := GetSiteConfPath(site.Alias)
-	data, err := os.ReadFile(confPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			gen := NewNginxConfigGenerator()
-			return gen.Generate(site)
+	nc := global.CONF.Nginx
+
+	// Try reading from the actual config file
+	var confPath string
+	if nc.IsSystemMode() {
+		// System mode: try sites-available first, then sites-enabled
+		availPath := filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf")
+		enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
+		if _, err := os.Stat(availPath); err == nil {
+			confPath = availPath
+		} else if _, err := os.Stat(enabledPath); err == nil {
+			confPath = enabledPath
 		}
-		return "", err
+	} else {
+		confPath = GetSiteConfPath(site.Alias)
 	}
-	return string(data), nil
+
+	if confPath != "" {
+		data, err := os.ReadFile(confPath)
+		if err == nil {
+			return string(data), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+
+	// No config file on disk yet, generate from DB
+	gen := NewNginxConfigGenerator()
+	return gen.Generate(site)
 }
 
 func (s *WebsiteService) SaveSiteConfContent(id uint, content string) error {
@@ -384,34 +421,55 @@ func (s *WebsiteService) SaveSiteConfContent(id uint, content string) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 
-	confPath := GetSiteConfPath(site.Alias)
+	nc := global.CONF.Nginx
+	confPath := s.getSiteConfWritePath(site.Alias)
+
+	os.MkdirAll(filepath.Dir(confPath), 0755)
 	backup, _ := os.ReadFile(confPath)
 
 	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write config failed: %v", err)
 	}
 
+	// System mode: ensure symlink from sites-enabled
+	if nc.IsSystemMode() {
+		enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
+		if _, err := os.Lstat(enabledPath); os.IsNotExist(err) {
+			os.Symlink(confPath, enabledPath)
+		}
+	}
+
 	if err := s.testNginxConfig(); err != nil {
 		if backup != nil {
 			os.WriteFile(confPath, backup, 0644)
 		} else {
+			if nc.IsSystemMode() {
+				enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
+				os.Remove(enabledPath)
+			}
 			os.Remove(confPath)
 		}
 		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
 	}
 
-	// If running, reload nginx
 	if site.Status == "running" {
 		s.reloadNginx()
 	}
 
-	// Switch to source mode
 	if site.ConfigMode != "source" {
 		site.ConfigMode = "source"
 		s.websiteRepo.Save(&site)
 	}
 
 	return nil
+}
+
+func (s *WebsiteService) getSiteConfWritePath(alias string) string {
+	nc := global.CONF.Nginx
+	if nc.IsSystemMode() {
+		return filepath.Join(nc.GetSitesAvailableDir(), alias+".conf")
+	}
+	return GetSiteConfPath(alias)
 }
 
 func (s *WebsiteService) SwitchConfigMode(id uint, mode string) error {
@@ -439,10 +497,11 @@ func (s *WebsiteService) SwitchConfigMode(id uint, mode string) error {
 // --- Nginx 配置文件管理 ---
 
 func (s *WebsiteService) GetMainConf() (string, error) {
-	if !global.CONF.Nginx.IsInstalled() {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
 		return "", buserr.New(constant.ErrNginxNotInstalled)
 	}
-	data, err := os.ReadFile(global.CONF.Nginx.GetMainConf())
+	data, err := os.ReadFile(nc.GetMainConf())
 	if err != nil {
 		return "", err
 	}
@@ -450,19 +509,18 @@ func (s *WebsiteService) GetMainConf() (string, error) {
 }
 
 func (s *WebsiteService) SaveMainConf(content string) error {
-	if !global.CONF.Nginx.IsInstalled() {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
 		return buserr.New(constant.ErrNginxNotInstalled)
 	}
-	mainConf := global.CONF.Nginx.GetMainConf()
+	mainConf := nc.GetMainConf()
 
-	// 备份
 	backup, _ := os.ReadFile(mainConf)
 
 	if err := os.WriteFile(mainConf, []byte(content), 0644); err != nil {
 		return err
 	}
 
-	// 测试配置
 	if err := s.testNginxConfig(); err != nil {
 		os.WriteFile(mainConf, backup, 0644)
 		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
@@ -475,7 +533,10 @@ func (s *WebsiteService) ListConfFiles() ([]dto.NginxConfFileInfo, error) {
 	if !global.CONF.Nginx.IsInstalled() {
 		return nil, buserr.New(constant.ErrNginxNotInstalled)
 	}
-	confDir := global.CONF.Nginx.GetSitesDir()
+	nc := global.CONF.Nginx
+
+	// List from sites-available (system) or conf.d (prefix)
+	confDir := nc.GetSitesAvailableDir()
 	entries, err := os.ReadDir(confDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -505,8 +566,16 @@ func (s *WebsiteService) GetConfFile(name string) (string, error) {
 	if !global.CONF.Nginx.IsInstalled() {
 		return "", buserr.New(constant.ErrNginxNotInstalled)
 	}
-	filePath := filepath.Join(global.CONF.Nginx.GetSitesDir(), filepath.Base(name))
+	nc := global.CONF.Nginx
+	safeName := filepath.Base(name)
+
+	// Try sites-available first (system mode), then sites-enabled/conf.d
+	filePath := filepath.Join(nc.GetSitesAvailableDir(), safeName)
 	data, err := os.ReadFile(filePath)
+	if err != nil && nc.IsSystemMode() {
+		filePath = filepath.Join(nc.GetSitesDir(), safeName)
+		data, err = os.ReadFile(filePath)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -517,8 +586,8 @@ func (s *WebsiteService) SaveConfFile(req dto.NginxConfUpdate) error {
 	if !global.CONF.Nginx.IsInstalled() {
 		return buserr.New(constant.ErrNginxNotInstalled)
 	}
-	// 安全检查：只允许写 conf 目录下的文件
-	confDir := global.CONF.Nginx.GetConfDir()
+	nc := global.CONF.Nginx
+	confDir := nc.GetConfDir()
 	filePath := filepath.Clean(req.FilePath)
 	if !strings.HasPrefix(filePath, confDir) {
 		return buserr.New(constant.ErrInvalidParams)
@@ -547,21 +616,59 @@ func (s *WebsiteService) applyConfig(site model.Website) error {
 		return err
 	}
 
+	nc := global.CONF.Nginx
+
+	// System mode: write to sites-available and symlink to sites-enabled
+	if nc.IsSystemMode() {
+		availDir := nc.GetSitesAvailableDir()
+		enabledDir := nc.GetSitesDir()
+		os.MkdirAll(availDir, 0755)
+		os.MkdirAll(enabledDir, 0755)
+
+		availPath := filepath.Join(availDir, site.Alias+".conf")
+		enabledPath := filepath.Join(enabledDir, site.Alias+".conf")
+		backup, _ := os.ReadFile(availPath)
+
+		if err := os.WriteFile(availPath, []byte(config), 0644); err != nil {
+			return fmt.Errorf("write config failed: %v", err)
+		}
+
+		// Create symlink if not exists
+		if _, err := os.Lstat(enabledPath); os.IsNotExist(err) {
+			os.Symlink(availPath, enabledPath)
+		}
+
+		if site.BasicAuth && site.BasicUser != "" && site.BasicPassword != "" {
+			s.writeHtpasswd(site)
+		}
+
+		if err := s.testNginxConfig(); err != nil {
+			if backup != nil {
+				os.WriteFile(availPath, backup, 0644)
+			} else {
+				os.Remove(enabledPath)
+				os.Remove(availPath)
+			}
+			return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+		}
+
+		return s.reloadNginx()
+	}
+
+	// Prefix mode: write to conf.d
 	confPath := GetSiteConfPath(site.Alias)
 	backup, _ := os.ReadFile(confPath)
 
+	os.MkdirAll(filepath.Dir(confPath), 0755)
 	if err := os.WriteFile(confPath, []byte(config), 0644); err != nil {
-		return fmt.Errorf("写入配置文件失败: %v", err)
+		return fmt.Errorf("write config failed: %v", err)
 	}
 
-	// 写入 htpasswd 文件
 	if site.BasicAuth && site.BasicUser != "" && site.BasicPassword != "" {
 		s.writeHtpasswd(site)
 	}
 
-	// 测试配置
 	if err := s.testNginxConfig(); err != nil {
-		// 回滚
 		if backup != nil {
 			os.WriteFile(confPath, backup, 0644)
 		} else {
@@ -570,13 +677,19 @@ func (s *WebsiteService) applyConfig(site model.Website) error {
 		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
 	}
 
-	// 重载 Nginx
 	return s.reloadNginx()
 }
 
 func (s *WebsiteService) removeConfig(site model.Website) {
-	confPath := GetSiteConfPath(site.Alias)
-	os.Remove(confPath)
+	nc := global.CONF.Nginx
+	if nc.IsSystemMode() {
+		enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
+		os.Remove(enabledPath)
+		// Keep sites-available for reference
+	} else {
+		confPath := GetSiteConfPath(site.Alias)
+		os.Remove(confPath)
+	}
 }
 
 func (s *WebsiteService) testNginxConfig() error {
@@ -584,7 +697,14 @@ func (s *WebsiteService) testNginxConfig() error {
 	if !nc.IsInstalled() {
 		return fmt.Errorf("nginx not installed")
 	}
-	output, err := cmd.ExecWithOutput(nc.GetBinary(), "-p", nc.InstallDir, "-t")
+
+	var output string
+	var err error
+	if nc.IsSystemMode() {
+		output, err = cmd.ExecWithOutput(nc.GetBinary(), "-t")
+	} else {
+		output, err = cmd.ExecWithOutput(nc.GetBinary(), "-p", nc.InstallDir, "-t")
+	}
 	if err != nil {
 		errMsg := output
 		if errMsg == "" {
@@ -600,10 +720,14 @@ func (s *WebsiteService) reloadNginx() error {
 	if !nc.IsInstalled() {
 		return nil
 	}
-	// 检查 Nginx 是否在运行
 	pidPath := nc.GetPidPath()
 	if _, err := os.Stat(pidPath); os.IsNotExist(err) {
 		return nil
+	}
+
+	if nc.IsSystemMode() {
+		_, err := cmd.ExecWithOutput("systemctl", "reload", "nginx")
+		return err
 	}
 	_, err := cmd.ExecWithOutput(nc.GetBinary(), "-p", nc.InstallDir, "-s", "reload")
 	return err

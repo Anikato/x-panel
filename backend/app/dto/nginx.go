@@ -5,14 +5,15 @@ import "time"
 // ---- Nginx 状态 ----
 
 type NginxStatus struct {
-	IsInstalled bool      `json:"isInstalled"` // 是否已安装
-	IsRunning   bool      `json:"isRunning"`   // 是否正在运行
-	Version     string    `json:"version"`     // Nginx 版本号
-	PID         int       `json:"pid"`         // 主进程 PID
-	InstallDir  string    `json:"installDir"`  // 安装目录
-	StartedAt   time.Time `json:"startedAt"`   // 启动时间
-	ConfigOK    bool      `json:"configOK"`    // 配置是否合法
-	AutoStart   bool      `json:"autoStart"`   // 是否开机自启
+	IsInstalled bool      `json:"isInstalled"`
+	IsRunning   bool      `json:"isRunning"`
+	Version     string    `json:"version"`
+	PID         int       `json:"pid"`
+	InstallDir  string    `json:"installDir"`
+	StartedAt   time.Time `json:"startedAt"`
+	ConfigOK    bool      `json:"configOK"`
+	AutoStart   bool      `json:"autoStart"`
+	SystemMode  bool      `json:"systemMode"`
 }
 
 type NginxAutoStartReq struct {

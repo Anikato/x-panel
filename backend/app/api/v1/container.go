@@ -16,7 +16,17 @@ var containerService = service.NewIContainerService()
 var composeService = service.NewIComposeService()
 
 func (a *ContainerAPI) DockerStatus(c *gin.Context) {
-	helper.SuccessWithData(c, gin.H{"available": containerService.DockerAvailable()})
+	helper.SuccessWithData(c, containerService.DockerStatus())
+}
+
+func (a *ContainerAPI) InstallDocker(c *gin.Context) {
+	go service.RunDockerInstall()
+	helper.SuccessWithMsg(c, "MsgDockerInstallStarted")
+}
+
+func (a *ContainerAPI) GetDockerInstallLog(c *gin.Context) {
+	log, running := service.GetDockerInstallLog()
+	helper.SuccessWithData(c, gin.H{"log": log, "running": running})
 }
 
 // Container

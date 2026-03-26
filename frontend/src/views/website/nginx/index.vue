@@ -126,7 +126,12 @@
           <span>{{ $t('nginx.installDir') }}</span>
         </template>
         <el-descriptions :column="2" border size="small">
-          <el-descriptions-item :label="$t('nginx.installDir')">{{ status.installDir }}</el-descriptions-item>
+          <el-descriptions-item :label="$t('nginx.mode')">
+            <el-tag :type="status.systemMode ? 'success' : 'info'" size="small">
+              {{ status.systemMode ? $t('nginx.systemMode') : $t('nginx.prefixMode') }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item :label="$t('nginx.installDir')">{{ status.systemMode ? '/etc/nginx' : status.installDir }}</el-descriptions-item>
           <el-descriptions-item :label="$t('nginx.version')">{{ status.version || '-' }}</el-descriptions-item>
           <el-descriptions-item :label="$t('nginx.startedAt')">{{ status.isRunning ? formatTime(status.startedAt) : '-' }}</el-descriptions-item>
           <el-descriptions-item :label="$t('nginx.pid')">{{ status.isRunning ? status.pid : '-' }}</el-descriptions-item>
@@ -495,7 +500,7 @@ const handleSaveConf = async () => {
     if (activeConfFile.value === '__main__') {
       await saveNginxMainConf(confContent.value)
     } else {
-      const confDir = status.value.installDir ? `${status.value.installDir}/conf/conf.d` : ''
+      const confDir = status.value.systemMode ? '/etc/nginx/sites-available' : (status.value.installDir ? `${status.value.installDir}/conf/conf.d` : '')
       await saveNginxConfFile(`${confDir}/${activeConfFile.value}`, confContent.value)
     }
     ElMessage.success(t('website.confSaved'))

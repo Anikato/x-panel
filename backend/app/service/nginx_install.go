@@ -302,7 +302,7 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 	if err := EnsureNginxServiceFile(installDir); err != nil {
 		global.LOG.Warnf("Create systemd service failed: %v", err)
 	} else {
-		if _, err := cmd.ExecWithOutput("systemctl", "enable", nginxServiceName); err != nil {
+		if _, err := cmd.ExecWithOutput("systemctl", "enable", "xpanel-nginx"); err != nil {
 			global.LOG.Warnf("Enable nginx autostart failed: %v", err)
 		}
 	}

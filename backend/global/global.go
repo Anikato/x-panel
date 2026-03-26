@@ -2,7 +2,9 @@ package global
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/robfig/cron/v3"
@@ -61,50 +63,139 @@ type LogConfig struct {
 	Compress bool   `mapstructure:"compress"`
 }
 
-// NginxConfig Nginx 自包含安装配置
+// NginxConfig Nginx 配置 - 同时支持自包含安装和 apt 系统包
 type NginxConfig struct {
-	InstallDir string `mapstructure:"install_dir"` // Nginx 安装根目录
-	Version    string `mapstructure:"version"`     // 当前 Nginx 版本
-	BuildRepo  string `mapstructure:"build_repo"`  // 预编译仓库 (如 "Anikato/nginx-build")
+	InstallDir string `mapstructure:"install_dir"`
+	Version    string `mapstructure:"version"`
+	BuildRepo  string `mapstructure:"build_repo"`
+	// 运行时检测结果（不从配置文件读取）
+	systemMode    bool
+	systemBinary  string
+	systemConfDir string
+}
+
+// DetectNginx 检测 nginx 安装模式（启动时调用一次）
+func (c *NginxConfig) DetectNginx() {
+	// 优先检测自包含安装
+	if c.InstallDir != "" {
+		prefixBin := filepath.Join(c.InstallDir, "sbin", "nginx")
+		if _, err := os.Stat(prefixBin); err == nil {
+			c.systemMode = false
+			return
+		}
+	}
+
+	// 检测系统 apt/yum 安装的 nginx
+	binPath, err := exec.LookPath("nginx")
+	if err == nil {
+		c.systemMode = true
+		c.systemBinary = binPath
+		// 检测系统 nginx 配置目录
+		if _, err := os.Stat("/etc/nginx/nginx.conf"); err == nil {
+			c.systemConfDir = "/etc/nginx"
+		}
+	}
+}
+
+// IsSystemMode 是否使用系统包管理器安装的 nginx
+func (c NginxConfig) IsSystemMode() bool {
+	return c.systemMode
 }
 
 // GetBinary 返回 Nginx 二进制路径
 func (c NginxConfig) GetBinary() string {
+	if c.systemMode && c.systemBinary != "" {
+		return c.systemBinary
+	}
 	return filepath.Join(c.InstallDir, "sbin", "nginx")
 }
 
 // GetMainConf 返回主配置文件路径
 func (c NginxConfig) GetMainConf() string {
+	if c.systemMode {
+		return "/etc/nginx/nginx.conf"
+	}
 	return filepath.Join(c.InstallDir, "conf", "nginx.conf")
 }
 
 // GetConfDir 返回配置目录路径
 func (c NginxConfig) GetConfDir() string {
+	if c.systemMode {
+		return "/etc/nginx"
+	}
 	return filepath.Join(c.InstallDir, "conf")
 }
 
-// GetSitesDir 返回站点配置目录路径
+// GetSitesDir 返回站点配置目录路径（sites-enabled for system, conf.d for prefix）
 func (c NginxConfig) GetSitesDir() string {
+	if c.systemMode {
+		return "/etc/nginx/sites-enabled"
+	}
+	return filepath.Join(c.InstallDir, "conf", "conf.d")
+}
+
+// GetSitesAvailableDir 返回 sites-available 目录路径（系统模式专用）
+func (c NginxConfig) GetSitesAvailableDir() string {
+	if c.systemMode {
+		return "/etc/nginx/sites-available"
+	}
 	return filepath.Join(c.InstallDir, "conf", "conf.d")
 }
 
 // GetSSLDir 返回 SSL 证书目录路径
 func (c NginxConfig) GetSSLDir() string {
+	if c.systemMode {
+		return "/etc/nginx/ssl"
+	}
 	return filepath.Join(c.InstallDir, "conf", "ssl")
 }
 
 // GetLogDir 返回日志目录路径
 func (c NginxConfig) GetLogDir() string {
+	if c.systemMode {
+		return "/var/log/nginx"
+	}
 	return filepath.Join(c.InstallDir, "logs")
 }
 
 // GetPidPath 返回 PID 文件路径
 func (c NginxConfig) GetPidPath() string {
+	if c.systemMode {
+		// Debian/Ubuntu 默认 PID 路径
+		for _, p := range []string{"/run/nginx.pid", "/var/run/nginx.pid"} {
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+		return "/run/nginx.pid"
+	}
 	return filepath.Join(c.InstallDir, "logs", "nginx.pid")
 }
 
 // IsInstalled 检查 Nginx 是否已安装
 func (c NginxConfig) IsInstalled() bool {
+	if c.systemMode {
+		return c.systemBinary != ""
+	}
 	_, err := os.Stat(c.GetBinary())
 	return err == nil
+}
+
+// GetVersion 获取 nginx 版本
+func (c NginxConfig) GetVersion() string {
+	bin := c.GetBinary()
+	out, err := exec.Command(bin, "-v").CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	s := string(out)
+	if idx := strings.Index(s, "nginx/"); idx >= 0 {
+		ver := s[idx+len("nginx/"):]
+		ver = strings.TrimSpace(ver)
+		if spIdx := strings.IndexAny(ver, " \n\r"); spIdx >= 0 {
+			ver = ver[:spIdx]
+		}
+		return ver
+	}
+	return ""
 }
