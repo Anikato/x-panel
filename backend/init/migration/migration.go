@@ -1,6 +1,10 @@
 package migration
 
 import (
+	"io"
+	"os"
+	"path/filepath"
+
 	"xpanel/app/model"
 	"xpanel/global"
 )
@@ -28,10 +32,6 @@ func Init() {
 		&model.TrafficConfig{},
 		&model.TrafficHourly{},
 		&model.TrafficSnapshot{},
-		&model.XrayNode{},
-		&model.XrayUser{},
-		&model.XrayTrafficDaily{},
-		&model.XrayOutbound{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
@@ -39,6 +39,7 @@ func Init() {
 	runOnceDataMigrations()
 
 	initDefaultSettings()
+	ensureSSLDir()
 	global.LOG.Info("Database migration completed")
 }
 
@@ -57,6 +58,109 @@ func runOnceDataMigrations() {
 		markDone("_mig_website_perf_defaults")
 		global.LOG.Info("Migration: enabled gzip & security headers for existing websites")
 	}
+
+	if !migrated("_mig_ssl_dir_independent") {
+		migrateSSLCertsToIndependentDir()
+		markDone("_mig_ssl_dir_independent")
+	}
+}
+
+// migrateSSLCertsToIndependentDir 将旧 Nginx 目录下的证书迁移到独立 SSL 目录
+func migrateSSLCertsToIndependentDir() {
+	newDir := global.CONF.GetDefaultSSLDir()
+	newCertsDir := filepath.Join(newDir, "certs")
+	os.MkdirAll(newCertsDir, 0755)
+
+	oldDirs := []string{
+		"/etc/nginx/ssl/certs",
+	}
+	installDir := global.CONF.Nginx.InstallDir
+	if installDir != "" {
+		oldDirs = append(oldDirs, filepath.Join(installDir, "conf", "ssl", "certs"))
+	}
+
+	for _, oldCertsDir := range oldDirs {
+		if oldCertsDir == newCertsDir {
+			continue
+		}
+		entries, err := os.ReadDir(oldCertsDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			srcDir := filepath.Join(oldCertsDir, entry.Name())
+			dstDir := filepath.Join(newCertsDir, entry.Name())
+			if _, err := os.Stat(dstDir); err == nil {
+				continue
+			}
+			if err := copyDir(srcDir, dstDir); err != nil {
+				global.LOG.Warnf("Migrate cert %s failed: %v", entry.Name(), err)
+				continue
+			}
+			global.LOG.Infof("Migrated cert directory: %s -> %s", srcDir, dstDir)
+		}
+	}
+}
+
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
+// ensureSSLDir 确保 SSL 证书独立目录存在
+func ensureSSLDir() {
+	sslDir := global.CONF.GetDefaultSSLDir()
+	dirs := []string{
+		sslDir,
+		sslDir + "/certs",
+		sslDir + "/logs",
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			global.LOG.Warnf("Failed to create SSL dir %s: %v", d, err)
+		}
+	}
 }
 
 func initDefaultSettings() {
@@ -74,10 +178,6 @@ func initDefaultSettings() {
 		{Key: "UpgradeURL", Value: ""},
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
-		// Xray 日志设置
-		{Key: "XrayLogLevel", Value: "warning"},
-		{Key: "XrayAccessLog", Value: "/data/xray/log/access.log"},
-		{Key: "XrayErrorLog", Value: "/data/xray/log/error.log"},
 	}
 
 	for _, s := range defaults {

@@ -36,6 +36,11 @@ type ServerConfig struct {
 	Nginx  NginxConfig  `mapstructure:"nginx"`
 }
 
+// GetDefaultSSLDir 返回默认 SSL 证书目录（独立于 Nginx，不会因 Nginx 卸载而丢失）
+func (c ServerConfig) GetDefaultSSLDir() string {
+	return filepath.Join(c.System.DataDir, "ssl")
+}
+
 // SystemConfig 系统配置
 type SystemConfig struct {
 	Port           string    `mapstructure:"port"`
@@ -165,12 +170,10 @@ func (c NginxConfig) GetSitesAvailableDir() string {
 	return filepath.Join(c.InstallDir, "conf", "conf.d")
 }
 
-// GetSSLDir 返回 SSL 证书目录路径
+// GetSSLDir 返回 SSL 证书目录路径（已弃用，请使用 ServerConfig.GetDefaultSSLDir）
+// 保留用于向后兼容，现在始终返回独立于 Nginx 的路径
 func (c NginxConfig) GetSSLDir() string {
-	if c.systemMode {
-		return "/etc/nginx/ssl"
-	}
-	return filepath.Join(c.InstallDir, "conf", "ssl")
+	return CONF.GetDefaultSSLDir()
 }
 
 // GetLogDir 返回日志目录路径

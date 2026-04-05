@@ -92,10 +92,6 @@ const operationMap: Record<string, string> = {
   '/api/v1/logs/login': '查看登录日志',
   '/api/v1/logs/login/clean': '清空登录日志',
   '/api/v1/cronjobs/search': '查询计划任务',
-  '/api/v1/xray/install': '安装 Xray',
-  '/api/v1/xray/service': '控制 Xray 服务',
-  '/api/v1/xray/nodes': '创建 Xray 节点',
-  '/api/v1/xray/users': '管理 Xray 用户',
   '/api/v1/firewall/rules': '管理防火墙规则',
   '/api/v1/containers': '管理容器',
   '/api/v1/files/upload': '上传文件',
@@ -114,7 +110,7 @@ const describeOperation = (row: OperationLog): string => {
 
   const groupNames: Record<string, string> = {
     auth: '认证', websites: '网站', databases: '数据库', containers: '容器',
-    files: '文件', firewall: '防火墙', cronjobs: '计划任务', xray: 'Xray',
+    files: '文件', firewall: '防火墙', cronjobs: '计划任务',
     nginx: 'Nginx', settings: '设置', logs: '日志', traffic: '流量',
     monitor: '监控', disk: '磁盘', host: '主机', ssh: 'SSH', ssl: '证书',
     backup: '备份', nodes: '节点', process: '进程', toolbox: '工具箱',

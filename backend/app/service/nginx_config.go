@@ -494,7 +494,7 @@ func (g *NginxConfigGenerator) getCertPaths(certID uint) (string, string, error)
 func (g *NginxConfigGenerator) getSSLDir() string {
 	dir, err := g.settingRepo.GetValueByKey("SSLDir")
 	if err != nil || dir == "" {
-		return global.CONF.Nginx.GetSSLDir()
+		return global.CONF.GetDefaultSSLDir()
 	}
 	return dir
 }

@@ -284,32 +284,6 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/websites/config-mode", api.SwitchConfigMode)
 		privateGroup.POST("/websites/log-analysis", api.AnalyzeNginxLog)
 
-		// Xray 管理
-		privateGroup.GET("/xray/status", api.GetXrayStatus)
-		privateGroup.POST("/xray/service/control", api.ControlXrayService)
-		privateGroup.POST("/xray/fix-permissions", api.FixXrayPermissions)
-		privateGroup.GET("/xray/log-settings", api.GetXrayLogSettings)
-		privateGroup.POST("/xray/log-settings", api.UpdateXrayLogSettings)
-		privateGroup.GET("/xray/update/check", api.CheckXrayUpdate)
-		privateGroup.POST("/xray/update/do", api.DoXrayUpgrade)
-		privateGroup.POST("/xray/install", api.StartInstall)
-		privateGroup.GET("/xray/install/log", api.GetInstallLog)
-		privateGroup.GET("/xray/nodes", api.ListXrayNodes)
-		privateGroup.POST("/xray/nodes", api.CreateXrayNode)
-		privateGroup.POST("/xray/nodes/update", api.UpdateXrayNode)
-		privateGroup.POST("/xray/nodes/del", api.DeleteXrayNode)
-		privateGroup.POST("/xray/nodes/toggle", api.ToggleXrayNode)
-		privateGroup.POST("/xray/users/search", api.SearchXrayUsers)
-		privateGroup.POST("/xray/users", api.CreateXrayUser)
-		privateGroup.POST("/xray/users/update", api.UpdateXrayUser)
-		privateGroup.POST("/xray/users/del", api.DeleteXrayUser)
-		privateGroup.GET("/xray/reality/keys", api.GenerateRealityKeys)
-		privateGroup.POST("/xray/users/share-link", api.GetXrayShareLink)
-		privateGroup.POST("/xray/users/traffic-history", api.GetTrafficHistory)
-		privateGroup.GET("/xray/outbounds", api.ListXrayOutbounds)
-		privateGroup.POST("/xray/outbounds", api.CreateXrayOutbound)
-		privateGroup.POST("/xray/outbounds/update", api.UpdateXrayOutbound)
-		privateGroup.POST("/xray/outbounds/del", api.DeleteXrayOutbound)
 	}
 
 	// WebSocket

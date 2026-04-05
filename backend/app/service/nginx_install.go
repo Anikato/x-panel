@@ -504,7 +504,6 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 	// 创建额外目录
 	extraDirs := []string{
 		filepath.Join(installDir, "conf", "conf.d"),
-		filepath.Join(installDir, "conf", "ssl"),
 		filepath.Join(installDir, "temp", "client_body"),
 		filepath.Join(installDir, "temp", "proxy"),
 		filepath.Join(installDir, "temp", "fastcgi"),

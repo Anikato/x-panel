@@ -4,6 +4,59 @@
 
 ---
 
+## 2026-04-04 — Session #49：移除 Xray 功能 + SSL 证书存储独立化
+
+### 完成内容
+
+**移除 Xray 代理功能**：
+- [x] 删除后端 Xray 全部代码：model、dto、repo、service、api/v1
+- [x] 清理路由（router.go 中 `/xray/*` 路由组）
+- [x] 清理 cron 定时任务（流量同步、过期检查、每日快照）
+- [x] 清理数据库迁移（XrayNode、XrayUser、XrayTrafficDaily、XrayOutbound 四张表）
+- [x] 清理默认设置（XrayLogLevel、XrayAccessLog、XrayErrorLog）
+- [x] 清理错误常量（ErrXrayInvalidSettings 等）和 i18n 翻译
+- [x] 删除前端 Xray 页面（views/xray/）、API 模块、路由模块
+- [x] 清理侧边栏菜单、前端 i18n xray 命名空间
+- [x] 清理操作日志中 Xray 相关的 API 路径映射和分组名
+- [x] 删除根目录 `xray-install.sh` 脚本
+- [x] 清理安装脚本（install.sh、install-online.sh）中的 Xray 安装步骤
+
+**SSL 证书存储独立化**：
+- [x] 新增 `ServerConfig.GetDefaultSSLDir()` 返回 `/opt/xpanel/ssl/`（基于 DataDir）
+- [x] `NginxConfig.GetSSLDir()` 改为指向独立路径，不再绑定 Nginx 目录
+- [x] `CertificateService.GetSSLDir()` 和 `NginxConfigGenerator.getSSLDir()` 同步更新
+- [x] Nginx 安装时不再创建 `conf/ssl` 目录
+- [x] 启动时自动创建 `/opt/xpanel/ssl/{certs,logs}` 目录结构
+- [x] 自动迁移：首次启动将旧路径（`/etc/nginx/ssl/certs`、`{install_dir}/conf/ssl/certs`）下的证书复制到新位置
+
+**证书权限修复**：
+- [x] `saveCertFiles()` 写入后主动 `chmod` 确保权限链完整
+- [x] 证书文件 0644、私钥 0600、目录链 0755
+- [x] 错误信息增强：写入失败时返回具体路径和错误
+
+**修复证书申请"第一次失败第二次成功"的问题**：
+- [x] 根因：`DisableCompletePropagationRequirement()` 跳过 DNS 传播检查，TXT 记录未传播就请求 CA 验证
+- [x] 移除 `DisableCompletePropagationRequirement()`，改用 `AddRecursiveNameservers` 指定公共 DNS（1.1.1.1/8.8.8.8）做传播检查
+- [x] `ObtainCertificate` 增加自动重试：首次失败后等待 30 秒再重试一次，无需用户手动操作
+
+### 关键决策
+
+- SSL 证书默认路径从 Nginx 内部改为 `/opt/xpanel/ssl/`（跟随 `system.data_dir`），确保删除 Nginx 后证书不丢失
+- 旧证书采用复制（非移动）方式迁移，原路径保留不删除，避免正在使用的 Nginx 配置引用失效
+- Nginx master 进程以 root 运行，可直接读取 root:root 0600 的私钥文件，无需 chown
+
+### 遗留问题
+
+- 数据库中 `xray_*` 旧表需要手动清理（AutoMigrate 不会自动删除不再引用的表）
+- 用户如果自定义了 `SSLDir` 设置为 Nginx 内部路径，需手动更新
+
+### 下一步计划
+
+- 考虑添加数据库迁移脚本清理 xray 旧表
+- 前端 SSL 目录设置页面添加路径提示
+
+---
+
 ## 2026-03-26 — Session #48：网站配置全面增强 + SSL 证书修复
 
 ### 完成内容

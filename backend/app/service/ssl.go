@@ -465,7 +465,7 @@ func (s *CertificateService) Renew(id uint) error {
 func (s *CertificateService) GetSSLDir() string {
 	dir, err := s.settingRepo.GetValueByKey("SSLDir")
 	if err != nil || dir == "" {
-		return global.CONF.Nginx.GetSSLDir()
+		return global.CONF.GetDefaultSSLDir()
 	}
 	return dir
 }
@@ -482,23 +482,37 @@ func (s *CertificateService) saveCertFiles(cert model.Certificate) error {
 	sslDir := s.GetSSLDir()
 	certDir := filepath.Join(sslDir, "certs", cert.PrimaryDomain)
 	if err := os.MkdirAll(certDir, 0755); err != nil {
-		return err
+		return fmt.Errorf("create cert dir %s: %w", certDir, err)
 	}
 
-	// 保存证书
 	certPath := filepath.Join(certDir, "fullchain.pem")
 	if err := os.WriteFile(certPath, []byte(cert.Pem), 0644); err != nil {
-		return err
+		return fmt.Errorf("write fullchain.pem: %w", err)
 	}
 
-	// 保存私钥
 	keyPath := filepath.Join(certDir, "privkey.pem")
 	if err := os.WriteFile(keyPath, []byte(cert.PrivateKey), 0600); err != nil {
-		return err
+		return fmt.Errorf("write privkey.pem: %w", err)
 	}
+
+	ensureCertPermissions(certDir, certPath, keyPath)
 
 	global.LOG.Infof("Certificate files saved to: %s", certDir)
 	return nil
+}
+
+// ensureCertPermissions 确保证书文件权限正确，Nginx 进程可读取
+// Nginx master 以 root 运行，可以读取 root:root 0644/0600 的文件
+// 额外修正：确保目录链路上的权限允许遍历
+func ensureCertPermissions(certDir, certPath, keyPath string) {
+	os.Chmod(certDir, 0755)
+	os.Chmod(certPath, 0644)
+	os.Chmod(keyPath, 0600)
+	// 确保上级目录可遍历
+	parent := filepath.Dir(certDir)
+	os.Chmod(parent, 0755)
+	grandparent := filepath.Dir(parent)
+	os.Chmod(grandparent, 0755)
 }
 
 // getSSLLogDir 获取 SSL 日志目录

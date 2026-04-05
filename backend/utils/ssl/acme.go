@@ -129,6 +129,7 @@ func RegisterAccount(email, keyType, caType, caDirURL string) (privateKeyPEM str
 }
 
 // ObtainCertificate 申请证书，logWriter 可选，用于将 lego 内部日志重定向到调用方
+// 内置自动重试：首次失败后等待 DNS 传播再重试一次
 func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWriter ...io.Writer) (*certificate.Resource, error) {
 	if len(logWriter) > 0 && logWriter[0] != nil {
 		origOut := log.Writer()
@@ -157,7 +158,18 @@ func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWrit
 
 	cert, err := c.Client.Certificate.Obtain(request)
 	if err != nil {
-		return nil, fmt.Errorf("obtain certificate: %v", err)
+		log.Printf("[lego] first attempt failed: %v, retrying after 30s...", err)
+		time.Sleep(30 * time.Second)
+
+		privKey2, err2 := certcrypto.GeneratePrivateKey(certcrypto.KeyType(keyType))
+		if err2 != nil {
+			return nil, fmt.Errorf("generate cert key (retry): %v", err2)
+		}
+		request.PrivateKey = privKey2
+		cert, err = c.Client.Certificate.Obtain(request)
+		if err != nil {
+			return nil, fmt.Errorf("obtain certificate: %v", err)
+		}
 	}
 
 	return cert, nil
@@ -171,7 +183,12 @@ func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 	}
 	return c.Client.Challenge.SetDNS01Provider(provider,
 		dns01.AddDNSTimeout(5*time.Minute),
-		dns01.DisableCompletePropagationRequirement(),
+		dns01.AddRecursiveNameservers([]string{
+			"1.1.1.1:53",
+			"8.8.8.8:53",
+			"1.0.0.1:53",
+			"8.8.4.4:53",
+		}),
 	)
 }
 
