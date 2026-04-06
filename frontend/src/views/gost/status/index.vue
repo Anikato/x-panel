@@ -51,8 +51,12 @@
 
     <!-- 已安装 -->
     <template v-if="status.isInstalled && !installing">
+      <el-alert type="success" :closable="false" show-icon style="margin-bottom: 16px;">
+        {{ $t('gost.infoNote') }}
+      </el-alert>
+
       <el-row :gutter="16" class="info-row">
-        <el-col :span="6">
+        <el-col :span="5">
           <el-card shadow="never" class="stat-card">
             <div class="stat-title">{{ $t('commons.status') }}</div>
             <div class="stat-value">
@@ -62,13 +66,13 @@
             </div>
           </el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="5">
           <el-card shadow="never" class="stat-card">
             <div class="stat-title">{{ $t('gost.version') }}</div>
             <div class="stat-value version-text">{{ status.version || '-' }}</div>
           </el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="5">
           <el-card shadow="never" class="stat-card">
             <div class="stat-title">{{ $t('gost.apiStatus') }}</div>
             <div class="stat-value">
@@ -78,7 +82,15 @@
             </div>
           </el-card>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="5">
+          <el-card shadow="never" class="stat-card">
+            <div class="stat-title">{{ $t('gost.autoStart') }}</div>
+            <div class="stat-value">
+              <el-tag type="success" size="large" effect="dark" round>{{ $t('gost.autoStartEnabled') }}</el-tag>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="4">
           <el-card shadow="never" class="stat-card">
             <div class="stat-title">{{ $t('gost.sync') }}</div>
             <div class="stat-value">

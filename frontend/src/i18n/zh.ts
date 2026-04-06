@@ -1060,6 +1060,10 @@ export default {
     alreadyLatest: '已是最新版本',
     upgradeNow: '立即升级',
     upgradeConfirm: '确定要升级到 {version} 吗？升级期间 GOST 服务将短暂中断。',
+    autoStart: '开机自启',
+    autoStartEnabled: '已启用',
+    infoNote: 'GOST 已注册为系统服务并开启开机自启。创建或修改配置会通过 API 即时推送生效，无需手动重启。',
+    traffic: '流量统计',
     // 转发链
     chainTitle: '转发链',
     createChain: '新建转发链',

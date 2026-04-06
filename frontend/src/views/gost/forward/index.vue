@@ -34,6 +34,15 @@
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
+        <el-table-column :label="$t('gost.traffic')" min-width="160">
+          <template #default="{ row }">
+            <template v-if="row.enableStats && row.enabled">
+              <span class="traffic-text">↑ {{ formatBytes(row.inputBytes) }}</span>
+              <span class="traffic-text" style="margin-left: 8px;">↓ {{ formatBytes(row.outputBytes) }}</span>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="enabled" :label="$t('commons.status')" width="100">
           <template #default="{ row }">
             <el-switch v-model="row.enabled" @change="handleToggle(row)" size="small" />
@@ -218,6 +227,13 @@ const handleToggle = async (row: any) => {
   }
 }
 
+const formatBytes = (bytes: number): string => {
+  if (!bytes || bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
+}
+
 onMounted(() => search())
 </script>
 
@@ -230,6 +246,7 @@ onMounted(() => search())
   h3 { margin: 0; }
 }
 .text-muted { color: var(--xp-text-muted); }
+.traffic-text { font-size: 12px; font-family: monospace; }
 .table-footer {
   display: flex;
   justify-content: flex-end;

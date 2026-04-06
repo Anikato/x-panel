@@ -3,7 +3,9 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"xpanel/app/dto"
@@ -61,6 +63,14 @@ func (s *GostService) SearchService(req dto.GostServiceSearch) (int64, []dto.Gos
 		return 0, nil, err
 	}
 
+	statsMap := make(map[string]*gostutil.Stats)
+	client := newGostClient()
+	if client.Ping() {
+		if sm, err := client.GetServiceStats(); err == nil {
+			statsMap = sm
+		}
+	}
+
 	chainMap := make(map[uint]string)
 	certMap := make(map[uint]string)
 	var infos []dto.GostServiceInfo
@@ -104,14 +114,37 @@ func (s *GostService) SearchService(req dto.GostServiceSearch) (int64, []dto.Gos
 				}
 			}
 		}
+		if item.Type == "tcp_udp_forward" {
+			mergeStats(&info, statsMap[item.Name+"-tcp"])
+			mergeStats(&info, statsMap[item.Name+"-udp"])
+		} else {
+			mergeStats(&info, statsMap[item.Name])
+		}
 		infos = append(infos, info)
 	}
 	return total, infos, nil
 }
 
+func mergeStats(info *dto.GostServiceInfo, stats *gostutil.Stats) {
+	if stats == nil {
+		return
+	}
+	info.TotalConns += stats.TotalConns
+	info.CurrentConns += stats.CurrentConns
+	info.InputBytes += stats.InputBytes
+	info.OutputBytes += stats.OutputBytes
+	info.TotalErrs += stats.TotalErrs
+}
+
 func (s *GostService) CreateService(req dto.GostServiceCreate) error {
 	if _, err := s.serviceRepo.Get(repo.WithByName(req.Name)); err == nil {
 		return buserr.New(constant.ErrGostNameExist)
+	}
+	if err := validateListenAddr(req.ListenAddr); err != nil {
+		return err
+	}
+	if err := validateTargetAddr(req.TargetAddr); err != nil {
+		return err
 	}
 	svc := model.GostService{
 		Name:           req.Name,
@@ -145,12 +178,47 @@ func normalizeListenAddr(addr string) string {
 	return addr
 }
 
+func validateListenAddr(addr string) error {
+	normalized := normalizeListenAddr(addr)
+	_, portStr, err := net.SplitHostPort(normalized)
+	if err != nil {
+		return fmt.Errorf("监听地址格式不正确，应为 :端口 或 IP:端口")
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("端口号必须在 1-65535 之间")
+	}
+	return nil
+}
+
+func validateTargetAddr(addr string) error {
+	if addr == "" {
+		return nil
+	}
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("目标地址格式不正确，应为 IP:端口")
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("目标端口号必须在 1-65535 之间")
+	}
+	return nil
+}
+
 func (s *GostService) UpdateService(req dto.GostServiceUpdate) error {
 	existing, err := s.serviceRepo.Get(repo.WithByID(req.ID))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 	oldName := existing.Name
+
+	if err := validateListenAddr(req.ListenAddr); err != nil {
+		return err
+	}
+	if err := validateTargetAddr(req.TargetAddr); err != nil {
+		return err
+	}
 
 	updates := map[string]interface{}{
 		"name":             req.Name,

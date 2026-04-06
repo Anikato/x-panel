@@ -35,6 +35,7 @@ type ServiceConfig struct {
 	Listener  ListenerConfig    `json:"listener" yaml:"listener"`
 	Forwarder *ForwarderConfig  `json:"forwarder,omitempty" yaml:"forwarder,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Status    *ServiceStatus    `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 type HandlerConfig struct {
@@ -177,6 +178,21 @@ func (c *Client) GetConfig() (*FullConfig, error) {
 func (c *Client) SaveConfig() error {
 	_, err := c.doRequest("POST", "/config", nil)
 	return err
+}
+
+// GetServiceStats returns a map of service name -> stats for all services.
+func (c *Client) GetServiceStats() (map[string]*Stats, error) {
+	cfg, err := c.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*Stats)
+	for _, svc := range cfg.Services {
+		if svc.Status != nil && svc.Status.Stats != nil {
+			result[svc.Name] = svc.Status.Stats
+		}
+	}
+	return result, nil
 }
 
 // --- Service CRUD ---

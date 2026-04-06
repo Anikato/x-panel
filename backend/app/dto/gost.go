@@ -92,6 +92,11 @@ type GostServiceInfo struct {
 	EnableStats    bool   `json:"enableStats"`
 	Enabled        bool   `json:"enabled"`
 	Remark         string `json:"remark"`
+	TotalConns     uint64 `json:"totalConns"`
+	CurrentConns   uint64 `json:"currentConns"`
+	InputBytes     uint64 `json:"inputBytes"`
+	OutputBytes    uint64 `json:"outputBytes"`
+	TotalErrs      uint64 `json:"totalErrs"`
 }
 
 type GostServiceToggle struct {
