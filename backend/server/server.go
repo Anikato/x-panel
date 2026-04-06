@@ -57,6 +57,14 @@ func Start() {
 	nodeService := service.NewINodeService()
 	nodeService.StartHeartbeat()
 
+	// 8.5 GOST 配置同步（如果 GOST 已安装且运行中，全量推送规则）
+	go func() {
+		gostSvc := service.NewIGostService()
+		if err := gostSvc.SyncAll(); err != nil {
+			global.LOG.Debugf("GOST sync on startup skipped: %v", err)
+		}
+	}()
+
 	// 9. 初始化路由并启动服务
 	r := router.Setup(global.CONF.System.Mode)
 

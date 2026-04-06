@@ -74,6 +74,14 @@ ErrWebsiteApplyConfig:
 ErrWebsiteNotFound:
   other: "网站不存在"
 
+# GOST 代理错误
+ErrGostNotInstalled:
+  other: "GOST 尚未安装"
+ErrGostAlreadyInstalled:
+  other: "GOST 已安装"
+ErrGostAPIUnavailable:
+  other: "GOST API 不可达"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"

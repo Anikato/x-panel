@@ -11,6 +11,7 @@ type ISettingRepo interface {
 	GetValueByKey(key string) (string, error)
 	Create(setting *model.Setting) error
 	Update(key, value string) error
+	CreateOrUpdate(key, value string) error
 	Delete(opts ...DBOption) error
 }
 
@@ -55,6 +56,15 @@ func (s *SettingRepo) Create(setting *model.Setting) error {
 }
 
 func (s *SettingRepo) Update(key, value string) error {
+	return getDB().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error
+}
+
+func (s *SettingRepo) CreateOrUpdate(key, value string) error {
+	var count int64
+	getDB().Model(&model.Setting{}).Where("`key` = ?", key).Count(&count)
+	if count == 0 {
+		return getDB().Create(&model.Setting{Key: key, Value: value}).Error
+	}
 	return getDB().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error
 }
 

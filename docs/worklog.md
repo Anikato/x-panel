@@ -4,6 +4,132 @@
 
 ---
 
+## 2026-04-06 — Session #51：GOST TLS 证书支持 + 检查更新/升级
+
+### 完成内容
+
+**TLS 证书支持**：
+- [x] Model 新增 `CertificateID`、`CustomCertPath`、`CustomKeyPath` 字段（GostService）
+- [x] DTO/API 全链路透传证书配置
+- [x] GOST Client `ListenerConfig` 新增 `TLS` 结构体（certFile/keyFile）
+- [x] `buildServiceConfig()` 自动解析证书路径：自定义路径优先 → 面板证书（从 SSL 目录读取）→ 不配置
+- [x] 前端 Relay 页面：创建/编辑对话框支持三种证书模式（面板证书下拉选择 / 自定义路径输入 / 不配置）
+- [x] 表格新增 TLS 证书列，显示证书域名或自定义标记
+
+**检查更新 / 升级**：
+- [x] 后端 `CheckUpdate()` 方法：对比本地版本与 GitHub Releases 最新版本
+- [x] 后端 `Upgrade()` 方法：异步下载 → 停止 GOST → 备份旧二进制 → 替换 → 启动 → 同步配置；失败自动回滚
+- [x] API 路由：`GET /gost/check-update`、`POST /gost/upgrade`
+- [x] 前端状态页新增"检查更新"卡片：显示当前/最新版本、一键升级按钮、复用安装进度条
+
+### 变更文件
+
+| 文件 | 变更 |
+|---|---|
+| `backend/app/model/gost.go` | 新增 CertificateID/CustomCertPath/CustomKeyPath 字段 |
+| `backend/app/dto/gost.go` | DTO 新增证书字段 + GostCheckUpdateResp/GostUpgradeReq |
+| `backend/utils/gost/client.go` | ListenerConfig 新增 TLS 配置 |
+| `backend/app/service/gost.go` | resolveServiceCert() + 证书字段透传 |
+| `backend/app/service/gost_install.go` | CheckUpdate() + Upgrade() + doUpgrade() |
+| `backend/app/api/v1/gost.go` | CheckGostUpdate + UpgradeGost handler |
+| `backend/router/router.go` | 新增 check-update/upgrade 路由 |
+| `frontend/src/api/modules/gost.ts` | checkGostUpdate + upgradeGost API |
+| `frontend/src/api/interface/index.ts` | GostCheckUpdateResp + 证书字段 |
+| `frontend/src/views/gost/relay/index.vue` | TLS 证书选择 UI（三模式切换） |
+| `frontend/src/views/gost/status/index.vue` | 检查更新卡片 + 升级进度 |
+| `frontend/src/i18n/zh.ts` | 新增证书/更新相关 i18n 文本 |
+
+---
+
+## 2026-04-06 — Session #50：集成 GOST 代理管理功能
+
+### 完成内容
+
+**GOST 进程管理**：
+- [x] GOST 安装/卸载/升级 Service（从 GitHub Releases 下载二进制，创建 systemd 服务）
+- [x] GOST 启停/重启操作（systemctl 管理 `xpanel-gost` 服务）
+- [x] 安装时自动生成 API 认证凭证，写入 gost.yaml 配置文件
+- [x] 安装进度轮询（与 Nginx 安装模式一致）
+- [x] API 凭证存储在 Settings 表（GostAPIAddr/GostAPIUser/GostAPIPass）
+
+**GOST Web API Client**：
+- [x] `utils/gost/client.go`：封装 GOST REST API（Service/Chain CRUD、Config 保存）
+- [x] 支持 Basic Auth 认证，所有配置变更即时推送到 GOST 进程
+
+**端口转发功能**：
+- [x] 后端：Model/DTO/Repo/Service/API 全套实现（TCP/UDP 转发规则 CRUD）
+- [x] 前端：端口转发页面（表格列表、创建/编辑对话框、启用/禁用开关）
+- [x] 支持关联转发链实现链式代理转发
+
+**Relay 中继服务**：
+- [x] 后端：relay_server 类型服务管理（支持 tcp/tls/ws/wss 传输协议、认证配置）
+- [x] 前端：中继服务页面（CRUD + 一键查看客户端连接命令）
+
+**转发链管理**：
+- [x] 后端：GostChain 模型，Hops 以 JSON 存储，格式与 GOST 原生配置一致
+- [x] 前端：可视化跳跃点编辑器（每个 Hop 配置节点地址、连接器类型、传输协议、认证）
+- [x] 删除保护：被端口转发规则引用的转发链不可删除
+
+**配置同步**：
+- [x] SyncAll()：全量将 DB 中的 Chain 和 Service 推送到 GOST API
+- [x] GOST 启动/重启后自动触发同步
+- [x] X-Panel 启动时后台异步同步（如 GOST 已运行）
+- [x] 每次配置变更后调用 GOST `POST /config` 持久化到 YAML 文件
+
+**其他**：
+- [x] 数据库迁移：新增 `gost_services` 和 `gost_chains` 表
+- [x] 路由注册：`/api/v1/gost/*` 路由组
+- [x] i18n：前端中文翻译（gost 命名空间）、后端错误码翻译
+- [x] 侧边栏：新增「代理管理」菜单（GOST 状态/端口转发/中继服务/转发链）
+- [x] 操作日志：authPass 字段加入敏感字段脱敏列表
+
+### 关键决策
+
+- GOST 通过 Web API 动态管理（即时生效）+ YAML 文件持久化（重启恢复），不需要重启进程
+- 安装路径固定为 `/opt/xpanel/gost/`，与面板其他组件（Nginx、SSL）保持一致
+- API 监听地址限定 `127.0.0.1:18080`（仅本地访问），凭证随机生成
+- 转发链 Hops 使用 JSON 存储，保持与 GOST 原生 YAML 配置的结构一致性
+- 端口转发和中继服务共用 `gost_services` 表，通过 `type` 字段区分
+
+### 新增文件
+
+- `backend/app/model/gost.go` — GostService、GostChain 模型
+- `backend/app/dto/gost.go` — 请求/响应 DTO
+- `backend/app/repo/gost.go` — 数据库 CRUD
+- `backend/app/service/gost.go` — 业务逻辑 + GOST API 调用
+- `backend/app/service/gost_install.go` — 安装/卸载/升级
+- `backend/app/api/v1/gost.go` — HTTP Handler
+- `backend/utils/gost/client.go` — GOST Web API 客户端
+- `frontend/src/api/modules/gost.ts` — 前端 API 封装
+- `frontend/src/routers/modules/gost.ts` — 路由模块
+- `frontend/src/views/gost/status/index.vue` — GOST 状态页
+- `frontend/src/views/gost/forward/index.vue` — 端口转发页
+- `frontend/src/views/gost/relay/index.vue` — 中继服务页
+- `frontend/src/views/gost/chain/index.vue` — 转发链页
+
+### 修改文件
+
+- `backend/app/api/v1/entry.go` — 注册 GostAPI
+- `backend/router/router.go` — 注册 `/gost/*` 路由
+- `backend/init/migration/migration.go` — 新增 GOST 模型迁移
+- `backend/server/server.go` — 启动时异步同步 GOST 配置
+- `backend/constant/errs.go` — 新增 GOST 错误码
+- `backend/i18n/lang/zh.yaml` — 新增 GOST 错误翻译
+- `backend/middleware/operation_log.go` — authPass 加入脱敏字段
+- `backend/app/repo/setting.go` — 新增 CreateOrUpdate 方法
+- `frontend/src/routers/index.ts` — 注册 gost 路由模块
+- `frontend/src/layout/components/Sidebar.vue` — 新增代理管理菜单
+- `frontend/src/i18n/zh.ts` — 新增 gost 翻译命名空间
+- `frontend/src/api/interface/index.ts` — 新增 GOST 类型定义
+
+### 下一步计划
+
+- 考虑在 GOST 状态页显示各服务的实时流量统计（利用 GOST enableStats）
+- 支持 GOST 版本升级（类似 Nginx 升级流程）
+- 考虑添加 SOCKS5/HTTP 代理服务类型
+
+---
+
 ## 2026-04-04 — Session #49：移除 Xray 功能 + SSL 证书存储独立化
 
 ### 完成内容

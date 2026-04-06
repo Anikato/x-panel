@@ -105,7 +105,7 @@ func formatLatency(d time.Duration) string {
 
 // maskSensitiveFields 脱敏敏感字段
 func maskSensitiveFields(body string) string {
-	sensitiveKeys := []string{"password", "newPassword", "oldPassword", "secret"}
+	sensitiveKeys := []string{"password", "newPassword", "oldPassword", "secret", "authPass"}
 	for _, key := range sensitiveKeys {
 		// 匹配 "key":"value" 模式并替换 value 为 ***
 		pattern := `"` + key + `"`

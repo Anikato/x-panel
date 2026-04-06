@@ -269,6 +269,25 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/traffic/stats", api.GetStats)
 		privateGroup.GET("/traffic/summary", api.GetSummary)
 
+		// GOST 代理管理
+		privateGroup.GET("/gost/status", api.GetGostStatus)
+		privateGroup.POST("/gost/install", api.InstallGost)
+		privateGroup.GET("/gost/install/progress", api.GetGostInstallProgress)
+		privateGroup.POST("/gost/uninstall", api.UninstallGost)
+		privateGroup.POST("/gost/operate", api.OperateGost)
+		privateGroup.GET("/gost/check-update", api.CheckGostUpdate)
+		privateGroup.POST("/gost/upgrade", api.UpgradeGost)
+		privateGroup.POST("/gost/services/search", api.SearchGostService)
+		privateGroup.POST("/gost/services", api.CreateGostService)
+		privateGroup.POST("/gost/services/update", api.UpdateGostService)
+		privateGroup.POST("/gost/services/del", api.DeleteGostService)
+		privateGroup.POST("/gost/services/toggle", api.ToggleGostService)
+		privateGroup.POST("/gost/chains/search", api.SearchGostChain)
+		privateGroup.POST("/gost/chains", api.CreateGostChain)
+		privateGroup.POST("/gost/chains/update", api.UpdateGostChain)
+		privateGroup.POST("/gost/chains/del", api.DeleteGostChain)
+		privateGroup.POST("/gost/sync", api.SyncGost)
+
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)

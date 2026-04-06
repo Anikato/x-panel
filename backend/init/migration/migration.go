@@ -32,6 +32,8 @@ func Init() {
 		&model.TrafficConfig{},
 		&model.TrafficHourly{},
 		&model.TrafficSnapshot{},
+		&model.GostService{},
+		&model.GostChain{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

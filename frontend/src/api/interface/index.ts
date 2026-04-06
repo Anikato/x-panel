@@ -643,3 +643,53 @@ export interface CommandGroup {
   label: string
   children: CommandItem[]
 }
+
+// ======================== GOST ========================
+
+export interface GostStatus {
+  isInstalled: boolean
+  isRunning: boolean
+  version: string
+  apiReady: boolean
+}
+
+export interface GostInstallProgress {
+  phase: string
+  message: string
+  percent: number
+}
+
+export interface GostCheckUpdateResp {
+  currentVersion: string
+  latestVersion: string
+  hasUpdate: boolean
+  releaseURL: string
+}
+
+export interface GostServiceInfo {
+  id: number
+  name: string
+  type: string
+  listenAddr: string
+  targetAddr: string
+  listenerType: string
+  authUser: string
+  chainID: number
+  chainName: string
+  certificateID: number
+  certDomain: string
+  customCertPath: string
+  customKeyPath: string
+  enableStats: boolean
+  enabled: boolean
+  remark: string
+}
+
+export interface GostChainInfo {
+  id: number
+  name: string
+  hops: string
+  hopCount: number
+  refCount: number
+  remark: string
+}

@@ -97,6 +97,17 @@ const menuList = computed(() => [
     ],
   },
   { path: '/traffic', title: t('menu.traffic'), icon: 'Odometer' },
+  {
+    path: '/gost',
+    title: t('menu.gost'),
+    icon: 'Promotion',
+    children: [
+      { path: '/gost/status', title: t('menu.gostStatus') },
+      { path: '/gost/forward', title: t('menu.gostForward') },
+      { path: '/gost/relay', title: t('menu.gostRelay') },
+      { path: '/gost/chain', title: t('menu.gostChain') },
+    ],
+  },
   { path: '/container', title: t('menu.container'), icon: 'Box' },
   { path: '/database', title: t('menu.database'), icon: 'Coin' },
   { path: '/cronjob', title: t('menu.cronjob'), icon: 'Timer' },

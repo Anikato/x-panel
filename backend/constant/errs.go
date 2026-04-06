@@ -48,4 +48,8 @@ const (
 	// 升级
 	ErrUpgradeInProgress = "ErrUpgradeInProgress"
 
+	// GOST
+	ErrGostNotInstalled     = "ErrGostNotInstalled"
+	ErrGostAlreadyInstalled = "ErrGostAlreadyInstalled"
+	ErrGostAPIUnavailable   = "ErrGostAPIUnavailable"
 )
