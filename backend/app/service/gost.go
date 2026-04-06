@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
@@ -109,10 +110,13 @@ func (s *GostService) SearchService(req dto.GostServiceSearch) (int64, []dto.Gos
 }
 
 func (s *GostService) CreateService(req dto.GostServiceCreate) error {
+	if _, err := s.serviceRepo.Get(repo.WithByName(req.Name)); err == nil {
+		return buserr.New(constant.ErrGostNameExist)
+	}
 	svc := model.GostService{
 		Name:           req.Name,
 		Type:           req.Type,
-		ListenAddr:     req.ListenAddr,
+		ListenAddr:     normalizeListenAddr(req.ListenAddr),
 		TargetAddr:     req.TargetAddr,
 		ListenerType:   req.ListenerType,
 		AuthUser:       req.AuthUser,
@@ -131,6 +135,16 @@ func (s *GostService) CreateService(req dto.GostServiceCreate) error {
 	return s.pushServiceToGost(svc)
 }
 
+func normalizeListenAddr(addr string) string {
+	if addr == "" {
+		return addr
+	}
+	if addr[0] != ':' && !strings.Contains(addr, ":") {
+		return ":" + addr
+	}
+	return addr
+}
+
 func (s *GostService) UpdateService(req dto.GostServiceUpdate) error {
 	existing, err := s.serviceRepo.Get(repo.WithByID(req.ID))
 	if err != nil {
@@ -141,7 +155,7 @@ func (s *GostService) UpdateService(req dto.GostServiceUpdate) error {
 	updates := map[string]interface{}{
 		"name":             req.Name,
 		"type":             req.Type,
-		"listen_addr":      req.ListenAddr,
+		"listen_addr":      normalizeListenAddr(req.ListenAddr),
 		"target_addr":      req.TargetAddr,
 		"listener_type":    req.ListenerType,
 		"auth_user":        req.AuthUser,

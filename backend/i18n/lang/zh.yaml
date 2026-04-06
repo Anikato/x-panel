@@ -81,6 +81,8 @@ ErrGostAlreadyInstalled:
   other: "GOST 已安装"
 ErrGostAPIUnavailable:
   other: "GOST API 不可达"
+ErrGostNameExist:
+  other: "名称已存在，请使用其他名称"
 
 # 操作消息
 MsgLoginSuccess:

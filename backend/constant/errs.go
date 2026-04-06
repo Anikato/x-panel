@@ -52,4 +52,5 @@ const (
 	ErrGostNotInstalled     = "ErrGostNotInstalled"
 	ErrGostAlreadyInstalled = "ErrGostAlreadyInstalled"
 	ErrGostAPIUnavailable   = "ErrGostAPIUnavailable"
+	ErrGostNameExist        = "ErrGostNameExist"
 )
