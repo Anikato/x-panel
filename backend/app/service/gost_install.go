@@ -47,8 +47,10 @@ type GostInstallService struct {
 	progress *dto.GostInstallProgress
 }
 
+var gostInstallSingleton = &GostInstallService{}
+
 func NewIGostInstallService() IGostInstallService {
-	return &GostInstallService{}
+	return gostInstallSingleton
 }
 
 func (s *GostInstallService) GetStatus() (*dto.GostStatus, error) {

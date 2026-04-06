@@ -206,7 +206,7 @@ const search = async () => {
 
 const loadCertList = async () => {
   try {
-    const res = await searchCertificate({ page: 1, pageSize: 200 })
+    const res = await searchCertificate({ page: 1, pageSize: 100 })
     if (res.data?.items) {
       certList.value = res.data.items
     }

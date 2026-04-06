@@ -10,9 +10,10 @@
     <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="name" :label="$t('gost.name')" min-width="120" />
-        <el-table-column prop="type" :label="$t('gost.type')" width="120">
+        <el-table-column prop="type" :label="$t('gost.type')" width="140">
           <template #default="{ row }">
-            <el-tag :type="row.type === 'tcp_forward' ? 'primary' : 'success'" size="small">
+            <el-tag v-if="row.type === 'tcp_udp_forward'" type="warning" size="small">TCP+UDP</el-tag>
+            <el-tag v-else :type="row.type === 'tcp_forward' ? 'primary' : 'success'" size="small">
               {{ row.type === 'tcp_forward' ? 'TCP' : 'UDP' }}
             </el-tag>
           </template>
@@ -66,6 +67,7 @@
           <el-radio-group v-model="form.type">
             <el-radio value="tcp_forward">TCP</el-radio>
             <el-radio value="udp_forward">UDP</el-radio>
+            <el-radio value="tcp_udp_forward">TCP+UDP</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item :label="$t('gost.listenAddr')" prop="listenAddr">
@@ -138,7 +140,7 @@ const search = async () => {
     const res = await searchGostService({
       page: pagination.page,
       pageSize: pagination.pageSize,
-      type: 'tcp_forward,udp_forward',
+      type: 'tcp_forward,udp_forward,tcp_udp_forward',
     })
     if (res.data) {
       tableData.value = res.data.items || []

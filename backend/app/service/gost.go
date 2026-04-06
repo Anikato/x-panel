@@ -165,13 +165,8 @@ func (s *GostService) UpdateService(req dto.GostServiceUpdate) error {
 		return nil
 	}
 	if updated.Enabled {
-		if oldName != req.Name {
-			client.DeleteService(oldName)
-		}
-		cfg := s.buildServiceConfig(updated)
-		if oldName == req.Name {
-			client.UpdateService(updated.Name, cfg)
-		} else {
+		s.deleteServiceFromGost(client, oldName, existing.Type)
+		for _, cfg := range s.buildServiceConfigs(updated) {
 			client.CreateService(cfg)
 		}
 		client.SaveConfig()
@@ -190,7 +185,7 @@ func (s *GostService) DeleteService(id uint) error {
 
 	client := newGostClient()
 	if client.Ping() {
-		client.DeleteService(existing.Name)
+		s.deleteServiceFromGost(client, existing.Name, existing.Type)
 		client.SaveConfig()
 	}
 	return nil
@@ -211,10 +206,11 @@ func (s *GostService) ToggleService(req dto.GostServiceToggle) error {
 	}
 	if req.Enabled {
 		existing.Enabled = true
-		cfg := s.buildServiceConfig(existing)
-		client.CreateService(cfg)
+		for _, cfg := range s.buildServiceConfigs(existing) {
+			client.CreateService(cfg)
+		}
 	} else {
-		client.DeleteService(existing.Name)
+		s.deleteServiceFromGost(client, existing.Name, existing.Type)
 	}
 	client.SaveConfig()
 	return nil
@@ -344,9 +340,10 @@ func (s *GostService) SyncAll() error {
 		if !svc.Enabled {
 			continue
 		}
-		cfg := s.buildServiceConfig(svc)
-		if err := client.CreateService(cfg); err != nil {
-			client.UpdateService(svc.Name, cfg)
+		for _, cfg := range s.buildServiceConfigs(svc) {
+			if err := client.CreateService(cfg); err != nil {
+				client.UpdateService(cfg.Name, cfg)
+			}
 		}
 	}
 
@@ -362,11 +359,21 @@ func (s *GostService) pushServiceToGost(svc model.GostService) error {
 	if !client.Ping() {
 		return nil
 	}
-	cfg := s.buildServiceConfig(svc)
-	if err := client.CreateService(cfg); err != nil {
-		return err
+	for _, cfg := range s.buildServiceConfigs(svc) {
+		if err := client.CreateService(cfg); err != nil {
+			return err
+		}
 	}
 	return client.SaveConfig()
+}
+
+func (s *GostService) deleteServiceFromGost(client *gostutil.Client, name, svcType string) {
+	if svcType == "tcp_udp_forward" {
+		client.DeleteService(name + "-tcp")
+		client.DeleteService(name + "-udp")
+	} else {
+		client.DeleteService(name)
+	}
 }
 
 func (s *GostService) pushChainToGost(chain model.GostChain) error {
@@ -381,7 +388,23 @@ func (s *GostService) pushChainToGost(chain model.GostChain) error {
 	return client.SaveConfig()
 }
 
-func (s *GostService) buildServiceConfig(svc model.GostService) gostutil.ServiceConfig {
+func (s *GostService) buildServiceConfigs(svc model.GostService) []gostutil.ServiceConfig {
+	if svc.Type == "tcp_udp_forward" {
+		tcpSvc := svc
+		tcpSvc.Type = "tcp_forward"
+		tcpSvc.Name = svc.Name + "-tcp"
+		udpSvc := svc
+		udpSvc.Type = "udp_forward"
+		udpSvc.Name = svc.Name + "-udp"
+		return []gostutil.ServiceConfig{
+			s.buildSingleServiceConfig(tcpSvc),
+			s.buildSingleServiceConfig(udpSvc),
+		}
+	}
+	return []gostutil.ServiceConfig{s.buildSingleServiceConfig(svc)}
+}
+
+func (s *GostService) buildSingleServiceConfig(svc model.GostService) gostutil.ServiceConfig {
 	cfg := gostutil.ServiceConfig{
 		Name: svc.Name,
 		Addr: svc.ListenAddr,

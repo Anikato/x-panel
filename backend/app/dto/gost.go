@@ -38,7 +38,7 @@ type GostUpgradeReq struct {
 
 type GostServiceCreate struct {
 	Name           string `json:"name" binding:"required"`
-	Type           string `json:"type" binding:"required,oneof=tcp_forward udp_forward relay_server"`
+	Type           string `json:"type" binding:"required,oneof=tcp_forward udp_forward tcp_udp_forward relay_server"`
 	ListenAddr     string `json:"listenAddr" binding:"required"`
 	TargetAddr     string `json:"targetAddr"`
 	ListenerType   string `json:"listenerType" binding:"required,oneof=tcp tls ws wss"`
@@ -55,7 +55,7 @@ type GostServiceCreate struct {
 type GostServiceUpdate struct {
 	ID             uint   `json:"id" binding:"required"`
 	Name           string `json:"name" binding:"required"`
-	Type           string `json:"type" binding:"required,oneof=tcp_forward udp_forward relay_server"`
+	Type           string `json:"type" binding:"required,oneof=tcp_forward udp_forward tcp_udp_forward relay_server"`
 	ListenAddr     string `json:"listenAddr" binding:"required"`
 	TargetAddr     string `json:"targetAddr"`
 	ListenerType   string `json:"listenerType" binding:"required,oneof=tcp tls ws wss"`
