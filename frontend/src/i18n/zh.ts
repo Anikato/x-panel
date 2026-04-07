@@ -114,6 +114,8 @@ export default {
     load: '系统负载',
     network: '网络',
     totalTraffic: '累计流量',
+    upload: '上行',
+    download: '下行',
     diskUsage: '磁盘使用',
     topProcess: 'Top 进程 (CPU)',
     processName: '进程名',
