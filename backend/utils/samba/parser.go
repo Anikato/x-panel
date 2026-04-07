@@ -8,16 +8,16 @@ import (
 )
 
 type Section struct {
-	Name    string
-	Params  map[string]string
-	Lines   []Line // preserves original order, comments, blanks
+	Name   string
+	Params map[string]string
+	Lines  []Line
 }
 
 type Line struct {
-	Type    string // "comment", "blank", "param"
-	Raw     string // original text (for comments/blanks)
-	Key     string
-	Value   string
+	Type  string // "comment", "blank", "param"
+	Raw   string
+	Key   string
+	Value string
 }
 
 type Config struct {
@@ -115,7 +115,7 @@ func (c *Config) AddSection(sec *Section) {
 	c.Sections = append(c.Sections, sec)
 }
 
-func NewShareSection(name, path, comment string, writable, guestOK bool, validUsers string) *Section {
+func NewShareSection(name, path, comment string, writable, guestOK bool, validUsers, hostsAllow, hostsDeny string) *Section {
 	sec := &Section{
 		Name:   name,
 		Params: make(map[string]string),
@@ -137,6 +137,12 @@ func NewShareSection(name, path, comment string, writable, guestOK bool, validUs
 	}
 	if validUsers != "" {
 		sec.Params["valid users"] = validUsers
+	}
+	if hostsAllow != "" {
+		sec.Params["hosts allow"] = hostsAllow
+	}
+	if hostsDeny != "" {
+		sec.Params["hosts deny"] = hostsDeny
 	}
 
 	for k, v := range sec.Params {

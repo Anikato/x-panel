@@ -31,6 +31,15 @@ type NfsService struct{}
 
 func NewINfsService() INfsService { return &NfsService{} }
 
+// nfsServiceName tries multiple known service names; Debian/Ubuntu uses "nfs-kernel-server",
+// some distros alias it to "nfs-server".
+func nfsServiceName() string {
+	if out, err := exec.Command("systemctl", "list-unit-files", "nfs-kernel-server.service").CombinedOutput(); err == nil && strings.Contains(string(out), "nfs-kernel-server") {
+		return "nfs-kernel-server"
+	}
+	return "nfs-server"
+}
+
 // ====== Service Management ======
 
 func (s *NfsService) GetStatus() (*dto.ServiceStatus, error) {
@@ -42,22 +51,21 @@ func (s *NfsService) GetStatus() (*dto.ServiceStatus, error) {
 	}
 	st.IsInstalled = true
 
-	if out, err := exec.Command("systemctl", "is-active", "nfs-kernel-server").Output(); err == nil {
+	svc := nfsServiceName()
+
+	if out, err := exec.Command("systemctl", "is-active", svc).Output(); err == nil {
 		st.IsRunning = strings.TrimSpace(string(out)) == "active"
 	}
 
-	if out, err := exec.Command("nfsstat", "--version").CombinedOutput(); err == nil {
-		st.Version = strings.TrimSpace(string(out))
+	if out, err := exec.Command("dpkg-query", "-W", "-f=${Version}", "nfs-kernel-server").Output(); err == nil {
+		st.Version = "nfs-kernel-server " + strings.TrimSpace(string(out))
 	} else {
-		if out2, err2 := exec.Command("rpc.nfsd", "--version").CombinedOutput(); err2 == nil {
-			st.Version = strings.TrimSpace(string(out2))
-		} else {
-			st.Version = "nfs-kernel-server"
-		}
+		st.Version = "nfs-kernel-server"
 	}
 
-	if out, err := exec.Command("systemctl", "is-enabled", "nfs-kernel-server").Output(); err == nil {
-		st.AutoStart = strings.TrimSpace(string(out)) == "enabled"
+	if out, err := exec.Command("systemctl", "is-enabled", svc).Output(); err == nil {
+		enabled := strings.TrimSpace(string(out))
+		st.AutoStart = enabled == "enabled" || enabled == "enabled-runtime"
 	}
 
 	return st, nil
@@ -80,9 +88,10 @@ func (s *NfsService) Uninstall() error {
 }
 
 func (s *NfsService) Operate(req dto.ServiceOperate) error {
-	out, err := exec.Command("systemctl", req.Operation, "nfs-kernel-server").CombinedOutput()
+	svc := nfsServiceName()
+	out, err := exec.Command("systemctl", req.Operation, svc).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s nfs-kernel-server failed: %s", req.Operation, strings.TrimSpace(string(out)))
+		return fmt.Errorf("%s %s failed: %s", req.Operation, svc, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -188,9 +197,12 @@ func (s *NfsService) DeleteExport(req dto.NfsExportDelete) error {
 // ====== Connections ======
 
 func (s *NfsService) GetConnections() (*dto.NfsConnections, error) {
-	result := &dto.NfsConnections{}
+	result := &dto.NfsConnections{
+		ActiveExports: []string{},
+		Clients:       []dto.NfsConnectionInfo{},
+	}
 
-	if out, err := exec.Command("exportfs", "-v").Output(); err == nil {
+	if out, err := exec.Command("exportfs", "-v").CombinedOutput(); err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			line = strings.TrimSpace(line)
 			if line != "" {
@@ -199,18 +211,43 @@ func (s *NfsService) GetConnections() (*dto.NfsConnections, error) {
 		}
 	}
 
-	if out, err := exec.Command("showmount", "-a", "--no-headers").Output(); err == nil {
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	// Try showmount -a (may need nfs-common / showmount installed)
+	if out, err := exec.Command("showmount", "-a").CombinedOutput(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
 			line = strings.TrimSpace(line)
-			if line == "" {
+			if line == "" || strings.HasPrefix(line, "All mount") {
 				continue
 			}
 			parts := strings.SplitN(line, ":", 2)
-			info := dto.NfsConnectionInfo{Hostname: parts[0]}
+			info := dto.NfsConnectionInfo{Hostname: strings.TrimSpace(parts[0])}
 			if len(parts) > 1 {
-				info.DirPath = parts[1]
+				info.DirPath = strings.TrimSpace(parts[1])
 			}
 			result.Clients = append(result.Clients, info)
+		}
+	}
+
+	// Fallback: /proc/fs/nfsd/clients/ for NFSv4
+	if len(result.Clients) == 0 {
+		if entries, err := os.ReadDir("/proc/fs/nfsd/clients"); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				infoPath := "/proc/fs/nfsd/clients/" + entry.Name() + "/info"
+				if data, err := os.ReadFile(infoPath); err == nil {
+					info := dto.NfsConnectionInfo{}
+					for _, line := range strings.Split(string(data), "\n") {
+						if strings.HasPrefix(line, "address:") {
+							info.Hostname = strings.TrimSpace(strings.TrimPrefix(line, "address:"))
+						}
+					}
+					if info.Hostname != "" {
+						result.Clients = append(result.Clients, info)
+					}
+				}
+			}
 		}
 	}
 

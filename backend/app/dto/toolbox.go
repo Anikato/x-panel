@@ -23,6 +23,8 @@ type SambaShare struct {
 	GuestOK    bool   `json:"guestOK"`
 	Browseable bool   `json:"browseable"`
 	ValidUsers string `json:"validUsers"`
+	HostsAllow string `json:"hostsAllow"`
+	HostsDeny  string `json:"hostsDeny"`
 }
 
 type SambaShareCreate struct {
@@ -32,6 +34,8 @@ type SambaShareCreate struct {
 	Writable   bool   `json:"writable"`
 	GuestOK    bool   `json:"guestOK"`
 	ValidUsers string `json:"validUsers"`
+	HostsAllow string `json:"hostsAllow"`
+	HostsDeny  string `json:"hostsDeny"`
 	CreateDir  bool   `json:"createDir"`
 }
 
@@ -43,6 +47,8 @@ type SambaShareUpdate struct {
 	Writable   bool   `json:"writable"`
 	GuestOK    bool   `json:"guestOK"`
 	ValidUsers string `json:"validUsers"`
+	HostsAllow string `json:"hostsAllow"`
+	HostsDeny  string `json:"hostsDeny"`
 }
 
 type SambaShareDelete struct {
@@ -81,21 +87,25 @@ type SambaGlobalConfig struct {
 	LogLevel    string `json:"logLevel"`
 	MaxLogSize  string `json:"maxLogSize"`
 	Interfaces  string `json:"interfaces"`
+	MinProtocol string `json:"minProtocol"`
+	MaxProtocol string `json:"maxProtocol"`
+	HostsAllow  string `json:"hostsAllow"`
+	HostsDeny   string `json:"hostsDeny"`
 }
 
 type SambaConnection struct {
-	PID       string `json:"pid"`
-	Username  string `json:"username"`
-	Group     string `json:"group"`
-	Machine   string `json:"machine"`
-	Protocol  string `json:"protocol"`
+	PID        string `json:"pid"`
+	Username   string `json:"username"`
+	Group      string `json:"group"`
+	Machine    string `json:"machine"`
+	Protocol   string `json:"protocol"`
 	Encryption string `json:"encryption"`
 }
 
 type SambaShareUsage struct {
-	Service   string `json:"service"`
-	PID       string `json:"pid"`
-	Machine   string `json:"machine"`
+	Service     string `json:"service"`
+	PID         string `json:"pid"`
+	Machine     string `json:"machine"`
 	ConnectedAt string `json:"connectedAt"`
 	Encryption  string `json:"encryption"`
 }

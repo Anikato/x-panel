@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"xpanel/app/dto"
@@ -123,6 +124,8 @@ func (s *SambaService) ListShares() ([]dto.SambaShare, error) {
 			GuestOK:    paramBool(sec.Params, "guest ok", false),
 			Browseable: paramBool(sec.Params, "browseable", true),
 			ValidUsers: sec.Params["valid users"],
+			HostsAllow: sec.Params["hosts allow"],
+			HostsDeny:  sec.Params["hosts deny"],
 		}
 		shares = append(shares, share)
 	}
@@ -145,7 +148,7 @@ func (s *SambaService) CreateShare(req dto.SambaShareCreate) error {
 		}
 	}
 
-	sec := samba.NewShareSection(req.Name, req.Path, req.Comment, req.Writable, req.GuestOK, req.ValidUsers)
+	sec := samba.NewShareSection(req.Name, req.Path, req.Comment, req.Writable, req.GuestOK, req.ValidUsers, req.HostsAllow, req.HostsDeny)
 	cfg.AddSection(sec)
 
 	return s.safeWriteConfig(cfg)
@@ -159,7 +162,7 @@ func (s *SambaService) UpdateShare(req dto.SambaShareUpdate) error {
 
 	cfg.RemoveSection(req.OrigName)
 
-	sec := samba.NewShareSection(req.Name, req.Path, req.Comment, req.Writable, req.GuestOK, req.ValidUsers)
+	sec := samba.NewShareSection(req.Name, req.Path, req.Comment, req.Writable, req.GuestOK, req.ValidUsers, req.HostsAllow, req.HostsDeny)
 	cfg.AddSection(sec)
 
 	return s.safeWriteConfig(cfg)
@@ -267,13 +270,17 @@ func (s *SambaService) GetGlobalConfig() (*dto.SambaGlobalConfig, error) {
 	}
 
 	return &dto.SambaGlobalConfig{
-		Workgroup:  global.Params["workgroup"],
-		ServerName: global.Params["server string"],
-		Security:   global.Params["security"],
-		MapToGuest: global.Params["map to guest"],
-		LogLevel:   global.Params["log level"],
-		MaxLogSize: global.Params["max log size"],
-		Interfaces: global.Params["interfaces"],
+		Workgroup:   global.Params["workgroup"],
+		ServerName:  global.Params["server string"],
+		Security:    global.Params["security"],
+		MapToGuest:  global.Params["map to guest"],
+		LogLevel:    global.Params["log level"],
+		MaxLogSize:  global.Params["max log size"],
+		Interfaces:  global.Params["interfaces"],
+		MinProtocol: global.Params["min protocol"],
+		MaxProtocol: global.Params["max protocol"],
+		HostsAllow:  global.Params["hosts allow"],
+		HostsDeny:   global.Params["hosts deny"],
 	}, nil
 }
 
@@ -300,6 +307,10 @@ func (s *SambaService) UpdateGlobalConfig(req dto.SambaGlobalConfig) error {
 	setParam(global, "log level", req.LogLevel)
 	setParam(global, "max log size", req.MaxLogSize)
 	setParam(global, "interfaces", req.Interfaces)
+	setParam(global, "min protocol", req.MinProtocol)
+	setParam(global, "max protocol", req.MaxProtocol)
+	setParam(global, "hosts allow", req.HostsAllow)
+	setParam(global, "hosts deny", req.HostsDeny)
 
 	return s.safeWriteConfig(cfg)
 }
@@ -307,18 +318,17 @@ func (s *SambaService) UpdateGlobalConfig(req dto.SambaGlobalConfig) error {
 // ====== Connections ======
 
 func (s *SambaService) GetConnections() (*dto.SambaConnections, error) {
-	result := &dto.SambaConnections{}
-
-	if out, err := exec.Command("smbstatus", "-p", "--no-header", "-j").CombinedOutput(); err == nil {
-		result.Processes = parseSmbstatusProcesses(string(out))
-	} else {
-		if out, err := exec.Command("smbstatus", "-p", "--no-header").CombinedOutput(); err == nil {
-			result.Processes = parseSmbstatusProcessesText(string(out))
-		}
+	result := &dto.SambaConnections{
+		Processes: []dto.SambaConnection{},
+		Shares:    []dto.SambaShareUsage{},
 	}
 
-	if out, err := exec.Command("smbstatus", "-S", "--no-header").CombinedOutput(); err == nil {
-		result.Shares = parseSmbstatusShares(string(out))
+	if out, err := exec.Command("smbstatus", "-p").CombinedOutput(); err == nil {
+		result.Processes = parseSmbProcesses(string(out))
+	}
+
+	if out, err := exec.Command("smbstatus", "-S").CombinedOutput(); err == nil {
+		result.Shares = parseSmbShares(string(out))
 	}
 
 	return result, nil
@@ -370,58 +380,97 @@ func setParam(sec *samba.Section, key, value string) {
 	}
 }
 
-func parseSmbstatusProcesses(output string) []dto.SambaConnection {
+// smbstatus -p output format (with header):
+//
+// Samba version 4.x.x
+// PID     Username     Group        Machine                            Protocol Version  Encryption           Signing
+// --------...
+// 12345   user1        group1       192.168.1.100 (ipv4:...)           SMB3_11          ...
+//
+// We skip lines until we see the dashed separator, then parse each line.
+func parseSmbProcesses(output string) []dto.SambaConnection {
 	var conns []dto.SambaConnection
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "-") {
+	lines := strings.Split(output, "\n")
+	pastHeader := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) >= 4 {
-			conn := dto.SambaConnection{
-				PID:      fields[0],
-				Username: fields[1],
-				Group:    fields[2],
-				Machine:  fields[3],
-			}
-			if len(fields) >= 5 {
-				conn.Protocol = fields[4]
-			}
-			if len(fields) >= 6 {
-				conn.Encryption = fields[5]
-			}
-			conns = append(conns, conn)
+		if strings.HasPrefix(trimmed, "---") || strings.HasPrefix(trimmed, "===") {
+			pastHeader = true
+			continue
 		}
+		if !pastHeader {
+			continue
+		}
+
+		re := regexp.MustCompile(`^(\d+)\s+(\S+)\s+(\S+)\s+(\S+)`)
+		m := re.FindStringSubmatch(trimmed)
+		if m == nil {
+			continue
+		}
+
+		conn := dto.SambaConnection{
+			PID:      m[1],
+			Username: m[2],
+			Group:    m[3],
+			Machine:  m[4],
+		}
+
+		rest := strings.TrimSpace(trimmed[len(m[0]):])
+		rest = regexp.MustCompile(`\([^)]*\)`).ReplaceAllString(rest, "")
+		rest = strings.TrimSpace(rest)
+		parts := strings.Fields(rest)
+		if len(parts) >= 1 {
+			conn.Protocol = parts[0]
+		}
+		if len(parts) >= 2 {
+			conn.Encryption = parts[1]
+		}
+
+		conns = append(conns, conn)
 	}
 	return conns
 }
 
-func parseSmbstatusProcessesText(output string) []dto.SambaConnection {
-	return parseSmbstatusProcesses(output)
-}
-
-func parseSmbstatusShares(output string) []dto.SambaShareUsage {
+// smbstatus -S output format:
+//
+// Service      pid     Machine       Connected at                     Encryption   Signing
+// --------...
+// sharename    12345   192.168.1.100 Wed Apr  7 12:00:00 2026 CST    -            -
+func parseSmbShares(output string) []dto.SambaShareUsage {
 	var shares []dto.SambaShareUsage
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "-") {
+	lines := strings.Split(output, "\n")
+	pastHeader := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) >= 4 {
-			share := dto.SambaShareUsage{
-				Service: fields[0],
-				PID:     fields[1],
-				Machine: fields[2],
-			}
-			if len(fields) >= 5 {
-				share.ConnectedAt = fields[3] + " " + fields[4]
-			}
-			shares = append(shares, share)
+		if strings.HasPrefix(trimmed, "---") || strings.HasPrefix(trimmed, "===") {
+			pastHeader = true
+			continue
 		}
+		if !pastHeader {
+			continue
+		}
+
+		re := regexp.MustCompile(`^(\S+)\s+(\d+)\s+(\S+)\s+(.+)$`)
+		m := re.FindStringSubmatch(trimmed)
+		if m == nil {
+			continue
+		}
+
+		share := dto.SambaShareUsage{
+			Service:     m[1],
+			PID:         m[2],
+			Machine:     m[3],
+			ConnectedAt: strings.TrimSpace(m[4]),
+		}
+		shares = append(shares, share)
 	}
 	return shares
 }

@@ -87,24 +87,25 @@
               </el-button>
             </div>
             <el-table :data="shares" v-loading="sharesLoading" stripe>
-              <el-table-column prop="name" :label="$t('commons.name')" width="150" />
-              <el-table-column prop="path" :label="$t('toolbox.path')" min-width="200" />
-              <el-table-column prop="comment" :label="$t('commons.description')" min-width="150" />
-              <el-table-column :label="$t('toolbox.writable')" width="80" align="center">
+              <el-table-column prop="name" :label="$t('commons.name')" width="130" />
+              <el-table-column prop="path" :label="$t('toolbox.path')" min-width="180" />
+              <el-table-column prop="comment" :label="$t('commons.description')" min-width="120" />
+              <el-table-column :label="$t('toolbox.writable')" width="70" align="center">
                 <template #default="{ row }">
                   <el-tag :type="row.writable ? 'success' : 'info'" size="small">
                     {{ row.writable ? $t('toolbox.yes') : $t('toolbox.no') }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column :label="$t('toolbox.guestOK')" width="80" align="center">
+              <el-table-column :label="$t('toolbox.guestOK')" width="70" align="center">
                 <template #default="{ row }">
                   <el-tag :type="row.guestOK ? 'warning' : 'info'" size="small">
                     {{ row.guestOK ? $t('toolbox.yes') : $t('toolbox.no') }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="validUsers" :label="$t('toolbox.validUsers')" width="150" />
+              <el-table-column prop="validUsers" :label="$t('toolbox.validUsers')" width="120" />
+              <el-table-column prop="hostsAllow" :label="$t('toolbox.hostsAllow')" width="130" />
               <el-table-column :label="$t('commons.actions')" width="150" fixed="right">
                 <template #default="{ row }">
                   <el-button link type="primary" size="small" @click="openShareDialog(row)">
@@ -171,7 +172,10 @@
 
           <!-- Global Config Tab -->
           <el-tab-pane :label="$t('toolbox.globalConfig')" name="config">
-            <el-form :model="globalConfig" label-width="160px" style="max-width: 600px; margin-top: 8px;" v-loading="configLoading">
+            <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 16px;">
+              {{ $t('toolbox.securityWarning') }}
+            </el-alert>
+            <el-form :model="globalConfig" label-width="160px" style="max-width: 650px;" v-loading="configLoading">
               <el-form-item label="Workgroup">
                 <el-input v-model="globalConfig.workgroup" placeholder="WORKGROUP" />
               </el-form-item>
@@ -191,6 +195,22 @@
                   <el-option label="Bad Password" value="Bad Password" />
                 </el-select>
               </el-form-item>
+              <el-form-item :label="$t('toolbox.minProtocol')">
+                <el-select v-model="globalConfig.minProtocol" clearable :placeholder="$t('toolbox.protocolDefault')" style="width: 100%">
+                  <el-option v-for="p in smbProtocols" :key="p" :label="p" :value="p" />
+                </el-select>
+              </el-form-item>
+              <el-form-item :label="$t('toolbox.maxProtocol')">
+                <el-select v-model="globalConfig.maxProtocol" clearable :placeholder="$t('toolbox.protocolDefault')" style="width: 100%">
+                  <el-option v-for="p in smbProtocols" :key="p" :label="p" :value="p" />
+                </el-select>
+              </el-form-item>
+              <el-form-item :label="$t('toolbox.hostsAllow')">
+                <el-input v-model="globalConfig.hostsAllow" :placeholder="$t('toolbox.hostsAllowPlaceholder')" />
+              </el-form-item>
+              <el-form-item :label="$t('toolbox.hostsDeny')">
+                <el-input v-model="globalConfig.hostsDeny" :placeholder="$t('toolbox.hostsDenyPlaceholder')" />
+              </el-form-item>
               <el-form-item :label="$t('toolbox.interfaces')">
                 <el-input v-model="globalConfig.interfaces" :placeholder="$t('toolbox.interfacesPlaceholder')" />
               </el-form-item>
@@ -206,7 +226,7 @@
     </template>
 
     <!-- Share Dialog -->
-    <el-dialog v-model="shareDialogOpen" :title="shareForm.origName ? $t('toolbox.editShare') : $t('toolbox.createShare')" width="560px" destroy-on-close>
+    <el-dialog v-model="shareDialogOpen" :title="shareForm.origName ? $t('toolbox.editShare') : $t('toolbox.createShare')" width="580px" destroy-on-close>
       <el-form :model="shareForm" :rules="shareRules" ref="shareFormRef" label-width="120px">
         <el-form-item :label="$t('commons.name')" prop="name">
           <el-input v-model="shareForm.name" />
@@ -224,7 +244,23 @@
           <el-switch v-model="shareForm.guestOK" />
         </el-form-item>
         <el-form-item :label="$t('toolbox.validUsers')">
-          <el-input v-model="shareForm.validUsers" :placeholder="$t('toolbox.validUsersPlaceholder')" />
+          <el-select
+            v-model="shareForm.validUsersList"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            :placeholder="$t('toolbox.validUsersSelectPlaceholder')"
+            style="width: 100%"
+          >
+            <el-option v-for="u in users" :key="u.username" :label="u.username" :value="u.username" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('toolbox.hostsAllow')">
+          <el-input v-model="shareForm.hostsAllow" :placeholder="$t('toolbox.hostsAllowPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="$t('toolbox.hostsDeny')">
+          <el-input v-model="shareForm.hostsDeny" :placeholder="$t('toolbox.hostsDenyPlaceholder')" />
         </el-form-item>
         <el-form-item :label="$t('toolbox.createDir')" v-if="!shareForm.origName">
           <el-switch v-model="shareForm.createDir" />
@@ -289,6 +325,8 @@ const installLoading = ref(false)
 const opLoading = ref('')
 const activeTab = ref('shares')
 
+const smbProtocols = ['NT1', 'SMB2', 'SMB2_02', 'SMB2_10', 'SMB3', 'SMB3_00', 'SMB3_02', 'SMB3_11']
+
 const status = ref({ isInstalled: false, isRunning: false, version: '', autoStart: false })
 
 // Shares
@@ -304,7 +342,9 @@ const shareForm = reactive({
   comment: '',
   writable: true,
   guestOK: false,
-  validUsers: '',
+  validUsersList: [] as string[],
+  hostsAllow: '',
+  hostsDeny: '',
   createDir: true,
 })
 const shareRules = reactive<FormRules>({
@@ -339,7 +379,8 @@ const connLoading = ref(false)
 
 // Global Config
 const globalConfig = reactive({
-  workgroup: '', serverName: '', security: '', mapToGuest: '', logLevel: '', maxLogSize: '', interfaces: '',
+  workgroup: '', serverName: '', security: '', mapToGuest: '', logLevel: '', maxLogSize: '',
+  interfaces: '', minProtocol: '', maxProtocol: '', hostsAllow: '', hostsDeny: '',
 })
 const configLoading = ref(false)
 const configSaving = ref(false)
@@ -429,7 +470,7 @@ const handleOperate = async (op: string) => {
   try {
     await operateSamba(op)
     ElMessage.success(t('commons.operationSuccess'))
-    setTimeout(() => loadStatus(), 1000)
+    await loadStatus()
   } finally {
     opLoading.value = ''
   }
@@ -438,9 +479,18 @@ const handleOperate = async (op: string) => {
 // Share CRUD
 const openShareDialog = (row?: any) => {
   if (row) {
-    Object.assign(shareForm, { ...row, origName: row.name, createDir: false })
+    const userList = row.validUsers ? row.validUsers.split(/[,\s]+/).filter((s: string) => s) : []
+    Object.assign(shareForm, {
+      ...row, origName: row.name, createDir: false,
+      validUsersList: userList,
+      hostsAllow: row.hostsAllow || '',
+      hostsDeny: row.hostsDeny || '',
+    })
   } else {
-    Object.assign(shareForm, { origName: '', name: '', path: '', comment: '', writable: true, guestOK: false, validUsers: '', createDir: true })
+    Object.assign(shareForm, {
+      origName: '', name: '', path: '', comment: '', writable: true, guestOK: false,
+      validUsersList: [], hostsAllow: '', hostsDeny: '', createDir: true,
+    })
   }
   shareDialogOpen.value = true
 }
@@ -449,10 +499,14 @@ const handleSubmitShare = async () => {
   await shareFormRef.value?.validate()
   shareSubmitting.value = true
   try {
+    const payload = {
+      ...shareForm,
+      validUsers: shareForm.validUsersList.join(', '),
+    }
     if (shareForm.origName) {
-      await updateSambaShare(shareForm)
+      await updateSambaShare(payload)
     } else {
-      await createSambaShare(shareForm)
+      await createSambaShare(payload)
     }
     ElMessage.success(t('commons.operationSuccess'))
     shareDialogOpen.value = false
@@ -544,34 +598,17 @@ onMounted(() => loadAll())
   margin-bottom: 16px;
   h3 { margin: 0; }
 }
-.install-card {
-  text-align: center;
-}
+.install-card { text-align: center; }
 .status-row {
   .stat-card {
     text-align: center;
-    .stat-title {
-      font-size: 13px;
-      color: var(--xp-text-muted);
-      margin-bottom: 10px;
-    }
-    .stat-value {
-      font-size: 14px;
-      font-weight: 600;
-    }
+    .stat-title { font-size: 13px; color: var(--xp-text-muted); margin-bottom: 10px; }
+    .stat-value { font-size: 14px; font-weight: 600; }
     .mono { font-family: monospace; }
   }
 }
 .operate-buttons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px;
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px;
 }
-.tab-toolbar {
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
+.tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
 </style>

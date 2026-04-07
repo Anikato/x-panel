@@ -86,7 +86,7 @@
                 {{ $t('commons.create') }}
               </el-button>
             </div>
-            <el-table :data="exports" v-loading="exportsLoading" stripe>
+            <el-table :data="nfsExports" v-loading="exportsLoading" stripe>
               <el-table-column prop="path" :label="$t('toolbox.exportPath')" min-width="200" />
               <el-table-column :label="$t('toolbox.clients')" min-width="350">
                 <template #default="{ row }">
@@ -132,7 +132,7 @@
     </template>
 
     <!-- Export Dialog -->
-    <el-dialog v-model="exportDialogOpen" :title="exportForm.origPath ? $t('toolbox.editExport') : $t('toolbox.createExport')" width="640px" destroy-on-close>
+    <el-dialog v-model="exportDialogOpen" :title="exportForm.origPath ? $t('toolbox.editExport') : $t('toolbox.createExport')" width="700px" destroy-on-close>
       <el-form :model="exportForm" :rules="exportRules" ref="exportFormRef" label-width="120px">
         <el-form-item :label="$t('toolbox.exportPath')" prop="path">
           <el-input v-model="exportForm.path" placeholder="/data/nfs-share" />
@@ -145,12 +145,45 @@
         </el-form-item>
         <el-form-item :label="$t('toolbox.clients')">
           <div style="width: 100%;">
-            <div v-for="(client, idx) in exportForm.clients" :key="idx" class="client-row">
-              <el-input v-model="client.host" :placeholder="$t('toolbox.clientHostPlaceholder')" style="width: 200px;" />
-              <el-input v-model="client.options" :placeholder="$t('toolbox.clientOptionsPlaceholder')" style="flex: 1; margin: 0 8px;" />
-              <el-button type="danger" :icon="Delete" circle size="small" @click="exportForm.clients.splice(idx, 1)" />
+            <div v-for="(client, idx) in exportForm.clients" :key="idx" class="client-entry">
+              <div class="client-row">
+                <el-input v-model="client.host" :placeholder="$t('toolbox.clientHostPlaceholder')" style="width: 200px;" />
+                <el-button type="danger" :icon="Delete" circle size="small" @click="exportForm.clients.splice(idx, 1)" style="margin-left: 8px;" />
+              </div>
+              <div class="options-grid">
+                <el-checkbox v-model="client.optRW" @change="rebuildOptions(client)">
+                  <el-tooltip :content="$t('toolbox.nfsOptRWDesc')">
+                    <span>rw <span class="opt-hint">({{ $t('toolbox.nfsOptRW') }})</span></span>
+                  </el-tooltip>
+                </el-checkbox>
+                <el-checkbox v-model="client.optSync" @change="rebuildOptions(client)">
+                  <el-tooltip :content="$t('toolbox.nfsOptSyncDesc')">
+                    <span>sync <span class="opt-hint">({{ $t('toolbox.nfsOptSync') }})</span></span>
+                  </el-tooltip>
+                </el-checkbox>
+                <el-checkbox v-model="client.optNoSubtreeCheck" @change="rebuildOptions(client)">
+                  <el-tooltip :content="$t('toolbox.nfsOptNoSubtreeCheckDesc')">
+                    <span>no_subtree_check</span>
+                  </el-tooltip>
+                </el-checkbox>
+                <el-checkbox v-model="client.optNoRootSquash" @change="rebuildOptions(client)">
+                  <el-tooltip :content="$t('toolbox.nfsOptNoRootSquashDesc')">
+                    <span>no_root_squash <span class="opt-hint">({{ $t('toolbox.nfsOptNoRootSquash') }})</span></span>
+                  </el-tooltip>
+                </el-checkbox>
+                <el-checkbox v-model="client.optAllSquash" @change="rebuildOptions(client)">
+                  <el-tooltip :content="$t('toolbox.nfsOptAllSquashDesc')">
+                    <span>all_squash <span class="opt-hint">({{ $t('toolbox.nfsOptAllSquash') }})</span></span>
+                  </el-tooltip>
+                </el-checkbox>
+              </div>
+              <div class="options-raw">
+                <el-input v-model="client.options" size="small" :placeholder="$t('toolbox.nfsOptRawPlaceholder')">
+                  <template #prepend>{{ $t('toolbox.nfsOptRaw') }}</template>
+                </el-input>
+              </div>
             </div>
-            <el-button type="primary" plain size="small" @click="exportForm.clients.push({ host: '', options: 'rw,sync,no_subtree_check' })" style="margin-top: 8px;">
+            <el-button type="primary" plain size="small" @click="addClient" style="margin-top: 8px;">
               {{ $t('toolbox.addClient') }}
             </el-button>
           </div>
@@ -184,8 +217,48 @@ const activeTab = ref('exports')
 
 const status = ref({ isInstalled: false, isRunning: false, version: '', autoStart: false })
 
+interface ClientEntry {
+  host: string
+  options: string
+  optRW: boolean
+  optSync: boolean
+  optNoSubtreeCheck: boolean
+  optNoRootSquash: boolean
+  optAllSquash: boolean
+}
+
+function parseClientOptions(options: string): Partial<ClientEntry> {
+  const parts = options.split(',').map(s => s.trim())
+  return {
+    optRW: parts.includes('rw'),
+    optSync: parts.includes('sync'),
+    optNoSubtreeCheck: parts.includes('no_subtree_check'),
+    optNoRootSquash: parts.includes('no_root_squash'),
+    optAllSquash: parts.includes('all_squash'),
+  }
+}
+
+function rebuildOptions(client: ClientEntry) {
+  const opts: string[] = []
+  opts.push(client.optRW ? 'rw' : 'ro')
+  opts.push(client.optSync ? 'sync' : 'async')
+  if (client.optNoSubtreeCheck) opts.push('no_subtree_check')
+  if (client.optNoRootSquash) opts.push('no_root_squash')
+  if (client.optAllSquash) opts.push('all_squash')
+  client.options = opts.join(',')
+}
+
+function makeClient(host = '*', options = 'rw,sync,no_subtree_check'): ClientEntry {
+  const parsed = parseClientOptions(options)
+  return { host, options, ...parsed } as ClientEntry
+}
+
+const addClient = () => {
+  exportForm.clients.push(makeClient())
+}
+
 // Exports
-const exports = ref<any[]>([])
+const nfsExports = ref<any[]>([])
 const exportsLoading = ref(false)
 const exportDialogOpen = ref(false)
 const exportSubmitting = ref(false)
@@ -195,7 +268,7 @@ const exportForm = reactive({
   path: '',
   comment: '',
   createDir: true,
-  clients: [{ host: '*', options: 'rw,sync,no_subtree_check' }] as { host: string; options: string }[],
+  clients: [makeClient()] as ClientEntry[],
 })
 const exportRules = reactive<FormRules>({
   path: [{ required: true, message: t('toolbox.pathRequired'), trigger: 'blur' }],
@@ -220,7 +293,7 @@ const loadExports = async () => {
   exportsLoading.value = true
   try {
     const res = await listNfsExports()
-    exports.value = res.data || []
+    nfsExports.value = res.data || []
   } finally {
     exportsLoading.value = false
   }
@@ -269,7 +342,7 @@ const handleOperate = async (op: string) => {
   try {
     await operateNfs(op)
     ElMessage.success(t('commons.operationSuccess'))
-    setTimeout(() => loadStatus(), 1000)
+    await loadStatus()
   } finally {
     opLoading.value = ''
   }
@@ -282,23 +355,25 @@ const openExportDialog = (row?: any) => {
     exportForm.path = row.path
     exportForm.comment = row.comment || ''
     exportForm.createDir = false
-    exportForm.clients = (row.clients || []).map((c: any) => ({ ...c }))
+    exportForm.clients = (row.clients || []).map((c: any) => makeClient(c.host, c.options))
     if (exportForm.clients.length === 0) {
-      exportForm.clients = [{ host: '*', options: 'rw,sync,no_subtree_check' }]
+      exportForm.clients = [makeClient()]
     }
   } else {
     exportForm.origPath = ''
     exportForm.path = ''
     exportForm.comment = ''
     exportForm.createDir = true
-    exportForm.clients = [{ host: '*', options: 'rw,sync,no_subtree_check' }]
+    exportForm.clients = [makeClient()]
   }
   exportDialogOpen.value = true
 }
 
 const handleSubmitExport = async () => {
   await exportFormRef.value?.validate()
-  const validClients = exportForm.clients.filter(c => c.host.trim())
+  const validClients = exportForm.clients
+    .filter(c => c.host.trim())
+    .map(c => ({ host: c.host, options: c.options }))
   if (validClients.length === 0) {
     ElMessage.warning(t('toolbox.clientRequired'))
     return
@@ -331,56 +406,37 @@ onMounted(() => loadAll())
 
 <style lang="scss" scoped>
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
   h3 { margin: 0; }
 }
-.install-card {
-  text-align: center;
-}
+.install-card { text-align: center; }
 .status-row {
   .stat-card {
     text-align: center;
-    .stat-title {
-      font-size: 13px;
-      color: var(--xp-text-muted);
-      margin-bottom: 10px;
-    }
-    .stat-value {
-      font-size: 14px;
-      font-weight: 600;
-    }
+    .stat-title { font-size: 13px; color: var(--xp-text-muted); margin-bottom: 10px; }
+    .stat-value { font-size: 14px; font-weight: 600; }
     .mono { font-family: monospace; }
   }
 }
 .operate-buttons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 4px;
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px;
 }
-.tab-toolbar {
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
+.tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
 .client-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-right: 8px;
-  margin-bottom: 4px;
-  .client-options {
-    font-size: 12px;
-    color: var(--xp-text-muted);
-  }
+  display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; margin-bottom: 4px;
+  .client-options { font-size: 12px; color: var(--xp-text-muted); }
 }
-.client-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
+.client-entry {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--el-fill-color-blank);
 }
+.client-row { display: flex; align-items: center; margin-bottom: 8px; }
+.options-grid {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px;
+  .opt-hint { font-size: 11px; color: var(--xp-text-muted); }
+}
+.options-raw { margin-top: 4px; }
 </style>
