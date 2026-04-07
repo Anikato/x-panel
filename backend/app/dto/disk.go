@@ -32,11 +32,14 @@ type RemoteMountRequest struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	Options    string `json:"options"`
+	Preset     string `json:"preset"`
+	Persist    bool   `json:"persist"`
 }
 
 // RemoteUnmountRequest 卸载远程挂载
 type RemoteUnmountRequest struct {
 	MountPoint string `json:"mountPoint" validate:"required"`
+	RemoveFstab bool  `json:"removeFstab"`
 }
 
 // RemoteMountInfo 远程挂载信息
@@ -49,4 +52,5 @@ type RemoteMountInfo struct {
 	Used       uint64  `json:"used"`
 	Free       uint64  `json:"free"`
 	Percent    float64 `json:"percent"`
+	InFstab    bool    `json:"inFstab"`
 }

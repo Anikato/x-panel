@@ -51,8 +51,8 @@
 
     <el-table :data="remoteMounts" v-loading="remoteLoading" v-if="remoteMounts.length > 0">
       <el-table-column prop="device" :label="$t('disk.remoteSource')" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="mountPoint" :label="$t('disk.mountPoint')" min-width="160" />
-      <el-table-column prop="fsType" :label="$t('disk.fsType')" width="100" />
+      <el-table-column prop="mountPoint" :label="$t('disk.mountPoint')" min-width="140" />
+      <el-table-column prop="fsType" :label="$t('disk.fsType')" width="80" />
       <el-table-column :label="$t('disk.usage')" width="200">
         <template #default="{ row }">
           <template v-if="row.total > 0">
@@ -62,9 +62,16 @@
           <span v-else class="text-muted">-</span>
         </template>
       </el-table-column>
+      <el-table-column :label="$t('disk.persist')" width="90" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.inFstab" type="success" size="small">{{ $t('disk.fstabYes') }}</el-tag>
+          <el-tag v-else type="info" size="small">{{ $t('disk.fstabNo') }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="options" :label="$t('disk.mountOptions')" min-width="200" show-overflow-tooltip />
       <el-table-column :label="$t('commons.actions')" width="100" align="center">
         <template #default="{ row }">
-          <el-popconfirm :title="$t('disk.unmountConfirm')" @confirm="handleUnmount(row.mountPoint)">
+          <el-popconfirm :title="$t('disk.unmountConfirm')" @confirm="handleUnmount(row)">
             <template #reference>
               <el-button type="danger" text size="small">{{ $t('disk.unmount') }}</el-button>
             </template>
@@ -76,10 +83,10 @@
     <el-empty v-else-if="!remoteLoading" :description="$t('disk.noRemoteMount')" :image-size="60" />
 
     <!-- 挂载对话框 -->
-    <el-dialog v-model="showMountDialog" :title="$t('disk.addMount')" width="520px" :close-on-click-modal="false">
+    <el-dialog v-model="showMountDialog" :title="$t('disk.addMount')" width="560px" :close-on-click-modal="false" @close="resetForm">
       <el-form ref="mountFormRef" :model="mountForm" :rules="mountRules" label-width="100px">
         <el-form-item :label="$t('disk.protocol')" prop="protocol">
-          <el-select v-model="mountForm.protocol" style="width: 100%">
+          <el-select v-model="mountForm.protocol" style="width: 100%" @change="onProtocolChange">
             <el-option label="NFS" value="nfs" />
             <el-option label="SMB / CIFS" value="cifs" />
           </el-select>
@@ -101,9 +108,51 @@
             <el-input v-model="mountForm.password" type="password" show-password :placeholder="$t('disk.passwordHint')" />
           </el-form-item>
         </template>
-        <el-form-item :label="$t('disk.mountOptions')">
+
+        <el-form-item :label="$t('disk.networkPreset')">
+          <el-radio-group v-model="mountForm.preset" @change="onPresetChange">
+            <el-radio-button value="default">
+              <el-tooltip :content="$t('disk.presetDefaultTip')" placement="top">
+                <span>{{ $t('disk.presetDefault') }}</span>
+              </el-tooltip>
+            </el-radio-button>
+            <el-radio-button value="unstable">
+              <el-tooltip :content="$t('disk.presetUnstableTip')" placement="top">
+                <span>{{ $t('disk.presetUnstable') }}</span>
+              </el-tooltip>
+            </el-radio-button>
+            <el-radio-button value="lan">
+              <el-tooltip :content="$t('disk.presetLanTip')" placement="top">
+                <span>{{ $t('disk.presetLan') }}</span>
+              </el-tooltip>
+            </el-radio-button>
+            <el-radio-button value="custom">
+              <span>{{ $t('disk.presetCustom') }}</span>
+            </el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item v-if="mountForm.preset !== 'custom'" :label="$t('disk.previewOptions')">
+          <el-input :model-value="previewOptions" disabled />
+        </el-form-item>
+
+        <el-form-item v-if="mountForm.preset === 'custom'" :label="$t('disk.mountOptions')">
           <el-input v-model="mountForm.options" :placeholder="$t('disk.mountOptionsHint')" />
         </el-form-item>
+
+        <el-form-item :label="$t('disk.persist')">
+          <el-switch v-model="mountForm.persist" />
+          <span class="form-hint">{{ $t('disk.persistHint') }}</span>
+        </el-form-item>
+
+        <el-alert
+          v-if="mountForm.preset === 'unstable'"
+          :title="$t('disk.unstableNetworkTip')"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 8px"
+        />
       </el-form>
       <template #footer>
         <el-button @click="showMountDialog = false">{{ $t('commons.cancel') }}</el-button>
@@ -114,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Refresh, Coin, Plus } from '@element-plus/icons-vue'
 import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote } from '@/api/modules/disk'
 import { ElMessage } from 'element-plus'
@@ -131,6 +180,18 @@ const showMountDialog = ref(false)
 const mounting = ref(false)
 const mountFormRef = ref<FormInstance>()
 
+const nfsPresets: Record<string, string> = {
+  default: 'rw,soft,timeo=30,retrans=3',
+  unstable: 'rw,soft,timeo=10,retrans=2,actimeo=60,noatime',
+  lan: 'rw,hard,timeo=600,retrans=5,rsize=1048576,wsize=1048576',
+}
+
+const cifsPresets: Record<string, string> = {
+  default: 'rw,soft,echo_interval=10,actimeo=30',
+  unstable: 'rw,soft,echo_interval=5,actimeo=30,cache=loose,nobrl,noserverino',
+  lan: 'rw,hard,cache=strict,rsize=4194304,wsize=4194304',
+}
+
 const mountForm = reactive({
   protocol: 'nfs',
   server: '',
@@ -139,7 +200,32 @@ const mountForm = reactive({
   username: '',
   password: '',
   options: '',
+  preset: 'default',
+  persist: false,
 })
+
+const previewOptions = computed(() => {
+  const presets = mountForm.protocol === 'nfs' ? nfsPresets : cifsPresets
+  return presets[mountForm.preset] || presets['default']
+})
+
+const onProtocolChange = () => {
+  mountForm.preset = 'default'
+  mountForm.options = ''
+}
+
+const onPresetChange = (val: string) => {
+  if (val !== 'custom') {
+    mountForm.options = ''
+  }
+}
+
+const resetForm = () => {
+  Object.assign(mountForm, {
+    protocol: 'nfs', server: '', sharePath: '', mountPoint: '',
+    username: '', password: '', options: '', preset: 'default', persist: false,
+  })
+}
 
 const mountRules = reactive<FormRules>({
   protocol: [{ required: true, trigger: 'change' }],
@@ -182,19 +268,21 @@ const handleMount = async () => {
       mountPoint: mountForm.mountPoint,
       username: mountForm.username || undefined,
       password: mountForm.password || undefined,
-      options: mountForm.options || undefined,
+      options: mountForm.preset === 'custom' ? mountForm.options : undefined,
+      preset: mountForm.preset !== 'custom' ? mountForm.preset : undefined,
+      persist: mountForm.persist,
     })
     ElMessage.success(t('commons.success'))
     showMountDialog.value = false
-    Object.assign(mountForm, { server: '', sharePath: '', mountPoint: '', username: '', password: '', options: '' })
+    resetForm()
     loadAll()
   } catch { /* handled by interceptor */ }
   finally { mounting.value = false }
 }
 
-const handleUnmount = async (mountPoint: string) => {
+const handleUnmount = async (row: RemoteMountInfo) => {
   try {
-    await unmountRemote({ mountPoint })
+    await unmountRemote({ mountPoint: row.mountPoint, removeFstab: row.inFstab })
     ElMessage.success(t('commons.success'))
     loadAll()
   } catch { /* handled */ }
@@ -294,6 +382,12 @@ onMounted(() => loadAll())
 }
 
 .text-muted {
+  color: var(--xp-text-muted);
+}
+
+.form-hint {
+  margin-left: 8px;
+  font-size: 12px;
   color: var(--xp-text-muted);
 }
 </style>

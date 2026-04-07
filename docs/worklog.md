@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-04-07 — Session #53：NFS 服务名修复 + 远程挂载网络优化
+
+### 完成内容
+
+- [x] 修复 NFS 开机自启状态始终显示"已禁用"：`nfsServiceName()` 重写为依次探测 `nfs-server` → `nfs-kernel-server`
+- [x] 远程挂载网络预设：新增「默认 / 不稳定网络 / 高速局域网 / 自定义」四种预设模式
+  - NFS 不稳定网络：`rw,soft,timeo=10,retrans=2,actimeo=60,noatime`
+  - CIFS 不稳定网络：`rw,soft,echo_interval=5,actimeo=30,cache=loose,nobrl,noserverino`
+  - 高速局域网：hard 模式 + 大缓冲区
+- [x] fstab 持久化：挂载时可选写入 `/etc/fstab` 实现开机自动挂载，卸载时同步移除
+- [x] 卸载增强：失败时自动 fallback 到 `umount -l`（lazy umount）
+- [x] 远程挂载列表新增「持久化」状态列（已持久化 / 临时）
+- [x] 前端挂载对话框重构：预设选择 + 参数预览 + 持久化开关 + 不稳定网络提示
+- [x] 配置 git 代理 `127.0.0.1:20000`
+
+### 版本
+
+- v0.5.40 (NFS 修复)
+- v0.5.41 (远程挂载增强)
+
+---
+
 ## 2026-04-07 — Session #52：工具箱 - Samba 和 NFS 共享管理
 
 ### 完成内容
@@ -14,6 +36,9 @@
 - [x] 安全模式：修改配置 → testparm 校验 → 失败自动回滚 → 成功 reload
 - [x] 前端 Samba 管理页：四 Tab 布局(共享目录/用户管理/连接监控/全局配置)
 - [x] 共享创建/编辑弹窗，用户创建/改密弹窗
+- [x] 共享创建时用户下拉选择 + hosts allow/deny 安全控制
+- [x] 全局配置增加协议版本控制 (min/max protocol) + 公网安全提示
+- [x] smbstatus 连接监控解析修复（不依赖 -j JSON 输出）
 
 **NFS 共享管理**：
 - [x] /etc/exports 解析器 (`utils/nfs/parser.go`)：支持多客户端、选项解析
@@ -21,6 +46,9 @@
 - [x] 安全模式：修改配置 → exportfs -ra 应用 → 失败回滚
 - [x] 前端 NFS 管理页：两 Tab 布局(导出目录/连接监控)
 - [x] 导出创建/编辑弹窗，支持动态添加多个客户端
+- [x] NFS 选项可视化选择器（checkbox + tooltip 替代纯文本输入）
+- [x] 操作后立即刷新状态 (`await loadStatus()`)
+- [x] 连接监控增强：showmount + /proc/fs/nfsd/clients/ 双源
 
 **通用基础设施**：
 - [x] ToolboxAPI 注册到 ApiGroup + 25 条 API 路由

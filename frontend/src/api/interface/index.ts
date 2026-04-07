@@ -608,6 +608,7 @@ export interface RemoteMountInfo {
   used: number
   free: number
   percent: number
+  inFstab: boolean
 }
 
 // ======================== Traffic ========================

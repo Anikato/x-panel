@@ -16,10 +16,12 @@ export const mountRemote = (data: {
   username?: string
   password?: string
   options?: string
+  preset?: string
+  persist?: boolean
 }) => {
   return http.post('/disk/remote/mount', data)
 }
 
-export const unmountRemote = (data: { mountPoint: string }) => {
+export const unmountRemote = (data: { mountPoint: string; removeFstab?: boolean }) => {
   return http.post('/disk/remote/unmount', data)
 }
