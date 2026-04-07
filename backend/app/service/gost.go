@@ -559,8 +559,8 @@ func (s *GostService) resolveServiceCert(svc model.GostService) (certFile, keyFi
 		}
 		sslSvc := NewICertificateService()
 		sslDir := sslSvc.GetSSLDir()
-		return filepath.Join(sslDir, "certs", cert.PrimaryDomain, "fullchain.pem"),
-			filepath.Join(sslDir, "certs", cert.PrimaryDomain, "privkey.pem")
+		return filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "fullchain.pem"),
+			filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "privkey.pem")
 	}
 	return "", ""
 }

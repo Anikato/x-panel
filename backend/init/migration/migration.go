@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"xpanel/app/model"
 	"xpanel/global"
@@ -161,6 +162,37 @@ func ensureSSLDir() {
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
 			global.LOG.Warnf("Failed to create SSL dir %s: %v", d, err)
+		}
+	}
+	migrateWildcardCertDirs(filepath.Join(sslDir, "certs"))
+}
+
+// migrateWildcardCertDirs renames dirs like "*.example.com" to "_wildcard.example.com"
+func migrateWildcardCertDirs(certsDir string) {
+	entries, err := os.ReadDir(certsDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.Contains(name, "*") {
+			continue
+		}
+		newName := strings.ReplaceAll(name, "*", "_wildcard")
+		oldPath := filepath.Join(certsDir, name)
+		newPath := filepath.Join(certsDir, newName)
+		if _, err := os.Stat(newPath); err == nil {
+			os.RemoveAll(oldPath)
+			global.LOG.Infof("Wildcard cert dir already migrated, removed old: %s", oldPath)
+			continue
+		}
+		if err := os.Rename(oldPath, newPath); err != nil {
+			global.LOG.Warnf("Failed to migrate wildcard cert dir %s → %s: %v", oldPath, newPath, err)
+		} else {
+			global.LOG.Infof("Migrated wildcard cert dir: %s → %s", oldPath, newPath)
 		}
 	}
 }

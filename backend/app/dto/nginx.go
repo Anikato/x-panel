@@ -30,7 +30,8 @@ type NginxInstallReq struct {
 }
 
 type NginxUninstallReq struct {
-	ForceCleanup bool `json:"forceCleanup"` // 强制卸载并清理所有网站配置和记录
+	ForceCleanup bool   `json:"forceCleanup"` // 强制卸载并清理所有网站配置和记录
+	Mode         string `json:"mode"`          // 指定卸载模式: "system"/"prefix"/空(卸载当前活跃模式)
 }
 
 type NginxInstallProgress struct {

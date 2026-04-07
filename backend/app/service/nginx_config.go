@@ -482,8 +482,8 @@ func (g *NginxConfigGenerator) getCertPaths(certID uint) (string, string, error)
 		return "", "", err
 	}
 	sslDir := g.getSSLDir()
-	certPath := filepath.Join(sslDir, "certs", cert.PrimaryDomain, "fullchain.pem")
-	keyPath := filepath.Join(sslDir, "certs", cert.PrimaryDomain, "privkey.pem")
+	certPath := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "fullchain.pem")
+	keyPath := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "privkey.pem")
 
 	if _, err := os.Stat(certPath); os.IsNotExist(err) {
 		return "", "", fmt.Errorf("证书文件不存在: %s", certPath)

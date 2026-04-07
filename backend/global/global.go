@@ -125,6 +125,9 @@ func (c NginxConfig) HasBothInstalled() bool {
 	return c.prefixExist && c.systemExist
 }
 
+func (c NginxConfig) HasSystemInstalled() bool { return c.systemExist }
+func (c NginxConfig) HasPrefixInstalled() bool  { return c.prefixExist }
+
 // IsSystemMode 是否使用系统包管理器安装的 nginx
 func (c NginxConfig) IsSystemMode() bool {
 	return c.systemMode

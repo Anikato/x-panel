@@ -26,8 +26,8 @@ export const getInstallProgress = () => {
 }
 
 // --- 卸载 Nginx ---
-export const uninstallNginx = (forceCleanup = false) => {
-  return http.post('/nginx/uninstall', { forceCleanup })
+export const uninstallNginx = (forceCleanup = false, mode?: string) => {
+  return http.post('/nginx/uninstall', { forceCleanup, mode })
 }
 
 // --- 获取可用的预编译版本列表 ---

@@ -4,25 +4,39 @@
 
 ---
 
-## 2026-04-07 — Session #53：NFS 服务名修复 + 远程挂载网络优化
+## 2026-04-07 — Session #53：NFS 修复 + 远程挂载网络优化 + SSL 通配符路径 + Nginx 双安装管理
 
 ### 完成内容
 
-- [x] 修复 NFS 开机自启状态始终显示"已禁用"：`nfsServiceName()` 重写为依次探测 `nfs-server` → `nfs-kernel-server`
-- [x] 远程挂载网络预设：新增「默认 / 不稳定网络 / 高速局域网 / 自定义」四种预设模式
+**NFS 修复**：
+- [x] 修复 NFS 开机自启状态始终显示"已禁用"：`nfsServiceName()` 依次探测 `nfs-server` → `nfs-kernel-server`
+
+**远程挂载网络优化**：
+- [x] 新增四种网络预设：默认 / 不稳定网络 / 高速局域网 / 自定义
   - NFS 不稳定网络：`rw,soft,timeo=10,retrans=2,actimeo=60,noatime`
   - CIFS 不稳定网络：`rw,soft,echo_interval=5,actimeo=30,cache=loose,nobrl,noserverino`
-  - 高速局域网：hard 模式 + 大缓冲区
-- [x] fstab 持久化：挂载时可选写入 `/etc/fstab` 实现开机自动挂载，卸载时同步移除
-- [x] 卸载增强：失败时自动 fallback 到 `umount -l`（lazy umount）
-- [x] 远程挂载列表新增「持久化」状态列（已持久化 / 临时）
-- [x] 前端挂载对话框重构：预设选择 + 参数预览 + 持久化开关 + 不稳定网络提示
-- [x] 配置 git 代理 `127.0.0.1:20000`
+- [x] fstab 持久化：挂载时可选写入 `/etc/fstab`，卸载时同步移除
+- [x] 卸载 fallback 到 `umount -l`
+- [x] 远程挂载列表新增持久化状态列
+
+**SSL 通配符证书路径修复**：
+- [x] `*.example.com` 目录改为 `_wildcard.example.com`，避免 shell 通配符冲突
+- [x] `safeDomainDir()` 统一替换所有路径引用（ssl.go / nginx_config.go / gost.go）
+- [x] 启动时自动迁移旧 `*` 目录到 `_wildcard`（migration.go）
+- [x] 删除时兼容清理新旧两种路径
+
+**Nginx 双安装快捷卸载**：
+- [x] `NginxUninstallReq` 增加 `Mode` 字段：可指定 `system` / `prefix` / 空（当前活跃模式）
+- [x] `uninstallSystemNginx()`：apt-get remove --purge + autoremove
+- [x] `uninstallPrefixNginx()`：停止进程 + 清理 systemd 服务文件 + 删除安装目录
+- [x] 前端双安装警告栏增加「卸载 xxx」快捷按钮
+- [x] `NginxConfig` 暴露 `HasSystemInstalled()` / `HasPrefixInstalled()` 方法
 
 ### 版本
 
 - v0.5.40 (NFS 修复)
 - v0.5.41 (远程挂载增强)
+- v0.5.42 (SSL 通配符路径 + Nginx 双安装管理)
 
 ---
 

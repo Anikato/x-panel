@@ -121,49 +121,100 @@ func (s *NginxInstallService) doInstallApt() {
 }
 
 // Uninstall 卸载 Nginx
+// Mode 可选: "system" 仅卸载 apt 安装, "prefix" 仅卸载自包含安装, 空则卸载当前活跃模式
 func (s *NginxInstallService) Uninstall(req dto.NginxUninstallReq) error {
 	if !global.CONF.Nginx.IsInstalled() {
 		return buserr.New(constant.ErrNginxNotInstalled)
 	}
 
-	// 检查是否有网站记录
-	siteCount, _ := s.websiteRepo.Count()
-	if siteCount > 0 && !req.ForceCleanup {
-		return buserr.WithDetail(constant.ErrNginxHasSites,
-			fmt.Sprintf("%d websites exist", siteCount), nil)
+	nc := global.CONF.Nginx
+	uninstallSystem := false
+	uninstallPrefix := false
+
+	switch strings.ToLower(req.Mode) {
+	case "system":
+		if !nc.HasSystemInstalled() {
+			return buserr.WithDetail(constant.ErrInternalServer, "system nginx not found", nil)
+		}
+		uninstallSystem = true
+	case "prefix":
+		if !nc.HasPrefixInstalled() {
+			return buserr.WithDetail(constant.ErrInternalServer, "prefix nginx not found", nil)
+		}
+		uninstallPrefix = true
+	default:
+		if nc.IsSystemMode() {
+			uninstallSystem = true
+		} else {
+			uninstallPrefix = true
+		}
 	}
 
-	// 强制卸载：先清理所有网站配置和数据库记录
-	if siteCount > 0 && req.ForceCleanup {
-		s.cleanupAllSites()
+	isActiveMode := (uninstallSystem && nc.IsSystemMode()) || (uninstallPrefix && !nc.IsSystemMode())
+
+	if isActiveMode {
+		siteCount, _ := s.websiteRepo.Count()
+		if siteCount > 0 && !req.ForceCleanup {
+			return buserr.WithDetail(constant.ErrNginxHasSites,
+				fmt.Sprintf("%d websites exist", siteCount), nil)
+		}
+		if siteCount > 0 && req.ForceCleanup {
+			s.cleanupAllSites()
+		}
 	}
 
-	if global.CONF.Nginx.IsSystemMode() {
-		if _, err := cmd.ExecWithOutput("systemctl", "stop", "nginx"); err != nil {
-			global.LOG.Warnf("Stop nginx failed: %v", err)
+	if uninstallSystem {
+		if err := s.uninstallSystemNginx(); err != nil {
+			return err
 		}
-		output, err := exec.Command("apt-get", "remove", "-y", "nginx").CombinedOutput()
-		if err != nil {
-			return buserr.WithDetail(constant.ErrInternalServer,
-				fmt.Sprintf("apt-get remove failed: %s", strings.TrimSpace(string(output))), err)
+	}
+	if uninstallPrefix {
+		if err := s.uninstallPrefixNginx(); err != nil {
+			return err
 		}
-		global.LOG.Infof("Nginx uninstalled via apt")
-	} else {
-		installDir := global.CONF.Nginx.InstallDir
-		nginxBin := global.CONF.Nginx.GetBinary()
-		pidPath := global.CONF.Nginx.GetPidPath()
-		if _, err := os.Stat(pidPath); err == nil {
-			_ = exec.Command(nginxBin, "-p", installDir, "-s", "quit").Run()
-			time.Sleep(2 * time.Second)
-		}
-		if err := os.RemoveAll(installDir); err != nil {
-			return buserr.WithDetail(constant.ErrInternalServer,
-				fmt.Sprintf("failed to remove %s: %v", installDir, err), err)
-		}
-		global.LOG.Infof("Nginx uninstalled from %s", installDir)
 	}
 
 	global.CONF.Nginx.DetectNginx()
+	return nil
+}
+
+func (s *NginxInstallService) uninstallSystemNginx() error {
+	if _, err := cmd.ExecWithOutput("systemctl", "stop", "nginx"); err != nil {
+		global.LOG.Warnf("Stop system nginx failed: %v", err)
+	}
+	output, err := exec.Command("apt-get", "remove", "--purge", "-y", "nginx", "nginx-common", "nginx-core").CombinedOutput()
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer,
+			fmt.Sprintf("apt-get remove failed: %s", strings.TrimSpace(string(output))), err)
+	}
+	_ = exec.Command("apt-get", "autoremove", "-y").Run()
+	global.LOG.Infof("Nginx uninstalled via apt (purge)")
+	return nil
+}
+
+func (s *NginxInstallService) uninstallPrefixNginx() error {
+	installDir := global.CONF.Nginx.InstallDir
+	nginxBin := filepath.Join(installDir, "sbin", "nginx")
+	pidPath := filepath.Join(installDir, "logs", "nginx.pid")
+
+	if _, err := os.Stat(pidPath); err == nil {
+		_ = exec.Command(nginxBin, "-p", installDir, "-s", "quit").Run()
+		time.Sleep(2 * time.Second)
+	}
+	// 清理 systemd 服务
+	svcFile := "/etc/systemd/system/xpanel-nginx.service"
+	if _, err := os.Stat(svcFile); err == nil {
+		_ = exec.Command("systemctl", "stop", "xpanel-nginx").Run()
+		_ = exec.Command("systemctl", "disable", "xpanel-nginx").Run()
+		os.Remove(svcFile)
+		_ = exec.Command("systemctl", "daemon-reload").Run()
+	}
+
+	if err := os.RemoveAll(installDir); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer,
+			fmt.Sprintf("failed to remove %s: %v", installDir, err), err)
+	}
+	global.LOG.Infof("Nginx uninstalled from %s (clean)", installDir)
 	return nil
 }
 

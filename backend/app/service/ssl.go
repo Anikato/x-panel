@@ -131,10 +131,13 @@ func (s *CertificateService) Delete(id uint) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
-	// 删除证书文件
+	// 删除证书文件（兼容旧路径含 * 和新路径 _wildcard）
 	sslDir := s.GetSSLDir()
-	certDir := filepath.Join(sslDir, "certs", cert.PrimaryDomain)
+	certDir := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain))
 	os.RemoveAll(certDir)
+	if safeDomainDir(cert.PrimaryDomain) != cert.PrimaryDomain {
+		os.RemoveAll(filepath.Join(sslDir, "certs", cert.PrimaryDomain))
+	}
 
 	return s.certRepo.Delete(repo.WithByID(id))
 }
@@ -338,7 +341,7 @@ func (s *CertificateService) Apply(id uint) error {
 		logger.Printf("[警告] 证书文件保存失败: %v", err)
 	} else {
 		sslDir := s.GetSSLDir()
-		logger.Printf("[成功] 证书文件已保存到: %s", filepath.Join(sslDir, "certs", cert.PrimaryDomain))
+		logger.Printf("[成功] 证书文件已保存到: %s", filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain)))
 	}
 
 	// 如果有网站正在使用此证书，自动 reload nginx
@@ -478,9 +481,15 @@ func (s *CertificateService) UpdateSSLDir(dir string) error {
 	return s.settingRepo.Update("SSLDir", dir)
 }
 
+// safeDomainDir converts a domain name into a filesystem-safe directory name.
+// Wildcard certs like "*.example.com" become "_wildcard.example.com".
+func safeDomainDir(domain string) string {
+	return strings.ReplaceAll(domain, "*", "_wildcard")
+}
+
 func (s *CertificateService) saveCertFiles(cert model.Certificate) error {
 	sslDir := s.GetSSLDir()
-	certDir := filepath.Join(sslDir, "certs", cert.PrimaryDomain)
+	certDir := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain))
 	if err := os.MkdirAll(certDir, 0755); err != nil {
 		return fmt.Errorf("create cert dir %s: %w", certDir, err)
 	}
@@ -525,7 +534,7 @@ func (s *CertificateService) getSSLLogDir() string {
 
 // getSSLLogPath 获取证书日志路径
 func (s *CertificateService) getSSLLogPath(cert model.Certificate) string {
-	return filepath.Join(s.getSSLLogDir(), fmt.Sprintf("%s-ssl-%d.log", cert.PrimaryDomain, cert.ID))
+	return filepath.Join(s.getSSLLogDir(), fmt.Sprintf("%s-ssl-%d.log", safeDomainDir(cert.PrimaryDomain), cert.ID))
 }
 
 // openSSLLog 创建/打开证书日志文件，返回 logger

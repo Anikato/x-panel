@@ -44,7 +44,21 @@
       <!-- 双安装警告 -->
       <el-alert v-if="status.hasBothInstalled" type="warning" show-icon :closable="false" style="margin-bottom: 16px">
         <template #title>{{ $t('nginx.bothInstalledTitle') }}</template>
-        {{ $t('nginx.bothInstalledDesc') }}
+        <div style="margin-bottom: 8px">
+          {{ $t('nginx.bothInstalledDesc') }}
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <el-popconfirm
+            :title="$t('nginx.uninstallConfirm', { mode: status.systemMode ? $t('nginx.prefixMode') : $t('nginx.systemMode') })"
+            @confirm="handleUninstallInactive"
+          >
+            <template #reference>
+              <el-button size="small" type="warning" :loading="uninstalling">
+                {{ $t('nginx.uninstallInactive', { mode: status.systemMode ? $t('nginx.prefixMode') : $t('nginx.systemMode') }) }}
+              </el-button>
+            </template>
+          </el-popconfirm>
+        </div>
       </el-alert>
 
       <el-tabs v-model="mainTab" class="nginx-tabs">
@@ -306,6 +320,7 @@ const autoStartLoading = ref(false)
 const showInstallDialog = ref(false)
 const installLoading = ref(false)
 const installing = ref(false)
+const uninstalling = ref(false)
 const installProgress = ref<NginxInstallProgress>({ phase: 'idle', message: '', percent: 0 })
 let progressTimer: ReturnType<typeof setInterval> | null = null
 
@@ -457,6 +472,17 @@ const handleUninstall = async () => {
     await loadStatus()
     testResult.value = null
   } catch { /* handled */ }
+}
+
+const handleUninstallInactive = async () => {
+  uninstalling.value = true
+  try {
+    const mode = status.value.systemMode ? 'prefix' : 'system'
+    await uninstallNginx(false, mode)
+    ElMessage.success(t('commons.success'))
+    await loadStatus()
+  } catch { /* handled */ }
+  finally { uninstalling.value = false }
 }
 
 // 检查更新
