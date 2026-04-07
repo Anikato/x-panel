@@ -94,6 +94,8 @@ const menuList = computed(() => [
       { path: '/host/process', title: t('menu.processManage') },
       { path: '/host/ssh', title: t('menu.sshManage') },
       { path: '/host/disk', title: t('menu.diskManage') },
+      { path: '/host/users', title: t('menu.userManage') },
+      { path: '/host/system', title: t('menu.systemSetting') },
     ],
   },
   { path: '/traffic', title: t('menu.traffic'), icon: 'Odometer' },

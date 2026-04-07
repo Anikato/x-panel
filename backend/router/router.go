@@ -344,6 +344,26 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/toolbox/ip/db/info", api.GetIPDBInfo)
 		privateGroup.POST("/toolbox/ip/db/download", api.DownloadIPDB)
 
+		// 系统用户管理
+		privateGroup.GET("/host/users", api.ListUsers)
+		privateGroup.POST("/host/users/create", api.CreateUser)
+		privateGroup.POST("/host/users/update", api.UpdateUser)
+		privateGroup.POST("/host/users/delete", api.DeleteUser)
+		privateGroup.GET("/host/users/shells", api.ListShells)
+		privateGroup.GET("/host/users/groups", api.ListGroups)
+
+		// 系统设置（主机名/时区/DNS/Swap）
+		privateGroup.GET("/host/system/info", api.GetSystemInfo)
+		privateGroup.POST("/host/system/hostname", api.SetHostname)
+		privateGroup.POST("/host/system/timezone", api.SetTimezone)
+		privateGroup.GET("/host/system/timezones", api.ListTimezones)
+		privateGroup.GET("/host/system/dns", api.GetDNS)
+		privateGroup.POST("/host/system/dns", api.SetDNS)
+		privateGroup.GET("/host/system/swap", api.GetSwap)
+		privateGroup.POST("/host/system/swap/create", api.CreateSwap)
+		privateGroup.POST("/host/system/swap/delete", api.DeleteSwap)
+		privateGroup.POST("/host/system/swap/operate", api.SwapOperate)
+
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)

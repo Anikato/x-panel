@@ -27,6 +27,7 @@ type ApiGroup struct {
 	TrafficAPI
 	GostAPI
 	ToolboxAPI
+	HostSystemAPI
 }
 
 // ApiGroupApp 全局 API 实例

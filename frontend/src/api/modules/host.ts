@@ -98,3 +98,55 @@ export const updateGroup = (params: { id: number; name: string }) => {
 export const deleteGroup = (id: number) => {
   return http.post('/groups/del', { id })
 }
+
+// --- Linux 用户管理 ---
+export const listLinuxUsers = (system: boolean = false) => {
+  return http.get(`/host/users?system=${system}`)
+}
+export const createLinuxUser = (params: any) => {
+  return http.post('/host/users/create', params)
+}
+export const updateLinuxUser = (params: any) => {
+  return http.post('/host/users/update', params)
+}
+export const deleteLinuxUser = (params: { username: string; removeHome: boolean }) => {
+  return http.post('/host/users/delete', params)
+}
+export const listShells = () => {
+  return http.get('/host/users/shells')
+}
+export const listLinuxGroups = () => {
+  return http.get('/host/users/groups')
+}
+
+// --- 系统设置（主机名/时区/DNS/Swap）---
+export const getSystemInfo = () => {
+  return http.get('/host/system/info')
+}
+export const setHostname = (hostname: string) => {
+  return http.post('/host/system/hostname', { hostname })
+}
+export const setTimezone = (timezone: string) => {
+  return http.post('/host/system/timezone', { timezone })
+}
+export const listTimezones = () => {
+  return http.get('/host/system/timezones')
+}
+export const getDNS = () => {
+  return http.get('/host/system/dns')
+}
+export const setDNS = (servers: string[]) => {
+  return http.post('/host/system/dns', { servers })
+}
+export const getSwapInfo = () => {
+  return http.get('/host/system/swap')
+}
+export const createSwap = (sizeMB: number) => {
+  return http.post('/host/system/swap/create', { sizeMB })
+}
+export const deleteSwap = () => {
+  return http.post('/host/system/swap/delete', {})
+}
+export const swapOperate = (op: string) => {
+  return http.post(`/host/system/swap/operate?op=${op}`, {})
+}

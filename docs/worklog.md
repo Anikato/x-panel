@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-04-07 — Session #54：Linux 用户管理 + 系统设置（主机名/时区/DNS/Swap）
+
+### 完成内容
+
+**Linux 用户管理 (CRUD)**：
+- [x] 后端：`host_user.go` — 解析 `/etc/passwd` 列出用户，`useradd`/`usermod`/`userdel`/`chpasswd` 实现增删改
+- [x] 支持系统用户/普通用户切换显示，root 用户禁止编辑/删除
+- [x] 可用 Shell 列表从 `/etc/shells` 读取，支持下拉选择或自定义输入
+- [x] 系统组列表从 `/etc/group` 读取
+- [x] 前端页面：用户列表 + 创建/编辑对话框 + 删除确认（可选同时删除主目录）
+
+**系统设置**：
+- [x] **主机名管理**：`hostnamectl set-hostname`，即时生效
+- [x] **时区管理**：`timedatectl set-timezone`，可搜索下拉选择时区
+- [x] **DNS 配置**：读写 `/etc/resolv.conf`，保留非 nameserver 行，常用 DNS 快速添加（Google/Cloudflare/阿里/腾讯/114）
+- [x] **Swap 管理**：创建/删除 `/swapfile`，启用/停用，自动写入/移除 `/etc/fstab`
+
+**路由/菜单**：
+- [x] 新增 `/host/users`（用户管理）和 `/host/system`（系统设置）路由
+- [x] 侧栏「系统」菜单新增两个子项
+
+### 版本
+- Tag: `v0.5.51`
+
+---
+
 ## 2026-04-07 — Session #53：NFS 修复 + 远程挂载网络优化 + SSL 通配符路径 + Nginx 双安装管理
 
 ### 完成内容

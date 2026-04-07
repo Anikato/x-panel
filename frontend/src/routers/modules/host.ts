@@ -37,6 +37,18 @@ const hostRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/host/disk/index.vue'),
     meta: { title: 'menu.diskManage', icon: 'Coin', requiresAuth: true },
   },
+  {
+    path: '/host/users',
+    name: 'UserManage',
+    component: () => import('@/views/host/user/index.vue'),
+    meta: { title: 'menu.userManage', icon: 'User', requiresAuth: true },
+  },
+  {
+    path: '/host/system',
+    name: 'SystemSetting',
+    component: () => import('@/views/host/system/index.vue'),
+    meta: { title: 'menu.systemSetting', icon: 'Setting', requiresAuth: true },
+  },
 ]
 
 export default hostRoutes
