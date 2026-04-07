@@ -57,11 +57,15 @@
                 <span class="form-hint">{{ $t('toolbox.fail2ban.maxRetryHint') }}</span>
               </el-form-item>
               <el-form-item :label="$t('toolbox.fail2ban.findTime')">
-                <el-input v-model="sshForm.findTime" style="width: 200px" />
+                <el-select v-model="sshForm.findTime" filterable allow-create style="width: 200px">
+                  <el-option v-for="opt in findTimeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
                 <span class="form-hint">{{ $t('toolbox.fail2ban.findTimeHint') }}</span>
               </el-form-item>
               <el-form-item :label="$t('toolbox.fail2ban.banTime')">
-                <el-input v-model="sshForm.banTime" style="width: 200px" />
+                <el-select v-model="sshForm.banTime" filterable allow-create style="width: 200px">
+                  <el-option v-for="opt in banTimeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
                 <span class="form-hint">{{ $t('toolbox.fail2ban.banTimeHint') }}</span>
               </el-form-item>
               <el-form-item>
@@ -186,10 +190,14 @@
           <el-input-number v-model="editJailForm.maxRetry" :min="1" :max="100" />
         </el-form-item>
         <el-form-item :label="$t('toolbox.fail2ban.findTime')">
-          <el-input v-model="editJailForm.findTime" />
+          <el-select v-model="editJailForm.findTime" filterable allow-create style="width: 100%">
+            <el-option v-for="opt in findTimeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
         </el-form-item>
         <el-form-item :label="$t('toolbox.fail2ban.banTime')">
-          <el-input v-model="editJailForm.banTime" />
+          <el-select v-model="editJailForm.banTime" filterable allow-create style="width: 100%">
+            <el-option v-for="opt in banTimeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -256,7 +264,29 @@ const handleAutoStart = async (val: boolean) => {
 }
 
 // SSH 防护
-const sshForm = reactive({ enabled: true, port: 'ssh', maxRetry: 5, findTime: '600', banTime: '3600' })
+const findTimeOptions = [
+  { value: '1m', label: '1 分钟' },
+  { value: '5m', label: '5 分钟' },
+  { value: '10m', label: '10 分钟' },
+  { value: '30m', label: '30 分钟' },
+  { value: '1h', label: '1 小时' },
+  { value: '6h', label: '6 小时' },
+  { value: '12h', label: '12 小时' },
+  { value: '1d', label: '1 天' },
+]
+const banTimeOptions = [
+  { value: '10m', label: '10 分钟' },
+  { value: '1h', label: '1 小时' },
+  { value: '6h', label: '6 小时' },
+  { value: '12h', label: '12 小时' },
+  { value: '1d', label: '1 天' },
+  { value: '7d', label: '7 天' },
+  { value: '30d', label: '30 天' },
+  { value: '90d', label: '90 天' },
+  { value: '365d', label: '1 年' },
+  { value: '-1', label: '永久封禁' },
+]
+const sshForm = reactive({ enabled: true, port: 'ssh', maxRetry: 5, findTime: '10m', banTime: '90d' })
 const sshSaving = ref(false)
 
 const loadSSHFromJails = (jailList: any[]) => {

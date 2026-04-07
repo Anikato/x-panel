@@ -204,15 +204,17 @@ func (s *Fail2banService) SetSSHJail(req dto.Fail2banSSHConfig) error {
 	if port == "" {
 		port = detectSSHPort()
 	}
+	backend := detectBackend()
 
 	newSection := fmt.Sprintf(`[sshd]
 enabled = %v
 port = %s
 filter = sshd
+backend = %s
 maxretry = %d
 findtime = %s
 bantime = %s
-`, req.Enabled, port, req.MaxRetry, req.FindTime, req.BanTime)
+`, req.Enabled, port, backend, req.MaxRetry, req.FindTime, req.BanTime)
 
 	updated := replaceOrAppendSection(string(content), "sshd", newSection)
 	return s.safeWriteConfig([]byte(updated))
@@ -289,25 +291,37 @@ func detectSSHPort() string {
 	return "ssh"
 }
 
+func detectBackend() string {
+	if _, err := os.Stat("/var/log/auth.log"); err == nil {
+		return "auto"
+	}
+	if _, err := exec.LookPath("journalctl"); err == nil {
+		return "systemd"
+	}
+	return "auto"
+}
+
 func (s *Fail2banService) ensureJailLocal() {
 	if _, err := os.Stat(f2bJailLocal); os.IsNotExist(err) {
 		port := detectSSHPort()
+		backend := detectBackend()
 		defaultContent := fmt.Sprintf(`# Fail2ban local configuration - managed by X-Panel
 # Override settings from jail.conf here
 
 [DEFAULT]
-bantime = 3600
-findtime = 600
+bantime = 90d
+findtime = 10m
 maxretry = 5
 
 [sshd]
 enabled = true
 port = %s
 filter = sshd
+backend = %s
 maxretry = 5
-findtime = 600
-bantime = 3600
-`, port)
+findtime = 10m
+bantime = 90d
+`, port, backend)
 		_ = os.WriteFile(f2bJailLocal, []byte(defaultContent), 0644)
 	}
 }
