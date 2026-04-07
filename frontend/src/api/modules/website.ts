@@ -68,6 +68,10 @@ export const tailNginxLog = (params: { site: string; type: string; lines: number
   return http.post('/nginx/log/tail', params)
 }
 
+export const drilldownNginxLog = (params: { site: string; timeRange: string; filterType: string; filterValue: string }) => {
+  return http.post('/nginx/log/drilldown', params)
+}
+
 // --- Nginx 配置文件管理 ---
 export const getNginxMainConf = () => {
   return http.get('/nginx/conf')

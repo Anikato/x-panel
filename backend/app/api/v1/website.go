@@ -292,3 +292,17 @@ func (a *WebsiteAPI) TailNginxLog(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, data)
 }
+
+func (a *WebsiteAPI) DrilldownNginxLog(c *gin.Context) {
+	var req dto.NginxLogDrilldownReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := nginxLogService.Drilldown(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}

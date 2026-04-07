@@ -242,7 +242,13 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 <style lang="scss" scoped>
 .dashboard { padding: 0; }
-.dash-card { margin-bottom: 16px; }
+.dash-card {
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--xp-bg-card) 0%, rgba(var(--xp-accent-rgb, 34, 211, 238), 0.04) 100%);
+  border: 1px solid var(--xp-border-light);
+  transition: border-color 0.2s;
+  &:hover { border-color: rgba(var(--xp-accent-rgb, 34, 211, 238), 0.2); }
+}
 
 .card-hd {
   display: flex; align-items: center; gap: 8px;
@@ -271,7 +277,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 /* Key-Value */
 .kv-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 280px));
   gap: 8px 20px;
 }
 

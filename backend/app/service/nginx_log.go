@@ -25,6 +25,7 @@ type INginxLogService interface {
 	DetectSites() ([]dto.NginxDetectedSite, error)
 	AnalyzeSite(req dto.NginxLogAnalyzeReq) (*dto.NginxLogAnalysis, error)
 	TailLog(req dto.NginxLogTailReq) (*dto.NginxLogTailResp, error)
+	Drilldown(req dto.NginxLogDrilldownReq) (*dto.NginxLogDrilldownResp, error)
 }
 
 type NginxLogService struct {
@@ -239,6 +240,78 @@ func (s *NginxLogService) TailLog(req dto.NginxLogTailReq) (*dto.NginxLogTailRes
 	}
 
 	return &dto.NginxLogTailResp{Content: content, Path: logPath}, nil
+}
+
+// Drilldown returns detailed IPs/URLs for a given URL or threat category
+func (s *NginxLogService) Drilldown(req dto.NginxLogDrilldownReq) (*dto.NginxLogDrilldownResp, error) {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return nil, buserr.New(constant.ErrNginxNotInstalled)
+	}
+
+	cutoff := parseCutoff(req.TimeRange)
+	maxLines := maxLinesForRange(req.TimeRange)
+
+	sites, err := s.DetectSites()
+	if err != nil {
+		return nil, err
+	}
+
+	var logPaths []string
+	if req.Site == "" {
+		for _, site := range sites {
+			if site.AccessLog != "" && site.AccessLog != "off" {
+				logPaths = append(logPaths, site.AccessLog)
+			}
+		}
+	} else {
+		for _, site := range sites {
+			if site.Name == req.Site {
+				if site.AccessLog != "" && site.AccessLog != "off" {
+					logPaths = append(logPaths, site.AccessLog)
+				}
+				break
+			}
+		}
+	}
+
+	dedupPaths := dedupStrings(logPaths)
+	var allEntries []logEntry
+	for _, p := range dedupPaths {
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		entries, err := parseAccessLog(p, cutoff, maxLines)
+		if err != nil {
+			continue
+		}
+		allEntries = append(allEntries, entries...)
+	}
+
+	bannedSet := loadBannedIPSet()
+	ipCount := make(map[string]int64)
+	urlCount := make(map[string]int64)
+
+	for _, e := range allEntries {
+		switch req.FilterType {
+		case "url":
+			if e.URL == req.FilterValue {
+				ipCount[e.IP]++
+			}
+		case "threat":
+			if classifyThreat(e.URL) == req.FilterValue {
+				ipCount[e.IP]++
+				urlCount[e.URL]++
+			}
+		}
+	}
+
+	resp := &dto.NginxLogDrilldownResp{
+		IPs:  topNWithGeo(ipCount, 50, true),
+		URLs: topN(urlCount, 50),
+	}
+	markBanned(resp.IPs, bannedSet)
+	return resp, nil
 }
 
 // --- Nginx config parsing ---
@@ -467,6 +540,36 @@ func classifyThreat(url string) string {
 	return ""
 }
 
+// --- Crawler detection ---
+
+var crawlerPatterns = []struct {
+	Name    string
+	Pattern *regexp.Regexp
+}{
+	{"Googlebot", regexp.MustCompile(`(?i)googlebot`)},
+	{"Bingbot", regexp.MustCompile(`(?i)bingbot`)},
+	{"Baidu Spider", regexp.MustCompile(`(?i)baiduspider`)},
+	{"YandexBot", regexp.MustCompile(`(?i)yandexbot`)},
+	{"DuckDuckBot", regexp.MustCompile(`(?i)duckduckbot`)},
+	{"Sogou", regexp.MustCompile(`(?i)sogou`)},
+	{"Bytespider", regexp.MustCompile(`(?i)bytespider`)},
+	{"GPTBot", regexp.MustCompile(`(?i)gptbot`)},
+	{"ClaudeBot", regexp.MustCompile(`(?i)claudebot`)},
+	{"Applebot", regexp.MustCompile(`(?i)applebot`)},
+	{"SemrushBot", regexp.MustCompile(`(?i)semrushbot`)},
+	{"AhrefsBot", regexp.MustCompile(`(?i)ahrefsbot`)},
+	{"其他爬虫", regexp.MustCompile(`(?i)(bot|crawler|spider|scraper|crawl)`)},
+}
+
+func classifyCrawler(ua string) string {
+	for _, cp := range crawlerPatterns {
+		if cp.Pattern.MatchString(ua) {
+			return cp.Name
+		}
+	}
+	return ""
+}
+
 func loadBannedIPSet() map[string]bool {
 	result := make(map[string]bool)
 	svc := NewIFail2banService()
@@ -502,6 +605,7 @@ func aggregate(entries []logEntry, days int, withGeo bool, bannedIPs map[string]
 	dailyBytes := make(map[string]int64)
 	threatCatCount := make(map[string]int64)
 	threatIPCount := make(map[string]int64)
+	crawlerCatCount := make(map[string]int64)
 
 	var errors int64
 
@@ -525,6 +629,11 @@ func aggregate(entries []logEntry, days int, withGeo bool, bannedIPs map[string]
 			threatIPCount[e.IP]++
 		}
 
+		if cc := classifyCrawler(e.UserAgent); cc != "" {
+			result.CrawlerRequests++
+			crawlerCatCount[cc]++
+		}
+
 		h := e.Time.Format("2006-01-02 15:00")
 		hourlyReqs[h]++
 		hourlyBytes[h] += e.Bytes
@@ -544,6 +653,7 @@ func aggregate(entries []logEntry, days int, withGeo bool, bannedIPs map[string]
 	result.TopUserAgents = topN(uaCount, 10)
 	result.TopThreats = topN(threatCatCount, 20)
 	result.ThreatIPs = topNWithGeo(threatIPCount, 10, withGeo)
+	result.TopCrawlers = topN(crawlerCatCount, 20)
 
 	if bannedIPs != nil {
 		markBanned(result.TopIPs, bannedIPs)

@@ -230,11 +230,13 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 	jailNames := parseJailList(string(out))
 	banTimes := s.parseBanTimes()
 	var result []dto.Fail2banBannedIP
+	seen := make(map[string]bool)
 
 	ipSvc := iplocation.GetService()
 	for _, jail := range jailNames {
 		ips := s.getBannedIPs(jail)
 		for _, ip := range ips {
+			seen[ip] = true
 			geo := ipSvc.Lookup(ip)
 			result = append(result, dto.Fail2banBannedIP{
 				IP: ip, Jail: jail,
@@ -244,7 +246,45 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 			})
 		}
 	}
+
+	for _, ip := range listNftBannedIPs() {
+		if seen[ip] {
+			continue
+		}
+		geo := ipSvc.Lookup(ip)
+		result = append(result, dto.Fail2banBannedIP{
+			IP: ip, Jail: "xpanel-ban",
+			Country: geo.Country, CountryCode: geo.CountryCode,
+			City: geo.City, Region: geo.Region,
+		})
+	}
 	return result, nil
+}
+
+var nftIPRegex = regexp.MustCompile(`(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})`)
+
+func listNftBannedIPs() []string {
+	out, err := exec.Command("nft", "list", "set", "inet", "xpanel-ban", nftSet).CombinedOutput()
+	if err != nil {
+		return nil
+	}
+	var ips []string
+	inElements := false
+	for _, line := range strings.Split(string(out), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "elements") {
+			inElements = true
+		}
+		if inElements {
+			for _, m := range nftIPRegex.FindAllString(trimmed, -1) {
+				ips = append(ips, m)
+			}
+		}
+		if inElements && strings.Contains(trimmed, "}") {
+			break
+		}
+	}
+	return ips
 }
 
 var banLogRegexp = regexp.MustCompile(`(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}).*Ban\s+(\S+)`)
@@ -267,12 +307,32 @@ func (s *Fail2banService) parseBanTimes() map[string]string {
 	return result
 }
 
-func (s *Fail2banService) Ban(req dto.Fail2banBanReq) error {
-	jail := req.Jail
-	if jail == "" {
-		jail = "sshd"
+const (
+	nftTable = "inet xpanel-ban"
+	nftSet   = "blocked"
+)
+
+func ensureNftBanInfra() error {
+	cmds := [][]string{
+		{"nft", "add", "table", "inet", "xpanel-ban"},
+		{"nft", "add", "set", "inet", "xpanel-ban", nftSet, "{ type ipv4_addr; }"},
+		{"nft", "add", "chain", "inet", "xpanel-ban", "input", "{ type filter hook input priority -10; policy accept; }"},
 	}
-	out, err := exec.Command(f2bClient, "set", jail, "banip", req.IP).CombinedOutput()
+	for _, args := range cmds {
+		exec.Command(args[0], args[1:]...).CombinedOutput()
+	}
+	ruleCheck, _ := exec.Command("nft", "list", "chain", "inet", "xpanel-ban", "input").CombinedOutput()
+	if !strings.Contains(string(ruleCheck), "@blocked") {
+		exec.Command("nft", "add", "rule", "inet", "xpanel-ban", "input", "ip", "saddr", "@blocked", "drop").CombinedOutput()
+	}
+	return nil
+}
+
+func (s *Fail2banService) Ban(req dto.Fail2banBanReq) error {
+	if err := ensureNftBanInfra(); err != nil {
+		return err
+	}
+	out, err := exec.Command("nft", "add", "element", "inet", "xpanel-ban", nftSet, "{ "+req.IP+" }").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("ban failed: %s", strings.TrimSpace(string(out)))
 	}
@@ -280,7 +340,7 @@ func (s *Fail2banService) Ban(req dto.Fail2banBanReq) error {
 }
 
 func (s *Fail2banService) Unban(req dto.Fail2banUnbanReq) error {
-	out, err := exec.Command(f2bClient, "set", req.Jail, "unbanip", req.IP).CombinedOutput()
+	out, err := exec.Command("nft", "delete", "element", "inet", "xpanel-ban", nftSet, "{ "+req.IP+" }").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("unban failed: %s", strings.TrimSpace(string(out)))
 	}

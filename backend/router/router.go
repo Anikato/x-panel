@@ -391,6 +391,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nginx/log/sites", api.DetectNginxSites)
 		privateGroup.POST("/nginx/log/analyze", api.AnalyzeNginxSiteLog)
 		privateGroup.POST("/nginx/log/tail", api.TailNginxLog)
+		privateGroup.POST("/nginx/log/drilldown", api.DrilldownNginxLog)
 
 	}
 

@@ -6,19 +6,21 @@ type NginxLogAnalysisReq struct {
 }
 
 type NginxLogAnalysis struct {
-	TotalRequests  int64             `json:"totalRequests"`
-	UniqueIPs      int               `json:"uniqueIPs"`
-	TotalBytes     int64             `json:"totalBytes"`
-	StatusCodes    map[string]int64  `json:"statusCodes"`
-	TopURLs        []RankItem        `json:"topUrls"`
-	TopIPs         []RankItem        `json:"topIps"`
-	TopUserAgents  []RankItem        `json:"topUserAgents"`
-	HourlyStats    []TimeSeriesPoint `json:"hourlyStats"`
-	DailyStats     []TimeSeriesPoint `json:"dailyStats"`
-	ErrorRate      float64           `json:"errorRate"`
-	ThreatRequests int64             `json:"threatRequests"`
-	ThreatIPs      []RankItem        `json:"threatIPs"`
-	TopThreats     []RankItem        `json:"topThreats"`
+	TotalRequests   int64             `json:"totalRequests"`
+	UniqueIPs       int               `json:"uniqueIPs"`
+	TotalBytes      int64             `json:"totalBytes"`
+	StatusCodes     map[string]int64  `json:"statusCodes"`
+	TopURLs         []RankItem        `json:"topUrls"`
+	TopIPs          []RankItem        `json:"topIps"`
+	TopUserAgents   []RankItem        `json:"topUserAgents"`
+	HourlyStats     []TimeSeriesPoint `json:"hourlyStats"`
+	DailyStats      []TimeSeriesPoint `json:"dailyStats"`
+	ErrorRate       float64           `json:"errorRate"`
+	ThreatRequests  int64             `json:"threatRequests"`
+	ThreatIPs       []RankItem        `json:"threatIPs"`
+	TopThreats      []RankItem        `json:"topThreats"`
+	CrawlerRequests int64             `json:"crawlerRequests"`
+	TopCrawlers     []RankItem        `json:"topCrawlers"`
 }
 
 type RankItem struct {
@@ -58,4 +60,16 @@ type NginxLogTailReq struct {
 type NginxLogTailResp struct {
 	Content string `json:"content"`
 	Path    string `json:"path"`
+}
+
+type NginxLogDrilldownReq struct {
+	Site        string `json:"site"`
+	TimeRange   string `json:"timeRange"`
+	FilterType  string `json:"filterType" validate:"required,oneof=url threat"`
+	FilterValue string `json:"filterValue" validate:"required"`
+}
+
+type NginxLogDrilldownResp struct {
+	IPs  []RankItem `json:"ips"`
+	URLs []RankItem `json:"urls"`
 }

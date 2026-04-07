@@ -144,7 +144,7 @@
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.url')" min-width="240">
                     <template #default="{ row }">
-                      <span class="mono-text url-cell">{{ row.name }}</span>
+                      <span class="mono-text url-cell drilldown-link" @click="handleDrilldown('url', row.name)">{{ row.name }}</span>
                     </template>
                   </el-table-column>
                   <el-table-column :label="$t('nginx.requests')" width="90" align="right">
@@ -214,6 +214,46 @@
                           <el-button type="warning" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.unban') }}</el-button>
                         </template>
                       </el-popconfirm>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <!-- 爬虫检测 -->
+          <el-row v-if="analysis.crawlerRequests > 0" :gutter="16" style="margin-top: 16px">
+            <el-col :xs="24" :lg="10">
+              <el-card shadow="never" class="rank-card crawler-section">
+                <template #header>
+                  <div class="threat-header">
+                    <span class="chart-title">{{ $t('nginx.crawlerDetection') }}</span>
+                    <el-tag type="info" size="small" effect="plain">{{ formatNumber(analysis.crawlerRequests) }} {{ $t('nginx.requests') }}</el-tag>
+                  </div>
+                </template>
+                <div ref="crawlerChartRef" class="chart-container" style="height: 220px"></div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="14">
+              <el-card shadow="never" class="rank-card crawler-section">
+                <template #header>
+                  <span class="chart-title">{{ $t('nginx.crawlerRanking') }}</span>
+                </template>
+                <el-table :data="analysis.topCrawlers || []" size="small" stripe :show-header="true" max-height="260">
+                  <el-table-column type="index" width="36" />
+                  <el-table-column :label="$t('nginx.crawlerName')" min-width="150">
+                    <template #default="{ row }">
+                      <span>{{ row.name }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.requests')" width="100" align="right">
+                    <template #default="{ row }">
+                      <span class="count-text">{{ formatNumber(row.count) }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.percentage')" width="100" align="right">
+                    <template #default="{ row }">
+                      <span class="muted-text">{{ analysis.totalRequests ? ((row.count / analysis.totalRequests) * 100).toFixed(1) : '0' }}%</span>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -291,6 +331,74 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 下钻弹窗 -->
+    <el-dialog v-model="drilldownVisible" :title="drilldownTitle" width="720px" destroy-on-close>
+      <div v-loading="drilldownLoading">
+        <template v-if="drilldownURLs.length > 0">
+          <h4 style="margin: 0 0 8px; font-size: 13px; color: var(--xp-text-secondary)">{{ $t('nginx.relatedURLs') }}</h4>
+          <el-table :data="drilldownURLs" size="small" stripe max-height="200" style="margin-bottom: 16px">
+            <el-table-column type="index" width="36" />
+            <el-table-column :label="$t('nginx.url')" min-width="300">
+              <template #default="{ row }">
+                <span class="mono-text url-cell">{{ row.name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="$t('nginx.requests')" width="90" align="right">
+              <template #default="{ row }">
+                <span class="count-text">{{ formatNumber(row.count) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+
+        <h4 v-if="drilldownURLs.length > 0" style="margin: 0 0 8px; font-size: 13px; color: var(--xp-text-secondary)">{{ $t('nginx.relatedIPs') }}</h4>
+        <el-table :data="drilldownIPs" size="small" stripe max-height="360">
+          <el-table-column type="index" width="36" />
+          <el-table-column :label="$t('nginx.ip')" min-width="130">
+            <template #default="{ row }">
+              <span class="mono-text">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('nginx.location')" min-width="100">
+            <template #default="{ row }">
+              <span v-if="row.country" class="location-text">{{ row.country }}<template v-if="row.city"> / {{ row.city }}</template></span>
+              <span v-else class="muted-text">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('nginx.requests')" width="80" align="right">
+            <template #default="{ row }">
+              <span class="count-text">{{ formatNumber(row.count) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('nginx.status')" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.banned" type="danger" size="small" effect="dark">{{ $t('nginx.banned') }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('nginx.actions')" width="80" align="center">
+            <template #default="{ row }">
+              <el-popconfirm v-if="!row.banned"
+                :title="$t('nginx.banConfirm', { ip: row.name })"
+                @confirm="handleBanIP(row.name)">
+                <template #reference>
+                  <el-button type="danger" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.ban') }}</el-button>
+                </template>
+              </el-popconfirm>
+              <el-popconfirm v-else
+                :title="$t('nginx.unbanConfirm', { ip: row.name })"
+                @confirm="handleUnbanIP(row.name)">
+                <template #reference>
+                  <el-button type="warning" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.unban') }}</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-empty v-if="!drilldownLoading && drilldownIPs.length === 0" :description="$t('nginx.noLogData')" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -298,7 +406,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Refresh } from '@element-plus/icons-vue'
-import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog } from '@/api/modules/website'
+import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog, drilldownNginxLog } from '@/api/modules/website'
 import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
@@ -316,14 +424,23 @@ const analysis = reactive<any>({
   statusCodes: {}, topUrls: [], topIps: [], topUserAgents: [],
   hourlyStats: [], dailyStats: [],
   threatRequests: 0, threatIPs: [], topThreats: [],
+  crawlerRequests: 0, topCrawlers: [],
 })
+
+const drilldownVisible = ref(false)
+const drilldownLoading = ref(false)
+const drilldownTitle = ref('')
+const drilldownIPs = ref<any[]>([])
+const drilldownURLs = ref<any[]>([])
 
 const trendChartRef = ref<HTMLElement>()
 const statusChartRef = ref<HTMLElement>()
 const threatChartRef = ref<HTMLElement>()
+const crawlerChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
 let statusChart: echarts.ECharts | null = null
 let threatChart: echarts.ECharts | null = null
+let crawlerChart: echarts.ECharts | null = null
 
 const logLines = ref(200)
 const errorLogLines = ref(200)
@@ -371,6 +488,7 @@ const emptyAnalysis = {
   statusCodes: {}, topUrls: [], topIps: [], topUserAgents: [],
   hourlyStats: [], dailyStats: [],
   threatRequests: 0, threatIPs: [], topThreats: [],
+  crawlerRequests: 0, topCrawlers: [],
 }
 
 const handleAnalyze = async () => {
@@ -403,6 +521,27 @@ const handleUnbanIP = async (ip: string) => {
     ElMessage.success(t('nginx.unbanSuccess', { ip }))
     handleAnalyze()
   } catch {} finally { banLoading[ip] = false }
+}
+
+const handleDrilldown = async (filterType: string, filterValue: string) => {
+  drilldownTitle.value = filterType === 'url'
+    ? `${t('nginx.drilldownURL')}: ${filterValue}`
+    : `${t('nginx.drilldownThreat')}: ${filterValue}`
+  drilldownIPs.value = []
+  drilldownURLs.value = []
+  drilldownVisible.value = true
+  drilldownLoading.value = true
+  try {
+    const res = await drilldownNginxLog({
+      site: selectedSite.value,
+      timeRange: timeRange.value,
+      filterType,
+      filterValue,
+    })
+    drilldownIPs.value = res.data?.ips || []
+    drilldownURLs.value = res.data?.urls || []
+  } catch { /* empty */ }
+  finally { drilldownLoading.value = false }
 }
 
 const loadAccessLog = async () => {
@@ -441,6 +580,9 @@ const renderCharts = () => {
   renderStatusChart()
   if (analysis.threatRequests > 0) {
     nextTick(() => renderThreatChart())
+  }
+  if (analysis.crawlerRequests > 0) {
+    nextTick(() => renderCrawlerChart())
   }
 }
 
@@ -508,6 +650,9 @@ const renderThreatChart = () => {
   if (!threatChartRef.value) return
   if (!threatChart) {
     threatChart = echarts.init(threatChartRef.value)
+    threatChart.on('click', (params: any) => {
+      if (params.name) handleDrilldown('threat', params.name)
+    })
   }
 
   const threats = analysis.topThreats || []
@@ -522,8 +667,34 @@ const renderThreatChart = () => {
     xAxis: { type: 'value', axisLabel: { fontSize: 11 } },
     yAxis: { type: 'category', data: names.reverse(), axisLabel: { fontSize: 11, width: 90, overflow: 'truncate' } },
     series: [{
-      type: 'bar', data: values.reverse(), barMaxWidth: 18,
+      type: 'bar', data: values.reverse(), barMaxWidth: 18, cursor: 'pointer',
       itemStyle: { borderRadius: [0, 3, 3, 0], color: (params: any) => threatColors[params.dataIndex % threatColors.length] },
+    }],
+  }, true)
+}
+
+const crawlerColors = ['#67c23a', '#409eff', '#e6a23c', '#f56c6c', '#909399', '#b37feb', '#36cfc9', '#ff85c0', '#ffc53d', '#597ef7', '#73d13d', '#ff7a45', '#9254de']
+
+const renderCrawlerChart = () => {
+  if (!crawlerChartRef.value) return
+  if (!crawlerChart) {
+    crawlerChart = echarts.init(crawlerChartRef.value)
+  }
+  const crawlers = analysis.topCrawlers || []
+  if (crawlers.length === 0) { crawlerChart.clear(); return }
+
+  const data = crawlers.map((c: any, i: number) => ({
+    name: c.name, value: c.count,
+    itemStyle: { color: crawlerColors[i % crawlerColors.length] },
+  }))
+
+  crawlerChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie', radius: ['35%', '65%'], center: ['50%', '50%'],
+      avoidLabelOverlap: true,
+      label: { show: true, formatter: '{b}\n{d}%', fontSize: 11 },
+      data,
     }],
   }, true)
 }
@@ -532,6 +703,7 @@ const handleResize = () => {
   trendChart?.resize()
   statusChart?.resize()
   threatChart?.resize()
+  crawlerChart?.resize()
 }
 
 const formatNumber = (n: number) => {
@@ -560,6 +732,7 @@ onUnmounted(() => {
   trendChart?.dispose()
   statusChart?.dispose()
   threatChart?.dispose()
+  crawlerChart?.dispose()
   window.removeEventListener('resize', handleResize)
 })
 </script>
@@ -687,6 +860,18 @@ onUnmounted(() => {
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 100%;
+  }
+
+  .drilldown-link {
+    cursor: pointer;
+    color: var(--el-color-primary);
+    &:hover { text-decoration: underline; }
+  }
+
+  .crawler-section {
+    :deep(.el-card__header) {
+      border-left: 3px solid var(--el-color-success);
+    }
   }
 
   .location-text { font-size: 12px; color: var(--xp-text-secondary); }

@@ -18,7 +18,7 @@ export const useGlobalStore = defineStore('global', {
     menuCollapse: false,
     panelName: 'X-Panel',
     theme: 'dark' as ThemeMode,
-    accentKey: 'cyan',
+    accentKey: 'neon',
     accentCustom: '',
     version: '',
     currentNodeID: 0,
