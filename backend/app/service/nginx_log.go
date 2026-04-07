@@ -244,8 +244,8 @@ func (s *NginxLogService) TailLog(req dto.NginxLogTailReq) (*dto.NginxLogTailRes
 
 var (
 	serverNameRe = regexp.MustCompile(`(?i)^\s*server_name\s+(.+?)\s*;`)
-	accessLogRe  = regexp.MustCompile(`(?i)^\s*access_log\s+(\S+)`)
-	errorLogRe   = regexp.MustCompile(`(?i)^\s*error_log\s+(\S+)`)
+	accessLogRe  = regexp.MustCompile(`(?i)^\s*access_log\s+([^\s;]+)`)
+	errorLogRe   = regexp.MustCompile(`(?i)^\s*error_log\s+([^\s;]+)`)
 )
 
 func parseNginxConfForSites(confPath, defaultLogDir string) []dto.NginxDetectedSite {

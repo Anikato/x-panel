@@ -88,6 +88,20 @@
 
         <!-- Local fields -->
         <template v-if="accountForm.type === 'local'">
+          <el-form-item v-if="remoteMounts.length > 0" :label="t('backup.remoteMounts')">
+            <el-select v-model="selectedMount" :placeholder="t('backup.selectMountHint')" clearable style="width: 100%" @change="onMountSelect">
+              <el-option v-for="m in remoteMounts" :key="m.mountPoint" :label="m.mountPoint" :value="m.mountPoint">
+                <div class="mount-option">
+                  <span class="mount-path">{{ m.mountPoint }}</span>
+                  <span class="mount-info">
+                    <el-tag :type="m.fsType.includes('nfs') ? 'warning' : 'success'" size="small" effect="plain">{{ m.fsType.toUpperCase() }}</el-tag>
+                    <span class="mount-device">{{ m.device }}</span>
+                  </span>
+                </div>
+              </el-option>
+            </el-select>
+            <div class="form-hint">{{ t('backup.mountSelectHint') }}</div>
+          </el-form-item>
           <el-form-item :label="t('backup.path')">
             <el-input v-model="accountForm.backupPath" placeholder="/opt/xpanel/backup" />
             <div class="form-hint">{{ t('backup.localPathHint') }}</div>
@@ -203,6 +217,7 @@ import {
   listBackupAccounts, createBackupAccount, updateBackupAccount, deleteBackupAccount,
   createBackup, searchBackupRecords, deleteBackupRecord,
 } from '@/api/modules/backup'
+import { listRemoteMounts } from '@/api/modules/disk'
 
 const { t } = useI18n()
 const activeTab = ref('accounts')
@@ -228,12 +243,29 @@ const accountRules: FormRules = { name: [{ required: true, trigger: 'blur' }], t
 const endpointField = ref('')
 const regionField = ref('')
 
+const remoteMounts = ref<any[]>([])
+const selectedMount = ref('')
+
+const loadRemoteMounts = async () => {
+  try {
+    const res = await listRemoteMounts()
+    remoteMounts.value = res.data || []
+  } catch { remoteMounts.value = [] }
+}
+
+const onMountSelect = (mountPoint: string) => {
+  if (mountPoint) {
+    accountForm.backupPath = mountPoint.replace(/\/$/, '') + '/xpanel-backup'
+  }
+}
+
 const onTypeChange = (type: string) => {
   accountForm.accessKey = ''
   accountForm.credential = ''
   accountForm.bucket = ''
   endpointField.value = ''
   regionField.value = ''
+  selectedMount.value = ''
   switch (type) {
     case 'local': accountForm.backupPath = '/opt/xpanel/backup'; break
     case 's3': accountForm.backupPath = '/xpanel-backup'; break
@@ -264,8 +296,10 @@ const openCreateAccount = () => {
   Object.assign(accountForm, defaultAccountForm())
   endpointField.value = ''
   regionField.value = ''
+  selectedMount.value = ''
   editAccountMode.value = false
   accountDrawer.value = true
+  loadRemoteMounts()
 }
 
 const openEditAccount = (row: BackupAccount) => {
@@ -275,8 +309,10 @@ const openEditAccount = (row: BackupAccount) => {
     endpointField.value = v.endpoint || ''
     regionField.value = v.region || ''
   } catch { endpointField.value = ''; regionField.value = '' }
+  selectedMount.value = ''
   editAccountMode.value = true
   accountDrawer.value = true
+  if (row.type === 'local') loadRemoteMounts()
 }
 
 const submitAccount = async () => {
@@ -337,4 +373,10 @@ onMounted(() => loadAccounts())
 <style scoped>
 .type-option { display: flex; align-items: center; gap: 8px; }
 .form-hint { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
+.mount-option {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+}
+.mount-path { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
+.mount-info { display: flex; align-items: center; gap: 6px; }
+.mount-device { font-size: 12px; color: var(--el-text-color-secondary); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 </style>

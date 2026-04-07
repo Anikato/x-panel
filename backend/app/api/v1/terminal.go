@@ -71,7 +71,12 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 	}
 
 	shell := getShell()
-	cmd := exec.Command(shell)
+	cmd := exec.Command(shell, "-l")
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/root"
+	}
+	cmd.Dir = home
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LANG=en_US.UTF-8")
 
 	ptmx, err := pty.Start(cmd)

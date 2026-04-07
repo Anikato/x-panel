@@ -227,6 +227,7 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 	}
 
 	jailNames := parseJailList(string(out))
+	banTimes := s.parseBanTimes()
 	var result []dto.Fail2banBannedIP
 
 	ipSvc := iplocation.GetService()
@@ -238,10 +239,31 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 				IP: ip, Jail: jail,
 				Country: geo.Country, CountryCode: geo.CountryCode,
 				City: geo.City, Region: geo.Region,
+				BannedAt: banTimes[ip],
 			})
 		}
 	}
 	return result, nil
+}
+
+var banLogRegexp = regexp.MustCompile(`(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}).*Ban\s+(\S+)`)
+
+func (s *Fail2banService) parseBanTimes() map[string]string {
+	result := make(map[string]string)
+	out, err := exec.Command("journalctl", "-u", "fail2ban", "--no-pager", "-q", "--output=short-iso").CombinedOutput()
+	if err != nil {
+		return result
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.Contains(line, "Ban") || strings.Contains(line, "Unban") {
+			continue
+		}
+		m := banLogRegexp.FindStringSubmatch(line)
+		if m != nil {
+			result[m[2]] = m[1]
+		}
+	}
+	return result
 }
 
 func (s *Fail2banService) Unban(req dto.Fail2banUnbanReq) error {
@@ -336,13 +358,14 @@ func (s *Fail2banService) safeWriteConfig(data []byte) error {
 		return err
 	}
 
-	out, err := exec.Command(f2bClient, "reload").CombinedOutput()
+	// restart (not reload) to force nftables chain recreation with correct port
+	out, err := exec.Command("systemctl", "restart", "fail2ban").CombinedOutput()
 	if err != nil {
 		if backupData, bErr := os.ReadFile(backup); bErr == nil {
 			_ = os.WriteFile(f2bJailLocal, backupData, 0644)
-			_ = exec.Command(f2bClient, "reload").Run()
+			_ = exec.Command("systemctl", "restart", "fail2ban").Run()
 		}
-		return fmt.Errorf("fail2ban reload failed: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("fail2ban restart failed: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }

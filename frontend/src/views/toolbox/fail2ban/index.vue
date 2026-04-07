@@ -91,6 +91,12 @@
                 </template>
               </el-table-column>
               <el-table-column prop="jail" label="Jail" width="120" />
+              <el-table-column :label="$t('toolbox.fail2ban.bannedAt')" min-width="170">
+                <template #default="{ row }">
+                  <span v-if="row.bannedAt">{{ row.bannedAt }}</span>
+                  <span v-else style="color: var(--xp-text-muted)">-</span>
+                </template>
+              </el-table-column>
               <el-table-column :label="$t('commons.actions')" width="100" align="center">
                 <template #default="{ row }">
                   <el-popconfirm :title="$t('toolbox.fail2ban.unbanConfirm', { ip: row.ip })" @confirm="handleUnban(row)">

@@ -197,6 +197,7 @@ type Fail2banBannedIP struct {
 	CountryCode string `json:"countryCode"`
 	City        string `json:"city"`
 	Region      string `json:"region"`
+	BannedAt    string `json:"bannedAt"`
 }
 
 type Fail2banUnbanReq struct {

@@ -2,6 +2,10 @@ package server
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
 
 	"xpanel/global"
 	"xpanel/i18n"
@@ -77,7 +81,12 @@ func Start() {
 
 	if sslConf.Enable && sslConf.CertPath != "" && sslConf.KeyPath != "" {
 		global.LOG.Infof("X-Panel server starting on HTTPS :%s", port)
-		if err := r.RunTLS(":"+port, sslConf.CertPath, sslConf.KeyPath); err != nil {
+		srv := &http.Server{
+			Addr:     ":" + port,
+			Handler:  r,
+			ErrorLog: newTLSFilteredLogger(),
+		}
+		if err := srv.ListenAndServeTLS(sslConf.CertPath, sslConf.KeyPath); err != nil {
 			panic(fmt.Sprintf("Server failed to start with TLS: %v", err))
 		}
 	} else {
@@ -86,4 +95,18 @@ func Start() {
 			panic(fmt.Sprintf("Server failed to start: %v", err))
 		}
 	}
+}
+
+type tlsFilterWriter struct{}
+
+func (w *tlsFilterWriter) Write(p []byte) (int, error) {
+	msg := string(p)
+	if strings.Contains(msg, "TLS handshake error") {
+		return len(p), nil
+	}
+	return io.Discard.Write(p)
+}
+
+func newTLSFilteredLogger() *log.Logger {
+	return log.New(&tlsFilterWriter{}, "", 0)
 }
