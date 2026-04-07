@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-04-07 — Session #57：Fail2ban UI 优化 + 封禁问题修复
+
+### 完成内容
+
+**Fail2ban UI 优化**：
+- [x] 检测窗口（findTime）和封禁时长（banTime）从文本输入改为下拉选择（支持自定义输入）
+- [x] findTime 预设：1m / 5m / 10m / 30m / 1h / 6h / 12h / 1d
+- [x] banTime 预设：10m / 1h / 6h / 12h / 1d / 7d / 30d / 90d / 365d / 永久
+- [x] 默认封禁时长改为 90 天（原为 1 小时）
+- [x] 改进 findTime 提示说明："在此时间内失败超过最大重试次数则封禁"
+- [x] 编辑 Jail 对话框同步使用下拉选择
+
+**Fail2ban 封禁不生效排查**：
+- [x] 诊断发现：系统无 `/var/log/auth.log`（使用 systemd-journal），需显式设置 `backend = systemd`
+- [x] 后端添加 `detectBackend()` 函数：自动检测应使用 auto 还是 systemd
+- [x] `SetSSHJail` 和 `ensureJailLocal` 现在生成配置包含 `backend` 参数
+- [x] 服务器 jail.local 已更新，确认封禁功能正常（当前已封禁 3 个攻击 IP）
+
+**SSH MCP 配置**：
+- [x] 修改 Cursor SSH MCP 配置为私钥认证（`--key` 参数）
+
+### 版本
+
+- **v0.5.54** — 已推送
+
+---
+
 ## 2026-04-07 — Session #56：SSH 私钥管理 + 主机管理优化 + 用户管理 sudo + 文件管理默认显示隐藏
 
 ### 完成内容
