@@ -89,6 +89,12 @@ type NginxConfig struct {
 //   - mode=prefix  → 强制自包含模式（忽略系统 nginx）
 //   - mode=auto/空 → 系统 nginx 优先，回退到自包含安装
 func (c *NginxConfig) DetectNginx() {
+	// 重置检测状态
+	c.prefixExist = false
+	c.systemExist = false
+	c.systemBinary = ""
+	c.systemConfDir = ""
+
 	// 探测两种安装是否存在
 	if c.InstallDir != "" {
 		prefixBin := filepath.Join(c.InstallDir, "sbin", "nginx")
