@@ -31,11 +31,19 @@ type NfsService struct{}
 
 func NewINfsService() INfsService { return &NfsService{} }
 
-// nfsServiceName tries multiple known service names; Debian/Ubuntu uses "nfs-kernel-server",
-// some distros alias it to "nfs-server".
+// nfsServiceName returns the actual systemd unit name for the NFS server.
+// Debian/Ubuntu package is "nfs-kernel-server" but the real unit is "nfs-server.service".
 func nfsServiceName() string {
-	if out, err := exec.Command("systemctl", "list-unit-files", "nfs-kernel-server.service").CombinedOutput(); err == nil && strings.Contains(string(out), "nfs-kernel-server") {
-		return "nfs-kernel-server"
+	// Check which service name systemd actually knows about
+	candidates := []string{"nfs-server", "nfs-kernel-server"}
+	for _, name := range candidates {
+		out, err := exec.Command("systemctl", "is-enabled", name).CombinedOutput()
+		if err == nil {
+			result := strings.TrimSpace(string(out))
+			if result == "enabled" || result == "disabled" || result == "static" || result == "enabled-runtime" {
+				return name
+			}
+		}
 	}
 	return "nfs-server"
 }
