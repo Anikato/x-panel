@@ -191,11 +191,21 @@ type Fail2banSSHConfig struct {
 }
 
 type Fail2banBannedIP struct {
-	IP   string `json:"ip"`
-	Jail string `json:"jail"`
+	IP          string `json:"ip"`
+	Jail        string `json:"jail"`
+	Country     string `json:"country"`
+	CountryCode string `json:"countryCode"`
+	City        string `json:"city"`
+	Region      string `json:"region"`
 }
 
 type Fail2banUnbanReq struct {
 	IP   string `json:"ip" validate:"required"`
 	Jail string `json:"jail" validate:"required"`
+}
+
+// ===== IP Location =====
+
+type IPBatchLookupReq struct {
+	IPs []string `json:"ips" validate:"required,min=1"`
 }

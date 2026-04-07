@@ -7,6 +7,7 @@ import (
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
 	"xpanel/app/service"
+	"xpanel/utils/iplocation"
 
 	"github.com/gin-gonic/gin"
 )
@@ -400,4 +401,39 @@ func (a *ToolboxAPI) GetFail2banLogs(c *gin.Context) {
 		return
 	}
 	helper.SuccessWithData(c, data)
+}
+
+// ====== IP Location ======
+
+func (a *ToolboxAPI) LookupIP(c *gin.Context) {
+	ip := c.Query("ip")
+	if ip == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "ip is required")
+		return
+	}
+	info := iplocation.GetService().Lookup(ip)
+	helper.SuccessWithData(c, info)
+}
+
+func (a *ToolboxAPI) LookupIPBatch(c *gin.Context) {
+	var req dto.IPBatchLookupReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	result := iplocation.GetService().LookupBatch(req.IPs)
+	helper.SuccessWithData(c, result)
+}
+
+func (a *ToolboxAPI) GetIPDBInfo(c *gin.Context) {
+	info := iplocation.GetService().GetDBInfo()
+	helper.SuccessWithData(c, info)
+}
+
+func (a *ToolboxAPI) DownloadIPDB(c *gin.Context) {
+	if err := iplocation.GetService().DownloadDB(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
 }

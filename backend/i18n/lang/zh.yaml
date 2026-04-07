@@ -126,6 +126,10 @@ ErrFail2banUninstall:
 ErrFail2banReload:
   other: "Fail2ban 配置重载失败: {{.detail}}"
 
+# IP 归属地
+ErrIPDBDownload:
+  other: "IP 数据库下载失败: {{.detail}}"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"

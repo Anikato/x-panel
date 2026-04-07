@@ -40,6 +40,21 @@
 - v0.5.43 (首页仪表盘布局优化)
 - v0.5.44 (首页布局重构)
 - v0.5.45 (Fail2ban 可视化管理)
+- v0.5.46 (Fail2ban SSH 端口自动检测修复)
+- v0.5.47 (IP 归属地数据库集成)
+
+**IP 归属地数据库**：
+- [x] `utils/iplocation` 包：基于 MMDB 格式的 IP 地理查询服务（oschwald/geoip2-golang）
+- [x] 支持自动下载 DB-IP City Lite 免费数据库（~70MB，每月更新）
+- [x] Fail2ban 封禁列表自动附带国家/省份/城市信息（中文优先）
+- [x] 批量 IP 查询 API + 单 IP 查询 API
+- [x] IP 数据库管理 Tab：查看状态/一键下载更新
+- [x] 面板启动时自动加载已有的 MMDB 文件
+
+**Fail2ban SSH 端口自动检测**：
+- [x] `detectSSHPort()` 解析 `ss -tlnp` 输出获取 sshd 实际监听端口
+- [x] 修复 Fail2ban 封禁 22 端口而 SSH 运行在自定义端口时封禁无效的问题
+- [x] 去掉硬编码 `logpath=/var/log/auth.log`，兼容 systemd journal
 
 **Fail2ban 可视化管理**：
 - [x] IFail2banService 完整实现：安装/卸载/启停/jail管理/封禁管理/日志查看

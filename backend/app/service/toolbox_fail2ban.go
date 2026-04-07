@@ -12,6 +12,7 @@ import (
 
 	"xpanel/app/dto"
 	"xpanel/buserr"
+	"xpanel/utils/iplocation"
 )
 
 type IFail2banService interface {
@@ -226,10 +227,16 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 	jailNames := parseJailList(string(out))
 	var result []dto.Fail2banBannedIP
 
+	ipSvc := iplocation.GetService()
 	for _, jail := range jailNames {
 		ips := s.getBannedIPs(jail)
 		for _, ip := range ips {
-			result = append(result, dto.Fail2banBannedIP{IP: ip, Jail: jail})
+			geo := ipSvc.Lookup(ip)
+			result = append(result, dto.Fail2banBannedIP{
+				IP: ip, Jail: jail,
+				Country: geo.Country, CountryCode: geo.CountryCode,
+				City: geo.City, Region: geo.Region,
+			})
 		}
 	}
 	return result, nil

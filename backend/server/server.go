@@ -13,6 +13,7 @@ import (
 	"xpanel/init/migration"
 	initViper "xpanel/init/viper"
 	"xpanel/router"
+	"xpanel/utils/iplocation"
 )
 
 // Start 启动服务器（按顺序初始化各模块）
@@ -49,6 +50,9 @@ func Start() {
 
 	// 6. 登录 IP 跟踪器
 	global.IPTracker = initAuth.NewIPTracker()
+
+	// 6.5 IP 归属地数据库
+	iplocation.GetService().Init(global.CONF.System.DataDir)
 
 	// 7. Cron 定时任务
 	initCron.Init()

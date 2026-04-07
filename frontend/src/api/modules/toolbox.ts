@@ -55,3 +55,10 @@ export const listFail2banBanned = () => http.get('/toolbox/fail2ban/banned')
 export const unbanFail2banIP = (ip: string, jail: string) => http.post('/toolbox/fail2ban/unban', { ip, jail })
 
 export const getFail2banLogs = (lines = 200) => http.get(`/toolbox/fail2ban/logs?lines=${lines}`)
+
+// ====== IP Location ======
+
+export const lookupIP = (ip: string) => http.get(`/toolbox/ip/lookup?ip=${ip}`)
+export const lookupIPBatch = (ips: string[]) => http.post('/toolbox/ip/lookup/batch', { ips })
+export const getIPDBInfo = () => http.get('/toolbox/ip/db/info')
+export const downloadIPDB = () => http.post('/toolbox/ip/db/download')

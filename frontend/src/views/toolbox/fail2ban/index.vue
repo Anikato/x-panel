@@ -77,8 +77,16 @@
               <el-button size="small" :icon="Refresh" @click="loadBanned" :loading="bannedLoading">{{ $t('commons.refresh') }}</el-button>
             </div>
             <el-table :data="filteredBanned" v-loading="bannedLoading" stripe size="small">
-              <el-table-column prop="ip" label="IP" min-width="180" />
-              <el-table-column prop="jail" label="Jail" width="140" />
+              <el-table-column prop="ip" label="IP" min-width="160" />
+              <el-table-column :label="$t('toolbox.fail2ban.location')" min-width="180">
+                <template #default="{ row }">
+                  <span v-if="row.country">
+                    {{ row.country }}<template v-if="row.region"> / {{ row.region }}</template><template v-if="row.city"> / {{ row.city }}</template>
+                  </span>
+                  <span v-else style="color: var(--xp-text-muted)">{{ ipdbInfo.loaded ? '-' : $t('toolbox.fail2ban.ipdbNotLoaded') }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="jail" label="Jail" width="120" />
               <el-table-column :label="$t('commons.actions')" width="100" align="center">
                 <template #default="{ row }">
                   <el-popconfirm :title="$t('toolbox.fail2ban.unbanConfirm', { ip: row.ip })" @confirm="handleUnban(row)">
@@ -132,6 +140,32 @@
               <pre>{{ logContent || $t('toolbox.fail2ban.noLogs') }}</pre>
             </div>
           </el-tab-pane>
+
+          <!-- IP 数据库 -->
+          <el-tab-pane :label="$t('toolbox.fail2ban.ipDatabase')" name="ipdb">
+            <el-descriptions :column="2" border size="small" style="max-width: 600px;">
+              <el-descriptions-item :label="$t('toolbox.fail2ban.ipdbStatus')">
+                <el-tag :type="ipdbInfo.loaded ? 'success' : 'info'" size="small">
+                  {{ ipdbInfo.loaded ? $t('toolbox.fail2ban.ipdbLoaded') : $t('toolbox.fail2ban.ipdbNotLoaded') }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item v-if="ipdbInfo.size" :label="$t('toolbox.fail2ban.ipdbSize')">
+                {{ (ipdbInfo.size / 1024 / 1024).toFixed(1) }} MB
+              </el-descriptions-item>
+              <el-descriptions-item v-if="ipdbInfo.updatedAt" :label="$t('toolbox.fail2ban.ipdbUpdated')">
+                {{ ipdbInfo.updatedAt }}
+              </el-descriptions-item>
+            </el-descriptions>
+            <div style="margin-top: 16px;">
+              <el-button type="primary" @click="handleDownloadIPDB" :loading="ipdbDownloading" size="small">
+                {{ ipdbInfo.loaded ? $t('toolbox.fail2ban.ipdbUpdate') : $t('toolbox.fail2ban.ipdbDownload') }}
+              </el-button>
+              <span class="form-hint">{{ $t('toolbox.fail2ban.ipdbSource') }}</span>
+            </div>
+            <el-alert v-if="!ipdbInfo.loaded" type="info" :closable="false" style="margin-top: 12px;" show-icon>
+              {{ $t('toolbox.fail2ban.ipdbHint') }}
+            </el-alert>
+          </el-tab-pane>
         </el-tabs>
       </el-card>
     </template>
@@ -173,6 +207,7 @@ import {
   getFail2banStatus, installFail2ban, operateFail2ban,
   listFail2banJails, updateFail2banJail, setFail2banSSH,
   listFail2banBanned, unbanFail2banIP, getFail2banLogs,
+  getIPDBInfo, downloadIPDB,
 } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
@@ -325,11 +360,34 @@ const loadLogs = async () => {
   finally { logsLoading.value = false }
 }
 
+// IP Database
+const ipdbInfo = reactive({ loaded: false, path: '', size: 0, updatedAt: '' })
+const ipdbDownloading = ref(false)
+
+const loadIPDBInfo = async () => {
+  try {
+    const res = await getIPDBInfo()
+    Object.assign(ipdbInfo, res.data || {})
+  } catch {}
+}
+
+const handleDownloadIPDB = async () => {
+  ipdbDownloading.value = true
+  try {
+    await downloadIPDB()
+    ElMessage.success(t('commons.success'))
+    await loadIPDBInfo()
+    loadBanned()
+  } catch {}
+  finally { ipdbDownloading.value = false }
+}
+
 onMounted(async () => {
   await loadStatus()
   if (status.isInstalled) {
     loadJails()
     loadBanned()
+    loadIPDBInfo()
   }
 })
 </script>

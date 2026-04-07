@@ -329,6 +329,12 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/toolbox/fail2ban/unban", api.UnbanFail2banIP)
 		privateGroup.GET("/toolbox/fail2ban/logs", api.GetFail2banLogs)
 
+		// 工具箱 - IP 归属地
+		privateGroup.GET("/toolbox/ip/lookup", api.LookupIP)
+		privateGroup.POST("/toolbox/ip/lookup/batch", api.LookupIPBatch)
+		privateGroup.GET("/toolbox/ip/db/info", api.GetIPDBInfo)
+		privateGroup.POST("/toolbox/ip/db/download", api.DownloadIPDB)
+
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)
