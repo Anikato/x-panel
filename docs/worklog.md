@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-04-07 — Session #55：文件管理模块深度审查与修复
+
+### 完成内容
+
+**ZIP 压缩修复（主要 Bug）**：
+- [x] 添加 `exec.LookPath("zip")` 检查，未安装时返回明确错误提示而非"服务器内部错误"
+- [x] 多路径跨目录压缩：当源文件不在同一父目录时，使用临时目录 + symlink 策略正确处理
+- [x] 防止输出文件落在被压缩目录内部（检查 dst 是否为任一源的子路径）
+- [x] 确保目标目录存在（`MkdirAll`），使用绝对路径避免歧义
+
+**解压修复**：
+- [x] 添加 `unzip` 命令存在性检查
+- [x] 单独 `.gz`/`.bz2`/`.xz` 文件不再误判为 tar 归档，改用 `gunzip -c`/`bunzip2 -c`/`xz -dc` 正确解压
+- [x] 解压错误信息使用专用业务错误码 `ErrFileDecompress`
+
+**安全修复**：
+- [x] **上传路径穿越**：使用 `filepath.Base(file.Filename)` 防止 `../` 注入覆盖系统文件
+- [x] **重命名保护**：对受保护系统路径（`/etc`、`/usr` 等）禁止重命名操作
+- [x] **搜索注入**：转义 `find -iname` 中的特殊通配符（`[`, `]`, `?`, `*`），并添加 `-maxdepth 10` 限制
+
+**错误信息优化**：
+- [x] 新增 `ErrFileCompress`/`ErrFileDecompress` 错误码，替换笼统的 `ErrInternalServer`
+- [x] 压缩/解压失败时返回工具的实际 stderr 输出作为错误详情
+- [x] `ErrCmdNotFound` 提示中附带安装命令（如 `apt install zip`）
+
+### 版本
+- Tag: `v0.5.52`
+
+---
+
 ## 2026-04-07 — Session #54：Linux 用户管理 + 系统设置（主机名/时区/DNS/Swap）
 
 ### 完成内容

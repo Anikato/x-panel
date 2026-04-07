@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
@@ -269,8 +270,15 @@ func (a *FileAPI) UploadFile(c *gin.Context) {
 		return
 	}
 
-	dst := filepath.Join(filepath.Clean(dstPath), file.Filename)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
+	safeFilename := filepath.Base(file.Filename)
+	dst := filepath.Join(filepath.Clean(dstPath), safeFilename)
+	cleanDst := filepath.Clean(dst)
+	cleanBase := filepath.Clean(dstPath)
+	if !strings.HasPrefix(cleanDst, cleanBase+"/") && cleanDst != cleanBase {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	if err := c.SaveUploadedFile(file, cleanDst); err != nil {
 		helper.HandleError(c, err)
 		return
 	}

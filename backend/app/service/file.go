@@ -85,6 +85,15 @@ func isProtectedPath(path string) bool {
 // invalidChars 文件名中不允许的字符
 var invalidChars = []string{"\x00", "\n", "\r"}
 
+// sanitizeFindPattern 转义 find -iname 中的特殊通配符
+func sanitizeFindPattern(s string) string {
+	r := strings.NewReplacer(
+		"[", "\\[", "]", "\\]",
+		"?", "\\?", "*", "\\*",
+	)
+	return r.Replace(s)
+}
+
 // isInvalidChar 检查文件路径是否包含非法字符
 func isInvalidChar(path string) bool {
 	for _, ch := range invalidChars {
@@ -185,10 +194,10 @@ func (s *FileService) ListFiles(req dto.FileSearchReq) (*dto.FileInfo, error) {
 
 // searchRecursive 使用 find 命令递归搜索子目录
 func searchRecursive(rootPath, search string, showHidden bool) ([]dto.FileInfo, error) {
-	args := []string{rootPath, "-iname", fmt.Sprintf("*%s*", search)}
+	safeName := sanitizeFindPattern(search)
+	args := []string{rootPath, "-maxdepth", "10", "-iname", fmt.Sprintf("*%s*", safeName)}
 	if !showHidden {
-		// 排除隐藏文件和隐藏目录
-		args = []string{rootPath, "-not", "-path", "*/.*", "-iname", fmt.Sprintf("*%s*", search)}
+		args = []string{rootPath, "-maxdepth", "10", "-not", "-path", "*/.*", "-iname", fmt.Sprintf("*%s*", safeName)}
 	}
 	// 限制最多返回 1000 条结果，防止结果过多
 	cmd := exec.Command("find", args...)
@@ -360,6 +369,10 @@ func (s *FileService) Rename(req dto.FileRenameReq) error {
 
 	if isInvalidChar(newPath) {
 		return buserr.New(constant.ErrFileInvalidChar)
+	}
+
+	if isProtectedPath(oldPath) {
+		return buserr.New(constant.ErrFileDeleteProtected)
 	}
 
 	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
@@ -582,6 +595,20 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 		return buserr.New(constant.ErrFileInvalidChar)
 	}
 
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return buserr.WithDetail(constant.ErrFileCompress, err.Error(), err)
+	}
+
+	absDst, _ := filepath.Abs(dst)
+
+	for _, p := range req.Paths {
+		cleanP := filepath.Clean(p)
+		absP, _ := filepath.Abs(cleanP)
+		if strings.HasPrefix(absDst, absP+"/") {
+			return buserr.WithDetail(constant.ErrFileCompress, "output file cannot be inside source directory", nil)
+		}
+	}
+
 	compressType := req.Type
 	if compressType == "" {
 		compressType = "tar.gz"
@@ -590,25 +617,53 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 	var cmd *exec.Cmd
 	switch compressType {
 	case "zip":
-		// 使用相对路径压缩，避免解压时出现绝对路径
-		relPaths := make([]string, 0, len(req.Paths))
-		var workDir string
-		for i, p := range req.Paths {
-			cleanP := filepath.Clean(p)
-			if i == 0 {
-				workDir = filepath.Dir(cleanP)
-			}
-			relPaths = append(relPaths, filepath.Base(cleanP))
+		if _, err := exec.LookPath("zip"); err != nil {
+			return buserr.WithDetail(constant.ErrCmdNotFound, "zip (apt install zip)", nil)
 		}
-		args := []string{"-r", dst}
-		args = append(args, relPaths...)
-		cmd = exec.Command("zip", args...)
-		if workDir != "" {
+
+		workDir := filepath.Dir(filepath.Clean(req.Paths[0]))
+
+		sameParent := true
+		for _, p := range req.Paths[1:] {
+			if filepath.Dir(filepath.Clean(p)) != workDir {
+				sameParent = false
+				break
+			}
+		}
+
+		if sameParent {
+			relPaths := make([]string, 0, len(req.Paths))
+			for _, p := range req.Paths {
+				relPaths = append(relPaths, filepath.Base(filepath.Clean(p)))
+			}
+			args := []string{"-r", absDst}
+			args = append(args, relPaths...)
+			cmd = exec.Command("zip", args...)
 			cmd.Dir = workDir
+		} else {
+			tmpDir, err := os.MkdirTemp("", "xpanel-zip-*")
+			if err != nil {
+				return buserr.WithDetail(constant.ErrFileCompress, err.Error(), err)
+			}
+			defer os.RemoveAll(tmpDir)
+
+			relPaths := make([]string, 0, len(req.Paths))
+			for _, p := range req.Paths {
+				cleanP := filepath.Clean(p)
+				base := filepath.Base(cleanP)
+				linkDst := filepath.Join(tmpDir, base)
+				if err := os.Symlink(cleanP, linkDst); err != nil {
+					return buserr.WithDetail(constant.ErrFileCompress, err.Error(), err)
+				}
+				relPaths = append(relPaths, base)
+			}
+			args := []string{"-r", "--symlinks", absDst}
+			args = append(args, relPaths...)
+			cmd = exec.Command("zip", args...)
+			cmd.Dir = tmpDir
 		}
 	default: // tar.gz
-		// 使用 -C dir basename 模式，确保压缩包内为相对路径
-		args := []string{"-czf", dst}
+		args := []string{"-czf", absDst}
 		for _, p := range req.Paths {
 			cleanP := filepath.Clean(p)
 			args = append(args, "-C", filepath.Dir(cleanP), filepath.Base(cleanP))
@@ -617,7 +672,11 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, string(output), err)
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return buserr.WithDetail(constant.ErrFileCompress, errMsg, err)
 	}
 	global.LOG.Infof("Files compressed to: %s", dst)
 	return nil
@@ -629,7 +688,7 @@ func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 	dst := filepath.Clean(req.Dst)
 
 	if err := os.MkdirAll(dst, 0755); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		return buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
 	}
 
 	var cmd *exec.Cmd
@@ -637,26 +696,53 @@ func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 
 	switch archiveType {
 	case "zip":
+		if _, err := exec.LookPath("unzip"); err != nil {
+			return buserr.WithDetail(constant.ErrCmdNotFound, "unzip (apt install unzip)", nil)
+		}
 		cmd = exec.Command("unzip", "-o", src, "-d", dst)
 	case "7z":
 		if _, err := exec.LookPath("7z"); err != nil {
-			return buserr.WithDetail(constant.ErrCmdNotFound, "7z", nil)
+			return buserr.WithDetail(constant.ErrCmdNotFound, "7z (apt install p7zip-full)", nil)
 		}
 		cmd = exec.Command("7z", "x", "-y", "-o"+dst, src)
 	case "rar":
 		if _, err := exec.LookPath("unrar"); err != nil {
-			return buserr.WithDetail(constant.ErrCmdNotFound, "unrar", nil)
+			return buserr.WithDetail(constant.ErrCmdNotFound, "unrar (apt install unrar)", nil)
 		}
 		cmd = exec.Command("unrar", "x", "-y", "-o+", src, dst+"/")
+	case "gz":
+		baseName := strings.TrimSuffix(filepath.Base(src), ".gz")
+		dstFile := filepath.Join(dst, baseName)
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("gunzip -c %s > %s",
+			shellQuote(src), shellQuote(dstFile)))
+	case "bz2":
+		baseName := strings.TrimSuffix(filepath.Base(src), ".bz2")
+		dstFile := filepath.Join(dst, baseName)
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("bunzip2 -c %s > %s",
+			shellQuote(src), shellQuote(dstFile)))
+	case "xz":
+		baseName := strings.TrimSuffix(filepath.Base(src), ".xz")
+		dstFile := filepath.Join(dst, baseName)
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("xz -dc %s > %s",
+			shellQuote(src), shellQuote(dstFile)))
 	default: // tar, tar.gz, tar.bz2, tar.xz, tgz
 		cmd = exec.Command("tar", "-xf", src, "-C", dst)
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, string(output), err)
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return buserr.WithDetail(constant.ErrFileDecompress, errMsg, err)
 	}
 	global.LOG.Infof("File decompressed: %s → %s", src, dst)
 	return nil
+}
+
+// shellQuote 对路径进行安全引用
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // detectArchiveType 检测压缩文件类型
@@ -684,13 +770,13 @@ func detectArchiveType(path string) string {
 		return "rar"
 	}
 	if strings.HasSuffix(lower, ".gz") {
-		return "tar.gz" // 单独的 .gz 也用 tar 处理
+		return "gz"
 	}
 	if strings.HasSuffix(lower, ".bz2") {
-		return "tar.bz2"
+		return "bz2"
 	}
 	if strings.HasSuffix(lower, ".xz") {
-		return "tar.xz"
+		return "xz"
 	}
 	return "tar" // 默认按 tar 处理
 }
