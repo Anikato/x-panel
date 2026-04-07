@@ -255,3 +255,40 @@ func (a *WebsiteAPI) AnalyzeNginxLog(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, data)
 }
+
+func (a *WebsiteAPI) DetectNginxSites(c *gin.Context) {
+	sites, err := nginxLogService.DetectSites()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, sites)
+}
+
+func (a *WebsiteAPI) AnalyzeNginxSiteLog(c *gin.Context) {
+	var req dto.NginxLogAnalyzeReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := nginxLogService.AnalyzeSite(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *WebsiteAPI) TailNginxLog(c *gin.Context) {
+	var req dto.NginxLogTailReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := nginxLogService.TailLog(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}

@@ -55,6 +55,19 @@ export const analyzeNginxLog = (siteId: number, days: number) => {
   return http.post('/websites/log-analysis', { siteId, days })
 }
 
+// --- Nginx 日志分析（全局） ---
+export const detectNginxSites = () => {
+  return http.get('/nginx/log/sites')
+}
+
+export const analyzeNginxSiteLog = (params: { site: string; timeRange: string }) => {
+  return http.post('/nginx/log/analyze', params)
+}
+
+export const tailNginxLog = (params: { site: string; type: string; lines: number }) => {
+  return http.post('/nginx/log/tail', params)
+}
+
 // --- Nginx 配置文件管理 ---
 export const getNginxMainConf = () => {
   return http.get('/nginx/conf')

@@ -386,6 +386,11 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/websites/config-mode", api.SwitchConfigMode)
 		privateGroup.POST("/websites/log-analysis", api.AnalyzeNginxLog)
 
+		// Nginx 日志分析（全局）
+		privateGroup.GET("/nginx/log/sites", api.DetectNginxSites)
+		privateGroup.POST("/nginx/log/analyze", api.AnalyzeNginxSiteLog)
+		privateGroup.POST("/nginx/log/tail", api.TailNginxLog)
+
 	}
 
 	// WebSocket

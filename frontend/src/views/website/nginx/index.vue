@@ -216,6 +216,11 @@
             </el-row>
           </div>
         </el-tab-pane>
+
+        <!-- 日志分析 -->
+        <el-tab-pane :label="$t('nginx.logAnalysis')" name="logs" lazy>
+          <LogAnalysis />
+        </el-tab-pane>
       </el-tabs>
     </template>
 
@@ -295,6 +300,7 @@ import {
   checkNginxUpdate,
   upgradeNginx,
 } from '@/api/modules/nginx'
+import LogAnalysis from './log-analysis.vue'
 import {
   getNginxMainConf,
   saveNginxMainConf,
