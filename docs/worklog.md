@@ -4,6 +4,67 @@
 
 ---
 
+## 2026-04-07 — Session #52：工具箱 - Samba 和 NFS 共享管理
+
+### 完成内容
+
+**Samba 共享管理**：
+- [x] smb.conf 纯 Go 解析器 (`utils/samba/parser.go`)：支持 Section 增删改查，保留注释和空行
+- [x] ISambaService 完整实现：服务管理(安装/卸载/启停)、共享 CRUD、用户管理(创建/删除/启禁用/改密)、全局配置、连接监控
+- [x] 安全模式：修改配置 → testparm 校验 → 失败自动回滚 → 成功 reload
+- [x] 前端 Samba 管理页：四 Tab 布局(共享目录/用户管理/连接监控/全局配置)
+- [x] 共享创建/编辑弹窗，用户创建/改密弹窗
+
+**NFS 共享管理**：
+- [x] /etc/exports 解析器 (`utils/nfs/parser.go`)：支持多客户端、选项解析
+- [x] INfsService 完整实现：服务管理、导出 CRUD、连接监控
+- [x] 安全模式：修改配置 → exportfs -ra 应用 → 失败回滚
+- [x] 前端 NFS 管理页：两 Tab 布局(导出目录/连接监控)
+- [x] 导出创建/编辑弹窗，支持动态添加多个客户端
+
+**通用基础设施**：
+- [x] ToolboxAPI 注册到 ApiGroup + 25 条 API 路由
+- [x] ServiceStatus/ServiceOperate 通用 DTO
+- [x] 前端工具箱路由模块 + 侧边栏菜单项
+- [x] 前端 i18n (toolbox 命名空间) + 后端 i18n 错误键 (11 条)
+- [x] 前后端编译通过，零 lint 错误
+
+### 设计决策
+
+- **无数据库表**：所有共享信息直接读写系统配置文件 (`/etc/samba/smb.conf`、`/etc/exports`)，面板仅作 UI 层
+- **apt 系统包管理**：通过 `apt install/remove` 管理服务，卸载面板不影响 Samba/NFS 运行
+- **工具箱模块归属**：Samba/NFS 放在「工具箱」子菜单下，与未来 FTP/Fail2ban 并列
+- **配置安全机制**：与 Nginx 一致的 "写入→校验→失败回滚→成功 reload" 模式
+
+### 变更文件
+
+| 文件 | 变更 |
+|---|---|
+| `backend/utils/samba/parser.go` | 新增：smb.conf INI 解析器 |
+| `backend/utils/nfs/parser.go` | 新增：/etc/exports 解析器 |
+| `backend/app/dto/toolbox.go` | 新增：Samba + NFS 全部 DTO |
+| `backend/app/service/toolbox_samba.go` | 新增：ISambaService 接口 + 实现 |
+| `backend/app/service/toolbox_nfs.go` | 新增：INfsService 接口 + 实现 |
+| `backend/app/api/v1/toolbox.go` | 新增：ToolboxAPI 全部 Handler |
+| `backend/app/api/v1/entry.go` | 新增 ToolboxAPI 嵌入 |
+| `backend/router/router.go` | 新增 25 条工具箱路由 |
+| `backend/i18n/lang/zh.yaml` | 新增 Samba/NFS 错误键 |
+| `frontend/src/api/modules/toolbox.ts` | 新增：工具箱 API 封装 |
+| `frontend/src/routers/modules/toolbox.ts` | 新增：工具箱路由 |
+| `frontend/src/routers/index.ts` | 导入 toolboxRoutes |
+| `frontend/src/layout/components/Sidebar.vue` | 侧边栏增加工具箱菜单 |
+| `frontend/src/views/toolbox/samba/index.vue` | 新增：Samba 管理页 |
+| `frontend/src/views/toolbox/nfs/index.vue` | 新增：NFS 管理页 |
+| `frontend/src/i18n/zh.ts` | 新增 toolbox 命名空间翻译 |
+
+### 下一步计划
+
+- [ ] FTP 管理 (vsftpd/Pure-FTPd)
+- [ ] Fail2ban 管理
+- [ ] Samba/NFS 操作日志描述映射
+
+---
+
 ## 2026-04-06 — Session #51：GOST TLS 证书支持 + 检查更新/升级
 
 ### 完成内容

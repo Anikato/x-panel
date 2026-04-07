@@ -108,6 +108,15 @@ const menuList = computed(() => [
       { path: '/gost/chain', title: t('menu.gostChain') },
     ],
   },
+  {
+    path: '/toolbox',
+    title: t('menu.toolbox'),
+    icon: 'SetUp',
+    children: [
+      { path: '/toolbox/samba', title: t('menu.toolboxSamba') },
+      { path: '/toolbox/nfs', title: t('menu.toolboxNfs') },
+    ],
+  },
   { path: '/container', title: t('menu.container'), icon: 'Box' },
   { path: '/database', title: t('menu.database'), icon: 'Coin' },
   { path: '/cronjob', title: t('menu.cronjob'), icon: 'Timer' },

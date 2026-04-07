@@ -288,6 +288,35 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/gost/chains/del", api.DeleteGostChain)
 		privateGroup.POST("/gost/sync", api.SyncGost)
 
+		// 工具箱 - Samba
+		privateGroup.GET("/toolbox/samba/status", api.GetSambaStatus)
+		privateGroup.POST("/toolbox/samba/install", api.InstallSamba)
+		privateGroup.POST("/toolbox/samba/uninstall", api.UninstallSamba)
+		privateGroup.POST("/toolbox/samba/operate", api.OperateSamba)
+		privateGroup.GET("/toolbox/samba/shares", api.ListSambaShares)
+		privateGroup.POST("/toolbox/samba/shares/create", api.CreateSambaShare)
+		privateGroup.POST("/toolbox/samba/shares/update", api.UpdateSambaShare)
+		privateGroup.POST("/toolbox/samba/shares/del", api.DeleteSambaShare)
+		privateGroup.GET("/toolbox/samba/users", api.ListSambaUsers)
+		privateGroup.POST("/toolbox/samba/users/create", api.CreateSambaUser)
+		privateGroup.POST("/toolbox/samba/users/del", api.DeleteSambaUser)
+		privateGroup.POST("/toolbox/samba/users/password", api.UpdateSambaPassword)
+		privateGroup.POST("/toolbox/samba/users/toggle", api.ToggleSambaUser)
+		privateGroup.GET("/toolbox/samba/config", api.GetSambaGlobalConfig)
+		privateGroup.POST("/toolbox/samba/config/update", api.UpdateSambaGlobalConfig)
+		privateGroup.GET("/toolbox/samba/connections", api.GetSambaConnections)
+
+		// 工具箱 - NFS
+		privateGroup.GET("/toolbox/nfs/status", api.GetNfsStatus)
+		privateGroup.POST("/toolbox/nfs/install", api.InstallNfs)
+		privateGroup.POST("/toolbox/nfs/uninstall", api.UninstallNfs)
+		privateGroup.POST("/toolbox/nfs/operate", api.OperateNfs)
+		privateGroup.GET("/toolbox/nfs/exports", api.ListNfsExports)
+		privateGroup.POST("/toolbox/nfs/exports/create", api.CreateNfsExport)
+		privateGroup.POST("/toolbox/nfs/exports/update", api.UpdateNfsExport)
+		privateGroup.POST("/toolbox/nfs/exports/del", api.DeleteNfsExport)
+		privateGroup.GET("/toolbox/nfs/connections", api.GetNfsConnections)
+
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)

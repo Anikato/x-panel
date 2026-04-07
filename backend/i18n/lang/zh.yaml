@@ -84,6 +84,40 @@ ErrGostAPIUnavailable:
 ErrGostNameExist:
   other: "名称已存在，请使用其他名称"
 
+# Samba 错误
+ErrSambaInstall:
+  other: "Samba 安装失败: {{.detail}}"
+ErrSambaUninstall:
+  other: "Samba 卸载失败: {{.detail}}"
+ErrSambaReadConf:
+  other: "读取 Samba 配置文件失败: {{.err}}"
+ErrSambaShareExist:
+  other: "共享名称 [{{.name}}] 已存在"
+ErrSambaConfigTest:
+  other: "Samba 配置校验失败: {{.detail}}"
+ErrSambaListUsers:
+  other: "获取 Samba 用户列表失败: {{.err}}"
+ErrSambaCreateUser:
+  other: "创建 Samba 用户失败: {{.detail}}"
+ErrSambaDeleteUser:
+  other: "删除 Samba 用户失败: {{.detail}}"
+ErrSambaUpdatePassword:
+  other: "修改 Samba 用户密码失败: {{.detail}}"
+ErrSambaToggleUser:
+  other: "切换 Samba 用户状态失败: {{.detail}}"
+
+# NFS 错误
+ErrNfsInstall:
+  other: "NFS 服务安装失败: {{.detail}}"
+ErrNfsUninstall:
+  other: "NFS 服务卸载失败: {{.detail}}"
+ErrNfsReadExports:
+  other: "读取 NFS 导出配置失败: {{.err}}"
+ErrNfsExportExist:
+  other: "导出路径 [{{.name}}] 已存在"
+ErrNfsApplyExports:
+  other: "应用 NFS 导出配置失败: {{.detail}}"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"
