@@ -6,16 +6,19 @@ type NginxLogAnalysisReq struct {
 }
 
 type NginxLogAnalysis struct {
-	TotalRequests int64             `json:"totalRequests"`
-	UniqueIPs     int               `json:"uniqueIPs"`
-	TotalBytes    int64             `json:"totalBytes"`
-	StatusCodes   map[string]int64  `json:"statusCodes"`
-	TopURLs       []RankItem        `json:"topUrls"`
-	TopIPs        []RankItem        `json:"topIps"`
-	TopUserAgents []RankItem        `json:"topUserAgents"`
-	HourlyStats   []TimeSeriesPoint `json:"hourlyStats"`
-	DailyStats    []TimeSeriesPoint `json:"dailyStats"`
-	ErrorRate     float64           `json:"errorRate"`
+	TotalRequests  int64             `json:"totalRequests"`
+	UniqueIPs      int               `json:"uniqueIPs"`
+	TotalBytes     int64             `json:"totalBytes"`
+	StatusCodes    map[string]int64  `json:"statusCodes"`
+	TopURLs        []RankItem        `json:"topUrls"`
+	TopIPs         []RankItem        `json:"topIps"`
+	TopUserAgents  []RankItem        `json:"topUserAgents"`
+	HourlyStats    []TimeSeriesPoint `json:"hourlyStats"`
+	DailyStats     []TimeSeriesPoint `json:"dailyStats"`
+	ErrorRate      float64           `json:"errorRate"`
+	ThreatRequests int64             `json:"threatRequests"`
+	ThreatIPs      []RankItem        `json:"threatIPs"`
+	TopThreats     []RankItem        `json:"topThreats"`
 }
 
 type RankItem struct {
@@ -23,6 +26,7 @@ type RankItem struct {
 	Count   int64  `json:"count"`
 	Country string `json:"country,omitempty"`
 	City    string `json:"city,omitempty"`
+	Banned  bool   `json:"banned,omitempty"`
 }
 
 type TimeSeriesPoint struct {

@@ -26,6 +26,7 @@ type IFail2banService interface {
 	SetSSHJail(req dto.Fail2banSSHConfig) error
 
 	ListBanned() ([]dto.Fail2banBannedIP, error)
+	Ban(req dto.Fail2banBanReq) error
 	Unban(req dto.Fail2banUnbanReq) error
 
 	GetLogs(lines int) (string, error)
@@ -264,6 +265,18 @@ func (s *Fail2banService) parseBanTimes() map[string]string {
 		}
 	}
 	return result
+}
+
+func (s *Fail2banService) Ban(req dto.Fail2banBanReq) error {
+	jail := req.Jail
+	if jail == "" {
+		jail = "sshd"
+	}
+	out, err := exec.Command(f2bClient, "set", jail, "banip", req.IP).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ban failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func (s *Fail2banService) Unban(req dto.Fail2banUnbanReq) error {

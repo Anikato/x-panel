@@ -77,7 +77,7 @@ func (s *NginxLogService) Analyze(req dto.NginxLogAnalysisReq) (*dto.NginxLogAna
 	if err != nil {
 		return nil, fmt.Errorf("parse log: %v", err)
 	}
-	return aggregate(entries, days, false), nil
+	return aggregate(entries, days, false, nil), nil
 }
 
 // DetectSites scans Nginx config files and extracts server_name + log paths
@@ -184,7 +184,8 @@ func (s *NginxLogService) AnalyzeSite(req dto.NginxLogAnalyzeReq) (*dto.NginxLog
 	}
 
 	days := daysFromRange(req.TimeRange)
-	return aggregate(allEntries, days, true), nil
+	bannedSet := loadBannedIPSet()
+	return aggregate(allEntries, days, true, bannedSet), nil
 }
 
 // TailLog returns the last N lines of access or error log
@@ -442,9 +443,46 @@ func readLastLines(f *os.File, n int) ([]string, error) {
 	return lines, nil
 }
 
+// --- Threat detection ---
+
+var threatPatterns = []struct {
+	Name    string
+	Pattern *regexp.Regexp
+}{
+	{"PHP 探测", regexp.MustCompile(`(?i)\.(php|asp|aspx|jsp|cgi)\b`)},
+	{"WordPress 扫描", regexp.MustCompile(`(?i)(wp-admin|wp-login|wp-content|xmlrpc\.php)`)},
+	{"路径遍历", regexp.MustCompile(`(\.\./|\.\.%2[fF])`)},
+	{"敏感文件", regexp.MustCompile(`(?i)(\.(env|git|bak|sql|tar|gz|zip|rar)|config\.(json|yaml|yml|php)|\.htaccess|\.DS_Store)`)},
+	{"SQL 注入", regexp.MustCompile(`(?i)(union\s+select|or\s+1\s*=\s*1|'\s*(or|and)\s+'|--\s*$)`)},
+	{"Shell/命令注入", regexp.MustCompile(`(?i)(/etc/passwd|/bin/(sh|bash)|cmd=|exec\(|system\()`)},
+	{"扫描器探测", regexp.MustCompile(`(?i)(/actuator|/solr|/api/v1/pods|/manager/html|/console|/phpmyadmin|/admin)`)},
+}
+
+func classifyThreat(url string) string {
+	for _, tp := range threatPatterns {
+		if tp.Pattern.MatchString(url) {
+			return tp.Name
+		}
+	}
+	return ""
+}
+
+func loadBannedIPSet() map[string]bool {
+	result := make(map[string]bool)
+	svc := NewIFail2banService()
+	banned, err := svc.ListBanned()
+	if err != nil {
+		return result
+	}
+	for _, b := range banned {
+		result[b.IP] = true
+	}
+	return result
+}
+
 // --- Aggregation ---
 
-func aggregate(entries []logEntry, days int, withGeo bool) *dto.NginxLogAnalysis {
+func aggregate(entries []logEntry, days int, withGeo bool, bannedIPs map[string]bool) *dto.NginxLogAnalysis {
 	result := &dto.NginxLogAnalysis{
 		TotalRequests: int64(len(entries)),
 		StatusCodes:   make(map[string]int64),
@@ -462,6 +500,8 @@ func aggregate(entries []logEntry, days int, withGeo bool) *dto.NginxLogAnalysis
 	hourlyBytes := make(map[string]int64)
 	dailyReqs := make(map[string]int64)
 	dailyBytes := make(map[string]int64)
+	threatCatCount := make(map[string]int64)
+	threatIPCount := make(map[string]int64)
 
 	var errors int64
 
@@ -478,6 +518,12 @@ func aggregate(entries []logEntry, days int, withGeo bool) *dto.NginxLogAnalysis
 		urlCount[e.URL]++
 		ipCount[e.IP]++
 		uaCount[e.UserAgent]++
+
+		if tc := classifyThreat(e.URL); tc != "" {
+			result.ThreatRequests++
+			threatCatCount[tc]++
+			threatIPCount[e.IP]++
+		}
 
 		h := e.Time.Format("2006-01-02 15:00")
 		hourlyReqs[h]++
@@ -496,11 +542,26 @@ func aggregate(entries []logEntry, days int, withGeo bool) *dto.NginxLogAnalysis
 	result.TopURLs = topN(urlCount, 20)
 	result.TopIPs = topNWithGeo(ipCount, 20, withGeo)
 	result.TopUserAgents = topN(uaCount, 10)
+	result.TopThreats = topN(threatCatCount, 20)
+	result.ThreatIPs = topNWithGeo(threatIPCount, 10, withGeo)
+
+	if bannedIPs != nil {
+		markBanned(result.TopIPs, bannedIPs)
+		markBanned(result.ThreatIPs, bannedIPs)
+	}
 
 	result.HourlyStats = timeSeries(hourlyReqs, hourlyBytes)
 	result.DailyStats = timeSeries(dailyReqs, dailyBytes)
 
 	return result
+}
+
+func markBanned(items []dto.RankItem, bannedIPs map[string]bool) {
+	for i := range items {
+		if bannedIPs[items[i].Name] {
+			items[i].Banned = true
+		}
+	}
 }
 
 func topN(m map[string]int64, n int) []dto.RankItem {

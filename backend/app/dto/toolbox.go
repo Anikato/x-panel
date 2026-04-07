@@ -200,6 +200,11 @@ type Fail2banBannedIP struct {
 	BannedAt    string `json:"bannedAt"`
 }
 
+type Fail2banBanReq struct {
+	IP   string `json:"ip" validate:"required"`
+	Jail string `json:"jail"`
+}
+
 type Fail2banUnbanReq struct {
 	IP   string `json:"ip" validate:"required"`
 	Jail string `json:"jail" validate:"required"`

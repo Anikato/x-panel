@@ -52,6 +52,7 @@ export const updateFail2banJail = (params: object) => http.post('/toolbox/fail2b
 export const setFail2banSSH = (params: object) => http.post('/toolbox/fail2ban/jails/ssh', params)
 
 export const listFail2banBanned = () => http.get('/toolbox/fail2ban/banned')
+export const banFail2banIP = (ip: string, jail: string = 'sshd') => http.post('/toolbox/fail2ban/ban', { ip, jail })
 export const unbanFail2banIP = (ip: string, jail: string) => http.post('/toolbox/fail2ban/unban', { ip, jail })
 
 export const getFail2banLogs = (lines = 200) => http.get(`/toolbox/fail2ban/logs?lines=${lines}`)

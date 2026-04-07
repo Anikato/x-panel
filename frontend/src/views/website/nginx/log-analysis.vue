@@ -30,28 +30,34 @@
         <div v-loading="analyzing" class="overview-content">
           <!-- 概要卡片 -->
           <el-row :gutter="16" class="summary-row">
-            <el-col :xs="12" :sm="6">
+            <el-col :xs="12" :sm="6" :md="5">
               <div class="summary-card">
                 <div class="summary-value">{{ formatNumber(analysis.totalRequests) }}</div>
                 <div class="summary-label">{{ $t('nginx.totalRequests') }}</div>
               </div>
             </el-col>
-            <el-col :xs="12" :sm="6">
+            <el-col :xs="12" :sm="6" :md="5">
               <div class="summary-card">
                 <div class="summary-value">{{ formatNumber(analysis.uniqueIPs) }}</div>
                 <div class="summary-label">{{ $t('nginx.uniqueIPs') }}</div>
               </div>
             </el-col>
-            <el-col :xs="12" :sm="6">
+            <el-col :xs="12" :sm="6" :md="5">
               <div class="summary-card">
                 <div class="summary-value">{{ formatBytes(analysis.totalBytes) }}</div>
                 <div class="summary-label">{{ $t('nginx.totalTraffic') }}</div>
               </div>
             </el-col>
-            <el-col :xs="12" :sm="6">
-              <div class="summary-card" :class="{ 'error-card': analysis.errorRate > 10 }">
+            <el-col :xs="12" :sm="6" :md="5">
+              <div class="summary-card" :class="errorRateClass">
                 <div class="summary-value">{{ analysis.errorRate?.toFixed(1) || '0.0' }}%</div>
                 <div class="summary-label">{{ $t('nginx.errorRate') }}</div>
+              </div>
+            </el-col>
+            <el-col :xs="12" :sm="6" :md="4">
+              <div class="summary-card" :class="{ 'threat-card': analysis.threatRequests > 0 }">
+                <div class="summary-value">{{ formatNumber(analysis.threatRequests) }}</div>
+                <div class="summary-label">{{ $t('nginx.threatRequests') }}</div>
               </div>
             </el-col>
           </el-row>
@@ -76,29 +82,54 @@
             </el-col>
           </el-row>
 
-          <!-- Top 排行 -->
+          <!-- Top IP + Top URL -->
           <el-row :gutter="16" style="margin-top: 16px">
             <el-col :xs="24" :lg="12">
               <el-card shadow="never" class="rank-card">
                 <template #header>
                   <span class="chart-title">{{ $t('nginx.topIPs') }}</span>
                 </template>
-                <el-table :data="analysis.topIps || []" size="small" stripe :show-header="true" max-height="320">
+                <el-table :data="analysis.topIps || []" size="small" stripe :show-header="true" max-height="320"
+                  :row-class-name="ipRowClass">
                   <el-table-column type="index" width="36" />
-                  <el-table-column :label="$t('nginx.ip')" min-width="140">
+                  <el-table-column :label="$t('nginx.ip')" min-width="130">
                     <template #default="{ row }">
                       <span class="mono-text">{{ row.name }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="$t('nginx.location')" min-width="120">
+                  <el-table-column :label="$t('nginx.location')" min-width="100">
                     <template #default="{ row }">
                       <span v-if="row.country" class="location-text">{{ row.country }}<template v-if="row.city"> / {{ row.city }}</template></span>
                       <span v-else class="muted-text">-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="$t('nginx.requests')" width="90" align="right">
+                  <el-table-column :label="$t('nginx.requests')" width="80" align="right">
                     <template #default="{ row }">
                       <span class="count-text">{{ formatNumber(row.count) }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.status')" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-tag v-if="row.banned" type="danger" size="small" effect="dark">{{ $t('nginx.banned') }}</el-tag>
+                      <span v-else-if="isHighTraffic(row)" class="high-traffic-tag">{{ $t('nginx.highTraffic') }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.actions')" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-popconfirm v-if="!row.banned"
+                        :title="$t('nginx.banConfirm', { ip: row.name })"
+                        @confirm="handleBanIP(row.name)">
+                        <template #reference>
+                          <el-button type="danger" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.ban') }}</el-button>
+                        </template>
+                      </el-popconfirm>
+                      <el-popconfirm v-else
+                        :title="$t('nginx.unbanConfirm', { ip: row.name })"
+                        @confirm="handleUnbanIP(row.name)">
+                        <template #reference>
+                          <el-button type="warning" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.unban') }}</el-button>
+                        </template>
+                      </el-popconfirm>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -119,6 +150,70 @@
                   <el-table-column :label="$t('nginx.requests')" width="90" align="right">
                     <template #default="{ row }">
                       <span class="count-text">{{ formatNumber(row.count) }}</span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <!-- 威胁检测 -->
+          <el-row v-if="analysis.threatRequests > 0" :gutter="16" style="margin-top: 16px">
+            <el-col :xs="24" :lg="10">
+              <el-card shadow="never" class="rank-card threat-section">
+                <template #header>
+                  <div class="threat-header">
+                    <span class="chart-title">{{ $t('nginx.attackTypes') }}</span>
+                    <el-tag type="danger" size="small" effect="plain">{{ formatNumber(analysis.threatRequests) }} {{ $t('nginx.requests') }}</el-tag>
+                  </div>
+                </template>
+                <div ref="threatChartRef" class="chart-container" style="height: 220px"></div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="14">
+              <el-card shadow="never" class="rank-card threat-section">
+                <template #header>
+                  <span class="chart-title">{{ $t('nginx.threatIPs') }}</span>
+                </template>
+                <el-table :data="analysis.threatIPs || []" size="small" stripe :show-header="true" max-height="260">
+                  <el-table-column type="index" width="36" />
+                  <el-table-column :label="$t('nginx.ip')" min-width="130">
+                    <template #default="{ row }">
+                      <span class="mono-text">{{ row.name }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.location')" min-width="100">
+                    <template #default="{ row }">
+                      <span v-if="row.country" class="location-text">{{ row.country }}<template v-if="row.city"> / {{ row.city }}</template></span>
+                      <span v-else class="muted-text">-</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.threatCount')" width="80" align="right">
+                    <template #default="{ row }">
+                      <span class="count-text threat-count">{{ formatNumber(row.count) }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.status')" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-tag v-if="row.banned" type="danger" size="small" effect="dark">{{ $t('nginx.banned') }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.actions')" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-popconfirm v-if="!row.banned"
+                        :title="$t('nginx.banConfirm', { ip: row.name })"
+                        @confirm="handleBanIP(row.name)">
+                        <template #reference>
+                          <el-button type="danger" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.ban') }}</el-button>
+                        </template>
+                      </el-popconfirm>
+                      <el-popconfirm v-else
+                        :title="$t('nginx.unbanConfirm', { ip: row.name })"
+                        @confirm="handleUnbanIP(row.name)">
+                        <template #reference>
+                          <el-button type="warning" text size="small" :loading="banLoading[row.name]">{{ $t('nginx.unban') }}</el-button>
+                        </template>
+                      </el-popconfirm>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -200,10 +295,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Refresh } from '@element-plus/icons-vue'
 import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog } from '@/api/modules/website'
+import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
+import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 
 const { t } = useI18n()
@@ -218,12 +315,15 @@ const analysis = reactive<any>({
   totalRequests: 0, uniqueIPs: 0, totalBytes: 0, errorRate: 0,
   statusCodes: {}, topUrls: [], topIps: [], topUserAgents: [],
   hourlyStats: [], dailyStats: [],
+  threatRequests: 0, threatIPs: [], topThreats: [],
 })
 
 const trendChartRef = ref<HTMLElement>()
 const statusChartRef = ref<HTMLElement>()
+const threatChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
 let statusChart: echarts.ECharts | null = null
+let threatChart: echarts.ECharts | null = null
 
 const logLines = ref(200)
 const errorLogLines = ref(200)
@@ -233,6 +333,25 @@ const accessLogLoading = ref(false)
 const errorLogContent = ref('')
 const errorLogPath = ref('')
 const errorLogLoading = ref(false)
+const banLoading = reactive<Record<string, boolean>>({})
+
+const errorRateClass = computed(() => {
+  const rate = analysis.errorRate || 0
+  if (rate > 10) return 'error-card'
+  if (rate > 5) return 'warning-card'
+  return ''
+})
+
+const isHighTraffic = (row: any) => {
+  if (!analysis.totalRequests || analysis.totalRequests === 0) return false
+  return row.count / analysis.totalRequests > 0.3
+}
+
+const ipRowClass = ({ row }: { row: any }) => {
+  if (row.banned) return 'banned-row'
+  if (isHighTraffic(row)) return 'high-traffic-row'
+  return ''
+}
 
 const loadSites = async () => {
   try {
@@ -247,18 +366,43 @@ const handleSiteChange = () => {
   if (subTab.value === 'error') loadErrorLog()
 }
 
+const emptyAnalysis = {
+  totalRequests: 0, uniqueIPs: 0, totalBytes: 0, errorRate: 0,
+  statusCodes: {}, topUrls: [], topIps: [], topUserAgents: [],
+  hourlyStats: [], dailyStats: [],
+  threatRequests: 0, threatIPs: [], topThreats: [],
+}
+
 const handleAnalyze = async () => {
   analyzing.value = true
   try {
     const res = await analyzeNginxSiteLog({ site: selectedSite.value, timeRange: timeRange.value })
-    Object.assign(analysis, res.data || {})
+    Object.assign(analysis, { ...emptyAnalysis, ...res.data })
     await nextTick()
     renderCharts()
   } catch {
-    Object.assign(analysis, { totalRequests: 0, uniqueIPs: 0, totalBytes: 0, errorRate: 0, statusCodes: {}, topUrls: [], topIps: [], topUserAgents: [], hourlyStats: [], dailyStats: [] })
+    Object.assign(analysis, emptyAnalysis)
   } finally {
     analyzing.value = false
   }
+}
+
+const handleBanIP = async (ip: string) => {
+  banLoading[ip] = true
+  try {
+    await banFail2banIP(ip)
+    ElMessage.success(t('nginx.banSuccess', { ip }))
+    handleAnalyze()
+  } catch {} finally { banLoading[ip] = false }
+}
+
+const handleUnbanIP = async (ip: string) => {
+  banLoading[ip] = true
+  try {
+    await unbanFail2banIP(ip, 'sshd')
+    ElMessage.success(t('nginx.unbanSuccess', { ip }))
+    handleAnalyze()
+  } catch {} finally { banLoading[ip] = false }
 }
 
 const loadAccessLog = async () => {
@@ -290,9 +434,14 @@ const statusColors: Record<string, string> = {
   '2xx': '#67c23a', '3xx': '#e6a23c', '4xx': '#f56c6c', '5xx': '#909399',
 }
 
+const threatColors = ['#f56c6c', '#e6a23c', '#ff8c6b', '#c45656', '#fab6b6', '#b88230', '#f89898']
+
 const renderCharts = () => {
   renderTrendChart()
   renderStatusChart()
+  if (analysis.threatRequests > 0) {
+    nextTick(() => renderThreatChart())
+  }
 }
 
 const renderTrendChart = () => {
@@ -305,19 +454,14 @@ const renderTrendChart = () => {
   const stats = isHourly ? (analysis.hourlyStats || []) : (analysis.dailyStats || [])
 
   const xData = stats.map((s: any) => {
-    if (isHourly) {
-      return s.time.substring(11, 16)
-    }
+    if (isHourly) return s.time.substring(11, 16)
     return s.time.substring(5)
   })
   const reqData = stats.map((s: any) => s.requests)
   const byteData = stats.map((s: any) => +(s.bytes / 1024).toFixed(1))
 
   trendChart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' },
-    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
     grid: { left: 50, right: 50, top: 30, bottom: 30 },
     xAxis: { type: 'category', data: xData, axisLabel: { fontSize: 11 } },
     yAxis: [
@@ -326,21 +470,13 @@ const renderTrendChart = () => {
     ],
     series: [
       {
-        name: t('nginx.requests'),
-        type: 'bar',
-        data: reqData,
-        itemStyle: { color: '#409eff', borderRadius: [3, 3, 0, 0] },
-        barMaxWidth: 20,
+        name: t('nginx.requests'), type: 'bar', data: reqData,
+        itemStyle: { color: '#409eff', borderRadius: [3, 3, 0, 0] }, barMaxWidth: 20,
       },
       {
-        name: t('nginx.totalTraffic'),
-        type: 'line',
-        yAxisIndex: 1,
-        data: byteData,
-        smooth: true,
-        lineStyle: { color: '#e6a23c', width: 2 },
-        itemStyle: { color: '#e6a23c' },
-        areaStyle: { color: 'rgba(230,162,60,0.1)' },
+        name: t('nginx.totalTraffic'), type: 'line', yAxisIndex: 1, data: byteData,
+        smooth: true, lineStyle: { color: '#e6a23c', width: 2 },
+        itemStyle: { color: '#e6a23c' }, areaStyle: { color: 'rgba(230,162,60,0.1)' },
       },
     ],
   }, true)
@@ -354,25 +490,40 @@ const renderStatusChart = () => {
 
   const codes = analysis.statusCodes || {}
   const data = Object.entries(codes).map(([name, value]) => ({
-    name,
-    value,
-    itemStyle: { color: statusColors[name] || '#909399' },
+    name, value, itemStyle: { color: statusColors[name] || '#909399' },
   }))
 
-  if (data.length === 0) {
-    statusChart.clear()
-    return
-  }
+  if (data.length === 0) { statusChart.clear(); return }
 
   statusChart.setOption({
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
     series: [{
-      type: 'pie',
-      radius: ['40%', '70%'],
-      center: ['50%', '50%'],
-      avoidLabelOverlap: true,
-      label: { show: true, formatter: '{b}\n{d}%', fontSize: 12 },
-      data,
+      type: 'pie', radius: ['40%', '70%'], center: ['50%', '50%'],
+      avoidLabelOverlap: true, label: { show: true, formatter: '{b}\n{d}%', fontSize: 12 }, data,
+    }],
+  }, true)
+}
+
+const renderThreatChart = () => {
+  if (!threatChartRef.value) return
+  if (!threatChart) {
+    threatChart = echarts.init(threatChartRef.value)
+  }
+
+  const threats = analysis.topThreats || []
+  if (threats.length === 0) { threatChart.clear(); return }
+
+  const names = threats.map((t: any) => t.name)
+  const values = threats.map((t: any) => t.count)
+
+  threatChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 110, right: 40, top: 10, bottom: 20 },
+    xAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'category', data: names.reverse(), axisLabel: { fontSize: 11, width: 90, overflow: 'truncate' } },
+    series: [{
+      type: 'bar', data: values.reverse(), barMaxWidth: 18,
+      itemStyle: { borderRadius: [0, 3, 3, 0], color: (params: any) => threatColors[params.dataIndex % threatColors.length] },
     }],
   }, true)
 }
@@ -380,6 +531,7 @@ const renderStatusChart = () => {
 const handleResize = () => {
   trendChart?.resize()
   statusChart?.resize()
+  threatChart?.resize()
 }
 
 const formatNumber = (n: number) => {
@@ -407,6 +559,7 @@ onMounted(async () => {
 onUnmounted(() => {
   trendChart?.dispose()
   statusChart?.dispose()
+  threatChart?.dispose()
   window.removeEventListener('resize', handleResize)
 })
 </script>
@@ -448,6 +601,17 @@ onUnmounted(() => {
         border-color: var(--el-color-danger-light-5);
         .summary-value { color: var(--el-color-danger); }
       }
+
+      &.warning-card {
+        border-color: var(--el-color-warning-light-5);
+        .summary-value { color: var(--el-color-warning); }
+      }
+
+      &.threat-card {
+        border-color: var(--el-color-danger-light-5);
+        background: var(--el-color-danger-light-9);
+        .summary-value { color: var(--el-color-danger); }
+      }
     }
 
     .summary-value {
@@ -482,6 +646,34 @@ onUnmounted(() => {
   .chart-container {
     width: 100%;
     height: 280px;
+  }
+
+  .threat-section {
+    :deep(.el-card__header) {
+      border-left: 3px solid var(--el-color-danger);
+    }
+  }
+
+  .threat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .threat-count { color: var(--el-color-danger) !important; }
+
+  .high-traffic-tag {
+    font-size: 11px;
+    color: var(--el-color-warning);
+    font-weight: 600;
+  }
+
+  :deep(.banned-row) {
+    background-color: var(--el-color-danger-light-9) !important;
+  }
+
+  :deep(.high-traffic-row) {
+    background-color: var(--el-color-warning-light-9) !important;
   }
 
   .mono-text {

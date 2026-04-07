@@ -375,6 +375,19 @@ func (a *ToolboxAPI) ListFail2banBanned(c *gin.Context) {
 	helper.SuccessWithData(c, data)
 }
 
+func (a *ToolboxAPI) BanFail2banIP(c *gin.Context) {
+	var req dto.Fail2banBanReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFail2banService().Ban(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *ToolboxAPI) UnbanFail2banIP(c *gin.Context) {
 	var req dto.Fail2banUnbanReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

@@ -326,6 +326,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/toolbox/fail2ban/jails/update", api.UpdateFail2banJail)
 		privateGroup.POST("/toolbox/fail2ban/jails/ssh", api.SetFail2banSSH)
 		privateGroup.GET("/toolbox/fail2ban/banned", api.ListFail2banBanned)
+		privateGroup.POST("/toolbox/fail2ban/ban", api.BanFail2banIP)
 		privateGroup.POST("/toolbox/fail2ban/unban", api.UnbanFail2banIP)
 		privateGroup.GET("/toolbox/fail2ban/logs", api.GetFail2banLogs)
 
