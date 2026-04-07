@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-04-07 — Session #58：Nginx 日志分析功能
+
+### 完成内容
+
+**Nginx 日志分析（全局/按站点）**：
+- [x] 后端：Nginx 配置文件解析器 — 自动检测所有 server 块的 `server_name`、`access_log`、`error_log`
+- [x] 后端：支持 `conf.d/` 和 `sites-enabled/` 两种目录结构
+- [x] 后端：access log 解析器（combined 格式）+ 统计聚合（请求趋势/状态码/Top IP/URL/UA）
+- [x] 后端：大文件优化 — 从尾部反向读取，按时间范围截断
+- [x] 后端：Top IP 自动附带 IP 归属地（复用 MMDB 数据库）
+- [x] 后端 API：`GET /nginx/log/sites`、`POST /nginx/log/analyze`、`POST /nginx/log/tail`
+- [x] 前端：Nginx 管理页新增「日志分析」Tab（lazy 加载）
+- [x] 前端：站点选择器（"全部汇总" + 各检测到的站点）
+- [x] 前端：时间范围选择器（1h / 6h / 24h / 7d / 30d）
+- [x] 前端：统计概览 — 4 个汇总卡片 + ECharts 请求趋势图（柱状+流量折线）+ 状态码环形图
+- [x] 前端：Top IP 表格（含归属地列）、Top URL 表格、Top User-Agent 表格
+- [x] 前端：访问日志 / 错误日志实时查看器（tail 模式，支持行数选择）
+- [x] i18n 完整翻译
+
+### 关键设计决策
+
+- **源码模式兼容**：不依赖数据库中的站点记录，直接从 Nginx 配置文件解析站点信息
+- **集成在 Nginx 管理页**：不新增菜单入口，作为第三个 Tab 与"运行状态""配置编辑"并列
+- **全部汇总模式**：合并多个站点的日志文件进行统一分析
+
+### 版本
+
+- **v0.5.55** — 已推送部署
+
+---
+
 ## 2026-04-07 — Session #57：Fail2ban UI 优化 + 封禁问题修复
 
 ### 完成内容
