@@ -29,6 +29,12 @@
         <el-table-column prop="home" :label="$t('userManage.home')" min-width="160" show-overflow-tooltip />
         <el-table-column prop="shell" :label="$t('userManage.shell')" min-width="140" show-overflow-tooltip />
         <el-table-column prop="groups" :label="$t('userManage.groups')" min-width="160" show-overflow-tooltip />
+        <el-table-column :label="$t('userManage.sudo')" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.isSudo" type="warning" size="small">sudo</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="$t('commons.actions')" width="160" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)" :disabled="row.uid === 0">
@@ -70,8 +76,9 @@
         <el-form-item v-if="!isEdit" :label="$t('userManage.createHome')">
           <el-switch v-model="form.createHome" />
         </el-form-item>
-        <el-form-item v-if="!isEdit" :label="$t('userManage.isSystem')">
-          <el-switch v-model="form.isSystem" />
+        <el-form-item :label="$t('userManage.sudo')">
+          <el-switch v-model="form.sudo" />
+          <el-text type="info" size="small" style="margin-left: 8px;">{{ $t('userManage.sudoHint') }}</el-text>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -126,7 +133,7 @@ const defaultForm = () => ({
   home: '',
   shell: '/bin/bash',
   createHome: true,
-  isSystem: false,
+  sudo: false,
 })
 
 const form = reactive(defaultForm())
@@ -171,7 +178,7 @@ const openEdit = (row: any) => {
     home: row.home,
     shell: row.shell,
     createHome: false,
-    isSystem: false,
+    sudo: row.isSudo || false,
   })
   dialogVisible.value = true
 }
@@ -189,6 +196,7 @@ const handleSubmit = async () => {
         comment: form.comment,
         home: form.home,
         shell: form.shell,
+        sudo: form.sudo,
       })
     } else {
       await createLinuxUser({
@@ -198,7 +206,7 @@ const handleSubmit = async () => {
         home: form.home,
         shell: form.shell,
         createHome: form.createHome,
-        isSystem: form.isSystem,
+        sudo: form.sudo,
       })
     }
     ElMessage.success(t('commons.success'))

@@ -344,6 +344,13 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/toolbox/ip/db/info", api.GetIPDBInfo)
 		privateGroup.POST("/toolbox/ip/db/download", api.DownloadIPDB)
 
+		// SSH 私钥管理
+		privateGroup.GET("/ssh/keys", api.ListSSHKeys)
+		privateGroup.GET("/ssh/keys/private", api.GetSSHPrivateKey)
+		privateGroup.POST("/ssh/keys/generate", api.GenerateSSHKey)
+		privateGroup.POST("/ssh/keys/import", api.ImportSSHKey)
+		privateGroup.POST("/ssh/keys/delete", api.DeleteSSHKey)
+
 		// 系统用户管理
 		privateGroup.GET("/host/users", api.ListUsers)
 		privateGroup.POST("/host/users/create", api.CreateUser)

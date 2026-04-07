@@ -382,7 +382,7 @@ import DetailDrawer from './detail-drawer.vue'
 
 const { t } = useI18n()
 const loading = ref(false)
-const showHidden = ref(false)
+const showHidden = ref(true)
 const fileList = ref<FileInfo[]>([])
 const selectedRows = ref<FileInfo[]>([])
 const tableHeight = ref(500)

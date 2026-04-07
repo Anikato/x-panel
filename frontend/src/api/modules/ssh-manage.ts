@@ -35,3 +35,20 @@ export const addAuthorizedKey = (data: { key: string; name?: string }) => {
 export const deleteAuthorizedKey = (fingerprint: string) => {
   return http.post('/ssh/authorized-keys/delete', { fingerprint })
 }
+
+// SSH 私钥管理
+export const listSSHKeys = () => {
+  return http.get('/ssh/keys')
+}
+export const getSSHPrivateKey = (name: string) => {
+  return http.get(`/ssh/keys/private?name=${encodeURIComponent(name)}`)
+}
+export const generateSSHKey = (data: { name: string; bits?: number }) => {
+  return http.post('/ssh/keys/generate', data)
+}
+export const importSSHKey = (data: { name: string; privateKey: string }) => {
+  return http.post('/ssh/keys/import', data)
+}
+export const deleteSSHKey = (name: string) => {
+  return http.post('/ssh/keys/delete', { name })
+}

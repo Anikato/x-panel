@@ -58,20 +58,22 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" :label="$t('host.description')" min-width="120" show-overflow-tooltip />
-        <el-table-column :label="$t('commons.actions')" width="200" fixed="right">
+        <el-table-column :label="$t('commons.actions')" width="260" fixed="right">
           <template #default="{ row }">
-            <el-button link type="success" size="small" @click="emit('connect', row.id, row.name + ' (' + row.addr + ')')">
-              {{ $t('host.connect') }}
-            </el-button>
-            <el-button link type="primary" size="small" @click="openDialog(row)">
-              {{ $t('commons.edit') }}
-            </el-button>
-            <el-button link type="info" size="small" @click="handleTest(row.id)">
-              {{ $t('host.testConn') }}
-            </el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row)">
-              {{ $t('commons.delete') }}
-            </el-button>
+            <div style="display: flex; gap: 4px; flex-wrap: nowrap;">
+              <el-button link type="success" size="small" @click="emit('connect', row.id, row.name + ' (' + row.addr + ')')">
+                {{ $t('host.connect') }}
+              </el-button>
+              <el-button link type="primary" size="small" @click="openDialog(row)">
+                {{ $t('commons.edit') }}
+              </el-button>
+              <el-button link type="info" size="small" @click="handleTest(row.id)">
+                {{ $t('host.testConn') }}
+              </el-button>
+              <el-button link type="danger" size="small" @click="handleDelete(row)">
+                {{ $t('commons.delete') }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -121,6 +123,14 @@
         </el-form-item>
         <el-form-item v-if="form.authMode === 'password'" :label="$t('host.password')">
           <el-input v-model="form.password" type="password" show-password />
+        </el-form-item>
+        <el-form-item v-if="form.authMode === 'key'" :label="$t('sshManage.selectPresetKey')">
+          <el-select v-model="selectedPresetKey" :placeholder="$t('sshManage.selectPresetKey')" clearable style="width: 100%;" @change="handlePresetKeySelect">
+            <el-option v-for="k in presetKeys" :key="k.name" :label="k.name + ' (' + k.keyType + ')'" :value="k.name" />
+            <template #empty>
+              <div style="padding: 8px 12px; color: var(--el-text-color-secondary); font-size: 12px;">{{ $t('sshManage.noPresetKeys') }}</div>
+            </template>
+          </el-select>
         </el-form-item>
         <el-form-item v-if="form.authMode === 'key'" :label="$t('host.privateKey')">
           <el-input v-model="form.privateKey" type="textarea" :rows="4" placeholder="-----BEGIN RSA PRIVATE KEY-----" />
@@ -180,7 +190,11 @@ import {
   createGroup,
   deleteGroup,
 } from '@/api/modules/host'
+import { listSSHKeys, getSSHPrivateKey } from '@/api/modules/ssh-manage'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface HostItem {
   id: number
@@ -223,6 +237,8 @@ const testing = ref(false)
 
 const groupDialogVisible = ref(false)
 const newGroupName = ref('')
+const presetKeys = ref<any[]>([])
+const selectedPresetKey = ref('')
 
 const defaultForm = () => ({
   id: 0,
@@ -273,6 +289,21 @@ const handlePageChange = (p: number) => {
   loadData()
 }
 
+const loadPresetKeys = async () => {
+  try {
+    const res = await listSSHKeys()
+    presetKeys.value = res.data || []
+  } catch { presetKeys.value = [] }
+}
+
+const handlePresetKeySelect = async (name: string) => {
+  if (!name) return
+  try {
+    const res = await getSSHPrivateKey(name)
+    form.value.privateKey = res.data || ''
+  } catch { /* handled */ }
+}
+
 const openDialog = (row?: HostItem) => {
   if (row) {
     editMode.value = true
@@ -281,6 +312,8 @@ const openDialog = (row?: HostItem) => {
     editMode.value = false
     form.value = defaultForm()
   }
+  selectedPresetKey.value = ''
+  loadPresetKeys()
   dialogVisible.value = true
 }
 

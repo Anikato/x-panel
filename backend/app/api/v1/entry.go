@@ -28,6 +28,7 @@ type ApiGroup struct {
 	GostAPI
 	ToolboxAPI
 	HostSystemAPI
+	SSHKeyAPI
 }
 
 // ApiGroupApp 全局 API 实例

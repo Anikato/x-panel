@@ -18,16 +18,17 @@ type LinuxUser struct {
 	Shell    string `json:"shell"`
 	Groups   string `json:"groups"`
 	IsSystem bool   `json:"isSystem"`
+	IsSudo   bool   `json:"isSudo"`
 }
 
 type LinuxUserCreate struct {
-	Username  string `json:"username" validate:"required"`
-	Password  string `json:"password"`
-	Home      string `json:"home"`
-	Shell     string `json:"shell"`
-	Comment   string `json:"comment"`
-	CreateHome bool  `json:"createHome"`
-	IsSystem  bool   `json:"isSystem"`
+	Username   string `json:"username" validate:"required"`
+	Password   string `json:"password"`
+	Home       string `json:"home"`
+	Shell      string `json:"shell"`
+	Comment    string `json:"comment"`
+	CreateHome bool   `json:"createHome"`
+	Sudo       bool   `json:"sudo"`
 }
 
 type LinuxUserUpdate struct {
@@ -36,6 +37,7 @@ type LinuxUserUpdate struct {
 	Comment  string `json:"comment"`
 	Home     string `json:"home"`
 	Password string `json:"password"`
+	Sudo     *bool  `json:"sudo"`
 }
 
 type LinuxUserDelete struct {
@@ -83,8 +85,15 @@ func (s *HostUserService) List(showSystem bool) ([]LinuxUser, error) {
 		}
 
 		groups := ""
+		isSudo := false
 		if out, err := exec.Command("id", "-Gn", parts[0]).Output(); err == nil {
 			groups = strings.TrimSpace(string(out))
+			for _, g := range strings.Fields(groups) {
+				if g == "sudo" || g == "wheel" {
+					isSudo = true
+					break
+				}
+			}
 		}
 
 		users = append(users, LinuxUser{
@@ -96,6 +105,7 @@ func (s *HostUserService) List(showSystem bool) ([]LinuxUser, error) {
 			Shell:    parts[6],
 			Groups:   groups,
 			IsSystem: isSystem || uid == 0,
+			IsSudo:   isSudo,
 		})
 	}
 	return users, nil
@@ -115,9 +125,6 @@ func (s *HostUserService) Create(req LinuxUserCreate) error {
 	if req.CreateHome {
 		args = append(args, "-m")
 	}
-	if req.IsSystem {
-		args = append(args, "-r")
-	}
 	args = append(args, req.Username)
 
 	out, err := exec.Command("useradd", args...).CombinedOutput()
@@ -131,6 +138,10 @@ func (s *HostUserService) Create(req LinuxUserCreate) error {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("set password failed: %s", strings.TrimSpace(string(out)))
 		}
+	}
+
+	if req.Sudo {
+		s.setSudo(req.Username, true)
 	}
 
 	return nil
@@ -164,7 +175,23 @@ func (s *HostUserService) Update(req LinuxUserUpdate) error {
 		}
 	}
 
+	if req.Sudo != nil {
+		s.setSudo(req.Username, *req.Sudo)
+	}
+
 	return nil
+}
+
+func (s *HostUserService) setSudo(username string, enable bool) {
+	sudoGroup := "sudo"
+	if out, _ := exec.Command("getent", "group", "wheel").Output(); len(out) > 0 {
+		sudoGroup = "wheel"
+	}
+	if enable {
+		exec.Command("usermod", "-aG", sudoGroup, username).Run()
+	} else {
+		exec.Command("gpasswd", "-d", username, sudoGroup).Run()
+	}
 }
 
 func (s *HostUserService) Delete(req LinuxUserDelete) error {
