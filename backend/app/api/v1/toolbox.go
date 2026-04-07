@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
@@ -282,6 +283,118 @@ func (a *ToolboxAPI) DeleteNfsExport(c *gin.Context) {
 
 func (a *ToolboxAPI) GetNfsConnections(c *gin.Context) {
 	data, err := service.NewINfsService().GetConnections()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// ====== Fail2ban ======
+
+func (a *ToolboxAPI) GetFail2banStatus(c *gin.Context) {
+	data, err := service.NewIFail2banService().GetStatus()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ToolboxAPI) InstallFail2ban(c *gin.Context) {
+	if err := service.NewIFail2banService().Install(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) UninstallFail2ban(c *gin.Context) {
+	if err := service.NewIFail2banService().Uninstall(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) OperateFail2ban(c *gin.Context) {
+	var req dto.ServiceOperate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFail2banService().Operate(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) ListFail2banJails(c *gin.Context) {
+	data, err := service.NewIFail2banService().ListJails()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ToolboxAPI) UpdateFail2banJail(c *gin.Context) {
+	var req dto.Fail2banJailUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFail2banService().UpdateJail(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) SetFail2banSSH(c *gin.Context) {
+	var req dto.Fail2banSSHConfig
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFail2banService().SetSSHJail(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) ListFail2banBanned(c *gin.Context) {
+	data, err := service.NewIFail2banService().ListBanned()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ToolboxAPI) UnbanFail2banIP(c *gin.Context) {
+	var req dto.Fail2banUnbanReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFail2banService().Unban(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) GetFail2banLogs(c *gin.Context) {
+	lines := 200
+	if v := c.Query("lines"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			lines = n
+		}
+	}
+	data, err := service.NewIFail2banService().GetLogs(lines)
 	if err != nil {
 		helper.HandleError(c, err)
 		return

@@ -13,6 +13,12 @@ const toolboxRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/toolbox/nfs/index.vue'),
     meta: { title: 'toolbox.nfs', icon: 'FolderOpened', requiresAuth: true },
   },
+  {
+    path: '/toolbox/fail2ban',
+    name: 'ToolboxFail2ban',
+    component: () => import('@/views/toolbox/fail2ban/index.vue'),
+    meta: { title: 'toolbox.fail2ban', icon: 'Shield', requiresAuth: true },
+  },
 ]
 
 export default toolboxRoutes

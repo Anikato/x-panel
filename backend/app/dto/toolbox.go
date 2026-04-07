@@ -155,3 +155,47 @@ type NfsConnections struct {
 	ActiveExports []string            `json:"activeExports"`
 	Clients       []NfsConnectionInfo `json:"clients"`
 }
+
+// ===== Fail2ban =====
+
+type Fail2banJail struct {
+	Name        string   `json:"name"`
+	Enabled     bool     `json:"enabled"`
+	Port        string   `json:"port"`
+	Filter      string   `json:"filter"`
+	LogPath     string   `json:"logPath"`
+	MaxRetry    int      `json:"maxRetry"`
+	FindTime    string   `json:"findTime"`
+	BanTime     string   `json:"banTime"`
+	Action      string   `json:"action"`
+	BannedIPs   []string `json:"bannedIPs"`
+	BannedCount int      `json:"bannedCount"`
+}
+
+type Fail2banJailUpdate struct {
+	Name     string `json:"name" validate:"required"`
+	Enabled  bool   `json:"enabled"`
+	Port     string `json:"port"`
+	MaxRetry int    `json:"maxRetry"`
+	FindTime string `json:"findTime"`
+	BanTime  string `json:"banTime"`
+	Action   string `json:"action"`
+}
+
+type Fail2banSSHConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Port     string `json:"port"`
+	MaxRetry int    `json:"maxRetry" validate:"min=1,max=100"`
+	FindTime string `json:"findTime" validate:"required"`
+	BanTime  string `json:"banTime" validate:"required"`
+}
+
+type Fail2banBannedIP struct {
+	IP   string `json:"ip"`
+	Jail string `json:"jail"`
+}
+
+type Fail2banUnbanReq struct {
+	IP   string `json:"ip" validate:"required"`
+	Jail string `json:"jail" validate:"required"`
+}

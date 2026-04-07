@@ -38,6 +38,17 @@
 - v0.5.41 (远程挂载增强)
 - v0.5.42 (SSL 通配符路径 + Nginx 双安装管理)
 - v0.5.43 (首页仪表盘布局优化)
+- v0.5.44 (首页布局重构)
+- v0.5.45 (Fail2ban 可视化管理)
+
+**Fail2ban 可视化管理**：
+- [x] IFail2banService 完整实现：安装/卸载/启停/jail管理/封禁管理/日志查看
+- [x] jail.local 解析与安全写入（备份→写入→reload→失败回滚）
+- [x] fail2ban-client 命令调用：status、jail状态、封禁列表、解封
+- [x] SSH 防护快捷配置：一键设置 maxretry/findtime/bantime
+- [x] 前端四 Tab 页面：SSH 防护 / 封禁列表（搜索+解封）/ Jail 管理 / 日志查看器
+- [x] 10 条 API 路由 + ToolboxAPI Handler
+- [x] 侧栏工具箱菜单增加 Fail2ban 条目
 
 ---
 

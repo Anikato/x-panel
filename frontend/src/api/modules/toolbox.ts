@@ -39,3 +39,19 @@ export const updateNfsExport = (params: object) => http.post('/toolbox/nfs/expor
 export const deleteNfsExport = (path: string) => http.post('/toolbox/nfs/exports/del', { path })
 
 export const getNfsConnections = () => http.get('/toolbox/nfs/connections')
+
+// ====== Fail2ban ======
+
+export const getFail2banStatus = () => http.get('/toolbox/fail2ban/status')
+export const installFail2ban = () => http.post('/toolbox/fail2ban/install')
+export const uninstallFail2ban = () => http.post('/toolbox/fail2ban/uninstall')
+export const operateFail2ban = (operation: string) => http.post('/toolbox/fail2ban/operate', { operation })
+
+export const listFail2banJails = () => http.get('/toolbox/fail2ban/jails')
+export const updateFail2banJail = (params: object) => http.post('/toolbox/fail2ban/jails/update', params)
+export const setFail2banSSH = (params: object) => http.post('/toolbox/fail2ban/jails/ssh', params)
+
+export const listFail2banBanned = () => http.get('/toolbox/fail2ban/banned')
+export const unbanFail2banIP = (ip: string, jail: string) => http.post('/toolbox/fail2ban/unban', { ip, jail })
+
+export const getFail2banLogs = (lines = 200) => http.get(`/toolbox/fail2ban/logs?lines=${lines}`)

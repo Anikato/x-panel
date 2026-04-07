@@ -317,6 +317,18 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/toolbox/nfs/exports/del", api.DeleteNfsExport)
 		privateGroup.GET("/toolbox/nfs/connections", api.GetNfsConnections)
 
+		// 工具箱 - Fail2ban
+		privateGroup.GET("/toolbox/fail2ban/status", api.GetFail2banStatus)
+		privateGroup.POST("/toolbox/fail2ban/install", api.InstallFail2ban)
+		privateGroup.POST("/toolbox/fail2ban/uninstall", api.UninstallFail2ban)
+		privateGroup.POST("/toolbox/fail2ban/operate", api.OperateFail2ban)
+		privateGroup.GET("/toolbox/fail2ban/jails", api.ListFail2banJails)
+		privateGroup.POST("/toolbox/fail2ban/jails/update", api.UpdateFail2banJail)
+		privateGroup.POST("/toolbox/fail2ban/jails/ssh", api.SetFail2banSSH)
+		privateGroup.GET("/toolbox/fail2ban/banned", api.ListFail2banBanned)
+		privateGroup.POST("/toolbox/fail2ban/unban", api.UnbanFail2banIP)
+		privateGroup.GET("/toolbox/fail2ban/logs", api.GetFail2banLogs)
+
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)

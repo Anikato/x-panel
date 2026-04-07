@@ -118,6 +118,14 @@ ErrNfsExportExist:
 ErrNfsApplyExports:
   other: "应用 NFS 导出配置失败: {{.detail}}"
 
+# Fail2ban
+ErrFail2banInstall:
+  other: "Fail2ban 安装失败: {{.detail}}"
+ErrFail2banUninstall:
+  other: "Fail2ban 卸载失败: {{.detail}}"
+ErrFail2banReload:
+  other: "Fail2ban 配置重载失败: {{.detail}}"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"

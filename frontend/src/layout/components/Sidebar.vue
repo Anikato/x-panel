@@ -115,6 +115,7 @@ const menuList = computed(() => [
     children: [
       { path: '/toolbox/samba', title: t('menu.toolboxSamba') },
       { path: '/toolbox/nfs', title: t('menu.toolboxNfs') },
+      { path: '/toolbox/fail2ban', title: t('menu.toolboxFail2ban') },
     ],
   },
   { path: '/container', title: t('menu.container'), icon: 'Box' },
