@@ -437,3 +437,101 @@ func (a *ToolboxAPI) DownloadIPDB(c *gin.Context) {
 	}
 	helper.SuccessWithOutData(c)
 }
+
+// ====== Systemd Service Manager ======
+
+func (a *ToolboxAPI) ListSystemdServices(c *gin.Context) {
+	showAll := c.Query("all") == "true"
+	data, err := service.NewISystemdService().List(showAll)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ToolboxAPI) GetSystemdServiceDetail(c *gin.Context) {
+	name := c.Query("name")
+	if name == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "name is required")
+		return
+	}
+	data, err := service.NewISystemdService().GetDetail(name)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ToolboxAPI) CreateSystemdService(c *gin.Context) {
+	var req dto.SystemdServiceCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISystemdService().Create(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) UpdateSystemdService(c *gin.Context) {
+	var req dto.SystemdServiceUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISystemdService().Update(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) DeleteSystemdService(c *gin.Context) {
+	var req dto.SystemdServiceDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISystemdService().Delete(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) OperateSystemdService(c *gin.Context) {
+	var req dto.SystemdServiceOperate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISystemdService().Operate(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ToolboxAPI) GetSystemdServiceLogs(c *gin.Context) {
+	name := c.Query("name")
+	if name == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "name is required")
+		return
+	}
+	lines := 100
+	if v := c.Query("lines"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			lines = n
+		}
+	}
+	data, err := service.NewISystemdService().GetLogs(dto.SystemdServiceLogReq{Name: name, Lines: lines})
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}

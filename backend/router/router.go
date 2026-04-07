@@ -329,6 +329,15 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/toolbox/fail2ban/unban", api.UnbanFail2banIP)
 		privateGroup.GET("/toolbox/fail2ban/logs", api.GetFail2banLogs)
 
+		// 工具箱 - 服务管理
+		privateGroup.GET("/toolbox/services", api.ListSystemdServices)
+		privateGroup.GET("/toolbox/services/detail", api.GetSystemdServiceDetail)
+		privateGroup.POST("/toolbox/services/create", api.CreateSystemdService)
+		privateGroup.POST("/toolbox/services/update", api.UpdateSystemdService)
+		privateGroup.POST("/toolbox/services/delete", api.DeleteSystemdService)
+		privateGroup.POST("/toolbox/services/operate", api.OperateSystemdService)
+		privateGroup.GET("/toolbox/services/logs", api.GetSystemdServiceLogs)
+
 		// 工具箱 - IP 归属地
 		privateGroup.GET("/toolbox/ip/lookup", api.LookupIP)
 		privateGroup.POST("/toolbox/ip/lookup/batch", api.LookupIPBatch)

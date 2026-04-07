@@ -62,3 +62,13 @@ export const lookupIP = (ip: string) => http.get(`/toolbox/ip/lookup?ip=${ip}`)
 export const lookupIPBatch = (ips: string[]) => http.post('/toolbox/ip/lookup/batch', { ips })
 export const getIPDBInfo = () => http.get('/toolbox/ip/db/info')
 export const downloadIPDB = () => http.post('/toolbox/ip/db/download')
+
+// ====== Systemd Service Manager ======
+
+export const listSystemdServices = (showAll = false) => http.get(`/toolbox/services?all=${showAll}`)
+export const getSystemdServiceDetail = (name: string) => http.get(`/toolbox/services/detail?name=${name}`)
+export const createSystemdService = (params: object) => http.post('/toolbox/services/create', params)
+export const updateSystemdService = (params: object) => http.post('/toolbox/services/update', params)
+export const deleteSystemdService = (name: string) => http.post('/toolbox/services/delete', { name })
+export const operateSystemdService = (name: string, operation: string) => http.post('/toolbox/services/operate', { name, operation })
+export const getSystemdServiceLogs = (name: string, lines = 100) => http.get(`/toolbox/services/logs?name=${name}&lines=${lines}`)

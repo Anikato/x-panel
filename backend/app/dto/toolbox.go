@@ -209,3 +209,76 @@ type Fail2banUnbanReq struct {
 type IPBatchLookupReq struct {
 	IPs []string `json:"ips" validate:"required,min=1"`
 }
+
+// ===== Systemd Service Manager =====
+
+type SystemdServiceInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	LoadState   string `json:"loadState"`
+	ActiveState string `json:"activeState"`
+	SubState    string `json:"subState"`
+	Enabled     bool   `json:"enabled"`
+	IsPanel     bool   `json:"isPanel"`
+}
+
+type SystemdServiceDetail struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	LoadState    string `json:"loadState"`
+	ActiveState  string `json:"activeState"`
+	SubState     string `json:"subState"`
+	Enabled      bool   `json:"enabled"`
+	IsPanel      bool   `json:"isPanel"`
+	MainPID      int    `json:"mainPID"`
+	ExecStart    string `json:"execStart"`
+	WorkingDir   string `json:"workingDir"`
+	User         string `json:"user"`
+	Restart      string `json:"restart"`
+	RestartSec   string `json:"restartSec"`
+	Environment  string `json:"environment"`
+	MemoryCurrent string `json:"memoryCurrent"`
+	CPUUsage     string `json:"cpuUsage"`
+	StartedAt    string `json:"startedAt"`
+	UnitFile     string `json:"unitFile"`
+	UnitContent  string `json:"unitContent"`
+}
+
+type SystemdServiceCreate struct {
+	Name        string `json:"name" validate:"required"`
+	Description string `json:"description"`
+	ExecStart   string `json:"execStart" validate:"required"`
+	WorkingDir  string `json:"workingDir"`
+	User        string `json:"user"`
+	Restart     string `json:"restart"`
+	RestartSec  int    `json:"restartSec"`
+	Environment string `json:"environment"`
+	AfterTarget string `json:"afterTarget"`
+	AutoStart   bool   `json:"autoStart"`
+}
+
+type SystemdServiceUpdate struct {
+	Name        string `json:"name" validate:"required"`
+	Description string `json:"description"`
+	ExecStart   string `json:"execStart" validate:"required"`
+	WorkingDir  string `json:"workingDir"`
+	User        string `json:"user"`
+	Restart     string `json:"restart"`
+	RestartSec  int    `json:"restartSec"`
+	Environment string `json:"environment"`
+	AfterTarget string `json:"afterTarget"`
+}
+
+type SystemdServiceOperate struct {
+	Name      string `json:"name" validate:"required"`
+	Operation string `json:"operation" validate:"required,oneof=start stop restart enable disable"`
+}
+
+type SystemdServiceDelete struct {
+	Name string `json:"name" validate:"required"`
+}
+
+type SystemdServiceLogReq struct {
+	Name  string `json:"name" validate:"required"`
+	Lines int    `json:"lines"`
+}
