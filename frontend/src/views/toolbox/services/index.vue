@@ -35,7 +35,7 @@
             <el-switch v-model="row.enabled" size="small" @change="(v: boolean) => handleToggleEnabled(row, v)" />
           </template>
         </el-table-column>
-        <el-table-column :label="$t('commons.actions')" width="260" align="center">
+        <el-table-column :label="$t('commons.actions')" width="320" align="center">
           <template #default="{ row }">
             <el-button-group size="small">
               <el-button text @click="handleOp(row.name, 'start')" :disabled="row.activeState === 'active'">{{ $t('toolbox.services.start') }}</el-button>
@@ -44,6 +44,11 @@
             </el-button-group>
             <el-button text size="small" @click="openDetail(row.name)">{{ $t('toolbox.services.detail') }}</el-button>
             <el-button text size="small" @click="openLogs(row.name)">{{ $t('toolbox.services.logs') }}</el-button>
+            <el-popconfirm v-if="row.isPanel" :title="$t('toolbox.services.deleteConfirm')" @confirm="handleDelete(row.name)">
+              <template #reference>
+                <el-button text type="danger" size="small">{{ $t('commons.delete') }}</el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -71,10 +76,10 @@
         </el-form-item>
         <el-form-item :label="$t('toolbox.services.restart')">
           <el-select v-model="editForm.restart" style="width: 100%">
-            <el-option label="on-failure" value="on-failure" />
-            <el-option label="always" value="always" />
-            <el-option label="on-abnormal" value="on-abnormal" />
-            <el-option label="no" value="no" />
+            <el-option :label="$t('toolbox.services.restartOnFailure')" value="on-failure" />
+            <el-option :label="$t('toolbox.services.restartAlways')" value="always" />
+            <el-option :label="$t('toolbox.services.restartOnAbnormal')" value="on-abnormal" />
+            <el-option :label="$t('toolbox.services.restartNo')" value="no" />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('toolbox.services.restartSec')">
@@ -85,7 +90,18 @@
           <el-input v-model="editForm.environment" type="textarea" :rows="2" :placeholder="$t('toolbox.services.envHint')" />
         </el-form-item>
         <el-form-item :label="$t('toolbox.services.afterTarget')">
-          <el-input v-model="editForm.afterTarget" placeholder="network.target" />
+          <el-select v-model="editForm.afterTarget" filterable allow-create default-first-option style="width: 100%"
+            :placeholder="$t('toolbox.services.afterTargetHint')">
+            <el-option label="network.target — 网络就绪后启动" value="network.target" />
+            <el-option label="network-online.target — 网络完全连通后启动" value="network-online.target" />
+            <el-option label="multi-user.target — 多用户模式就绪后启动" value="multi-user.target" />
+            <el-option label="syslog.target — 系统日志就绪后启动" value="syslog.target" />
+            <el-option label="mysql.service — MySQL 启动后" value="mysql.service" />
+            <el-option label="postgresql.service — PostgreSQL 启动后" value="postgresql.service" />
+            <el-option label="redis.service — Redis 启动后" value="redis.service" />
+            <el-option label="nginx.service — Nginx 启动后" value="nginx.service" />
+            <el-option label="docker.service — Docker 启动后" value="docker.service" />
+          </el-select>
         </el-form-item>
         <el-form-item v-if="!isEdit" :label="$t('toolbox.services.autoStart')">
           <el-switch v-model="editForm.autoStart" />
