@@ -16,14 +16,15 @@ html.dark {
   .el-card {
     background: var(--xp-bg-surface);
     border: 1px solid var(--xp-border-light);
+    border-left: 2px solid rgba(var(--xp-accent-rgb, 65, 251, 68), 0.25);
     border-radius: var(--xp-radius);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-    transition: border-color $t-normal $ease-smooth, box-shadow $t-normal $ease-smooth, transform $t-normal $ease-smooth;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: border-color $t-normal $ease-smooth, box-shadow $t-normal $ease-smooth;
 
     &:hover {
-      border-color: var(--xp-accent-muted);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      transform: translateY(-1px);
+      border-color: rgba(var(--xp-accent-rgb, 65, 251, 68), 0.18);
+      border-left-color: rgba(var(--xp-accent-rgb, 65, 251, 68), 0.5);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
 
     .el-card__header {
@@ -295,23 +296,10 @@ html.dark {
     overflow: hidden;
 
     .el-dialog__header {
-      border-bottom: 1px solid var(--xp-border-light);
+      border-bottom: 2px solid rgba(var(--xp-accent-rgb, 65, 251, 68), 0.15);
       padding: 20px 24px;
       margin-right: 0;
-      background: linear-gradient(135deg, var(--xp-drawer-header-bg), rgba(var(--xp-accent-rgb, 65, 251, 68), 0.03));
-      position: relative;
-
-      &::after {
-        content: '';
-        position: absolute;
-        bottom: -1px;
-        left: 24px;
-        width: 40px;
-        height: 2px;
-        background: var(--xp-accent);
-        border-radius: 1px;
-        opacity: 0.6;
-      }
+      background: var(--xp-drawer-header-bg);
     }
 
     .el-dialog__title {
@@ -351,27 +339,14 @@ html.dark {
   .el-drawer {
     background: var(--xp-drawer-bg);
     border-color: var(--xp-border);
-    box-shadow: -12px 0 48px rgba(0, 0, 0, 0.5), -2px 0 0 rgba(var(--xp-accent-rgb, 65, 251, 68), 0.08);
+    box-shadow: -12px 0 48px rgba(0, 0, 0, 0.5);
 
     .el-drawer__header {
-      background: linear-gradient(135deg, var(--xp-drawer-header-bg), rgba(var(--xp-accent-rgb, 65, 251, 68), 0.03));
-      border-bottom: 1px solid var(--xp-border-light);
+      background: var(--xp-drawer-header-bg);
+      border-bottom: 2px solid rgba(var(--xp-accent-rgb, 65, 251, 68), 0.15);
       margin-bottom: 0;
       padding: 20px 24px;
       color: var(--xp-text-primary);
-      position: relative;
-
-      &::after {
-        content: '';
-        position: absolute;
-        bottom: -1px;
-        left: 24px;
-        width: 40px;
-        height: 2px;
-        background: var(--xp-accent);
-        border-radius: 1px;
-        opacity: 0.6;
-      }
     }
 
     .el-drawer__title {

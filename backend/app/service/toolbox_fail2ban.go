@@ -340,9 +340,29 @@ func (s *Fail2banService) Ban(req dto.Fail2banBanReq) error {
 }
 
 func (s *Fail2banService) Unban(req dto.Fail2banUnbanReq) error {
+	var errs []string
+
+	// 1. 尝试通过 fail2ban-client 解封（IP 可能由 fail2ban jail 封禁）
+	if req.Jail != "" {
+		out, err := exec.Command("fail2ban-client", "set", req.Jail, "unbanip", req.IP).CombinedOutput()
+		if err != nil {
+			errs = append(errs, "fail2ban: "+strings.TrimSpace(string(out)))
+		}
+	}
+
+	// 2. 尝试从 nftables xpanel-ban 集合删除（IP 可能由面板手动封禁）
+	ensureNftBanInfra()
 	out, err := exec.Command("nft", "delete", "element", "inet", "xpanel-ban", nftSet, "{ "+req.IP+" }").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("unban failed: %s", strings.TrimSpace(string(out)))
+		errMsg := strings.TrimSpace(string(out))
+		if !strings.Contains(errMsg, "No such file or directory") {
+			errs = append(errs, "nft: "+errMsg)
+		}
+	}
+
+	// 只要有一种方式成功就算成功；两种都失败才报错
+	if len(errs) > 1 {
+		return fmt.Errorf("unban failed: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }

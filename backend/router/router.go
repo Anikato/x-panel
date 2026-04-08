@@ -439,8 +439,7 @@ func setupFrontend(r *gin.Engine) {
 			return
 		}
 
-		// SPA 回退：所有其他路径返回 index.html
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.Writer.Write(indexFile)
+		// SPA 回退：所有其他路径返回 index.html（显式 200 避免 Gin NoRoute 默认 404）
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexFile)
 	})
 }

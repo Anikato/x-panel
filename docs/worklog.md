@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-04-08 — Session #63：SPA 404 修复 + GPU 优化 + Fail2ban 修复 + 全局样式统一
+
+### 完成内容
+
+**SPA 404 修复**：
+- [x] `setupFrontend` 的 NoRoute handler 使用 `c.Data(200, ...)` 替代 `c.Writer.Write()`，修复 Gin 默认 404 状态码问题
+
+**GPU 占用优化**：
+- [x] 移除首页卡片 `::after` 伪元素 radial-gradient（持续合成层）
+- [x] 移除资源指示点 `box-shadow: 0 0 6px` 发光（持续 GPU 绘制）
+- [x] 移除进度条 `.bar-fg::after` 高光伪元素
+- [x] 移除快速入口 `::before` radial-gradient + `transform` + `box-shadow` 动效
+- [x] Drawer/Dialog header 移除 `::after` 伪元素指示线，改用 `border-bottom` 实色线
+- [x] Drawer/Dialog header 移除 `linear-gradient` 背景，用纯色背景
+
+**全局卡片样式统一**：
+- [x] `_components.scss` 全局 `.el-card` 添加左侧 accent 色边框（`border-left: 2px solid accent`）
+- [x] hover 效果简化为 `border-color` 变化 + 简单 `box-shadow`，无 `transform`
+- [x] 移除 `inset` 内阴影和 `transform: translateY` 浮动效果
+- [x] 所有页面（文件管理、Nginx 管理等）自动继承美化效果
+
+**Fail2ban unban 修复**：
+- [x] `Unban()` 先调用 `fail2ban-client set <jail> unbanip <ip>` 解除 fail2ban 封禁
+- [x] 再调用 `ensureNftBanInfra()` 确保 nftables 表存在后再删除元素
+- [x] 忽略 "No such file or directory" 错误（IP 不在 nft set 中属正常）
+- [x] 只有两种方式都失败才报错
+
+### 关键设计决策
+
+- **GPU 优化原则**：仅使用 `border-color`、`background-color`、`box-shadow` 等不需要创建合成层的属性做 hover 效果；避免 `::before`/`::after` 伪元素 + gradient + transition 组合
+- **全局 vs 页面样式**：卡片基础美化放在全局 `_components.scss`，页面只做布局微调，确保全站一致性
+- **Fail2ban unban 双通道**：IP 可能来自 fail2ban jail 或面板手动封禁，两个通道都尝试解封
+
+---
+
 ## 2026-04-08 — Session #62：UI 深度美化 + 文件上传体验 + 默认值优化
 
 ### 完成内容
