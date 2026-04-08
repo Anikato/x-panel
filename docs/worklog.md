@@ -4,6 +4,62 @@
 
 ---
 
+## 2026-04-08 — Session #64：外观自定义系统 + UI 优化
+
+### 完成内容
+
+**外观自定义系统（完整主题引擎）**：
+- [x] `global.ts` 新增 11 个外观持久化字段（bgPreset, uiFont, uiDensity, borderRadiusPreset, reduceMotion, termTheme, termFont, termFontSize, termBgOpacity, cardBorderStyle, sidebarWidth）
+- [x] 新建 `appearance.ts` — 5 套背景预设（深渊/纯黑/微染/星空/暖夜）、4 种字体、3 档密度、3 档圆角、3 种卡片边框风格、3 档侧边栏宽度
+- [x] `applyAppearance()` 统一通过 CSS 变量注入所有外观设置
+- [x] `App.vue` 添加 watch 监听所有外观 store 字段，onMounted 统一应用
+
+**终端自定义**：
+- [x] `terminal-theme.ts` 扩展为 5 套终端配色（X-Panel/Dracula/One Dark/Solarized Dark/Monokai）
+- [x] 5 种终端字体预设（JetBrains Mono/Fira Code/Cascadia Code/Consolas/系统等宽）
+- [x] 终端字号从 localStorage 迁移到 Pinia store（设置页 slider 实时调节）
+- [x] 终端背景透明度支持（applyBgOpacity 函数）
+- [x] `terminal/index.vue` 和 `terminal-dialog.vue` 均读取 store 配置，watch 实时切换
+
+**CSS 基础层调整**：
+- [x] `_variables.scss` 默认色阶调整为方案 B（更深的 base #080a10、更亮的 surface #141c2b）
+- [x] 新增 `--xp-bg-main-gradient` 变量供背景预设切换
+- [x] 新增 `--xp-font-size`、`--xp-spacing`、`--xp-form-margin` 密度变量
+- [x] `_components.scss` 支持 `data-card-border` 属性切换卡片边框风格（accent-left/full/shadow-only）
+- [x] 新增全局 `.reduce-motion` class 禁用动画
+- [x] `AppMain.vue` 背景改用 `var(--xp-bg-main-gradient)` CSS 变量
+
+**设置页整合**：
+- [x] 6 张卡片合并为 3 张：版本信息 / 外观与个性化 / 面板与安全
+- [x] 面板与安全使用 `el-collapse` 折叠面板（面板设置/端口/Agent/账户密码）
+- [x] 外观卡片包含完整自定义 UI：主题模式、强调色、背景预设色块、字体/密度/圆角/卡片边框/侧边栏宽度分段选择、减弱动画开关、终端配色预览卡片、终端字体/字号/透明度 slider
+
+**侧边栏 accent 分割线**：
+- [x] `Sidebar.vue` border-right 改为 `rgba(accent-rgb, 0.2)` accent 色分割线
+
+**服务器时区时钟**：
+- [x] `ServerInfo` 接口新增 `timezone` 字段
+- [x] `Header.vue` 使用 `Intl.DateTimeFormat` + 1 秒 timer 显示实时时区时间
+- [x] 格式 `HH:mm:ss (PDT)`，tooltip 显示完整时区名
+
+**首页超宽屏适配**：
+- [x] `.kv-grid` 改为 `minmax(200px, 1fr)` 自动填充列
+- [x] `@media (min-width: 1600px)` 系统信息区域扩展为 3:1 比例
+
+**i18n**：
+- [x] zh.ts 新增 18 个外观相关翻译 key
+
+### 关键决策
+- 外观系统完全复用 accent 色已有模式（Store persist → App.vue watch → CSS 变量注入），零新架构成本
+- 背景预设全部使用静态 CSS gradient，零持续 GPU 消耗
+- 终端配色采用 xterm.js ITheme 接口标准，可自由扩展
+
+### 下一步
+- 推送到 GitHub 触发编译发布
+- 根据用户反馈微调背景色阶和预设
+
+---
+
 ## 2026-04-08 — Session #63：SPA 404 修复 + GPU 优化 + Fail2ban 修复 + 全局样式统一
 
 ### 完成内容

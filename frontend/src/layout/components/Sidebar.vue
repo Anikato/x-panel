@@ -148,7 +148,7 @@ const menuList = computed(() => [
   bottom: 0;
   width: var(--xp-sidebar-width);
   background: var(--xp-bg-sidebar);
-  border-right: 1px solid var(--xp-border-light);
+  border-right: 1px solid rgba(var(--xp-accent-rgb, 65, 251, 68), 0.2);
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1001;
   display: flex;

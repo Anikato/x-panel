@@ -12,7 +12,7 @@ $t-normal: 0.25s;
 // DARK MODE
 // ============================================================
 html.dark {
-  // ---- Card ----
+  // ---- Card (accent-left default) ----
   .el-card {
     background: var(--xp-bg-surface);
     border: 1px solid var(--xp-border-light);
@@ -29,12 +29,34 @@ html.dark {
 
     .el-card__header {
       border-bottom: 1px solid var(--xp-border-light);
-      padding: 16px 20px;
+      padding: 16px var(--xp-spacing, 20px);
       font-weight: 600;
     }
 
     .el-card__body {
-      padding: 20px;
+      padding: var(--xp-spacing, 20px);
+    }
+  }
+
+  // Card border style: full
+  &[data-card-border="full"] .el-card {
+    border-left-width: 1px;
+    border-left-color: var(--xp-border-light);
+
+    &:hover {
+      border-color: rgba(var(--xp-accent-rgb, 65, 251, 68), 0.25);
+      border-left-color: rgba(var(--xp-accent-rgb, 65, 251, 68), 0.25);
+    }
+  }
+
+  // Card border style: shadow-only
+  &[data-card-border="shadow-only"] .el-card {
+    border: none;
+    border-left: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
     }
   }
 
@@ -841,4 +863,27 @@ html:not(.dark) {
     border-radius: 6px;
     font-weight: 500;
   }
+}
+
+// ============================================================
+// REDUCE MOTION
+// ============================================================
+html.reduce-motion {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// ============================================================
+// GLOBAL FONT SIZE (density)
+// ============================================================
+html {
+  font-size: var(--xp-font-size, 14px);
+}
+
+.el-form-item {
+  margin-bottom: var(--xp-form-margin, 20px);
 }

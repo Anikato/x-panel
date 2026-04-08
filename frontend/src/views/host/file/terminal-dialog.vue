@@ -28,7 +28,10 @@ let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
 
-import { terminalTheme } from '@/utils/terminal-theme'
+import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
+import { useGlobalStore } from '@/store/modules/global'
+
+const globalStore = useGlobalStore()
 
 function getWsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -59,9 +62,9 @@ function initTerminal() {
   terminal = new Terminal({
     cursorBlink: true,
     cursorStyle: 'bar',
-    fontSize: 14,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-    theme: terminalTheme,
+    fontSize: globalStore.termFontSize,
+    fontFamily: getTermFontByKey(globalStore.termFont),
+    theme: applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity),
     scrollback: 5000,
     allowProposedApi: true,
   })

@@ -273,7 +273,12 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 }
 
 .ov-sys { flex: 1; min-width: 0; padding-right: 24px; }
-.ov-net { flex: 0 0 380px; min-width: 0; padding-left: 24px; }
+.ov-net { flex: 0 0 340px; min-width: 0; padding-left: 24px; }
+
+@media (min-width: 1600px) {
+  .ov-sys { flex: 3; }
+  .ov-net { flex: 1; min-width: 340px; }
+}
 
 .ov-divider {
   width: 1px; align-self: stretch;
@@ -291,8 +296,8 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 /* Key-Value */
 .kv-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 280px));
-  gap: 8px 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 24px;
 }
 
 .kv-item {

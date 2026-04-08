@@ -258,14 +258,12 @@ const { t } = useI18n()
 const currentView = ref<'terminal' | 'hosts' | 'commands'>('terminal')
 const tabs = ref<TermTab[]>([])
 const activeTab = ref('')
-const FONT_SIZE_KEY = 'xp-terminal-font-size'
-const termFontSize = ref(parseInt(localStorage.getItem(FONT_SIZE_KEY) || '14', 10))
+const termFontSize = computed(() => globalStore.termFontSize)
 
 const changeFontSize = (delta: number) => {
-  const newSize = Math.max(10, Math.min(24, termFontSize.value + delta))
-  if (newSize === termFontSize.value) return
-  termFontSize.value = newSize
-  localStorage.setItem(FONT_SIZE_KEY, String(newSize))
+  const newSize = Math.max(10, Math.min(24, globalStore.termFontSize + delta))
+  if (newSize === globalStore.termFontSize) return
+  globalStore.termFontSize = newSize
   for (const tab of tabs.value) {
     if (tab.terminal) {
       tab.terminal.options.fontSize = newSize
@@ -273,6 +271,27 @@ const changeFontSize = (delta: number) => {
     }
   }
 }
+
+watch(() => globalStore.termTheme, () => {
+  const theme = applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity)
+  for (const tab of tabs.value) {
+    if (tab.terminal) tab.terminal.options.theme = theme
+  }
+})
+
+watch(() => globalStore.termFont, () => {
+  const font = getTermFontByKey(globalStore.termFont)
+  for (const tab of tabs.value) {
+    if (tab.terminal) { tab.terminal.options.fontFamily = font; tab.fitAddon?.fit() }
+  }
+})
+
+watch(() => globalStore.termBgOpacity, () => {
+  const theme = applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity)
+  for (const tab of tabs.value) {
+    if (tab.terminal) tab.terminal.options.theme = theme
+  }
+})
 const termRefs: Record<string, HTMLElement | null> = {}
 let tabCounter = 0
 const batchCommand = ref('')
@@ -371,7 +390,10 @@ const getWsUrl = (hostId?: number) => {
   return url
 }
 
-import { terminalTheme } from '@/utils/terminal-theme'
+import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
+import { useGlobalStore } from '@/store/modules/global'
+
+const globalStore = useGlobalStore()
 
 const sendResize = (ws: WebSocket, rows: number, cols: number) => {
   const resizeData = JSON.stringify({ rows, cols })
@@ -391,9 +413,9 @@ const createTerminal = async (tab: TermTab) => {
   const terminal = new Terminal({
     cursorBlink: true,
     cursorStyle: 'bar',
-    fontSize: termFontSize.value,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-    theme: terminalTheme,
+    fontSize: globalStore.termFontSize,
+    fontFamily: getTermFontByKey(globalStore.termFont),
+    theme: applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity),
     scrollback: 10000,
     allowProposedApi: true,
   })

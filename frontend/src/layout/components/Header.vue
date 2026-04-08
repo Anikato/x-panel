@@ -27,6 +27,12 @@
           <el-icon :size="12"><Clock /></el-icon>
           <span>{{ t('home.uptime') }}: {{ formatUptime(globalStore.serverInfo.uptime) }}</span>
         </div>
+        <el-tooltip v-if="serverClock" :content="globalStore.serverInfo.timezone" placement="bottom">
+          <div class="server-clock">
+            <el-icon :size="12"><Timer /></el-icon>
+            <span>{{ serverClock }}</span>
+          </div>
+        </el-tooltip>
         <el-button-group size="small" class="server-actions">
           <el-button type="warning" text size="small" @click="handleRestartPanel">
             <el-icon><RefreshRight /></el-icon>{{ t('home.restartPanel') }}
@@ -131,7 +137,7 @@ import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
 import { useI18n } from 'vue-i18n'
 import type { NodeItem } from '@/api/interface'
-import { Moon, Sunny, Check, Clock, RefreshRight } from '@element-plus/icons-vue'
+import { Moon, Sunny, Check, Clock, RefreshRight, Timer } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
@@ -179,6 +185,23 @@ const onNodeChange = (val: number) => {
 }
 
 let serverInfoTimer: ReturnType<typeof setInterval> | null = null
+let clockTimer: ReturnType<typeof setInterval> | null = null
+const serverClock = ref('')
+
+const updateClock = () => {
+  const tz = globalStore.serverInfo?.timezone
+  if (!tz) { serverClock.value = ''; return }
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false, timeZoneName: 'short',
+    })
+    serverClock.value = fmt.format(new Date())
+  } catch {
+    serverClock.value = ''
+  }
+}
 
 const fetchServerInfo = async () => {
   try {
@@ -192,7 +215,9 @@ const fetchServerInfo = async () => {
         kernelArch: h.kernelArch || '',
         virtualization: h.virtualization || '',
         uptime: res.data.uptime || 0,
+        timezone: h.timezone || '',
       })
+      updateClock()
     }
   } catch { /* ignore */ }
 }
@@ -235,10 +260,12 @@ onMounted(() => {
   fetchServerInfo()
   fetchVersion()
   serverInfoTimer = setInterval(fetchServerInfo, 30000)
+  clockTimer = setInterval(updateClock, 1000)
 })
 
 onUnmounted(() => {
   if (serverInfoTimer) clearInterval(serverInfoTimer)
+  if (clockTimer) clearInterval(clockTimer)
 })
 
 const breadcrumbs = computed(() => {
@@ -327,6 +354,21 @@ const handleCommand = async (command: string) => {
     border-radius: 12px;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+
+  .server-clock {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--xp-text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 2px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: var(--xp-font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
   .server-actions {

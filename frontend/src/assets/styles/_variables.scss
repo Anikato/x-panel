@@ -14,17 +14,23 @@
   --xp-radius-sm: 6px;
   --xp-radius-lg: 16px;
 
-  // --- Backgrounds ---
-  --xp-bg-base: #0b0e14;
-  --xp-bg-surface: #111827;
-  --xp-bg-card: #111827;
-  --xp-bg-elevated: #1a2332;
+  // --- Backgrounds (Abyss default, overridden by JS appearance system) ---
+  --xp-bg-base: #080a10;
+  --xp-bg-surface: #141c2b;
+  --xp-bg-card: #141c2b;
+  --xp-bg-elevated: #1c2638;
   --xp-bg-overlay: #1e293b;
-  --xp-bg-sidebar: #070a0f;
-  --xp-bg-header: rgba(11, 14, 20, 0.85);
+  --xp-bg-sidebar: #060810;
+  --xp-bg-header: rgba(8, 10, 16, 0.85);
   --xp-bg-input: #0f172a;
   --xp-bg-table-header: #0f172a;
   --xp-bg-inset: #0f172a;
+  --xp-bg-main-gradient: linear-gradient(160deg, #080a10 0%, #0c1018 50%, #0e1420 100%);
+
+  // --- Density (overridden by JS) ---
+  --xp-font-size: 14px;
+  --xp-spacing: 20px;
+  --xp-form-margin: 20px;
 
   // --- Accent ---
   --xp-accent: #22d3ee;
@@ -53,8 +59,8 @@
   --xp-progress-trail: rgba(255, 255, 255, 0.06);
 
   // --- Drawer / Dialog ---
-  --xp-drawer-bg: #1a2332;
-  --xp-drawer-header-bg: #111827;
+  --xp-drawer-bg: var(--xp-bg-elevated);
+  --xp-drawer-header-bg: var(--xp-bg-surface);
 
   // --- Popover ---
   --xp-popover-bg: var(--xp-bg-elevated);

@@ -7,6 +7,7 @@ import { watch, onMounted } from 'vue'
 import { useGlobalStore } from '@/store/modules/global'
 import type { ThemeMode } from '@/store/modules/global'
 import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'
+import { applyAppearance } from '@/utils/appearance'
 
 const globalStore = useGlobalStore()
 
@@ -30,13 +31,42 @@ const applyAccent = () => {
   }
 }
 
+const applyAllAppearance = () => {
+  applyAppearance({
+    bgPreset: globalStore.bgPreset,
+    uiFont: globalStore.uiFont,
+    uiDensity: globalStore.uiDensity,
+    borderRadiusPreset: globalStore.borderRadiusPreset,
+    reduceMotion: globalStore.reduceMotion,
+    cardBorderStyle: globalStore.cardBorderStyle,
+    sidebarWidth: globalStore.sidebarWidth,
+    accentKey: globalStore.accentKey,
+    accentCustom: globalStore.accentCustom,
+  })
+}
+
 watch(() => globalStore.theme, (mode) => applyTheme(mode))
-watch(() => globalStore.accentKey, () => applyAccent())
-watch(() => globalStore.accentCustom, () => applyAccent())
+watch(() => globalStore.accentKey, () => { applyAccent(); applyAllAppearance() })
+watch(() => globalStore.accentCustom, () => { applyAccent(); applyAllAppearance() })
+
+const appearanceKeys = [
+  () => globalStore.bgPreset,
+  () => globalStore.uiFont,
+  () => globalStore.uiDensity,
+  () => globalStore.borderRadiusPreset,
+  () => globalStore.reduceMotion,
+  () => globalStore.cardBorderStyle,
+  () => globalStore.sidebarWidth,
+] as const
+
+for (const getter of appearanceKeys) {
+  watch(getter, () => applyAllAppearance())
+}
 
 onMounted(() => {
   applyTheme(globalStore.theme)
   applyAccent()
+  applyAllAppearance()
 
   const mq = window.matchMedia('(prefers-color-scheme: dark)')
   mq.addEventListener('change', () => {

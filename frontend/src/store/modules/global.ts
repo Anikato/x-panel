@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
+export type BgPreset = 'abyss' | 'void' | 'tinted' | 'cosmos' | 'warm'
+export type UiFont = 'system' | 'inter' | 'noto' | 'lxgw'
+export type UiDensity = 'compact' | 'default' | 'comfortable'
+export type BorderRadiusPreset = 'sharp' | 'default' | 'rounded'
+export type CardBorderStyle = 'accent-left' | 'full' | 'shadow-only'
+export type SidebarWidthPreset = 'narrow' | 'default' | 'wide'
 
 export interface ServerInfo {
   hostname: string
@@ -9,6 +15,7 @@ export interface ServerInfo {
   kernelArch: string
   virtualization: string
   uptime: number
+  timezone: string
 }
 
 export const useGlobalStore = defineStore('global', {
@@ -24,6 +31,18 @@ export const useGlobalStore = defineStore('global', {
     currentNodeID: 0,
     currentNodeName: '',
     serverInfo: null as ServerInfo | null,
+
+    bgPreset: 'abyss' as BgPreset,
+    uiFont: 'system' as UiFont,
+    uiDensity: 'default' as UiDensity,
+    borderRadiusPreset: 'default' as BorderRadiusPreset,
+    reduceMotion: false,
+    termTheme: 'default' as string,
+    termFont: 'jetbrains' as string,
+    termFontSize: 14,
+    termBgOpacity: 1.0,
+    cardBorderStyle: 'accent-left' as CardBorderStyle,
+    sidebarWidth: 'default' as SidebarWidthPreset,
   }),
   actions: {
     setLogin(status: boolean) {
@@ -62,6 +81,12 @@ export const useGlobalStore = defineStore('global', {
     },
   },
   persist: {
-    pick: ['isLogin', 'menuCollapse', 'panelName', 'theme', 'accentKey', 'accentCustom', 'version', 'currentNodeID', 'currentNodeName'],
+    pick: [
+      'isLogin', 'menuCollapse', 'panelName', 'theme', 'accentKey', 'accentCustom',
+      'version', 'currentNodeID', 'currentNodeName',
+      'bgPreset', 'uiFont', 'uiDensity', 'borderRadiusPreset', 'reduceMotion',
+      'termTheme', 'termFont', 'termFontSize', 'termBgOpacity',
+      'cardBorderStyle', 'sidebarWidth',
+    ],
   },
 })

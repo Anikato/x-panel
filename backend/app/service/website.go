@@ -554,7 +554,7 @@ func (s *WebsiteService) SaveMainConf(content string) error {
 		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
 	}
 
-	return nil
+	return s.reloadNginx()
 }
 
 func (s *WebsiteService) ListConfFiles() ([]dto.NginxConfFileInfo, error) {
@@ -632,7 +632,7 @@ func (s *WebsiteService) SaveConfFile(req dto.NginxConfUpdate) error {
 		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
 	}
 
-	return nil
+	return s.reloadNginx()
 }
 
 // --- 内部方法 ---
