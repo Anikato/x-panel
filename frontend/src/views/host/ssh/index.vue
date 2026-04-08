@@ -65,7 +65,7 @@
           <template #header>
             <div class="card-header">
               <span>authorized_keys</span>
-              <el-button type="primary" size="small" @click="showAddKeyDialog = true">{{ $t('commons.create') }}</el-button>
+              <el-button type="primary" size="small" @click="openAddKeyDialog">{{ $t('commons.create') }}</el-button>
             </div>
           </template>
           <el-table :data="authorizedKeys" v-loading="keysLoading" size="small">
@@ -86,18 +86,60 @@
           </el-table>
         </el-card>
 
-        <el-dialog v-model="showAddKeyDialog" :title="$t('commons.create')" width="560px" destroy-on-close>
+        <el-dialog v-model="showAddKeyDialog" :title="$t('sshManage.addAuthorizedKey')" width="600px" destroy-on-close>
+          <el-radio-group v-model="addKeyMode" style="margin-bottom: 16px; width: 100%;">
+            <el-radio-button value="paste">{{ $t('sshManage.pasteKey') }}</el-radio-button>
+            <el-radio-button value="upload">{{ $t('sshManage.uploadFile') }}</el-radio-button>
+            <el-radio-button value="select" :disabled="sshKeys.length === 0">{{ $t('sshManage.selectExistingKey') }}</el-radio-button>
+          </el-radio-group>
+
           <el-form label-width="80px">
-            <el-form-item :label="$t('sshManage.publicKey')">
-              <el-input v-model="newKeyContent" type="textarea" :rows="5" placeholder="ssh-rsa AAAA... user@host" />
-            </el-form-item>
+            <!-- 粘贴公钥 -->
+            <template v-if="addKeyMode === 'paste'">
+              <el-form-item :label="$t('sshManage.publicKey')">
+                <el-input v-model="newKeyContent" type="textarea" :rows="5" placeholder="ssh-rsa AAAA... user@host" />
+              </el-form-item>
+            </template>
+
+            <!-- 上传公钥文件 -->
+            <template v-if="addKeyMode === 'upload'">
+              <el-form-item :label="$t('sshManage.pubKeyFile')">
+                <div class="upload-area">
+                  <el-upload
+                    :auto-upload="false"
+                    :show-file-list="false"
+                    :on-change="handleFileSelect"
+                    accept=".pub,.pem,.txt"
+                  >
+                    <el-button size="small" type="primary" plain>{{ $t('sshManage.selectFile') }}</el-button>
+                  </el-upload>
+                  <span v-if="uploadFileName" class="upload-filename">{{ uploadFileName }}</span>
+                </div>
+              </el-form-item>
+              <el-form-item v-if="newKeyContent" :label="$t('sshManage.preview')">
+                <el-input :model-value="newKeyContent" type="textarea" :rows="3" readonly />
+              </el-form-item>
+            </template>
+
+            <!-- 选择已有密钥 -->
+            <template v-if="addKeyMode === 'select'">
+              <el-form-item :label="$t('sshManage.selectKey')">
+                <el-select v-model="selectedKeyName" style="width: 100%" :placeholder="$t('sshManage.selectExistingKey')" @change="handleSelectKey">
+                  <el-option v-for="key in sshKeys" :key="key.name" :label="`${key.name} (${key.keyType} ${key.bits || ''})`" :value="key.name" />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-if="newKeyContent" :label="$t('sshManage.preview')">
+                <el-input :model-value="newKeyContent" type="textarea" :rows="3" readonly />
+              </el-form-item>
+            </template>
+
             <el-form-item :label="$t('commons.name')">
-              <el-input v-model="newKeyName" :placeholder="$t('commons.description')" />
+              <el-input v-model="newKeyName" :placeholder="$t('sshManage.keyCommentHint')" />
             </el-form-item>
           </el-form>
           <template #footer>
             <el-button @click="showAddKeyDialog = false">{{ $t('commons.cancel') }}</el-button>
-            <el-button type="primary" :loading="addingKey" @click="handleAddKey">{{ $t('commons.confirm') }}</el-button>
+            <el-button type="primary" :loading="addingKey" @click="handleAddKey" :disabled="!newKeyContent.trim()">{{ $t('commons.confirm') }}</el-button>
           </template>
         </el-dialog>
       </el-tab-pane>
@@ -125,8 +167,9 @@
                 <code class="fingerprint-text">{{ row.fingerprint }}</code>
               </template>
             </el-table-column>
-            <el-table-column :label="$t('commons.actions')" width="200" fixed="right">
+            <el-table-column :label="$t('commons.actions')" width="260" fixed="right">
               <template #default="{ row }">
+                <el-button link type="success" size="small" @click="handleDeployKey(row)">{{ $t('sshManage.deployKey') }}</el-button>
                 <el-button link type="primary" size="small" @click="handleCopyPubKey(row)">{{ $t('sshManage.copyPublicKey') }}</el-button>
                 <el-button link type="warning" size="small" @click="handleViewPrivateKey(row)">{{ $t('sshManage.viewPrivateKey') }}</el-button>
                 <el-button link type="danger" size="small" @click="handleDeleteSSHKey(row)">{{ $t('commons.delete') }}</el-button>
@@ -270,6 +313,9 @@ const showAddKeyDialog = ref(false)
 const newKeyContent = ref('')
 const newKeyName = ref('')
 const addingKey = ref(false)
+const addKeyMode = ref<'paste' | 'upload' | 'select'>('paste')
+const uploadFileName = ref('')
+const selectedKeyName = ref('')
 
 // 私钥管理
 const sshKeysLoading = ref(false)
@@ -319,6 +365,50 @@ const loadSSHLog = async () => {
     logTotal.value = res.data?.total || 0
   } catch { sshLogs.value = [] }
   finally { logLoading.value = false }
+}
+
+const openAddKeyDialog = () => {
+  addKeyMode.value = 'paste'
+  newKeyContent.value = ''
+  newKeyName.value = ''
+  uploadFileName.value = ''
+  selectedKeyName.value = ''
+  if (sshKeys.value.length === 0) loadSSHKeys()
+  showAddKeyDialog.value = true
+}
+
+const handleFileSelect = (file: any) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    newKeyContent.value = (e.target?.result as string || '').trim()
+    uploadFileName.value = file.name
+  }
+  reader.readAsText(file.raw)
+}
+
+const handleSelectKey = () => {
+  const key = sshKeys.value.find(k => k.name === selectedKeyName.value)
+  if (key?.publicKey) {
+    newKeyContent.value = key.publicKey
+    if (!newKeyName.value) newKeyName.value = key.name
+  }
+}
+
+const handleDeployKey = async (row: any) => {
+  if (!row.publicKey) {
+    ElMessage.warning(t('sshManage.noPublicKey'))
+    return
+  }
+  await ElMessageBox.confirm(
+    t('sshManage.deployKeyConfirm', { name: row.name }),
+    t('commons.tip'),
+    { type: 'info' }
+  )
+  try {
+    await addAuthorizedKey({ key: row.publicKey, name: row.name })
+    ElMessage.success(t('commons.success'))
+    loadAuthorizedKeys()
+  } catch { /* handled */ }
 }
 
 // 公钥管理
@@ -552,5 +642,17 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--xp-text-muted);
+}
+
+.upload-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-filename {
+  font-size: 13px;
+  color: var(--xp-text-secondary);
+  font-family: 'JetBrains Mono', monospace;
 }
 </style>
