@@ -16,3 +16,4 @@ export const syncDatabaseInstances = (data: { id: number }) => http.post('/datab
 export const changeInstancePassword = (data: { id: number; password: string }) =>
   http.post('/databases/instances/password', data)
 export const backupDatabaseInstance = (data: { id: number }) => http.post('/databases/instances/backup', data)
+export const restoreDatabaseInstance = (data: { id: number; file: string }) => http.post('/databases/instances/restore', data)

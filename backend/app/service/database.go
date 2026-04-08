@@ -28,6 +28,7 @@ type IDatabaseService interface {
 	SyncInstances(serverID uint) error
 	ChangeInstancePassword(req dto.DatabaseInstanceChangePassword) error
 	BackupInstance(id uint) (string, error)
+	RestoreInstance(req dto.DatabaseInstanceRestore) error
 }
 
 func NewIDatabaseService() IDatabaseService {
@@ -335,6 +336,39 @@ func (s *DatabaseService) BackupInstance(id uint) (string, error) {
 		}
 	}
 	return outFile, nil
+}
+
+func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error {
+	instance, err := s.repo.GetInstance(req.ID)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	server, err := s.repo.GetServer(instance.ServerID)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+
+	switch server.Type {
+	case "mysql":
+		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		defer client.Close()
+		if err := client.Restore(instance.Name, req.File); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	case "postgresql":
+		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		defer client.Close()
+		if err := client.Restore(instance.Name, req.File); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	}
+	return nil
 }
 
 func testDBConnection(server *model.DatabaseServer) error {

@@ -147,6 +147,19 @@ func (a *DatabaseAPI) BackupDatabaseInstance(c *gin.Context) {
 	helper.SuccessWithData(c, map[string]string{"file": file})
 }
 
+func (a *DatabaseAPI) RestoreDatabaseInstance(c *gin.Context) {
+	var req dto.DatabaseInstanceRestore
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := databaseService.RestoreInstance(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *DatabaseAPI) SyncDatabaseInstances(c *gin.Context) {
 	var req dto.OperateByID
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

@@ -56,6 +56,18 @@
             </el-button>
           </div>
 
+          <!-- 自动升级开关 -->
+          <div class="update-url-row" style="margin-top: 8px">
+            <span style="margin-right: 12px; white-space: nowrap; color: var(--xp-text-secondary); font-size: 13px;">{{ t('setting.autoUpgrade') }}</span>
+            <el-switch
+              v-model="autoUpgradeEnabled"
+              @change="handleAutoUpgradeChange"
+            />
+            <el-text type="info" size="small" style="margin-left: 12px">
+              {{ t('setting.autoUpgradeHint') }}
+            </el-text>
+          </div>
+
           <!-- GitHub Token（私有仓库必须） -->
           <div class="update-url-row" style="margin-top: 8px">
             <el-input
@@ -379,6 +391,7 @@ const versionInfo = reactive({
 const upgradeUrl = ref('')
 const githubToken = ref('')
 const savingToken = ref(false)
+const autoUpgradeEnabled = ref(false)
 const checking = ref(false)
 const upgrading = ref(false)
 const upgradeInfo = ref<UpgradeInfo | null>(null)
@@ -461,6 +474,15 @@ const pollUpgradeLog = () => {
   }, 2000)
 }
 
+const handleAutoUpgradeChange = async (val: boolean) => {
+  try {
+    await updateSetting({ key: 'AutoUpgrade', value: val ? 'enable' : 'disable' })
+    ElMessage.success(t('commons.success'))
+  } catch {
+    autoUpgradeEnabled.value = !val
+  }
+}
+
 // 保存 GitHub Token
 const handleSaveToken = async () => {
   savingToken.value = true
@@ -482,6 +504,7 @@ const fetchSettings = async () => {
       githubToken.value = res.data.githubToken || ''
       portForm.port = parseInt(res.data.serverPort) || 7777
       accountForm.userName = res.data.userName || 'admin'
+      autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
       agentTokenForm.token = res.data.agentToken || ''
     }
   } catch { /* */ } finally { loading.value = false }

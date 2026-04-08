@@ -153,6 +153,18 @@ const loadStats = async () => {
   try { const r = await getSystemStats(); stats.value = r.data || {} } catch {}
 }
 
+const formatUptime = (seconds?: number) => {
+  if (!seconds) return '-'
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const parts = []
+  if (d > 0) parts.push(`${d} ${t('monitor.days')}`)
+  if (h > 0) parts.push(`${h} ${t('monitor.hours')}`)
+  parts.push(`${m} ${t('monitor.minutes')}`)
+  return parts.join(' ')
+}
+
 const sysInfoItems = computed(() => {
   const h = stats.value.host ?? ({} as Partial<HostInfo>)
   return [
@@ -160,6 +172,7 @@ const sysInfoItems = computed(() => {
     { label: t('home.os'), value: `${h.platform || ''} ${h.platformVersion || ''}`.trim() || '-' },
     { label: t('home.kernel'), value: h.kernelVersion || '-' },
     { label: t('home.arch'), value: h.kernelArch || '-' },
+    { label: t('home.uptime'), value: formatUptime(stats.value.uptime) },
     { label: t('home.timezone'), value: h.timezone || '-' },
     { label: t('home.virtualization'), value: h.virtualization || '-' },
     { label: t('home.cpuModel'), value: stats.value.cpu?.modelName || '-' },

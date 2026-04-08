@@ -8,6 +8,8 @@ import (
 
 	"xpanel/app/model"
 	"xpanel/global"
+
+	hostUtil "github.com/shirou/gopsutil/v4/host"
 )
 
 // Init 执行数据库自动迁移
@@ -197,13 +199,21 @@ func migrateWildcardCertDirs(certsDir string) {
 	}
 }
 
+func getDefaultPanelName() string {
+	info, err := hostUtil.Info()
+	if err == nil && info.Hostname != "" {
+		return info.Hostname
+	}
+	return "X-Panel"
+}
+
 func initDefaultSettings() {
 	defaults := []model.Setting{
 		{Key: "UserName", Value: "admin"},
 		{Key: "Password", Value: ""},
 		{Key: "Language", Value: "zh"},
 		{Key: "SessionTimeout", Value: "86400"},
-		{Key: "PanelName", Value: "X-Panel"},
+		{Key: "PanelName", Value: getDefaultPanelName()},
 		{Key: "Theme", Value: "auto"},
 		{Key: "SecurityEntrance", Value: ""},
 		{Key: "MFAStatus", Value: "Disable"},
@@ -212,6 +222,7 @@ func initDefaultSettings() {
 		{Key: "UpgradeURL", Value: ""},
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
+		{Key: "AutoUpgrade", Value: "disable"},
 	}
 
 	for _, s := range defaults {

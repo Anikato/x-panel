@@ -3,34 +3,38 @@ package dto
 import "time"
 
 type CronjobCreate struct {
-	Name           string `json:"name" binding:"required"`
-	Type           string `json:"type" binding:"required"`
-	Spec           string `json:"spec" binding:"required"`
-	Script         string `json:"script"`
-	URL            string `json:"url"`
-	Website        string `json:"website"`
-	DBType         string `json:"dbType"`
-	DBName         string `json:"dbName"`
-	SourceDir      string `json:"sourceDir"`
-	TargetAccountID uint  `json:"targetAccountID"`
-	RetainCopies   uint   `json:"retainCopies"`
-	ExclusionRules string `json:"exclusionRules"`
+	Name            string `json:"name" binding:"required"`
+	Type            string `json:"type" binding:"required"`
+	Spec            string `json:"spec" binding:"required"`
+	Script          string `json:"script"`
+	URL             string `json:"url"`
+	Website         string `json:"website"`
+	DBType          string `json:"dbType"`
+	DBName          string `json:"dbName"`
+	SourceDir       string `json:"sourceDir"`
+	TargetAccountID uint   `json:"targetAccountID"`
+	RetainCopies    uint   `json:"retainCopies"`
+	ExclusionRules  string `json:"exclusionRules"`
+	CompressFormat  string `json:"compressFormat"`
+	EncryptPassword string `json:"encryptPassword"`
 }
 
 type CronjobUpdate struct {
-	ID             uint   `json:"id" binding:"required"`
-	Name           string `json:"name" binding:"required"`
-	Type           string `json:"type" binding:"required"`
-	Spec           string `json:"spec" binding:"required"`
-	Script         string `json:"script"`
-	URL            string `json:"url"`
-	Website        string `json:"website"`
-	DBType         string `json:"dbType"`
-	DBName         string `json:"dbName"`
-	SourceDir      string `json:"sourceDir"`
-	TargetAccountID uint  `json:"targetAccountID"`
-	RetainCopies   uint   `json:"retainCopies"`
-	ExclusionRules string `json:"exclusionRules"`
+	ID              uint   `json:"id" binding:"required"`
+	Name            string `json:"name" binding:"required"`
+	Type            string `json:"type" binding:"required"`
+	Spec            string `json:"spec" binding:"required"`
+	Script          string `json:"script"`
+	URL             string `json:"url"`
+	Website         string `json:"website"`
+	DBType          string `json:"dbType"`
+	DBName          string `json:"dbName"`
+	SourceDir       string `json:"sourceDir"`
+	TargetAccountID uint   `json:"targetAccountID"`
+	RetainCopies    uint   `json:"retainCopies"`
+	ExclusionRules  string `json:"exclusionRules"`
+	CompressFormat  string `json:"compressFormat"`
+	EncryptPassword string `json:"encryptPassword"`
 }
 
 type CronjobSearch struct {
@@ -41,22 +45,24 @@ type CronjobSearch struct {
 }
 
 type CronjobInfo struct {
-	ID             uint      `json:"id"`
-	CreatedAt      time.Time `json:"createdAt"`
-	Name           string    `json:"name"`
-	Type           string    `json:"type"`
-	Spec           string    `json:"spec"`
-	Status         string    `json:"status"`
-	EntryID        int       `json:"entryID"`
-	Script         string    `json:"script"`
-	URL            string    `json:"url"`
-	Website        string    `json:"website"`
-	DBType         string    `json:"dbType"`
-	DBName         string    `json:"dbName"`
-	SourceDir      string    `json:"sourceDir"`
-	TargetAccountID uint     `json:"targetAccountID"`
-	RetainCopies   uint      `json:"retainCopies"`
-	ExclusionRules string    `json:"exclusionRules"`
+	ID              uint      `json:"id"`
+	CreatedAt       time.Time `json:"createdAt"`
+	Name            string    `json:"name"`
+	Type            string    `json:"type"`
+	Spec            string    `json:"spec"`
+	Status          string    `json:"status"`
+	EntryID         int       `json:"entryID"`
+	Script          string    `json:"script"`
+	URL             string    `json:"url"`
+	Website         string    `json:"website"`
+	DBType          string    `json:"dbType"`
+	DBName          string    `json:"dbName"`
+	SourceDir       string    `json:"sourceDir"`
+	TargetAccountID uint      `json:"targetAccountID"`
+	RetainCopies    uint      `json:"retainCopies"`
+	ExclusionRules  string    `json:"exclusionRules"`
+	CompressFormat  string    `json:"compressFormat"`
+	EncryptPassword string    `json:"encryptPassword"`
 }
 
 type CronjobRecordSearch struct {

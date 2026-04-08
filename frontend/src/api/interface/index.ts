@@ -50,6 +50,7 @@ export interface SettingInfo {
   serverPort: string
   userName: string
   agentToken: string
+  autoUpgrade: string
 }
 
 export interface VersionInfo {
@@ -227,6 +228,8 @@ export interface Cronjob {
   targetAccountID: number
   retainCopies: number
   exclusionRules: string
+  compressFormat: string
+  encryptPassword: string
 }
 
 /** 与后端 dto.CronjobCreate 对齐（创建不传 id/status） */
@@ -243,6 +246,8 @@ export interface CronjobCreateForm {
   targetAccountID: number
   retainCopies: number
   exclusionRules: string
+  compressFormat: string
+  encryptPassword: string
 }
 
 /** 与后端 dto.CronjobUpdate 对齐 */

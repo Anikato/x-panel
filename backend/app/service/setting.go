@@ -47,6 +47,7 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		GitHubToken:      settingMap["GitHubToken"],
 		ServerPort:       global.CONF.System.Port,
 		AgentToken:       settingMap["AgentToken"],
+		AutoUpgrade:      settingMap["AutoUpgrade"],
 	}, nil
 }
 
@@ -57,6 +58,7 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 		"PanelName": true, "Theme": true,
 		"SecurityEntrance": true, "GitHubToken": true,
 		"UserName": true, "AgentToken": true,
+		"AutoUpgrade": true,
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)

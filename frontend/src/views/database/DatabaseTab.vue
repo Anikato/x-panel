@@ -24,9 +24,10 @@
               <el-table-column :label="t('commons.createdAt')" width="180">
                 <template #default="{ row: inst }">{{ inst.createdAt ? new Date(inst.createdAt).toLocaleString() : '-' }}</template>
               </el-table-column>
-              <el-table-column :label="t('commons.actions')" width="260" fixed="right">
+              <el-table-column :label="t('commons.actions')" width="320" fixed="right">
                 <template #default="{ row: inst }">
                   <el-button link type="primary" size="small" @click="handleBackup(row, inst)">{{ t('database.backup') }}</el-button>
+                  <el-button link type="success" size="small" @click="openRestore(row, inst)">{{ t('database.restore') }}</el-button>
                   <el-button link type="primary" size="small" @click="openChangePassword(row, inst)">{{ t('database.changePassword') }}</el-button>
                   <el-button link type="danger" size="small" @click="handleDeleteInstance(row, inst)">{{ t('commons.delete') }}</el-button>
                 </template>
@@ -128,6 +129,21 @@
         <el-button type="primary" :loading="submitting" @click="submitChangePassword">{{ t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
+    <!-- Restore Dialog -->
+    <el-dialog v-model="restoreDialog" :title="t('database.restore')" width="500px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item :label="t('database.dbName')">
+          <el-input :model-value="restoreForm.dbName" disabled />
+        </el-form-item>
+        <el-form-item :label="t('database.backupFile')">
+          <el-input v-model="restoreForm.file" :placeholder="t('database.restoreFileHint')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="restoreDialog = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="restoring" @click="submitRestore">{{ t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -141,7 +157,7 @@ import type { DatabaseServer, DatabaseInstance } from '@/api/interface'
 import {
   searchDatabaseServer, createDatabaseServer, updateDatabaseServer, deleteDatabaseServer,
   testDatabaseConnection, searchDatabaseInstance, createDatabaseInstance, deleteDatabaseInstance,
-  syncDatabaseInstances, changeInstancePassword, backupDatabaseInstance,
+  syncDatabaseInstances, changeInstancePassword, backupDatabaseInstance, restoreDatabaseInstance,
 } from '@/api/modules/database'
 
 const props = defineProps<{ dbType: string }>()
@@ -319,6 +335,36 @@ const submitChangePassword = async () => {
     ElMessage.success(t('commons.success'))
     passwordDialog.value = false
   } finally { submitting.value = false }
+}
+
+// Restore
+const restoreDialog = ref(false)
+const restoring = ref(false)
+const restoreForm = reactive({ id: 0, dbName: '', file: '' })
+let restoreServer: DatabaseServer | null = null
+
+const openRestore = (server: DatabaseServer, inst: DatabaseInstance) => {
+  restoreServer = server
+  restoreForm.id = inst.id
+  restoreForm.dbName = inst.name
+  restoreForm.file = ''
+  restoreDialog.value = true
+}
+
+const submitRestore = async () => {
+  if (!restoreForm.file.trim()) {
+    ElMessage.warning(t('database.restoreFileRequired'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(t('database.restoreConfirm', { name: restoreForm.dbName }), t('commons.tip'), { type: 'warning' })
+  } catch { return }
+  restoring.value = true
+  try {
+    await restoreDatabaseInstance({ id: restoreForm.id, file: restoreForm.file })
+    ElMessage.success(t('commons.success'))
+    restoreDialog.value = false
+  } finally { restoring.value = false }
 }
 
 // Backup

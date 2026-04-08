@@ -12,6 +12,7 @@ type SettingInfo struct {
 	GitHubToken      string `json:"githubToken"`
 	ServerPort       string `json:"serverPort"`
 	AgentToken       string `json:"agentToken"`
+	AutoUpgrade      string `json:"autoUpgrade"`
 }
 
 // SettingUpdate 设置更新请求

@@ -4,6 +4,87 @@
 
 ---
 
+## 2026-04-08 — Session #61：备份系统全面修复 + 压缩加密增强
+
+### 完成内容
+
+**备份系统 Bug 修复**：
+- [x] 修复 `backupWebsite` 目录不存在时错误回退到 nginx conf.d 的问题 — 改为查询 Website 模型的 SiteDir
+- [x] 修复 `backupDatabase` 多服务器时固定用 `servers[0]` 可能连错服务器 — 改为遍历查找数据库实例所在服务器
+- [x] 修复 `Backup()` 失败时 `filepath.Base(errorMessage)` 写入垃圾 BackupRecord 数据
+- [x] 修复计划任务 website/directory 无备份账号时直接失败 — 新增 `localBackupTar` 支持本地备份
+
+**备份压缩格式选择**：
+- [x] 新建 `utils/backup/archive.go` 统一处理打包/压缩/加密逻辑
+- [x] 支持 gzip（默认）、zstd（更快更小）、xz（最高压缩率）三种格式
+- [x] Cronjob 模型/DTO 新增 `CompressFormat` 字段
+- [x] 前端计划任务表单新增压缩格式选择器
+
+**备份加密压缩**：
+- [x] 支持 openssl AES-256-CBC + PBKDF2 加密备份文件
+- [x] Cronjob 模型/DTO 新增 `EncryptPassword` 字段
+- [x] 前端计划任务表单新增加密密码输入框
+- [x] 提供 `DecryptFile` 函数支持恢复时解密
+
+**排除规则生效**：
+- [x] 将 `ExclusionRules`（已有字段但未使用）转换为 `tar --exclude` 参数
+- [x] 支持每行一条规则（如 `*.log`、`node_modules`、`.git`）
+- [x] 前端计划任务表单新增排除规则文本框
+
+### 关键设计决策
+
+- **统一归档工具**：所有备份路径（计划任务本地备份、备份管理页）都通过 `utils/backup.CreateArchive` 统一处理，避免重复代码
+- **扩展名自动调整**：根据压缩格式和是否加密自动生成正确扩展名（如 `.tar.zst.enc`）
+- **加密方案选择 openssl**：几乎所有 Linux 系统预装，无需额外依赖
+- **zstd 压缩**：Debian 12+ 内核自带 zstd 支持，tar 原生支持 `--zstd`
+
+### 遗留问题
+
+- RetainCopies 只清理数据库记录不清理磁盘备份文件
+- 备份管理页手动备份暂未暴露压缩/加密选项（仅计划任务支持）
+
+---
+
+## 2026-04-08 — Session #60：数据库备份链路修复 + 面板增强
+
+### 完成内容
+
+**数据库备份链路修复（严重 Bug）**：
+- [x] 修复计划任务 database/website/directory 类型备份空实现 — 原代码走 `default` 分支只写假成功日志，实际不执行任何备份
+- [x] `execDatabaseBackup`：支持通过备份账号上传或本地直接备份两种路径
+- [x] `execWebsiteBackup`、`execDirectoryBackup`：通过备份服务执行实际备份
+- [x] 新增数据库恢复 API — `POST /databases/instances/restore`，暴露已有的 MySQL `mysql` / PostgreSQL `pg_restore` 恢复能力
+- [x] 前端数据库实例列表新增「恢复」按钮和对话框（输入备份文件路径）
+- [x] i18n 新增数据库恢复相关翻译
+
+**面板名称默认 hostname**：
+- [x] 初始化 migration 中 `PanelName` 默认值从硬编码 `"X-Panel"` 改为 `os.Hostname()` 获取系统主机名
+- [x] 回退值仍为 `"X-Panel"`（获取主机名失败时）
+
+**面板自动升级（含开关）**：
+- [x] 新增 `AutoUpgrade` 设置项（enable/disable），默认关闭
+- [x] 后端 Cron 每天凌晨 3:30 检查设置，若启用则自动检测并升级到最新版本
+- [x] 前端设置页版本信息区新增自动升级开关，即时生效
+- [x] SettingInfo DTO 和前端接口同步添加 `autoUpgrade` 字段
+
+**首页显示系统运行时间**：
+- [x] 首页系统信息卡片新增「运行时间」显示（X天 X时 X分格式）
+- [x] 后端 `uptime` 字段已存在于 SystemStats，前端直接使用
+
+### 关键设计决策
+
+- **计划任务数据库备份双路径**：有备份账号时走 `BackupService.PerformBackup`（上传到云/本地账号路径），无备份账号（`targetAccountID=0`）时走 `DatabaseService.BackupInstance`（本地 `DataDir/backup/database/`）
+- **自动升级使用 cron 而非 systemd timer**：复用已有的 Go cron 框架，设置通过数据库持久化，无需重启 cron 进程
+- **恢复 API 接受文件绝对路径**：因备份文件在服务器本地，无需上传流程，直接传路径恢复
+
+### 遗留问题
+
+- 计划任务前端缺少备份账号选择器（`targetAccountID` 永远为 0），需要后续补充
+- 数据库备份后没有 HTTP 下载接口，只返回服务器路径
+- 备份管理页中 `backupDatabase` 使用 `servers[0]`，多服务器时可能连错
+
+---
+
 ## 2026-04-08 — Session #59：UI 修复 + 进程管理网络视图 + SSH 公钥增强
 
 ### 完成内容

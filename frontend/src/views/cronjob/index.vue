@@ -141,6 +141,19 @@
         <el-form-item v-if="['website','database','directory'].includes(form.type)" :label="t('cronjob.retainCopies')">
           <el-input-number v-model="form.retainCopies" :min="1" :max="999" />
         </el-form-item>
+        <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.compressFormat')">
+          <el-select v-model="form.compressFormat" style="width:100%">
+            <el-option label="Gzip (.tar.gz)" value="gzip" />
+            <el-option label="Zstd (.tar.zst)" value="zstd" />
+            <el-option label="XZ (.tar.xz)" value="xz" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="['website','database','directory'].includes(form.type)" :label="t('cronjob.encryptPassword')">
+          <el-input v-model="form.encryptPassword" type="password" show-password :placeholder="t('cronjob.encryptPasswordHint')" />
+        </el-form-item>
+        <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.exclusionRules')">
+          <el-input v-model="form.exclusionRules" type="textarea" :rows="3" :placeholder="t('cronjob.exclusionRulesHint')" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="drawerVisible = false">{{ t('commons.cancel') }}</el-button>
@@ -207,6 +220,7 @@ const defaultForm = () => ({
   id: 0, name: '', type: 'shell', spec: '0 2 * * *', script: '', url: '',
   website: '', dbType: 'mysql', dbName: '', sourceDir: '',
   targetAccountID: 0, retainCopies: 7, exclusionRules: '',
+  compressFormat: 'gzip', encryptPassword: '',
 })
 const form = reactive(defaultForm())
 const rules: FormRules = {

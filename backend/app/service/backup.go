@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
+	archiveUtil "xpanel/utils/backup"
 	cs "xpanel/utils/cloud_storage"
 	dbUtil "xpanel/utils/database"
 )
@@ -88,15 +88,17 @@ func (s *BackupService) GetAccount(id uint) (*model.BackupAccount, error) {
 func (s *BackupService) Backup(req dto.BackupCreate) error {
 	go func() {
 		msg, err := s.PerformBackup(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID)
-		status := constant.StatusSuccess
-		if err != nil {
-			status = constant.StatusFailed
-			msg = err.Error()
-		}
 		record := &model.BackupRecord{
 			Type: req.Type, Name: req.Name, AccountID: req.AccountID,
-			FileName: filepath.Base(msg), FileDir: filepath.Dir(msg),
-			Status: status, Message: msg,
+		}
+		if err != nil {
+			record.Status = constant.StatusFailed
+			record.Message = err.Error()
+		} else {
+			record.Status = constant.StatusSuccess
+			record.FileName = filepath.Base(msg)
+			record.FileDir = filepath.Dir(msg)
+			record.Message = msg
 		}
 		if err := s.repo.CreateRecord(record); err != nil {
 			global.LOG.Errorf("save backup record failed: %v", err)
@@ -146,19 +148,24 @@ func (s *BackupService) PerformBackup(backupType, name, dbType, sourceDir string
 }
 
 func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, string, error) {
-	siteDir := filepath.Join("/var/www", name)
-	if _, err := os.Stat(siteDir); err != nil {
-		siteDir = filepath.Join(global.CONF.Nginx.GetConfDir(), "conf.d")
+	websiteRepo := repo.NewIWebsiteRepo()
+	website, err := websiteRepo.Get(repo.WithByPrimaryDomain(name))
+	var siteDir string
+	if err == nil && website.SiteDir != "" {
+		siteDir = website.SiteDir
+	} else {
+		siteDir = filepath.Join("/var/www", name)
 	}
 
 	fileName := fmt.Sprintf("website_%s_%s.tar.gz", name, timestamp)
-	localFile := filepath.Join(tmpDir, fileName)
-
-	cmd := exec.Command("tar", "-czf", localFile, "-C", filepath.Dir(siteDir), filepath.Base(siteDir))
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", "", fmt.Errorf("tar failed: %s", string(output))
+	outFile, err := archiveUtil.CreateArchive(archiveUtil.ArchiveOptions{
+		SourceDir: siteDir,
+		OutFile:   filepath.Join(tmpDir, fileName),
+	})
+	if err != nil {
+		return "", "", err
 	}
-	return localFile, filepath.Join("website", name, fileName), nil
+	return outFile, filepath.Join("website", name, filepath.Base(outFile)), nil
 }
 
 func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (string, string, error) {
@@ -166,7 +173,25 @@ func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (
 	if len(servers) == 0 {
 		return "", "", fmt.Errorf("no %s server found", dbType)
 	}
-	server := servers[0]
+
+	// Find which server actually has this database instance
+	var targetServer *model.DatabaseServer
+	for i := range servers {
+		instances, _ := s.dbRepo.ListInstancesByServerID(servers[i].ID)
+		for _, inst := range instances {
+			if inst.Name == name {
+				targetServer = &servers[i]
+				break
+			}
+		}
+		if targetServer != nil {
+			break
+		}
+	}
+	if targetServer == nil {
+		targetServer = &servers[0]
+	}
+
 	fileName := fmt.Sprintf("db_%s_%s_%s.sql", name, dbType, timestamp)
 	if dbType == "postgresql" {
 		fileName = fmt.Sprintf("db_%s_%s_%s.dump", name, dbType, timestamp)
@@ -175,7 +200,7 @@ func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (
 
 	switch dbType {
 	case "mysql":
-		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		client, err := dbUtil.NewMysqlClient(targetServer.Address, targetServer.Port, targetServer.Username, targetServer.Password)
 		if err != nil {
 			return "", "", err
 		}
@@ -184,7 +209,7 @@ func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (
 			return "", "", err
 		}
 	case "postgresql":
-		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		client, err := dbUtil.NewPostgresClient(targetServer.Address, targetServer.Port, targetServer.Username, targetServer.Password)
 		if err != nil {
 			return "", "", err
 		}
@@ -201,13 +226,14 @@ func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp strin
 		name = filepath.Base(sourceDir)
 	}
 	fileName := fmt.Sprintf("dir_%s_%s.tar.gz", name, timestamp)
-	localFile := filepath.Join(tmpDir, fileName)
-
-	cmd := exec.Command("tar", "-czf", localFile, "-C", filepath.Dir(sourceDir), filepath.Base(sourceDir))
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", "", fmt.Errorf("tar failed: %s", string(output))
+	outFile, err := archiveUtil.CreateArchive(archiveUtil.ArchiveOptions{
+		SourceDir: sourceDir,
+		OutFile:   filepath.Join(tmpDir, fileName),
+	})
+	if err != nil {
+		return "", "", err
 	}
-	return localFile, filepath.Join("directory", name, fileName), nil
+	return outFile, filepath.Join("directory", name, filepath.Base(outFile)), nil
 }
 
 func (s *BackupService) SearchRecords(req dto.BackupRecordSearch) (int64, []dto.BackupRecordInfo, error) {
