@@ -340,6 +340,8 @@ export default {
     // 拖拽上传
     dropHere: '拖拽文件到此处上传',
     uploadProgress: '上传中...',
+    uploadComplete: '{count} 个文件上传完成',
+    uploadPartial: '部分文件上传失败',
   },
   terminal: {
     title: '终端',
@@ -854,6 +856,8 @@ export default {
     accounts: '备份账户',
     records: '备份记录',
     addAccount: '添加备份账户',
+    basicInfo: '基本信息',
+    connectionInfo: '连接配置',
     type: '类型',
     path: '备份路径',
     endpoint: '地址',
@@ -976,6 +980,10 @@ export default {
     restoreConfirm: '确定要恢复数据库 {name} 吗？现有数据将被覆盖！',
   },
   cronjob: {
+    basicConfig: '基本设置',
+    scheduleConfig: '执行计划',
+    taskConfig: '任务配置',
+    advancedConfig: '高级选项',
     type: '类型',
     type_shell: 'Shell 脚本',
     type_curl: 'URL 请求',

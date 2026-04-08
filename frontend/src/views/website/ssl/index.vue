@@ -386,7 +386,7 @@ const defaultCertForm = () => ({
   provider: 'dns',
   acmeAccountID: undefined as number | undefined,
   dnsAccountID: undefined as number | undefined,
-  keyType: '2048',
+  keyType: 'P256',
   autoRenew: true,
   apply: true,
   description: '',
@@ -398,7 +398,7 @@ const uploadForm = ref({ certificate: '', privateKey: '', description: '' })
 const acmeAccounts = ref<AcmeAccount[]>([])
 const acmeDialogVisible = ref(false)
 const acmeSubmitting = ref(false)
-const acmeForm = ref({ email: '', type: 'letsencrypt', keyType: '2048', caDirURL: '' })
+const acmeForm = ref({ email: '', type: 'letsencrypt', keyType: 'P256', caDirURL: '' })
 
 // --- DNS 账户 ---
 const dnsAccounts = ref<DnsAccount[]>([])

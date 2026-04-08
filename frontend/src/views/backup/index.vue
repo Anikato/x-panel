@@ -65,105 +65,112 @@
 
     <!-- Account drawer -->
     <el-drawer v-model="accountDrawer" :title="editAccountMode ? t('commons.edit') : t('backup.addAccount')" size="520px" destroy-on-close>
-      <el-form ref="accountFormRef" :model="accountForm" :rules="accountRules" label-width="120px">
-        <el-form-item :label="t('commons.name')" prop="name">
-          <el-input v-model="accountForm.name" :placeholder="t('backup.accountNameHint')" />
-        </el-form-item>
-        <el-form-item :label="t('backup.type')" prop="type">
-          <el-select v-model="accountForm.type" :disabled="editAccountMode" style="width:100%" @change="onTypeChange">
-            <el-option :label="t('backup.typeLocal')" value="local">
-              <div class="type-option"><span>{{ t('backup.typeLocal') }}</span><el-text type="info" size="small">{{ t('backup.typeLocalDesc') }}</el-text></div>
-            </el-option>
-            <el-option label="S3" value="s3">
-              <div class="type-option"><span>S3 / MinIO</span><el-text type="info" size="small">{{ t('backup.typeS3Desc') }}</el-text></div>
-            </el-option>
-            <el-option label="SFTP" value="sftp">
-              <div class="type-option"><span>SFTP</span><el-text type="info" size="small">{{ t('backup.typeSftpDesc') }}</el-text></div>
-            </el-option>
-            <el-option label="WebDAV" value="webdav">
-              <div class="type-option"><span>WebDAV</span><el-text type="info" size="small">{{ t('backup.typeWebdavDesc') }}</el-text></div>
-            </el-option>
-          </el-select>
-        </el-form-item>
-
-        <!-- Local fields -->
-        <template v-if="accountForm.type === 'local'">
-          <el-form-item v-if="remoteMounts.length > 0" :label="t('backup.remoteMounts')">
-            <el-select v-model="selectedMount" :placeholder="t('backup.selectMountHint')" clearable style="width: 100%" @change="onMountSelect">
-              <el-option v-for="m in remoteMounts" :key="m.mountPoint" :label="m.mountPoint" :value="m.mountPoint">
-                <div class="mount-option">
-                  <span class="mount-path">{{ m.mountPoint }}</span>
-                  <span class="mount-info">
-                    <el-tag :type="m.fsType.includes('nfs') ? 'warning' : 'success'" size="small" effect="plain">{{ m.fsType.toUpperCase() }}</el-tag>
-                    <span class="mount-device">{{ m.device }}</span>
-                  </span>
-                </div>
+      <el-form ref="accountFormRef" :model="accountForm" :rules="accountRules" label-width="120px" class="drawer-form">
+        <div class="drawer-section">
+          <div class="drawer-section-title">{{ t('backup.basicInfo') }}</div>
+          <el-form-item :label="t('commons.name')" prop="name">
+            <el-input v-model="accountForm.name" :placeholder="t('backup.accountNameHint')" />
+          </el-form-item>
+          <el-form-item :label="t('backup.type')" prop="type">
+            <el-select v-model="accountForm.type" :disabled="editAccountMode" style="width:100%" @change="onTypeChange">
+              <el-option :label="t('backup.typeLocal')" value="local">
+                <div class="type-option"><el-icon><FolderOpened /></el-icon><span>{{ t('backup.typeLocal') }}</span><el-text type="info" size="small">{{ t('backup.typeLocalDesc') }}</el-text></div>
+              </el-option>
+              <el-option label="S3" value="s3">
+                <div class="type-option"><el-icon><Cloudy /></el-icon><span>S3 / MinIO</span><el-text type="info" size="small">{{ t('backup.typeS3Desc') }}</el-text></div>
+              </el-option>
+              <el-option label="SFTP" value="sftp">
+                <div class="type-option"><el-icon><Connection /></el-icon><span>SFTP</span><el-text type="info" size="small">{{ t('backup.typeSftpDesc') }}</el-text></div>
+              </el-option>
+              <el-option label="WebDAV" value="webdav">
+                <div class="type-option"><el-icon><Share /></el-icon><span>WebDAV</span><el-text type="info" size="small">{{ t('backup.typeWebdavDesc') }}</el-text></div>
               </el-option>
             </el-select>
-            <div class="form-hint">{{ t('backup.mountSelectHint') }}</div>
           </el-form-item>
-          <el-form-item :label="t('backup.path')">
-            <el-input v-model="accountForm.backupPath" placeholder="/opt/xpanel/backup" />
-            <div class="form-hint">{{ t('backup.localPathHint') }}</div>
-          </el-form-item>
-        </template>
+        </div>
 
-        <!-- S3 fields -->
-        <template v-if="accountForm.type === 's3'">
-          <el-form-item label="Endpoint" required>
-            <el-input v-model="endpointField" placeholder="https://s3.amazonaws.com" />
-            <div class="form-hint">{{ t('backup.s3EndpointHint') }}</div>
-          </el-form-item>
-          <el-form-item label="Region">
-            <el-input v-model="regionField" placeholder="us-east-1" />
-          </el-form-item>
-          <el-form-item label="Bucket" required>
-            <el-input v-model="accountForm.bucket" placeholder="my-backup-bucket" />
-          </el-form-item>
-          <el-form-item label="Access Key" required>
-            <el-input v-model="accountForm.accessKey" />
-          </el-form-item>
-          <el-form-item label="Secret Key" required>
-            <el-input v-model="accountForm.credential" type="password" show-password />
-          </el-form-item>
-          <el-form-item :label="t('backup.path')">
-            <el-input v-model="accountForm.backupPath" placeholder="/xpanel-backup" />
-            <div class="form-hint">{{ t('backup.s3PathHint') }}</div>
-          </el-form-item>
-        </template>
+        <div class="drawer-section">
+          <div class="drawer-section-title">{{ t('backup.connectionInfo') }}</div>
 
-        <!-- SFTP fields -->
-        <template v-if="accountForm.type === 'sftp'">
-          <el-form-item :label="t('backup.sftpAddress')" required>
-            <el-input v-model="endpointField" placeholder="192.168.1.100:22" />
-          </el-form-item>
-          <el-form-item :label="t('backup.sftpUser')" required>
-            <el-input v-model="accountForm.accessKey" placeholder="root" />
-          </el-form-item>
-          <el-form-item :label="t('backup.sftpPassword')" required>
-            <el-input v-model="accountForm.credential" type="password" show-password />
-          </el-form-item>
-          <el-form-item :label="t('backup.path')">
-            <el-input v-model="accountForm.backupPath" placeholder="/data/backup" />
-            <div class="form-hint">{{ t('backup.sftpPathHint') }}</div>
-          </el-form-item>
-        </template>
+          <!-- Local fields -->
+          <template v-if="accountForm.type === 'local'">
+            <el-form-item v-if="remoteMounts.length > 0" :label="t('backup.remoteMounts')">
+              <el-select v-model="selectedMount" :placeholder="t('backup.selectMountHint')" clearable style="width: 100%" @change="onMountSelect">
+                <el-option v-for="m in remoteMounts" :key="m.mountPoint" :label="m.mountPoint" :value="m.mountPoint">
+                  <div class="mount-option">
+                    <span class="mount-path">{{ m.mountPoint }}</span>
+                    <span class="mount-info">
+                      <el-tag :type="m.fsType.includes('nfs') ? 'warning' : 'success'" size="small" effect="plain">{{ m.fsType.toUpperCase() }}</el-tag>
+                      <span class="mount-device">{{ m.device }}</span>
+                    </span>
+                  </div>
+                </el-option>
+              </el-select>
+              <div class="form-hint">{{ t('backup.mountSelectHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('backup.path')">
+              <el-input v-model="accountForm.backupPath" placeholder="/opt/xpanel/backup" />
+              <div class="form-hint">{{ t('backup.localPathHint') }}</div>
+            </el-form-item>
+          </template>
 
-        <!-- WebDAV fields -->
-        <template v-if="accountForm.type === 'webdav'">
-          <el-form-item label="WebDAV URL" required>
-            <el-input v-model="endpointField" placeholder="https://dav.example.com/remote.php/dav/files/user/" />
-          </el-form-item>
-          <el-form-item :label="t('backup.webdavUser')" required>
-            <el-input v-model="accountForm.accessKey" />
-          </el-form-item>
-          <el-form-item :label="t('backup.webdavPassword')" required>
-            <el-input v-model="accountForm.credential" type="password" show-password />
-          </el-form-item>
-          <el-form-item :label="t('backup.path')">
-            <el-input v-model="accountForm.backupPath" placeholder="/xpanel-backup" />
-          </el-form-item>
-        </template>
+          <!-- S3 fields -->
+          <template v-if="accountForm.type === 's3'">
+            <el-form-item label="Endpoint" required>
+              <el-input v-model="endpointField" placeholder="https://s3.amazonaws.com" />
+              <div class="form-hint">{{ t('backup.s3EndpointHint') }}</div>
+            </el-form-item>
+            <el-form-item label="Region">
+              <el-input v-model="regionField" placeholder="us-east-1" />
+            </el-form-item>
+            <el-form-item label="Bucket" required>
+              <el-input v-model="accountForm.bucket" placeholder="my-backup-bucket" />
+            </el-form-item>
+            <el-form-item label="Access Key" required>
+              <el-input v-model="accountForm.accessKey" />
+            </el-form-item>
+            <el-form-item label="Secret Key" required>
+              <el-input v-model="accountForm.credential" type="password" show-password />
+            </el-form-item>
+            <el-form-item :label="t('backup.path')">
+              <el-input v-model="accountForm.backupPath" placeholder="/xpanel-backup" />
+              <div class="form-hint">{{ t('backup.s3PathHint') }}</div>
+            </el-form-item>
+          </template>
+
+          <!-- SFTP fields -->
+          <template v-if="accountForm.type === 'sftp'">
+            <el-form-item :label="t('backup.sftpAddress')" required>
+              <el-input v-model="endpointField" placeholder="192.168.1.100:22" />
+            </el-form-item>
+            <el-form-item :label="t('backup.sftpUser')" required>
+              <el-input v-model="accountForm.accessKey" placeholder="root" />
+            </el-form-item>
+            <el-form-item :label="t('backup.sftpPassword')" required>
+              <el-input v-model="accountForm.credential" type="password" show-password />
+            </el-form-item>
+            <el-form-item :label="t('backup.path')">
+              <el-input v-model="accountForm.backupPath" placeholder="/data/backup" />
+              <div class="form-hint">{{ t('backup.sftpPathHint') }}</div>
+            </el-form-item>
+          </template>
+
+          <!-- WebDAV fields -->
+          <template v-if="accountForm.type === 'webdav'">
+            <el-form-item label="WebDAV URL" required>
+              <el-input v-model="endpointField" placeholder="https://dav.example.com/remote.php/dav/files/user/" />
+            </el-form-item>
+            <el-form-item :label="t('backup.webdavUser')" required>
+              <el-input v-model="accountForm.accessKey" />
+            </el-form-item>
+            <el-form-item :label="t('backup.webdavPassword')" required>
+              <el-input v-model="accountForm.credential" type="password" show-password />
+            </el-form-item>
+            <el-form-item :label="t('backup.path')">
+              <el-input v-model="accountForm.backupPath" placeholder="/xpanel-backup" />
+            </el-form-item>
+          </template>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="accountDrawer = false">{{ t('commons.cancel') }}</el-button>
@@ -172,14 +179,20 @@
     </el-drawer>
 
     <!-- Backup dialog -->
-    <el-dialog v-model="backupDialog" :title="t('backup.createBackup')" width="500px" destroy-on-close>
-      <el-form ref="backupFormRef" :model="backupForm" :rules="backupRules" label-width="110px">
+    <el-dialog v-model="backupDialog" :title="t('backup.createBackup')" width="520px" destroy-on-close>
+      <el-form ref="backupFormRef" :model="backupForm" :rules="backupRules" label-width="110px" class="drawer-form">
         <el-form-item :label="t('backup.type')" prop="type">
-          <el-select v-model="backupForm.type" style="width:100%">
-            <el-option :label="t('backup.typeWebsite')" value="website" />
-            <el-option :label="t('backup.typeDatabase')" value="database" />
-            <el-option :label="t('backup.typeDirectory')" value="directory" />
-          </el-select>
+          <el-radio-group v-model="backupForm.type" class="backup-type-group">
+            <el-radio-button value="website">
+              <el-icon><Monitor /></el-icon> {{ t('backup.typeWebsite') }}
+            </el-radio-button>
+            <el-radio-button value="database">
+              <el-icon><Coin /></el-icon> {{ t('backup.typeDatabase') }}
+            </el-radio-button>
+            <el-radio-button value="directory">
+              <el-icon><FolderOpened /></el-icon> {{ t('backup.typeDirectory') }}
+            </el-radio-button>
+          </el-radio-group>
         </el-form-item>
         <el-form-item :label="t('commons.name')" prop="name">
           <el-input v-model="backupForm.name" :placeholder="backupForm.type === 'website' ? 'example.com' : backupForm.type === 'database' ? 'my_database' : '/data/myapp'" />
@@ -211,6 +224,7 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { FolderOpened, Cloudy, Connection, Share, Monitor, Coin } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import type { BackupAccount, BackupRecord } from '@/api/interface'
 import {
@@ -370,13 +384,81 @@ watch(activeTab, (tab) => {
 onMounted(() => loadAccounts())
 </script>
 
-<style scoped>
-.type-option { display: flex; align-items: center; gap: 8px; }
-.form-hint { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
-.mount-option {
-  display: flex; align-items: center; justify-content: space-between; width: 100%;
+<style lang="scss" scoped>
+.drawer-form {
+  :deep(.el-form-item__label) {
+    font-weight: 500;
+  }
 }
-.mount-path { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
-.mount-info { display: flex; align-items: center; gap: 6px; }
-.mount-device { font-size: 12px; color: var(--el-text-color-secondary); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+.drawer-section {
+  margin-bottom: 24px;
+  padding-bottom: 8px;
+}
+
+.drawer-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--xp-text-primary);
+  margin-bottom: 16px;
+  padding-left: 10px;
+  border-left: 3px solid var(--xp-accent);
+  line-height: 1;
+}
+
+.type-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .el-icon { color: var(--xp-accent); opacity: 0.7; }
+}
+
+.form-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.mount-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.mount-path {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+}
+
+.mount-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mount-device {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.backup-type-group {
+  width: 100%;
+
+  :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  :deep(.el-radio-button__inner) {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+}
 </style>

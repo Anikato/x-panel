@@ -48,13 +48,18 @@ export const decompressFile = (params: { path: string; dst: string }) => {
   return http.post('/files/decompress', params)
 }
 
-export const uploadFile = (path: string, file: File) => {
+export const uploadFile = (path: string, file: File, onProgress?: (percent: number) => void) => {
   const formData = new FormData()
   formData.append('path', path)
   formData.append('file', file)
   return http.post('/files/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 600000, // 10 min for uploads
+    timeout: 600000,
+    onUploadProgress: onProgress
+      ? (e: { loaded: number; total?: number }) => {
+          if (e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      : undefined,
   })
 }
 

@@ -97,12 +97,12 @@ export const ACCENT_PRESETS: AccentPalette[] = [
   {
     name: '荧光绿 Neon',
     key: 'neon',
-    primary: '#14FF4F',
-    hover: '#0dd43f',
-    muted: 'rgba(20, 255, 79, 0.15)',
-    glow: '0 0 20px rgba(20, 255, 79, 0.2)',
+    primary: '#41FB44',
+    hover: '#34C936',
+    muted: 'rgba(65, 251, 68, 0.15)',
+    glow: '0 0 20px rgba(65, 251, 68, 0.2)',
     secondary: '#22d3ee',
-    elPrimaryLevels: ['#6bff8f', '#3dff6a', '#0dd43f', '#0aad33', '#078727'],
+    elPrimaryLevels: ['#7AFC7C', '#5EFD62', '#34C936', '#28A02B', '#1D7A20'],
   },
 ]
 

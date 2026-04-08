@@ -347,6 +347,33 @@
       </template>
     </el-dialog>
 
+    <!-- 上传进度浮窗 -->
+    <Transition name="slide-up">
+      <div v-if="uploadQueue.length > 0" class="upload-panel">
+        <div class="upload-panel-hd">
+          <span>{{ t('file.upload') }}</span>
+          <span class="upload-panel-count">{{ uploadDoneCount }}/{{ uploadQueue.length }}</span>
+          <el-icon v-if="uploadAllDone" class="upload-panel-close" @click="uploadQueue = []"><Close /></el-icon>
+        </div>
+        <div class="upload-panel-body">
+          <div v-for="item in uploadQueue" :key="item.id" class="upload-item">
+            <span class="upload-item-name" :title="item.name">{{ item.name }}</span>
+            <el-progress
+              :percentage="item.progress"
+              :status="item.error ? 'exception' : item.progress >= 100 ? 'success' : undefined"
+              :stroke-width="4"
+              :show-text="false"
+            />
+            <span class="upload-item-status">
+              <template v-if="item.error">{{ t('commons.failed') }}</template>
+              <template v-else-if="item.progress >= 100">{{ t('commons.success') }}</template>
+              <template v-else>{{ item.progress }}%</template>
+            </span>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- 子组件 -->
     <CodeEditor ref="codeEditorRef" @saved="refreshFiles" />
     <TerminalDialog ref="terminalRef" />
@@ -741,16 +768,36 @@ const handleCreate = async () => {
 
 // ===================== 上传 =====================
 
+interface UploadItem { id: number; name: string; progress: number; error: boolean }
+const uploadQueue = ref<UploadItem[]>([])
+let uploadIdSeq = 0
+const uploadDoneCount = computed(() => uploadQueue.value.filter(i => i.progress >= 100 || i.error).length)
+const uploadAllDone = computed(() => uploadQueue.value.length > 0 && uploadDoneCount.value === uploadQueue.value.length)
+
+async function doUploadFiles(files: File[]) {
+  const dir = currentTab.value?.path || '/'
+  const items: UploadItem[] = files.map(f => ({ id: ++uploadIdSeq, name: f.name, progress: 0, error: false }))
+  uploadQueue.value.push(...items)
+  for (let i = 0; i < files.length; i++) {
+    const item = items[i]
+    try {
+      await uploadFile(dir, files[i], (pct: number) => { item.progress = pct })
+      item.progress = 100
+    } catch {
+      item.error = true
+    }
+  }
+  refreshFiles()
+  if (items.every(i => !i.error)) {
+    ElMessage.success(t('file.uploadComplete', { count: files.length }))
+  } else {
+    ElMessage.warning(t('file.uploadPartial'))
+  }
+}
+
 const handleUploadChange = async (file: { raw?: File }) => {
   if (!file?.raw) return
-  loading.value = true
-  try {
-    await uploadFile(currentTab.value?.path || '/', file.raw)
-    ElMessage.success(t('commons.success'))
-    refreshFiles()
-  } catch { /* */ } finally {
-    loading.value = false
-  }
+  await doUploadFiles([file.raw])
 }
 
 // ===================== 远程下载 =====================
@@ -800,16 +847,7 @@ async function handleDrop(e: DragEvent) {
   isDragging.value = false
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
-  loading.value = true
-  try {
-    for (let i = 0; i < files.length; i++) {
-      await uploadFile(currentTab.value?.path || '/', files[i])
-    }
-    ElMessage.success(t('commons.success'))
-    refreshFiles()
-  } catch { /* */ } finally {
-    loading.value = false
-  }
+  await doUploadFiles(Array.from(files))
 }
 
 // ===================== 剪贴板（复制/移动） =====================
@@ -1163,5 +1201,82 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 
+.upload-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 340px;
+  max-height: 320px;
+  background: var(--xp-bg-elevated);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
+.upload-panel-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--xp-text-primary);
+  border-bottom: 1px solid var(--xp-border-light);
+  background: var(--xp-bg-surface);
+}
+
+.upload-panel-count {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--xp-text-muted);
+}
+
+.upload-panel-close {
+  cursor: pointer;
+  color: var(--xp-text-muted);
+  transition: color 0.2s;
+  &:hover { color: var(--xp-accent); }
+}
+
+.upload-panel-body {
+  padding: 8px 16px;
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.upload-item {
+  display: grid;
+  grid-template-columns: 1fr 100px 50px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.upload-item-name {
+  font-size: 12px;
+  color: var(--xp-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-item-status {
+  font-size: 11px;
+  text-align: right;
+  color: var(--xp-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-up-enter-active, .slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-up-enter-from, .slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
 </style>

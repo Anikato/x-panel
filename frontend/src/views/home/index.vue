@@ -133,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getSystemStats } from '@/api/modules/monitor'
@@ -143,6 +143,7 @@ import {
   Monitor, Cpu, Coin, Odometer, Connection,
   Box, Compass, DataLine, CopyDocument,
 } from '@element-plus/icons-vue'
+import ShieldIcon from '@/components/icons/ShieldIcon.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -206,7 +207,7 @@ const quickEntries = computed(() => [
   { path: '/terminal', title: t('menu.terminal'), icon: 'Monitor' },
   { path: '/website/nginx', title: t('menu.nginx'), icon: 'Platform' },
   { path: '/website/ssl', title: t('menu.ssl'), icon: 'Lock' },
-  { path: '/host/firewall', title: t('menu.firewall'), icon: 'Shield' },
+  { path: '/host/firewall', title: t('menu.firewall'), icon: markRaw(ShieldIcon) },
   { path: '/host/process', title: t('menu.processManage'), icon: 'DataAnalysis' },
   { path: '/setting', title: t('menu.setting'), icon: 'Setting' },
   { path: '/log/operation', title: t('menu.operationLog'), icon: 'Notebook' },
@@ -257,15 +258,46 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .dashboard { padding: 0; }
 .dash-card {
   margin-bottom: 16px;
-  background: linear-gradient(135deg, var(--xp-bg-card) 0%, rgba(var(--xp-accent-rgb, 34, 211, 238), 0.04) 100%);
+  background: var(--xp-bg-card);
   border: 1px solid var(--xp-border-light);
-  transition: border-color 0.2s;
-  &:hover { border-color: rgba(var(--xp-accent-rgb, 34, 211, 238), 0.2); }
+  transition: border-color 0.3s, box-shadow 0.3s;
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -10%;
+    width: 50%;
+    height: 140%;
+    background: radial-gradient(ellipse at center, rgba(var(--xp-accent-rgb, 65, 251, 68), 0.06) 0%, transparent 70%);
+    pointer-events: none;
+    transition: opacity 0.4s;
+  }
+
+  &:hover {
+    border-color: rgba(var(--xp-accent-rgb, 65, 251, 68), 0.18);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(var(--xp-accent-rgb, 65, 251, 68), 0.06);
+    &::after { opacity: 1.4; }
+  }
 }
 
 .card-hd {
   display: flex; align-items: center; gap: 8px;
   font-weight: 600; font-size: 14px; color: var(--xp-text-primary);
+  position: relative;
+  padding-left: 12px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 2px; bottom: 2px;
+    width: 3px;
+    background: var(--xp-accent);
+    border-radius: 2px;
+    opacity: 0.8;
+  }
 }
 
 /* ==================== Card 1: Overview ==================== */
@@ -282,9 +314,13 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 }
 
 .ov-hd {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 8px;
   font-weight: 600; font-size: 13px; color: var(--xp-text-primary);
   margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--xp-border-light);
+
+  .el-icon { color: var(--xp-accent); opacity: 0.8; }
 }
 
 /* Key-Value */
@@ -361,10 +397,11 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 .res-dot {
   width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
 }
-.cpu-dot { background: var(--xp-accent); }
-.mem-dot { background: #818cf8; }
-.load-dot { background: #34d399; }
+.cpu-dot { background: var(--xp-accent); color: var(--xp-accent); }
+.mem-dot { background: #818cf8; color: #818cf8; }
+.load-dot { background: #34d399; color: #34d399; }
 
 .res-pct {
   font-size: 20px; font-weight: 700;
@@ -376,7 +413,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .c-danger { color: #ef4444; }
 
 .bar-bg {
-  width: 100%; height: 5px;
+  width: 100%; height: 6px;
   background: var(--xp-progress-trail, rgba(255,255,255,0.06));
   border-radius: 3px; overflow: hidden; margin-bottom: 8px;
 }
@@ -384,6 +421,15 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .bar-fg {
   height: 100%; border-radius: 3px; min-width: 2px;
   transition: width .8s cubic-bezier(.4,0,.2,1), background .4s ease;
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 40px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15));
+    border-radius: 0 3px 3px 0;
+  }
 }
 
 .res-foot { font-size: 12px; color: var(--xp-text-secondary); }
@@ -432,29 +478,44 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 .quick-item {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 14px 8px;
+  padding: 16px 8px;
   background: var(--xp-bg-inset); border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius); cursor: pointer;
-  transition: all .25s cubic-bezier(.4,0,.2,1);
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 30%, rgba(var(--xp-accent-rgb, 65, 251, 68), 0.08), transparent 70%);
+    opacity: 0;
+    transition: opacity .3s;
+  }
 
   &:hover {
-    border-color: var(--xp-accent-muted); background: var(--xp-accent-muted);
-    transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,.1);
-    .qi-icon { color: var(--xp-accent); transform: scale(1.1); }
-    .qi-label { color: var(--xp-accent); }
+    border-color: rgba(var(--xp-accent-rgb, 65, 251, 68), 0.25);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,.15), 0 0 0 1px rgba(var(--xp-accent-rgb, 65, 251, 68), 0.08);
+    &::before { opacity: 1; }
+    .qi-icon { color: var(--xp-accent); transform: scale(1.12); box-shadow: 0 0 12px rgba(var(--xp-accent-rgb, 65, 251, 68), 0.15); }
+    .qi-label { color: var(--xp-text-primary); }
   }
 }
 
 .qi-icon {
-  width: 36px; height: 36px;
+  width: 40px; height: 40px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,.04); border-radius: 10px;
-  color: var(--xp-text-secondary); transition: all .25s;
+  background: rgba(255,255,255,.04); border-radius: 12px;
+  color: var(--xp-text-secondary); transition: all .3s;
 }
 
 .qi-label {
   font-size: 12px; color: var(--xp-text-secondary);
   font-weight: 500; text-align: center; transition: color .2s;
+  position: relative;
+  z-index: 1;
 }
 
 .text-danger { color: #ef4444; font-weight: 600; }

@@ -222,7 +222,7 @@ func initDefaultSettings() {
 		{Key: "UpgradeURL", Value: ""},
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
-		{Key: "AutoUpgrade", Value: "disable"},
+		{Key: "AutoUpgrade", Value: "enable"},
 	}
 
 	for _, s := range defaults {

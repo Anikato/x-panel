@@ -298,7 +298,20 @@ html.dark {
       border-bottom: 1px solid var(--xp-border-light);
       padding: 20px 24px;
       margin-right: 0;
-      background: var(--xp-drawer-header-bg);
+      background: linear-gradient(135deg, var(--xp-drawer-header-bg), rgba(var(--xp-accent-rgb, 65, 251, 68), 0.03));
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 24px;
+        width: 40px;
+        height: 2px;
+        background: var(--xp-accent);
+        border-radius: 1px;
+        opacity: 0.6;
+      }
     }
 
     .el-dialog__title {
@@ -329,6 +342,7 @@ html.dark {
 
     .el-dialog__footer {
       padding: 16px 24px;
+      background: rgba(0, 0, 0, 0.1);
       border-top: 1px solid var(--xp-border-light);
     }
   }
@@ -337,14 +351,27 @@ html.dark {
   .el-drawer {
     background: var(--xp-drawer-bg);
     border-color: var(--xp-border);
-    box-shadow: -12px 0 48px rgba(0, 0, 0, 0.4);
+    box-shadow: -12px 0 48px rgba(0, 0, 0, 0.5), -2px 0 0 rgba(var(--xp-accent-rgb, 65, 251, 68), 0.08);
 
     .el-drawer__header {
-      background: var(--xp-drawer-header-bg);
+      background: linear-gradient(135deg, var(--xp-drawer-header-bg), rgba(var(--xp-accent-rgb, 65, 251, 68), 0.03));
       border-bottom: 1px solid var(--xp-border-light);
       margin-bottom: 0;
-      padding: 18px 24px;
+      padding: 20px 24px;
       color: var(--xp-text-primary);
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 24px;
+        width: 40px;
+        height: 2px;
+        background: var(--xp-accent);
+        border-radius: 1px;
+        opacity: 0.6;
+      }
     }
 
     .el-drawer__title {
@@ -370,6 +397,7 @@ html.dark {
     .el-drawer__footer {
       padding: 16px 24px;
       border-top: 1px solid var(--xp-border-light);
+      background: rgba(0, 0, 0, 0.1);
     }
   }
 

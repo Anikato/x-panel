@@ -44,116 +44,128 @@
 
     <!-- Create / Edit drawer -->
     <el-drawer v-model="drawerVisible" :title="editMode ? t('commons.edit') : t('commons.create')" size="560px" destroy-on-close>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
-        <el-form-item :label="t('commons.name')" prop="name">
-          <el-input v-model="form.name" />
-        </el-form-item>
-        <el-form-item :label="t('cronjob.type')" prop="type">
-          <el-select v-model="form.type" style="width:100%">
-            <el-option v-for="tp in typeOptions" :key="tp" :label="t('cronjob.type_' + tp)" :value="tp" />
-          </el-select>
-        </el-form-item>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" class="drawer-form">
+        <div class="drawer-section">
+          <div class="drawer-section-title">{{ t('cronjob.basicConfig') }}</div>
+          <el-form-item :label="t('commons.name')" prop="name">
+            <el-input v-model="form.name" />
+          </el-form-item>
+          <el-form-item :label="t('cronjob.type')" prop="type">
+            <el-select v-model="form.type" style="width:100%">
+              <el-option v-for="tp in typeOptions" :key="tp" :label="t('cronjob.type_' + tp)" :value="tp" />
+            </el-select>
+          </el-form-item>
+        </div>
 
-        <!-- Visual cron scheduler -->
-        <el-form-item :label="t('cronjob.schedule')" required>
-          <div class="cron-builder">
-            <div class="cron-row">
-              <el-select v-model="cronMode" style="width:160px" @change="buildCron">
-                <el-option :label="t('cronjob.perMinute')" value="perMinute" />
-                <el-option :label="t('cronjob.perHour')" value="perHour" />
-                <el-option :label="t('cronjob.perDay')" value="perDay" />
-                <el-option :label="t('cronjob.perWeek')" value="perWeek" />
-                <el-option :label="t('cronjob.perMonth')" value="perMonth" />
-                <el-option :label="t('cronjob.perNMinute')" value="perNMinute" />
-                <el-option :label="t('cronjob.perNHour')" value="perNHour" />
-                <el-option :label="t('cronjob.custom')" value="custom" />
-              </el-select>
+        <div class="drawer-section">
+          <div class="drawer-section-title">{{ t('cronjob.scheduleConfig') }}</div>
+          <el-form-item :label="t('cronjob.schedule')" required>
+            <div class="cron-builder">
+              <div class="cron-row">
+                <el-select v-model="cronMode" style="width:160px" @change="buildCron">
+                  <el-option :label="t('cronjob.perMinute')" value="perMinute" />
+                  <el-option :label="t('cronjob.perHour')" value="perHour" />
+                  <el-option :label="t('cronjob.perDay')" value="perDay" />
+                  <el-option :label="t('cronjob.perWeek')" value="perWeek" />
+                  <el-option :label="t('cronjob.perMonth')" value="perMonth" />
+                  <el-option :label="t('cronjob.perNMinute')" value="perNMinute" />
+                  <el-option :label="t('cronjob.perNHour')" value="perNHour" />
+                  <el-option :label="t('cronjob.custom')" value="custom" />
+                </el-select>
+              </div>
+
+              <div v-if="cronMode === 'perNMinute'" class="cron-row">
+                <span>{{ t('cronjob.every') }}</span>
+                <el-input-number v-model="cronEveryN" :min="1" :max="59" size="small" style="width:100px" @change="buildCron" />
+                <span>{{ t('cronjob.minutes') }}</span>
+              </div>
+
+              <div v-if="cronMode === 'perNHour'" class="cron-row">
+                <span>{{ t('cronjob.every') }}</span>
+                <el-input-number v-model="cronEveryN" :min="1" :max="23" size="small" style="width:100px" @change="buildCron" />
+                <span>{{ t('cronjob.hours') }}</span>
+                <span>{{ t('cronjob.atMinute') }}</span>
+                <el-input-number v-model="cronMinute" :min="0" :max="59" size="small" style="width:80px" @change="buildCron" />
+              </div>
+
+              <div v-if="cronMode === 'perHour'" class="cron-row">
+                <span>{{ t('cronjob.atMinute') }}</span>
+                <el-input-number v-model="cronMinute" :min="0" :max="59" size="small" style="width:80px" @change="buildCron" />
+              </div>
+
+              <div v-if="cronMode === 'perDay'" class="cron-row">
+                <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
+              </div>
+
+              <div v-if="cronMode === 'perWeek'" class="cron-row">
+                <el-select v-model="cronWeekday" style="width:120px" @change="buildCron">
+                  <el-option v-for="d in 7" :key="d-1" :label="t('cronjob.weekday' + (d-1))" :value="d-1" />
+                </el-select>
+                <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
+              </div>
+
+              <div v-if="cronMode === 'perMonth'" class="cron-row">
+                <span>{{ t('cronjob.dayOfMonth') }}</span>
+                <el-input-number v-model="cronDayOfMonth" :min="1" :max="31" size="small" style="width:80px" @change="buildCron" />
+                <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
+              </div>
+
+              <div v-if="cronMode === 'custom'" class="cron-row">
+                <el-input v-model="form.spec" placeholder="*/5 * * * *" style="width:100%" />
+              </div>
+
+              <div class="cron-preview">
+                <el-tag type="info" effect="plain" size="small">{{ form.spec || '...' }}</el-tag>
+                <span class="cron-preview-desc">{{ describeCron(form.spec) }}</span>
+              </div>
             </div>
+          </el-form-item>
+        </div>
 
-            <div v-if="cronMode === 'perNMinute'" class="cron-row">
-              <span>{{ t('cronjob.every') }}</span>
-              <el-input-number v-model="cronEveryN" :min="1" :max="59" size="small" style="width:100px" @change="buildCron" />
-              <span>{{ t('cronjob.minutes') }}</span>
-            </div>
+        <div class="drawer-section">
+          <div class="drawer-section-title">{{ t('cronjob.taskConfig') }}</div>
+          <el-form-item v-if="form.type === 'shell'" :label="t('cronjob.script')" prop="script">
+            <el-input v-model="form.script" type="textarea" :rows="6" placeholder="#!/bin/bash" />
+          </el-form-item>
+          <el-form-item v-if="form.type === 'curl'" label="URL" prop="url">
+            <el-input v-model="form.url" placeholder="https://example.com/api/ping" />
+          </el-form-item>
+          <el-form-item v-if="form.type === 'website'" :label="t('cronjob.website')">
+            <el-input v-model="form.website" :placeholder="t('cronjob.websitePlaceholder')" />
+          </el-form-item>
+          <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbType')">
+            <el-select v-model="form.dbType" style="width:100%">
+              <el-option label="MySQL" value="mysql" />
+              <el-option label="PostgreSQL" value="postgresql" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbName')">
+            <el-input v-model="form.dbName" placeholder="my_database" />
+          </el-form-item>
+          <el-form-item v-if="form.type === 'directory'" :label="t('cronjob.sourceDir')">
+            <el-input v-model="form.sourceDir" placeholder="/data/myapp" />
+          </el-form-item>
+        </div>
 
-            <div v-if="cronMode === 'perNHour'" class="cron-row">
-              <span>{{ t('cronjob.every') }}</span>
-              <el-input-number v-model="cronEveryN" :min="1" :max="23" size="small" style="width:100px" @change="buildCron" />
-              <span>{{ t('cronjob.hours') }}</span>
-              <span>{{ t('cronjob.atMinute') }}</span>
-              <el-input-number v-model="cronMinute" :min="0" :max="59" size="small" style="width:80px" @change="buildCron" />
-            </div>
-
-            <div v-if="cronMode === 'perHour'" class="cron-row">
-              <span>{{ t('cronjob.atMinute') }}</span>
-              <el-input-number v-model="cronMinute" :min="0" :max="59" size="small" style="width:80px" @change="buildCron" />
-            </div>
-
-            <div v-if="cronMode === 'perDay'" class="cron-row">
-              <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
-            </div>
-
-            <div v-if="cronMode === 'perWeek'" class="cron-row">
-              <el-select v-model="cronWeekday" style="width:120px" @change="buildCron">
-                <el-option v-for="d in 7" :key="d-1" :label="t('cronjob.weekday' + (d-1))" :value="d-1" />
-              </el-select>
-              <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
-            </div>
-
-            <div v-if="cronMode === 'perMonth'" class="cron-row">
-              <span>{{ t('cronjob.dayOfMonth') }}</span>
-              <el-input-number v-model="cronDayOfMonth" :min="1" :max="31" size="small" style="width:80px" @change="buildCron" />
-              <el-time-picker v-model="cronTime" format="HH:mm" :placeholder="t('cronjob.selectTime')" style="width:140px" @change="buildCron" />
-            </div>
-
-            <div v-if="cronMode === 'custom'" class="cron-row">
-              <el-input v-model="form.spec" placeholder="*/5 * * * *" style="width:100%" />
-            </div>
-
-            <div class="cron-preview">
-              <el-tag type="info" effect="plain" size="small">{{ form.spec || '...' }}</el-tag>
-              <span class="cron-preview-desc">{{ describeCron(form.spec) }}</span>
-            </div>
-          </div>
-        </el-form-item>
-
-        <el-form-item v-if="form.type === 'shell'" :label="t('cronjob.script')" prop="script">
-          <el-input v-model="form.script" type="textarea" :rows="6" placeholder="#!/bin/bash" />
-        </el-form-item>
-        <el-form-item v-if="form.type === 'curl'" label="URL" prop="url">
-          <el-input v-model="form.url" placeholder="https://example.com/api/ping" />
-        </el-form-item>
-        <el-form-item v-if="form.type === 'website'" :label="t('cronjob.website')">
-          <el-input v-model="form.website" :placeholder="t('cronjob.websitePlaceholder')" />
-        </el-form-item>
-        <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbType')">
-          <el-select v-model="form.dbType" style="width:100%">
-            <el-option label="MySQL" value="mysql" />
-            <el-option label="PostgreSQL" value="postgresql" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbName')">
-          <el-input v-model="form.dbName" placeholder="my_database" />
-        </el-form-item>
-        <el-form-item v-if="form.type === 'directory'" :label="t('cronjob.sourceDir')">
-          <el-input v-model="form.sourceDir" placeholder="/data/myapp" />
-        </el-form-item>
-        <el-form-item v-if="['website','database','directory'].includes(form.type)" :label="t('cronjob.retainCopies')">
-          <el-input-number v-model="form.retainCopies" :min="1" :max="999" />
-        </el-form-item>
-        <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.compressFormat')">
-          <el-select v-model="form.compressFormat" style="width:100%">
-            <el-option label="Gzip (.tar.gz)" value="gzip" />
-            <el-option label="Zstd (.tar.zst)" value="zstd" />
-            <el-option label="XZ (.tar.xz)" value="xz" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="['website','database','directory'].includes(form.type)" :label="t('cronjob.encryptPassword')">
-          <el-input v-model="form.encryptPassword" type="password" show-password :placeholder="t('cronjob.encryptPasswordHint')" />
-        </el-form-item>
-        <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.exclusionRules')">
-          <el-input v-model="form.exclusionRules" type="textarea" :rows="3" :placeholder="t('cronjob.exclusionRulesHint')" />
-        </el-form-item>
+        <div v-if="['website','database','directory'].includes(form.type)" class="drawer-section">
+          <div class="drawer-section-title">{{ t('cronjob.advancedConfig') }}</div>
+          <el-form-item :label="t('cronjob.retainCopies')">
+            <el-input-number v-model="form.retainCopies" :min="1" :max="999" />
+          </el-form-item>
+          <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.compressFormat')">
+            <el-select v-model="form.compressFormat" style="width:100%">
+              <el-option label="Gzip (.tar.gz)" value="gzip" />
+              <el-option label="Zstd (.tar.zst)" value="zstd" />
+              <el-option label="XZ (.tar.xz)" value="xz" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="t('cronjob.encryptPassword')">
+            <el-input v-model="form.encryptPassword" type="password" show-password :placeholder="t('cronjob.encryptPasswordHint')" />
+          </el-form-item>
+          <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.exclusionRules')">
+            <el-input v-model="form.exclusionRules" type="textarea" :rows="3" :placeholder="t('cronjob.exclusionRulesHint')" />
+          </el-form-item>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="drawerVisible = false">{{ t('commons.cancel') }}</el-button>
@@ -412,6 +424,27 @@ onMounted(() => search())
 </script>
 
 <style lang="scss" scoped>
+.drawer-form {
+  :deep(.el-form-item__label) {
+    font-weight: 500;
+  }
+}
+
+.drawer-section {
+  margin-bottom: 24px;
+  padding-bottom: 8px;
+}
+
+.drawer-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--xp-text-primary);
+  margin-bottom: 16px;
+  padding-left: 10px;
+  border-left: 3px solid var(--xp-accent);
+  line-height: 1;
+}
+
 .cron-builder {
   width: 100%;
 }
