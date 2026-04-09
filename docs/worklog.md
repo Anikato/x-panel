@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-04-09 — Session #67：证书同步修复 + 路由加载条
+
+### 完成内容
+
+**证书同步 — 关键 Bug 修复**：
+- [x] 修复 `fetchRemoteCerts` 中响应码判断错误：后端返回 `code: 0` 表示成功，但客户端判断 `code != 200` 导致所有同步都失败（报 "server returned code 0"）
+- [x] 同步连接失败时也写入 `CertSyncLog`（domain 为 `*`），确保即使连接层出错也有日志可查
+
+**前端 — 路由切换加载条**：
+- [x] `App.vue` 添加顶部 accent 色加载条（2px，scaleX 动画）
+- [x] `beforeEach` 开始加载条，`afterEach` 结束，8s 超时自动关闭
+- [x] 配合之前的 `cancelAllPendingRequests` 实现完整的路由切换体验优化
+
+### 版本
+- v0.5.67
+
+---
+
 ## 2026-04-09 — Session #65：证书同步功能
 
 ### 完成内容

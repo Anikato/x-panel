@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"xpanel/app/dto"
 	"xpanel/buserr"
@@ -221,6 +222,16 @@ bantime = %s
 	return s.safeWriteConfig([]byte(updated))
 }
 
+var shanghaiLoc *time.Location
+
+func init() {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
+	shanghaiLoc = loc
+}
+
 func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 	out, err := exec.Command(f2bClient, "status").CombinedOutput()
 	if err != nil {
@@ -229,20 +240,31 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 
 	jailNames := parseJailList(string(out))
 	banTimes := s.parseBanTimes()
+	jailConf := s.readAllJailConfig()
 	var result []dto.Fail2banBannedIP
 	seen := make(map[string]bool)
 
 	ipSvc := iplocation.GetService()
 	for _, jail := range jailNames {
+		banDuration := ""
+		if conf, ok := jailConf[jail]; ok {
+			banDuration = conf["bantime"]
+		}
+
 		ips := s.getBannedIPs(jail)
 		for _, ip := range ips {
 			seen[ip] = true
 			geo := ipSvc.Lookup(ip)
+			bannedAtStr := banTimes[ip]
+			unbanAt := calcUnbanAt(bannedAtStr, banDuration)
+			bannedAtCST := convertToCST(bannedAtStr)
 			result = append(result, dto.Fail2banBannedIP{
 				IP: ip, Jail: jail,
 				Country: geo.Country, CountryCode: geo.CountryCode,
 				City: geo.City, Region: geo.Region,
-				BannedAt: banTimes[ip],
+				BannedAt:    bannedAtCST,
+				BanDuration: humanizeBanTime(banDuration),
+				UnbanAt:     unbanAt,
 			})
 		}
 	}
@@ -259,6 +281,107 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 		})
 	}
 	return result, nil
+}
+
+func parseBanDuration(s string) time.Duration {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "-1" {
+		return 0
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return d
+	}
+	val := 0
+	unit := ""
+	fmt.Sscanf(s, "%d%s", &val, &unit)
+	if val == 0 {
+		if n, err := strconv.Atoi(s); err == nil {
+			return time.Duration(n) * time.Second
+		}
+		return 0
+	}
+	switch strings.ToLower(unit) {
+	case "s", "sec", "second", "seconds":
+		return time.Duration(val) * time.Second
+	case "m", "min", "minute", "minutes":
+		return time.Duration(val) * time.Minute
+	case "h", "hour", "hours":
+		return time.Duration(val) * time.Hour
+	case "d", "day", "days":
+		return time.Duration(val) * 24 * time.Hour
+	case "w", "week", "weeks":
+		return time.Duration(val) * 7 * 24 * time.Hour
+	default:
+		return time.Duration(val) * time.Second
+	}
+}
+
+func humanizeBanTime(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if s == "-1" {
+		return "永久"
+	}
+	d := parseBanDuration(s)
+	if d <= 0 {
+		return s
+	}
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	if days > 0 && hours == 0 && mins == 0 {
+		return fmt.Sprintf("%d 天", days)
+	}
+	if days > 0 {
+		return fmt.Sprintf("%d 天 %d 小时", days, hours)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%d 小时 %d 分钟", hours, mins)
+	}
+	return fmt.Sprintf("%d 分钟", mins)
+}
+
+func convertToCST(bannedAt string) string {
+	if bannedAt == "" {
+		return ""
+	}
+	layouts := []string{
+		"2006-01-02T15:04:05-0700",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, bannedAt); err == nil {
+			return t.In(shanghaiLoc).Format("2006-01-02 15:04:05")
+		}
+	}
+	return bannedAt
+}
+
+func calcUnbanAt(bannedAt, banDuration string) string {
+	if bannedAt == "" || banDuration == "" {
+		return ""
+	}
+	if strings.TrimSpace(banDuration) == "-1" {
+		return "永久封禁"
+	}
+	d := parseBanDuration(banDuration)
+	if d <= 0 {
+		return ""
+	}
+	layouts := []string{
+		"2006-01-02T15:04:05-0700",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, bannedAt); err == nil {
+			return t.Add(d).In(shanghaiLoc).Format("2006-01-02 15:04:05")
+		}
+	}
+	return ""
 }
 
 var nftIPRegex = regexp.MustCompile(`(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})`)

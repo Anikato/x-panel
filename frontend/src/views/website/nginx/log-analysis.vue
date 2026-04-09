@@ -94,7 +94,7 @@
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.ip')" min-width="130">
                     <template #default="{ row }">
-                      <span class="mono-text">{{ row.name }}</span>
+                      <span class="mono-text drilldown-link" @click="handleDrilldown('ip', row.name)">{{ row.name }}</span>
                     </template>
                   </el-table-column>
                   <el-table-column :label="$t('nginx.location')" min-width="100">
@@ -179,7 +179,7 @@
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.ip')" min-width="130">
                     <template #default="{ row }">
-                      <span class="mono-text">{{ row.name }}</span>
+                      <span class="mono-text drilldown-link" @click="handleDrilldown('ip', row.name)">{{ row.name }}</span>
                     </template>
                   </el-table-column>
                   <el-table-column :label="$t('nginx.location')" min-width="100">
@@ -524,9 +524,13 @@ const handleUnbanIP = async (ip: string) => {
 }
 
 const handleDrilldown = async (filterType: string, filterValue: string) => {
-  drilldownTitle.value = filterType === 'url'
-    ? `${t('nginx.drilldownURL')}: ${filterValue}`
-    : `${t('nginx.drilldownThreat')}: ${filterValue}`
+  if (filterType === 'url') {
+    drilldownTitle.value = `${t('nginx.drilldownURL')}: ${filterValue}`
+  } else if (filterType === 'ip') {
+    drilldownTitle.value = `${t('nginx.drilldownIP')}: ${filterValue}`
+  } else {
+    drilldownTitle.value = `${t('nginx.drilldownThreat')}: ${filterValue}`
+  }
   drilldownIPs.value = []
   drilldownURLs.value = []
   drilldownVisible.value = true

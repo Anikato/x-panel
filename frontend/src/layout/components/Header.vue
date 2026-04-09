@@ -188,12 +188,19 @@ let serverInfoTimer: ReturnType<typeof setInterval> | null = null
 let clockTimer: ReturnType<typeof setInterval> | null = null
 const serverClock = ref('')
 
+const extractIANA = (tz: string): string => {
+  const match = tz.match(/^([A-Za-z_/]+)/)
+  return match ? match[1] : tz
+}
+
 const updateClock = () => {
-  const tz = globalStore.serverInfo?.timezone
-  if (!tz) { serverClock.value = ''; return }
+  const rawTz = globalStore.serverInfo?.timezone
+  if (!rawTz) { serverClock.value = ''; return }
   try {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
+    const iana = extractIANA(rawTz)
+    const fmt = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: iana,
+      year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false, timeZoneName: 'short',
     })

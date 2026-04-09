@@ -97,6 +97,18 @@
                   <span v-else style="color: var(--xp-text-muted)">-</span>
                 </template>
               </el-table-column>
+              <el-table-column :label="$t('toolbox.fail2ban.banDuration')" width="120">
+                <template #default="{ row }">
+                  <span v-if="row.banDuration">{{ row.banDuration }}</span>
+                  <span v-else style="color: var(--xp-text-muted)">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column :label="$t('toolbox.fail2ban.unbanAt')" min-width="170">
+                <template #default="{ row }">
+                  <span v-if="row.unbanAt">{{ row.unbanAt }}</span>
+                  <span v-else style="color: var(--xp-text-muted)">-</span>
+                </template>
+              </el-table-column>
               <el-table-column :label="$t('commons.actions')" width="100" align="center">
                 <template #default="{ row }">
                   <el-popconfirm :title="$t('toolbox.fail2ban.unbanConfirm', { ip: row.ip })" @confirm="handleUnban(row)">
@@ -292,7 +304,7 @@ const banTimeOptions = [
   { value: '365d', label: '1 年' },
   { value: '-1', label: '永久封禁' },
 ]
-const sshForm = reactive({ enabled: true, port: 'ssh', maxRetry: 5, findTime: '10m', banTime: '90d' })
+const sshForm = reactive({ enabled: true, port: '', maxRetry: 5, findTime: '10m', banTime: '90d' })
 const sshSaving = ref(false)
 
 const loadSSHFromJails = (jailList: any[]) => {

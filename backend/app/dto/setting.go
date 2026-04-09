@@ -13,6 +13,7 @@ type SettingInfo struct {
 	ServerPort       string `json:"serverPort"`
 	AgentToken       string `json:"agentToken"`
 	AutoUpgrade      string `json:"autoUpgrade"`
+	AppearanceConfig string `json:"appearanceConfig"`
 }
 
 // SettingUpdate 设置更新请求

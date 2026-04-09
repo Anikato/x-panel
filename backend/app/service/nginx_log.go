@@ -298,6 +298,10 @@ func (s *NginxLogService) Drilldown(req dto.NginxLogDrilldownReq) (*dto.NginxLog
 			if e.URL == req.FilterValue {
 				ipCount[e.IP]++
 			}
+		case "ip":
+			if e.IP == req.FilterValue {
+				urlCount[e.URL]++
+			}
 		case "threat":
 			if classifyThreat(e.URL) == req.FilterValue {
 				ipCount[e.IP]++

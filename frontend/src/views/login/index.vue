@@ -137,6 +137,7 @@ const handleLogin = async () => {
     userStore.setToken(res.data.token)
     userStore.setName(res.data.name)
     globalStore.setLogin(true)
+    await globalStore.loadAppearanceFromBackend()
     ElMessage.success(t('commons.success'))
     router.push((route.query.redirect as string) || '/home')
   } catch {

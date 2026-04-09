@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { getSettingInfo, updateSetting } from '@/api/modules/setting'
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
 export type BgPreset = 'abyss' | 'void' | 'tinted' | 'cosmos' | 'warm'
@@ -78,6 +79,55 @@ export const useGlobalStore = defineStore('global', {
     },
     setServerInfo(info: ServerInfo) {
       this.serverInfo = info
+    },
+
+    getAppearanceKeys() {
+      return {
+        bgPreset: this.bgPreset,
+        uiFont: this.uiFont,
+        uiDensity: this.uiDensity,
+        borderRadiusPreset: this.borderRadiusPreset,
+        reduceMotion: this.reduceMotion,
+        termTheme: this.termTheme,
+        termFont: this.termFont,
+        termFontSize: this.termFontSize,
+        termBgOpacity: this.termBgOpacity,
+        cardBorderStyle: this.cardBorderStyle,
+        sidebarWidth: this.sidebarWidth,
+        accentKey: this.accentKey,
+        accentCustom: this.accentCustom,
+        theme: this.theme,
+      }
+    },
+
+    async syncAppearanceToBackend() {
+      try {
+        const config = JSON.stringify(this.getAppearanceKeys())
+        await updateSetting({ key: 'AppearanceConfig', value: config })
+      } catch { /* ignore */ }
+    },
+
+    async loadAppearanceFromBackend() {
+      try {
+        const res = await getSettingInfo()
+        const raw = res.data?.appearanceConfig || res.data?.AppearanceConfig
+        if (!raw || raw === '{}') return
+        const config = JSON.parse(raw)
+        if (config.bgPreset) this.bgPreset = config.bgPreset
+        if (config.uiFont) this.uiFont = config.uiFont
+        if (config.uiDensity) this.uiDensity = config.uiDensity
+        if (config.borderRadiusPreset) this.borderRadiusPreset = config.borderRadiusPreset
+        if (config.reduceMotion !== undefined) this.reduceMotion = config.reduceMotion
+        if (config.termTheme) this.termTheme = config.termTheme
+        if (config.termFont) this.termFont = config.termFont
+        if (config.termFontSize) this.termFontSize = config.termFontSize
+        if (config.termBgOpacity !== undefined) this.termBgOpacity = config.termBgOpacity
+        if (config.cardBorderStyle) this.cardBorderStyle = config.cardBorderStyle
+        if (config.sidebarWidth) this.sidebarWidth = config.sidebarWidth
+        if (config.accentKey) this.accentKey = config.accentKey
+        if (config.accentCustom !== undefined) this.accentCustom = config.accentCustom
+        if (config.theme) this.theme = config.theme
+      } catch { /* ignore */ }
     },
   },
   persist: {

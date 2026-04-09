@@ -225,6 +225,7 @@ func initDefaultSettings() {
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
 		{Key: "AutoUpgrade", Value: "enable"},
+		{Key: "AppearanceConfig", Value: "{}"},
 		{Key: "CertServerEnabled", Value: "disable"},
 		{Key: "CertServerToken", Value: ""},
 	}

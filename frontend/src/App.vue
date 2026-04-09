@@ -51,7 +51,7 @@ watch(() => globalStore.theme, (mode) => applyTheme(mode))
 watch(() => globalStore.accentKey, () => { applyAccent(); applyAllAppearance() })
 watch(() => globalStore.accentCustom, () => { applyAccent(); applyAllAppearance() })
 
-const appearanceKeys = [
+const allAppearanceKeys = [
   () => globalStore.bgPreset,
   () => globalStore.uiFont,
   () => globalStore.uiDensity,
@@ -59,10 +59,26 @@ const appearanceKeys = [
   () => globalStore.reduceMotion,
   () => globalStore.cardBorderStyle,
   () => globalStore.sidebarWidth,
+  () => globalStore.termTheme,
+  () => globalStore.termFont,
+  () => globalStore.termFontSize,
+  () => globalStore.termBgOpacity,
+  () => globalStore.theme,
+  () => globalStore.accentKey,
+  () => globalStore.accentCustom,
 ] as const
 
-for (const getter of appearanceKeys) {
-  watch(getter, () => applyAllAppearance())
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+const debouncedSync = () => {
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => { globalStore.syncAppearanceToBackend() }, 1500)
+}
+
+for (const getter of allAppearanceKeys) {
+  watch(getter, () => {
+    applyAllAppearance()
+    debouncedSync()
+  })
 }
 
 const router = useRouter()
