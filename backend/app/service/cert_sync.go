@@ -151,10 +151,18 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 	remoteCerts, err := s.fetchRemoteCerts(source)
 	if err != nil {
 		now := time.Now()
+		errMsg := err.Error()
 		s.sourceRepo.Update(source.ID, map[string]interface{}{
 			"last_sync_at":      &now,
 			"last_sync_status":  "error",
-			"last_sync_message": err.Error(),
+			"last_sync_message": errMsg,
+		})
+		s.logRepo.Create(&model.CertSyncLog{
+			SourceID:   source.ID,
+			SourceName: source.Name,
+			Domain:     "*",
+			Status:     "error",
+			Message:    "连接失败: " + errMsg,
 		})
 		return err
 	}
@@ -328,14 +336,15 @@ func (s *CertSourceService) fetchRemoteCerts(source model.CertSource) ([]dto.Cer
 	}
 
 	var result struct {
-		Code int                  `json:"code"`
-		Data []dto.CertServerItem `json:"data"`
+		Code    int                  `json:"code"`
+		Message string               `json:"message"`
+		Data    []dto.CertServerItem `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
-	if result.Code != 200 {
-		return nil, fmt.Errorf("server returned code %d", result.Code)
+	if result.Code != 0 {
+		return nil, fmt.Errorf("远程返回错误 (code=%d): %s", result.Code, result.Message)
 	}
 	return result.Data, nil
 }

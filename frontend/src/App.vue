@@ -1,9 +1,11 @@
 <template>
+  <div class="route-loading-bar" :class="{ active: routeLoading }" />
   <router-view />
 </template>
 
 <script setup lang="ts">
-import { watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useGlobalStore } from '@/store/modules/global'
 import type { ThemeMode } from '@/store/modules/global'
 import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'
@@ -63,6 +65,22 @@ for (const getter of appearanceKeys) {
   watch(getter, () => applyAllAppearance())
 }
 
+const router = useRouter()
+const routeLoading = ref(false)
+let loadingTimer: ReturnType<typeof setTimeout> | null = null
+
+router.beforeEach((_to, _from, next) => {
+  routeLoading.value = true
+  if (loadingTimer) clearTimeout(loadingTimer)
+  loadingTimer = setTimeout(() => { routeLoading.value = false }, 8000)
+  next()
+})
+
+router.afterEach(() => {
+  if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null }
+  setTimeout(() => { routeLoading.value = false }, 150)
+})
+
 onMounted(() => {
   applyTheme(globalStore.theme)
   applyAccent()
@@ -73,4 +91,30 @@ onMounted(() => {
     if (globalStore.theme === 'auto') applyTheme('auto')
   })
 })
+
+onUnmounted(() => {
+  if (loadingTimer) clearTimeout(loadingTimer)
+})
 </script>
+
+<style scoped>
+.route-loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--xp-accent, #41FB44);
+  z-index: 99999;
+  pointer-events: none;
+  transform-origin: left;
+  transform: scaleX(0);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.2s ease 0.15s;
+}
+.route-loading-bar.active {
+  opacity: 1;
+  transform: scaleX(0.7);
+  transition: transform 2s cubic-bezier(0.1, 0.5, 0.3, 1), opacity 0.15s;
+}
+</style>
