@@ -374,7 +374,6 @@ export interface CertSource {
   serverAddr: string
   syncInterval: number
   postSyncCommand: string
-  conflictPolicy: string
   enabled: boolean
   lastSyncAt: string | null
   lastSyncStatus: string

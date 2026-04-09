@@ -61,7 +61,6 @@ func (s *CertSourceService) GetList() ([]dto.CertSourceInfo, error) {
 			ServerAddr:      src.ServerAddr,
 			SyncInterval:    src.SyncInterval,
 			PostSyncCommand: src.PostSyncCommand,
-			ConflictPolicy:  src.ConflictPolicy,
 			Enabled:         src.Enabled,
 			LastSyncAt:      src.LastSyncAt,
 			LastSyncStatus:  src.LastSyncStatus,
@@ -79,7 +78,6 @@ func (s *CertSourceService) Create(req dto.CertSourceCreate) error {
 		Token:           req.Token,
 		SyncInterval:    req.SyncInterval,
 		PostSyncCommand: req.PostSyncCommand,
-		ConflictPolicy:  req.ConflictPolicy,
 		Enabled:         req.Enabled,
 	}
 	return s.sourceRepo.Create(&source)
@@ -97,7 +95,6 @@ func (s *CertSourceService) Update(req dto.CertSourceUpdate) error {
 	}
 	source.SyncInterval = req.SyncInterval
 	source.PostSyncCommand = req.PostSyncCommand
-	source.ConflictPolicy = req.ConflictPolicy
 	source.Enabled = req.Enabled
 	return s.sourceRepo.Save(&source)
 }
@@ -163,7 +160,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 	}
 
 	sslDir := s.getSSLDir()
-	var syncedCount, skippedCount, errorCount int
+	var updatedCount, newCount, skippedCount, errorCount int
 	var needReload bool
 
 	for _, remote := range remoteCerts {
@@ -180,23 +177,33 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 		localCert, localErr := s.findLocalCertByDomain(remote.PrimaryDomain)
 
 		if localErr == nil && localCert.ID > 0 {
-			if source.ConflictPolicy == "skip" {
-				if localCert.ExpireDate.Equal(remote.ExpireDate) || localCert.ExpireDate.After(remote.ExpireDate) {
-					logEntry.Status = "skipped"
-					logEntry.Message = "本地证书已存在且未过期，跳过"
-					logEntry.CertificateID = localCert.ID
-					s.logRepo.Create(&logEntry)
-					skippedCount++
-					continue
-				}
+			// 本地已存在该域名的证书 — 逐证书对比
+			if localCert.ExpireDate.After(remote.ExpireDate) {
+				logEntry.Status = "skipped"
+				logEntry.Message = fmt.Sprintf("本地到期更晚 (%s > %s)，保留本地版本",
+					localCert.ExpireDate.Format("2006-01-02"), remote.ExpireDate.Format("2006-01-02"))
+				logEntry.CertificateID = localCert.ID
+				s.logRepo.Create(&logEntry)
+				skippedCount++
+				continue
 			}
+			if localCert.ExpireDate.Equal(remote.ExpireDate) && localCert.Pem == remote.Pem {
+				logEntry.Status = "skipped"
+				logEntry.Message = "证书内容无变化"
+				logEntry.CertificateID = localCert.ID
+				s.logRepo.Create(&logEntry)
+				skippedCount++
+				continue
+			}
+
+			// 远程到期更晚，或到期相同但内容不同（如换了密钥）→ 更新
 			localCert.Pem = remote.Pem
 			localCert.PrivateKey = remote.PrivateKey
 			localCert.ExpireDate = remote.ExpireDate
 			localCert.StartDate = remote.StartDate
 			localCert.Domains = remote.Domains
 			localCert.Status = "applied"
-			localCert.Message = fmt.Sprintf("从 %s 同步", source.Name)
+			localCert.Message = fmt.Sprintf("从 %s 同步 (%s)", source.Name, remote.ExpireDate.Format("2006-01-02"))
 			if err := s.certRepo.Save(&localCert); err != nil {
 				logEntry.Status = "error"
 				logEntry.Message = "更新本地证书失败: " + err.Error()
@@ -208,10 +215,13 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				global.LOG.Warnf("[cert-sync] Save cert files failed for %s: %v", remote.PrimaryDomain, err)
 			}
 			logEntry.Status = "success"
-			logEntry.Message = "证书已更新"
+			logEntry.Message = fmt.Sprintf("证书已更新 (新到期 %s)", remote.ExpireDate.Format("2006-01-02"))
 			logEntry.CertificateID = localCert.ID
 			needReload = true
+			s.logRepo.Create(&logEntry)
+			updatedCount++
 		} else {
+			// 本地不存在 → 新建
 			newCert := model.Certificate{
 				PrimaryDomain: remote.PrimaryDomain,
 				Domains:       remote.Domains,
@@ -237,15 +247,15 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				global.LOG.Warnf("[cert-sync] Save cert files failed for %s: %v", remote.PrimaryDomain, err)
 			}
 			logEntry.Status = "success"
-			logEntry.Message = "新证书已创建"
+			logEntry.Message = fmt.Sprintf("新证书已创建 (到期 %s)", remote.ExpireDate.Format("2006-01-02"))
 			logEntry.CertificateID = newCert.ID
 			needReload = true
+			s.logRepo.Create(&logEntry)
+			newCount++
 		}
-
-		s.logRepo.Create(&logEntry)
-		syncedCount++
 	}
 
+	// 仅在有实际变更时才执行同步后动作
 	if needReload && source.PostSyncCommand != "" {
 		global.LOG.Infof("[cert-sync] Running post-sync command: %s", source.PostSyncCommand)
 		out, err := exec.Command("bash", "-c", source.PostSyncCommand).CombinedOutput()
@@ -263,9 +273,9 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 	}
 
 	now := time.Now()
-	msg := fmt.Sprintf("同步 %d, 跳过 %d, 失败 %d", syncedCount, skippedCount, errorCount)
+	msg := fmt.Sprintf("新增 %d, 更新 %d, 跳过 %d, 失败 %d", newCount, updatedCount, skippedCount, errorCount)
 	status := "success"
-	if errorCount > 0 && syncedCount == 0 {
+	if errorCount > 0 && newCount == 0 && updatedCount == 0 {
 		status = "error"
 	}
 	s.sourceRepo.Update(source.ID, map[string]interface{}{

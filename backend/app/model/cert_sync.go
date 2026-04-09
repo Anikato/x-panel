@@ -3,18 +3,18 @@ package model
 import "time"
 
 // CertSource 证书源：从远程证书服务器拉取证书的配置
+// 同步策略：逐证书对比到期时间，始终保留到期时间最长的版本
 type CertSource struct {
 	BaseModel
-	Name            string `gorm:"not null" json:"name"`
-	ServerAddr      string `gorm:"not null" json:"serverAddr"`
-	Token           string `gorm:"not null" json:"-"`
-	SyncInterval    int    `gorm:"not null;default:360" json:"syncInterval"` // minutes, 0=manual only
-	PostSyncCommand string `json:"postSyncCommand"`
-	ConflictPolicy  string `gorm:"not null;default:skip" json:"conflictPolicy"` // skip | overwrite
-	Enabled         bool   `gorm:"not null;default:true" json:"enabled"`
+	Name            string     `gorm:"not null" json:"name"`
+	ServerAddr      string     `gorm:"not null" json:"serverAddr"`
+	Token           string     `gorm:"not null" json:"-"`
+	SyncInterval    int        `gorm:"not null;default:360" json:"syncInterval"` // minutes, 0=manual only
+	PostSyncCommand string     `json:"postSyncCommand"`
+	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
 	LastSyncAt      *time.Time `json:"lastSyncAt"`
-	LastSyncStatus  string `json:"lastSyncStatus"` // success | error | ""
-	LastSyncMessage string `json:"lastSyncMessage"`
+	LastSyncStatus  string     `json:"lastSyncStatus"` // success | error | ""
+	LastSyncMessage string     `json:"lastSyncMessage"`
 }
 
 // CertSyncLog 证书同步日志

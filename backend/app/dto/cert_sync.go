@@ -10,7 +10,6 @@ type CertSourceCreate struct {
 	Token           string `json:"token" binding:"required"`
 	SyncInterval    int    `json:"syncInterval"`
 	PostSyncCommand string `json:"postSyncCommand"`
-	ConflictPolicy  string `json:"conflictPolicy" binding:"required,oneof=skip overwrite"`
 	Enabled         bool   `json:"enabled"`
 }
 
@@ -21,7 +20,6 @@ type CertSourceUpdate struct {
 	Token           string `json:"token"`
 	SyncInterval    int    `json:"syncInterval"`
 	PostSyncCommand string `json:"postSyncCommand"`
-	ConflictPolicy  string `json:"conflictPolicy" binding:"required,oneof=skip overwrite"`
 	Enabled         bool   `json:"enabled"`
 }
 
@@ -31,7 +29,6 @@ type CertSourceInfo struct {
 	ServerAddr      string     `json:"serverAddr"`
 	SyncInterval    int        `json:"syncInterval"`
 	PostSyncCommand string     `json:"postSyncCommand"`
-	ConflictPolicy  string     `json:"conflictPolicy"`
 	Enabled         bool       `json:"enabled"`
 	LastSyncAt      *time.Time `json:"lastSyncAt"`
 	LastSyncStatus  string     `json:"lastSyncStatus"`

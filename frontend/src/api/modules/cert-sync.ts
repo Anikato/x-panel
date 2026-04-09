@@ -11,7 +11,6 @@ export const createCertSource = (params: {
   token: string
   syncInterval: number
   postSyncCommand: string
-  conflictPolicy: string
   enabled: boolean
 }) => {
   return http.post('/cert-sources', params)
@@ -24,7 +23,6 @@ export const updateCertSource = (params: {
   token?: string
   syncInterval: number
   postSyncCommand: string
-  conflictPolicy: string
   enabled: boolean
 }) => {
   return http.post('/cert-sources/update', params)

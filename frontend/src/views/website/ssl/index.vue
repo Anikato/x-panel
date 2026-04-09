@@ -447,12 +447,6 @@
           <el-input v-model="sourceForm.postSyncCommand" placeholder="systemctl reload nginx" />
           <div class="form-tip">{{ $t('ssl.postSyncCommandTip') }}</div>
         </el-form-item>
-        <el-form-item :label="$t('ssl.conflictPolicy')">
-          <el-radio-group v-model="sourceForm.conflictPolicy">
-            <el-radio value="skip">{{ $t('ssl.conflictSkip') }}</el-radio>
-            <el-radio value="overwrite">{{ $t('ssl.conflictOverwrite') }}</el-radio>
-          </el-radio-group>
-        </el-form-item>
         <el-form-item :label="$t('commons.enable')">
           <el-switch v-model="sourceForm.enabled" />
         </el-form-item>
@@ -864,7 +858,6 @@ const defaultSourceForm = () => ({
   token: '',
   syncInterval: 360,
   postSyncCommand: '',
-  conflictPolicy: 'skip',
   enabled: true,
 })
 const sourceForm = ref(defaultSourceForm())
@@ -886,7 +879,6 @@ const openSourceDialog = (row?: CertSource) => {
       token: '',
       syncInterval: row.syncInterval,
       postSyncCommand: row.postSyncCommand,
-      conflictPolicy: row.conflictPolicy,
       enabled: row.enabled,
     }
   } else {
