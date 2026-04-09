@@ -311,7 +311,20 @@ func (s *CertSourceService) fetchRemoteCerts(source model.CertSource) ([]dto.Cer
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
+		bodyStr := string(body)
+		if resp.StatusCode == 404 {
+			if strings.Contains(bodyStr, "nginx") || strings.Contains(bodyStr, "<html") {
+				return nil, fmt.Errorf("远程返回 404 (Nginx)：请确认地址是面板直连地址（如 https://IP:面板端口），不要使用经过 Nginx 反向代理的域名；同时确认远程面板已更新到支持证书服务的版本")
+			}
+			return nil, fmt.Errorf("远程返回 404：该面板可能未启用证书服务或版本不支持，请确认远程面板已更新")
+		}
+		if resp.StatusCode == 403 {
+			return nil, fmt.Errorf("远程面板未启用证书服务功能")
+		}
+		if resp.StatusCode == 401 {
+			return nil, fmt.Errorf("Token 认证失败，请检查 Token 是否正确")
+		}
+		return nil, fmt.Errorf("远程返回 %d: %s", resp.StatusCode, bodyStr)
 	}
 
 	var result struct {

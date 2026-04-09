@@ -177,7 +177,7 @@
           <el-table-column prop="serverAddr" :label="$t('ssl.sourceAddr')" min-width="200" show-overflow-tooltip />
           <el-table-column :label="$t('ssl.syncInterval')" width="120">
             <template #default="{ row }">
-              {{ row.syncInterval > 0 ? row.syncInterval + ' min' : '手动' }}
+              {{ intervalLabel(row.syncInterval) }}
             </template>
           </el-table-column>
           <el-table-column :label="$t('commons.status')" width="90">
@@ -440,8 +440,15 @@
           <div class="form-tip">{{ $t('ssl.sourceTokenTip') }}</div>
         </el-form-item>
         <el-form-item :label="$t('ssl.syncInterval')">
-          <el-input-number v-model="sourceForm.syncInterval" :min="0" :max="10080" :step="60" />
-          <div class="form-tip">{{ $t('ssl.syncIntervalTip') }}</div>
+          <el-select v-model="sourceForm.syncInterval" style="width: 100%">
+            <el-option :label="$t('ssl.intervalManual')" :value="0" />
+            <el-option label="30 min" :value="30" />
+            <el-option :label="$t('ssl.intervalHourly')" :value="60" />
+            <el-option :label="$t('ssl.interval6h')" :value="360" />
+            <el-option :label="$t('ssl.interval12h')" :value="720" />
+            <el-option :label="$t('ssl.intervalDaily')" :value="1440" />
+            <el-option :label="$t('ssl.intervalWeekly')" :value="10080" />
+          </el-select>
         </el-form-item>
         <el-form-item :label="$t('ssl.postSyncCommand')">
           <el-input v-model="sourceForm.postSyncCommand" placeholder="systemctl reload nginx" />
@@ -989,6 +996,11 @@ const handleGenerateToken = () => {
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   certServerSetting.value.token = result
+}
+
+const intervalLabel = (min: number) => {
+  const map: Record<number, string> = { 0: '仅手动', 30: '30 分钟', 60: '每小时', 360: '每 6 小时', 720: '每 12 小时', 1440: '每天', 10080: '每周' }
+  return map[min] || `${min} min`
 }
 
 // --- 工具函数 ---
