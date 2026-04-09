@@ -4,6 +4,56 @@
 
 ---
 
+## 2026-04-09 — Session #65：证书同步功能
+
+### 完成内容
+
+**后端 — 数据模型**：
+- [x] 新建 `CertSource` 模型：证书源配置（名称、地址、Token、同步间隔、冲突策略、同步后命令）
+- [x] 新建 `CertSyncLog` 模型：同步日志（域名、状态、消息、关联证书 ID）
+- [x] migration 自动迁移新表，初始化 `CertServerEnabled` / `CertServerToken` 设置项
+
+**后端 — 证书服务端（被拉取方）**：
+- [x] `CertServerAuth` 中间件：校验 `CertServerEnabled` 开关 + `X-Cert-Token` 令牌
+- [x] `GET /api/v1/cert-server/certs`：暴露所有已签发证书（PEM + 私钥），供远程拉取
+- [x] `CertServerService`：GetSetting / UpdateSetting（开关 + Token 管理）
+
+**后端 — 证书源管理（拉取方）**：
+- [x] `CertSourceRepo` + `CertSyncLogRepo`：完整 CRUD + 分页
+- [x] `CertSourceService`：Create / Update / Delete / GetList / Sync / SyncAll / TestConnection
+- [x] 同步逻辑：HTTPS 拉取远程证书列表 → 逐个对比本地 → 根据冲突策略（skip/overwrite）决定是否覆盖 → 保存到 DB + 磁盘
+- [x] 同步后动作：优先执行用户自定义命令（如 `systemctl reload nginx`），否则自动 reload Nginx
+- [x] 支持链式传播：B 从 A 同步的证书存入本地 Certificate 表，B 开启证书服务后 C 可以从 B 拉取
+
+**后端 — 定时同步**：
+- [x] Cron 每 10 分钟检查所有证书源，根据各源的 `syncInterval` 决定是否触发同步
+
+**后端 — API & 路由**：
+- [x] 证书源 CRUD：`GET/POST /cert-sources`、`/cert-sources/update|del|sync|test`
+- [x] 同步日志：`POST /cert-sync/logs`
+- [x] 证书服务设置：`GET/POST /cert-server/setting`
+
+**前端**：
+- [x] SSL 管理页新增「证书同步」Tab：证书源列表、CRUD 对话框、立即同步、查看同步日志
+- [x] SSL 管理页新增「证书服务」Tab：启停开关、Token 管理、一键生成 Token
+- [x] `cert-sync.ts` API 模块，`interface/index.ts` 新增类型
+- [x] `zh.ts` 新增 30+ 证书同步相关 i18n 键
+
+### 关键设计决策
+
+- **Token 认证**：证书服务端不复用面板 JWT，使用独立 `X-Cert-Token` 头认证，避免暴露面板登录凭据
+- **冲突策略**：skip 模式下，本地证书存在且到期时间 >= 远程时跳过；overwrite 模式始终以远程为准
+- **链式传播**：同步来的证书以 `type=synced` 存入本地 Certificate 表，开启证书服务后自动对外提供，支持 A→B→C 链式传播
+- **HTTPS 跳过验证**：面板间通信使用 `InsecureSkipVerify: true`，因为面板通常使用自签名证书
+- **同步间隔灵活**：每个源可独立设置同步间隔（分钟），设为 0 仅手动同步
+
+### 遗留/后续
+
+- 可考虑添加「选择性同步」（仅同步指定域名的证书）
+- 可考虑同步日志自动清理（保留最近 N 条）
+
+---
+
 ## 2026-04-08 — Session #64：外观自定义系统 + UI 优化
 
 ### 完成内容

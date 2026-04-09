@@ -366,6 +366,38 @@ export interface DnsProvider {
   fields: string
 }
 
+// ======================== Cert Sync ========================
+
+export interface CertSource {
+  id: number
+  name: string
+  serverAddr: string
+  syncInterval: number
+  postSyncCommand: string
+  conflictPolicy: string
+  enabled: boolean
+  lastSyncAt: string | null
+  lastSyncStatus: string
+  lastSyncMessage: string
+  createdAt: string
+}
+
+export interface CertSyncLog {
+  id: number
+  sourceID: number
+  sourceName: string
+  domain: string
+  status: string
+  message: string
+  certificateID: number
+  createdAt: string
+}
+
+export interface CertServerSetting {
+  enabled: boolean
+  token: string
+}
+
 // ======================== Website ========================
 
 export interface Website {

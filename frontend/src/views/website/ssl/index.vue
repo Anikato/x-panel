@@ -161,6 +161,85 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
+
+      <!-- 证书同步 -->
+      <el-tab-pane :label="$t('ssl.certSync')" name="sync">
+        <div class="tab-toolbar">
+          <div></div>
+          <el-button size="small" type="primary" @click="openSourceDialog()">
+            <el-icon><Plus /></el-icon>
+            {{ $t('ssl.addSource') }}
+          </el-button>
+        </div>
+        <div v-if="certSources.length === 0" class="no-data-hint">{{ $t('ssl.noSources') }}</div>
+        <el-table v-else :data="certSources" style="width: 100%">
+          <el-table-column prop="name" :label="$t('ssl.sourceName')" min-width="120" />
+          <el-table-column prop="serverAddr" :label="$t('ssl.sourceAddr')" min-width="200" show-overflow-tooltip />
+          <el-table-column :label="$t('ssl.syncInterval')" width="120">
+            <template #default="{ row }">
+              {{ row.syncInterval > 0 ? row.syncInterval + ' min' : '手动' }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('commons.status')" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
+                {{ row.enabled ? $t('commons.enabled') : $t('commons.disabled') }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.lastSync')" width="200">
+            <template #default="{ row }">
+              <div v-if="row.lastSyncAt">
+                <el-tag :type="row.lastSyncStatus === 'success' ? 'success' : 'danger'" size="small">
+                  {{ row.lastSyncStatus === 'success' ? $t('ssl.syncSuccess') : $t('ssl.syncError') }}
+                </el-tag>
+                <span class="sync-time">{{ formatDate(row.lastSyncAt) }}</span>
+              </div>
+              <span v-else class="text-muted">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('commons.actions')" width="280" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="success" size="small" :loading="row._syncing" @click="handleSync(row)">
+                {{ $t('ssl.syncNow') }}
+              </el-button>
+              <el-button link type="info" size="small" @click="handleViewSyncLogs(row.id)">
+                {{ $t('ssl.syncLogs') }}
+              </el-button>
+              <el-button link type="primary" size="small" @click="openSourceDialog(row)">
+                {{ $t('commons.edit') }}
+              </el-button>
+              <el-button link type="danger" size="small" @click="handleDeleteSource(row.id)">
+                {{ $t('commons.delete') }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <!-- 证书服务 -->
+      <el-tab-pane :label="$t('ssl.certServer')" name="server">
+        <div class="cert-server-section">
+          <el-form label-width="140px">
+            <el-form-item :label="$t('ssl.enableCertServer')">
+              <el-switch v-model="certServerSetting.enabled" @change="handleSaveCertServer" />
+              <div class="form-tip">{{ $t('ssl.certServerTip') }}</div>
+            </el-form-item>
+            <el-form-item v-if="certServerSetting.enabled" :label="$t('ssl.certServerToken')">
+              <div class="token-row">
+                <el-input v-model="certServerSetting.token" type="password" show-password style="flex:1" />
+                <el-button size="small" type="info" plain @click="handleGenerateToken">
+                  {{ $t('ssl.generateToken') }}
+                </el-button>
+                <el-button size="small" type="primary" @click="handleSaveCertServer">
+                  {{ $t('commons.save') }}
+                </el-button>
+              </div>
+              <div class="form-tip">{{ $t('ssl.certServerTokenTip') }}</div>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 申请证书对话框 -->
@@ -346,6 +425,63 @@
       </template>
     </el-dialog>
 
+    <!-- 证书源对话框 -->
+    <el-dialog v-model="sourceDialogVisible" :title="sourceEditMode ? $t('ssl.editSource') : $t('ssl.addSource')" width="560px" destroy-on-close>
+      <el-form :model="sourceForm" label-width="130px">
+        <el-form-item :label="$t('ssl.sourceName')">
+          <el-input v-model="sourceForm.name" placeholder="主服务器" />
+        </el-form-item>
+        <el-form-item :label="$t('ssl.sourceAddr')">
+          <el-input v-model="sourceForm.serverAddr" placeholder="https://1.2.3.4:7777" />
+          <div class="form-tip">{{ $t('ssl.sourceAddrTip') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('ssl.sourceToken')">
+          <el-input v-model="sourceForm.token" type="password" show-password :placeholder="sourceEditMode ? '留空保持不变' : ''" />
+          <div class="form-tip">{{ $t('ssl.sourceTokenTip') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('ssl.syncInterval')">
+          <el-input-number v-model="sourceForm.syncInterval" :min="0" :max="10080" :step="60" />
+          <div class="form-tip">{{ $t('ssl.syncIntervalTip') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('ssl.postSyncCommand')">
+          <el-input v-model="sourceForm.postSyncCommand" placeholder="systemctl reload nginx" />
+          <div class="form-tip">{{ $t('ssl.postSyncCommandTip') }}</div>
+        </el-form-item>
+        <el-form-item :label="$t('ssl.conflictPolicy')">
+          <el-radio-group v-model="sourceForm.conflictPolicy">
+            <el-radio value="skip">{{ $t('ssl.conflictSkip') }}</el-radio>
+            <el-radio value="overwrite">{{ $t('ssl.conflictOverwrite') }}</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="$t('commons.enable')">
+          <el-switch v-model="sourceForm.enabled" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="sourceDialogVisible = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button type="primary" @click="handleSubmitSource" :loading="sourceSubmitting">{{ $t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 同步日志对话框 -->
+    <el-dialog v-model="syncLogVisible" :title="$t('ssl.syncLogs')" width="700px" destroy-on-close>
+      <el-table :data="syncLogs" style="width: 100%" max-height="400">
+        <el-table-column prop="domain" :label="$t('ssl.domain')" min-width="180" />
+        <el-table-column :label="$t('ssl.syncStatus')" width="90">
+          <template #default="{ row }">
+            <el-tag :type="syncLogStatusType(row.status)" size="small">
+              {{ syncLogStatusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="message" label="详情" min-width="160" show-overflow-tooltip />
+        <el-table-column :label="$t('commons.createdAt')" width="170">
+          <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+      <el-pagination v-if="syncLogTotal > 0" class="mt-pagination" :current-page="syncLogPage" :page-size="syncLogPageSize" :total="syncLogTotal" layout="total, prev, pager, next" @current-change="(p: number) => { syncLogPage = p; loadSyncLogs() }" />
+    </el-dialog>
+
     <!-- 导入文件 input（隐藏） -->
     <input ref="importInput" type="file" accept=".json" style="display: none" @change="handleImportFile" />
   </div>
@@ -362,8 +498,12 @@ import {
   exportAccounts, importAccounts,
   getSSLDir, updateSSLDir, getDnsProviders,
 } from '@/api/modules/ssl'
+import {
+  listCertSources, createCertSource, updateCertSource, deleteCertSource,
+  syncCertSource, getCertServerSetting, updateCertServerSetting, searchSyncLogs,
+} from '@/api/modules/cert-sync'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { Certificate, AcmeAccount, DnsAccount, DnsProvider } from '@/api/interface'
+import type { Certificate, AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting } from '@/api/interface'
 
 const activeTab = ref('certs')
 
@@ -712,6 +852,153 @@ const handleImportFile = (e: Event) => {
   ;(e.target as HTMLInputElement).value = ''
 }
 
+// --- 证书源 ---
+const certSources = ref<(CertSource & { _syncing?: boolean })[]>([])
+const sourceDialogVisible = ref(false)
+const sourceEditMode = ref(false)
+const sourceSubmitting = ref(false)
+const defaultSourceForm = () => ({
+  id: 0,
+  name: '',
+  serverAddr: '',
+  token: '',
+  syncInterval: 360,
+  postSyncCommand: '',
+  conflictPolicy: 'skip',
+  enabled: true,
+})
+const sourceForm = ref(defaultSourceForm())
+
+const loadCertSources = async () => {
+  try {
+    const res = await listCertSources()
+    certSources.value = res.data || []
+  } catch { certSources.value = [] }
+}
+
+const openSourceDialog = (row?: CertSource) => {
+  if (row) {
+    sourceEditMode.value = true
+    sourceForm.value = {
+      id: row.id,
+      name: row.name,
+      serverAddr: row.serverAddr,
+      token: '',
+      syncInterval: row.syncInterval,
+      postSyncCommand: row.postSyncCommand,
+      conflictPolicy: row.conflictPolicy,
+      enabled: row.enabled,
+    }
+  } else {
+    sourceEditMode.value = false
+    sourceForm.value = defaultSourceForm()
+  }
+  sourceDialogVisible.value = true
+}
+
+const handleSubmitSource = async () => {
+  if (!sourceForm.value.name || !sourceForm.value.serverAddr) {
+    ElMessage.warning('请填写名称和服务器地址')
+    return
+  }
+  if (!sourceEditMode.value && !sourceForm.value.token) {
+    ElMessage.warning('请填写 Token')
+    return
+  }
+  sourceSubmitting.value = true
+  try {
+    if (sourceEditMode.value) {
+      await updateCertSource(sourceForm.value as any)
+    } else {
+      await createCertSource(sourceForm.value as any)
+    }
+    ElMessage.success('操作成功')
+    sourceDialogVisible.value = false
+    loadCertSources()
+  } catch { ElMessage.error('操作失败') }
+  finally { sourceSubmitting.value = false }
+}
+
+const handleDeleteSource = async (id: number) => {
+  await ElMessageBox.confirm('确定要删除该证书源吗？同步日志也会被清除。', '提示', { type: 'warning' })
+  try {
+    await deleteCertSource(id)
+    ElMessage.success('删除成功')
+    loadCertSources()
+  } catch { ElMessage.error('删除失败') }
+}
+
+const handleSync = async (row: CertSource & { _syncing?: boolean }) => {
+  row._syncing = true
+  try {
+    await syncCertSource(row.id)
+    ElMessage.success('同步完成')
+    loadCertSources()
+    loadCerts()
+  } catch (e: any) {
+    ElMessage.error('同步失败: ' + (e?.response?.data?.message || '未知错误'))
+  } finally { row._syncing = false }
+}
+
+// --- 同步日志 ---
+const syncLogVisible = ref(false)
+const syncLogs = ref<CertSyncLog[]>([])
+const syncLogTotal = ref(0)
+const syncLogPage = ref(1)
+const syncLogPageSize = ref(20)
+const syncLogSourceID = ref(0)
+
+const loadSyncLogs = async () => {
+  try {
+    const res = await searchSyncLogs({ page: syncLogPage.value, pageSize: syncLogPageSize.value, sourceID: syncLogSourceID.value })
+    syncLogs.value = res.data?.items || []
+    syncLogTotal.value = res.data?.total || 0
+  } catch { syncLogs.value = [] }
+}
+
+const handleViewSyncLogs = (sourceID: number) => {
+  syncLogSourceID.value = sourceID
+  syncLogPage.value = 1
+  syncLogVisible.value = true
+  loadSyncLogs()
+}
+
+const syncLogStatusType = (s: string) => {
+  const map: Record<string, string> = { success: 'success', skipped: 'info', error: 'danger' }
+  return (map[s] || 'info') as '' | 'success' | 'warning' | 'danger' | 'info'
+}
+
+const syncLogStatusLabel = (s: string) => {
+  const map: Record<string, string> = { success: '成功', skipped: '跳过', error: '失败' }
+  return map[s] || s
+}
+
+// --- 证书服务 ---
+const certServerSetting = ref<CertServerSetting>({ enabled: false, token: '' })
+
+const loadCertServerSetting = async () => {
+  try {
+    const res = await getCertServerSetting()
+    certServerSetting.value = res.data || { enabled: false, token: '' }
+  } catch {}
+}
+
+const handleSaveCertServer = async () => {
+  try {
+    await updateCertServerSetting(certServerSetting.value)
+    ElMessage.success('保存成功')
+  } catch { ElMessage.error('保存失败') }
+}
+
+const handleGenerateToken = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < 32; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  certServerSetting.value.token = result
+}
+
 // --- 工具函数 ---
 const statusType = (s: string) => {
   const map: Record<string, string> = { applied: 'success', applying: 'warning', error: 'danger', ready: 'info' }
@@ -766,6 +1053,8 @@ onMounted(() => {
   loadDnsAccounts()
   loadDnsProviders()
   loadSSLDir()
+  loadCertSources()
+  loadCertServerSetting()
 })
 
 onUnmounted(() => {
@@ -899,5 +1188,32 @@ onUnmounted(() => {
   .mt-12 {
     margin-top: 12px;
   }
+}
+
+.no-data-hint {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--xp-text-muted);
+  font-size: 14px;
+}
+
+.sync-time {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  margin-left: 6px;
+}
+
+.text-muted {
+  color: var(--xp-text-muted);
+}
+
+.cert-server-section {
+  padding: 8px 0;
+}
+
+.token-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
 }
 </style>

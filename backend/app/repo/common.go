@@ -47,6 +47,13 @@ func WithLikeName(name string) DBOption {
 	}
 }
 
+// WithBySourceID 按 SourceID 查询
+func WithBySourceID(sourceID uint) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("source_id = ?", sourceID)
+	}
+}
+
 // WithOrderByDesc 按字段降序
 func WithOrderByDesc(field string) DBOption {
 	return func(db *gorm.DB) *gorm.DB {

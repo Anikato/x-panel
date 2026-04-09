@@ -29,6 +29,7 @@ type ApiGroup struct {
 	ToolboxAPI
 	HostSystemAPI
 	SSHKeyAPI
+	CertSyncAPI
 }
 
 // ApiGroupApp 全局 API 实例

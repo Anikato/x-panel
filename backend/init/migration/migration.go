@@ -37,6 +37,8 @@ func Init() {
 		&model.TrafficSnapshot{},
 		&model.GostService{},
 		&model.GostChain{},
+		&model.CertSource{},
+		&model.CertSyncLog{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
@@ -223,6 +225,8 @@ func initDefaultSettings() {
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
 		{Key: "AutoUpgrade", Value: "enable"},
+		{Key: "CertServerEnabled", Value: "disable"},
+		{Key: "CertServerToken", Value: ""},
 	}
 
 	for _, s := range defaults {

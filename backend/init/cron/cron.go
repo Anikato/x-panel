@@ -28,6 +28,11 @@ func Init() {
 		autoUpgrade()
 	})
 
+	// 每 10 分钟检查证书源同步
+	global.CRON.AddFunc("*/10 * * * *", func() {
+		service.NewICertSourceService().SyncAll()
+	})
+
 	global.LOG.Info("Cron scheduler initialized")
 }
 

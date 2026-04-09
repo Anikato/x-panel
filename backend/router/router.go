@@ -394,6 +394,25 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/nginx/log/tail", api.TailNginxLog)
 		privateGroup.POST("/nginx/log/drilldown", api.DrilldownNginxLog)
 
+		// 证书同步 - 证书源管理
+		privateGroup.GET("/cert-sources", api.ListCertSources)
+		privateGroup.POST("/cert-sources", api.CreateCertSource)
+		privateGroup.POST("/cert-sources/update", api.UpdateCertSource)
+		privateGroup.POST("/cert-sources/del", api.DeleteCertSource)
+		privateGroup.POST("/cert-sources/sync", api.SyncCertSource)
+		privateGroup.POST("/cert-sources/test", api.TestCertSource)
+		privateGroup.POST("/cert-sync/logs", api.SearchSyncLogs)
+
+		// 证书服务端设置
+		privateGroup.GET("/cert-server/setting", api.GetCertServerSetting)
+		privateGroup.POST("/cert-server/setting", api.UpdateCertServerSetting)
+	}
+
+	// 证书服务端 API（Token 认证，供其他面板拉取证书）
+	certServerGroup := r.Group("/api/v1/cert-server")
+	certServerGroup.Use(middleware.CertServerAuth())
+	{
+		certServerGroup.GET("/certs", api.ServeCerts)
 	}
 
 	// WebSocket
