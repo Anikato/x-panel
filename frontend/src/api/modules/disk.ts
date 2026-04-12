@@ -25,3 +25,15 @@ export const mountRemote = (data: {
 export const unmountRemote = (data: { mountPoint: string; removeFstab?: boolean }) => {
   return http.post('/disk/remote/unmount', data)
 }
+
+export const listBlockDevices = () => {
+  return http.get('/disk/block-devices')
+}
+
+export const mountLocal = (data: { device: string; mountPoint: string; fsType?: string; persist?: boolean }) => {
+  return http.post('/disk/local/mount', data)
+}
+
+export const unmountLocal = (data: { mountPoint: string; removeFstab?: boolean }) => {
+  return http.post('/disk/local/unmount', data)
+}

@@ -4,6 +4,81 @@
 
 ---
 
+## 2026-04-12 — Session #71：样式和功能优化合集
+
+### 完成内容
+
+**默认主题 + 侧边栏**：
+- [x] `bgPreset` 默认值从 `abyss` 改为 `void`（纯黑）
+- [x] `sidebarWidth` 默认值从 `default` 改为 `narrow`（只显示图标）
+
+**隐藏多节点入口**：
+- [x] 侧边栏注释掉节点管理菜单项（保留路由和后端 API 不动）
+- [x] 顶栏注释掉节点切换下拉框
+
+**监控页面重构**：
+- [x] 完全重写 `host/monitor/index.vue`，参照首页三列布局风格
+- [x] 三列：资源占用（CPU/内存/负载/磁盘进度条）| 网络（IP + 实时速率）| Top 进程表
+- [x] 下方保留磁盘详情表（含 Inode 使用率）
+- [x] 去掉原有仪表盘风格，改为紧凑进度条
+
+**本地块设备挂载**：
+- [x] 后端新增 `ListBlockDevices()` — 调用 `lsblk -Jb` 解析 JSON
+- [x] 后端新增 `MountLocal()` / `UnmountLocal()` — mount/umount + 可选写 fstab
+- [x] 新增 DTO：`BlockDevice`、`LocalMountRequest`、`LocalUnmountRequest`
+- [x] 新增路由：`GET /disk/block-devices`、`POST /disk/local/mount`、`POST /disk/local/unmount`
+- [x] 前端磁盘管理页新增块设备表格（树形缩进展示 disk → part）
+- [x] 未挂载设备显示「挂载」按钮，弹窗选择挂载点和文件系统
+- [x] 已挂载设备显示「卸载」按钮，带确认弹窗
+
+### 涉及文件
+- `frontend/src/store/modules/global.ts`（默认主题/侧边栏）
+- `frontend/src/layout/components/Sidebar.vue`（隐藏节点菜单）
+- `frontend/src/layout/components/Header.vue`（隐藏节点切换）
+- `frontend/src/views/host/monitor/index.vue`（完全重写）
+- `backend/app/dto/disk.go`（新增 BlockDevice/LocalMount DTOs）
+- `backend/app/service/disk.go`（新增 ListBlockDevices/MountLocal/UnmountLocal）
+- `backend/app/api/v1/disk.go`（新增 3 个 handler）
+- `backend/router/router.go`（新增 3 条路由）
+- `frontend/src/api/modules/disk.ts`（新增 3 个 API 调用）
+- `frontend/src/views/host/disk/index.vue`（新增块设备 UI）
+- `frontend/src/i18n/zh.ts`（块设备翻译）
+
+### 关键决策
+- 多节点功能仅前端隐藏，后端保留完整 API 和路由，便于后续恢复
+- 监控页去掉系统信息卡片（首页已有），避免重复
+- 块设备挂载仅支持已有文件系统的分区挂载，不支持格式化（避免误操作）
+
+---
+
+## 2026-04-12 — Session #70：上传修复 + 文件预览功能
+
+### 完成内容
+
+**上传 400 修复**：
+- [x] 上一轮删除 `Content-Type: multipart/form-data` 后，Axios 全局默认 `application/json` 接管，Go 后端无法解析 FormData
+- [x] 改为 `headers: { 'Content-Type': undefined }` 显式清除默认值，让浏览器自动设置含 boundary 的 multipart header
+
+**文件预览功能**：
+- [x] 新建 `FilePreview.vue` 通用预览弹窗组件
+- [x] 图片预览：`<el-image>` 带缩放和预览列表
+- [x] 视频预览：HTML5 `<video>` 原生播放器，支持 mp4/webm/ogg/mov/mkv
+- [x] 音频预览：HTML5 `<audio>` 原生播放器，支持 mp3/wav/flac/aac/m4a
+- [x] PDF 预览：`<iframe>` 内嵌浏览器 PDF 查看器
+- [x] Excel/CSV 预览：安装 `xlsx` 库，fetch 文件 → 解析 → `<el-table>` 渲染，支持多 Sheet 切换
+- [x] 操作列添加「预览」按钮（绿色，可预览文件才显示）
+- [x] 右键菜单添加「预览」选项
+- [x] 双击文件行为：可预览文件优先打开预览，其次打开编辑器
+
+### 涉及文件
+- `frontend/src/api/modules/file.ts`（Content-Type 修复）
+- `frontend/src/views/host/file/FilePreview.vue`（新增）
+- `frontend/src/views/host/file/index.vue`（集成预览入口）
+- `frontend/src/i18n/zh.ts`（预览翻译）
+- `frontend/package.json`（xlsx 依赖）
+
+---
+
 ## 2026-04-12 — Session #69：首页重构与多项 Bug 修复
 
 ### 完成内容

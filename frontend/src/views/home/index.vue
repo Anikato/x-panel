@@ -348,20 +348,19 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 /* ==================== Center: Network ==================== */
 .net-list {
-  display: flex; flex-direction: column; gap: 6px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: baseline;
 }
 
 .net-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  align-items: baseline;
-  min-width: 0;
+  display: contents;
 }
 
 .net-label {
   font-size: 12px; color: var(--xp-text-muted);
-  white-space: nowrap; flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .net-val {
@@ -400,15 +399,14 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 /* ==================== Right: System Info ==================== */
 .sys-list {
-  display: flex; flex-direction: column; gap: 6px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: baseline;
 }
 
 .sys-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  align-items: baseline;
-  min-width: 0;
+  display: contents;
 }
 
 .sys-label {

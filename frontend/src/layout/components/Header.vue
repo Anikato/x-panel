@@ -44,6 +44,7 @@
       </div>
     </div>
     <div class="header-right">
+      <!-- 节点切换：多节点功能待完善后恢复
       <el-select
         v-model="currentNode"
         size="small"
@@ -53,6 +54,7 @@
         <el-option :label="t('node.local')" :value="0" />
         <el-option v-for="n in nodes" :key="n.id" :label="n.name" :value="n.id" />
       </el-select>
+      -->
 
       <!-- 主题色选择 -->
       <el-popover placement="bottom" :width="240" trigger="click" :show-arrow="true">

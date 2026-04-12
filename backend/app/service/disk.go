@@ -2,9 +2,11 @@ package service
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"xpanel/app/dto"
@@ -17,6 +19,9 @@ type IDiskService interface {
 	MountRemote(req dto.RemoteMountRequest) error
 	UnmountRemote(req dto.RemoteUnmountRequest) error
 	ListRemoteMounts() ([]dto.RemoteMountInfo, error)
+	ListBlockDevices() ([]dto.BlockDevice, error)
+	MountLocal(req dto.LocalMountRequest) error
+	UnmountLocal(req dto.LocalUnmountRequest) error
 }
 
 type DiskService struct{}
@@ -172,6 +177,114 @@ func (s *DiskService) ListRemoteMounts() ([]dto.RemoteMountInfo, error) {
 		result = append(result, info)
 	}
 	return result, nil
+}
+
+// --- Block device helpers ---
+
+type lsblkOutput struct {
+	Blockdevices []lsblkDevice `json:"blockdevices"`
+}
+
+type lsblkDevice struct {
+	Name       string        `json:"name"`
+	Size       json.Number   `json:"size"`
+	Fstype     *string       `json:"fstype"`
+	Mountpoint *string       `json:"mountpoint"`
+	Type       string        `json:"type"`
+	Model      *string       `json:"model"`
+	Children   []lsblkDevice `json:"children,omitempty"`
+}
+
+func toLsblkDTO(d lsblkDevice) dto.BlockDevice {
+	bd := dto.BlockDevice{
+		Name: d.Name,
+		Type: d.Type,
+	}
+	if s, err := d.Size.Int64(); err == nil {
+		bd.Size = uint64(s)
+	}
+	if d.Fstype != nil {
+		bd.FSType = *d.Fstype
+	}
+	if d.Mountpoint != nil {
+		bd.MountPoint = *d.Mountpoint
+	}
+	if d.Model != nil {
+		bd.Model = strings.TrimSpace(*d.Model)
+	}
+	for _, ch := range d.Children {
+		bd.Children = append(bd.Children, toLsblkDTO(ch))
+	}
+	return bd
+}
+
+func (s *DiskService) ListBlockDevices() ([]dto.BlockDevice, error) {
+	out, err := exec.Command("lsblk", "-Jb", "-o", "NAME,SIZE,FSTYPE,MOUNTPOINT,TYPE,MODEL").Output()
+	if err != nil {
+		return nil, fmt.Errorf("lsblk failed: %v", err)
+	}
+	var parsed lsblkOutput
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		return nil, fmt.Errorf("parse lsblk output: %v", err)
+	}
+	var result []dto.BlockDevice
+	for _, d := range parsed.Blockdevices {
+		if d.Type == "rom" || d.Type == "loop" {
+			continue
+		}
+		result = append(result, toLsblkDTO(d))
+	}
+	return result, nil
+}
+
+func (s *DiskService) MountLocal(req dto.LocalMountRequest) error {
+	device := req.Device
+	if !strings.HasPrefix(device, "/dev/") {
+		device = "/dev/" + device
+	}
+	mountPoint := filepath.Clean(req.MountPoint)
+
+	if err := os.MkdirAll(mountPoint, 0755); err != nil {
+		return fmt.Errorf("failed to create mount point: %v", err)
+	}
+
+	args := []string{}
+	if req.FSType != "" {
+		args = append(args, "-t", req.FSType)
+	}
+	args = append(args, device, mountPoint)
+
+	out, err := exec.Command("mount", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mount failed: %s", strings.TrimSpace(string(out)))
+	}
+
+	if req.Persist {
+		fsType := req.FSType
+		if fsType == "" {
+			fsType = "auto"
+		}
+		if err := addFstabEntry(device, mountPoint, fsType, "defaults"); err != nil {
+			return fmt.Errorf("mount succeeded but fstab write failed: %v", err)
+		}
+	}
+	return nil
+}
+
+func (s *DiskService) UnmountLocal(req dto.LocalUnmountRequest) error {
+	mountPoint := filepath.Clean(req.MountPoint)
+	out, err := exec.Command("umount", mountPoint).CombinedOutput()
+	if err != nil {
+		out2, err2 := exec.Command("umount", "-l", mountPoint).CombinedOutput()
+		if err2 != nil {
+			return fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
+		}
+		_ = out2
+	}
+	if req.RemoveFstab {
+		_ = removeFstabEntry(mountPoint)
+	}
+	return nil
 }
 
 func resolveOptions(custom, preset string, presets map[string]string) string {

@@ -55,3 +55,38 @@ func (a *DiskAPI) ListRemoteMounts(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, list)
 }
+
+func (a *DiskAPI) ListBlockDevices(c *gin.Context) {
+	list, err := service.NewIDiskService().ListBlockDevices()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, list)
+}
+
+func (a *DiskAPI) MountLocal(c *gin.Context) {
+	var req dto.LocalMountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := service.NewIDiskService().MountLocal(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, nil)
+}
+
+func (a *DiskAPI) UnmountLocal(c *gin.Context) {
+	var req dto.LocalUnmountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := service.NewIDiskService().UnmountLocal(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, nil)
+}

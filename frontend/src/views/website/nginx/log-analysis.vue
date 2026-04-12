@@ -270,7 +270,17 @@
                 </template>
                 <el-table :data="analysis.topUserAgents || []" size="small" stripe :show-header="true" max-height="280">
                   <el-table-column type="index" width="36" />
-                  <el-table-column :label="$t('nginx.userAgent')" min-width="400">
+                  <el-table-column :label="$t('nginx.browser')" width="160">
+                    <template #default="{ row }">
+                      <span>{{ parseUA(row.name).browser }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.os')" width="150">
+                    <template #default="{ row }">
+                      <span>{{ parseUA(row.name).os }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.userAgent')" min-width="300" show-overflow-tooltip>
                     <template #default="{ row }">
                       <span class="mono-text ua-cell">{{ row.name || '-' }}</span>
                     </template>
@@ -410,8 +420,27 @@ import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog, drilldownNginxLog 
 import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import UAParser from 'ua-parser-js'
 
 const { t } = useI18n()
+
+const uaParser = new UAParser()
+const uaCache = new Map<string, { browser: string; os: string }>()
+
+const parseUA = (ua: string): { browser: string; os: string } => {
+  if (!ua) return { browser: '-', os: '-' }
+  const cached = uaCache.get(ua)
+  if (cached) return cached
+  uaParser.setUA(ua)
+  const b = uaParser.getBrowser()
+  const o = uaParser.getOS()
+  const result = {
+    browser: [b.name, b.version?.split('.')[0]].filter(Boolean).join(' ') || ua.split('/')[0] || '-',
+    os: [o.name, o.version].filter(Boolean).join(' ') || '-',
+  }
+  uaCache.set(ua, result)
+  return result
+}
 
 const selectedSite = ref('')
 const timeRange = ref('24h')

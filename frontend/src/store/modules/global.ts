@@ -33,7 +33,7 @@ export const useGlobalStore = defineStore('global', {
     currentNodeName: '',
     serverInfo: null as ServerInfo | null,
 
-    bgPreset: 'abyss' as BgPreset,
+    bgPreset: 'void' as BgPreset,
     uiFont: 'system' as UiFont,
     uiDensity: 'default' as UiDensity,
     borderRadiusPreset: 'default' as BorderRadiusPreset,
@@ -43,7 +43,7 @@ export const useGlobalStore = defineStore('global', {
     termFontSize: 14,
     termBgOpacity: 1.0,
     cardBorderStyle: 'accent-left' as CardBorderStyle,
-    sidebarWidth: 'default' as SidebarWidthPreset,
+    sidebarWidth: 'narrow' as SidebarWidthPreset,
     showServerClock: true,
     dashboardRefreshInterval: 5000,
   }),

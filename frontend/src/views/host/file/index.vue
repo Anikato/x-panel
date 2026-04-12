@@ -229,6 +229,9 @@
             <el-button v-if="canEdit(row)" link type="primary" size="small" @click.stop="openEditor(row)">
               {{ t('file.edit') }}
             </el-button>
+            <el-button v-if="!row.isDir && canPreview(row)" link type="success" size="small" @click.stop="openPreview(row)">
+              {{ t('file.preview') }}
+            </el-button>
             <el-button v-if="!row.isDir" link type="primary" size="small" @click.stop="handleDownload(row)">
               {{ t('commons.download') }}
             </el-button>
@@ -277,6 +280,9 @@
         </div>
         <div v-if="canEdit(contextMenu.row)" class="context-item" @click="openEditor(contextMenu.row)">
           <el-icon><EditPen /></el-icon>{{ t('file.edit') }}
+        </div>
+        <div v-if="!contextMenu.row?.isDir && canPreview(contextMenu.row)" class="context-item" @click="openPreview(contextMenu.row)">
+          <el-icon><View /></el-icon>{{ t('file.preview') }}
         </div>
         <div v-if="!contextMenu.row?.isDir" class="context-item" @click="handleDownload(contextMenu.row)">
           <el-icon><Download /></el-icon>{{ t('commons.download') }}
@@ -381,6 +387,7 @@
     <PermissionDialog ref="permissionRef" @done="refreshFiles" />
     <ChownDialog ref="chownRef" @done="refreshFiles" />
     <DetailDrawer ref="detailRef" />
+    <FilePreview ref="filePreviewRef" />
   </div>
 </template>
 
@@ -406,6 +413,7 @@ import CompressDialog from './compress-dialog.vue'
 import PermissionDialog from './permission-dialog.vue'
 import ChownDialog from './chown-dialog.vue'
 import DetailDrawer from './detail-drawer.vue'
+import FilePreview from './FilePreview.vue'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -602,6 +610,8 @@ const handleRowDblClick = (row: FileInfo | null) => {
   if (!row) return
   if (row.isDir) {
     navigateTo(row.path)
+  } else if (canPreview(row)) {
+    openPreview(row)
   } else if (canEdit(row)) {
     openEditor(row)
   }
@@ -662,6 +672,19 @@ const compressRef = ref<InstanceType<typeof CompressDialog>>()
 const permissionRef = ref<InstanceType<typeof PermissionDialog>>()
 const chownRef = ref<InstanceType<typeof ChownDialog>>()
 const detailRef = ref<InstanceType<typeof DetailDrawer>>()
+const filePreviewRef = ref<InstanceType<typeof FilePreview>>()
+
+// ===================== 预览 =====================
+
+const canPreview = (row: FileInfo | null) => {
+  if (!row || row.isDir) return false
+  return filePreviewRef.value?.isPreviewable(row.name) ?? false
+}
+
+const openPreview = (row: FileInfo | null) => {
+  if (!row) return
+  filePreviewRef.value?.acceptParams({ name: row.name, path: row.path })
+}
 
 // ===================== 编辑 =====================
 

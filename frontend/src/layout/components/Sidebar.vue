@@ -135,7 +135,7 @@ const menuList = computed(() => [
       { path: '/log/operation', title: t('menu.operationLog') },
     ],
   },
-  { path: '/node', title: t('menu.node'), icon: 'Connection' },
+  // { path: '/node', title: t('menu.node'), icon: 'Connection' }, // TODO: 多节点功能待完善后恢复
   { path: '/setting', title: t('menu.setting'), icon: 'Setting' },
 ])
 </script>

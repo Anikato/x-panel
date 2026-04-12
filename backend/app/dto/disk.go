@@ -23,6 +23,31 @@ type PartitionInfo struct {
 	InodesFree  uint64  `json:"inodesFree"`
 }
 
+// BlockDevice lsblk 返回的块设备
+type BlockDevice struct {
+	Name       string        `json:"name"`
+	Size       uint64        `json:"size"`
+	FSType     string        `json:"fsType"`
+	MountPoint string        `json:"mountPoint"`
+	Type       string        `json:"type"`  // disk, part, lvm, etc.
+	Model      string        `json:"model"`
+	Children   []BlockDevice `json:"children,omitempty"`
+}
+
+// LocalMountRequest 本地块设备挂载请求
+type LocalMountRequest struct {
+	Device     string `json:"device" validate:"required"`
+	MountPoint string `json:"mountPoint" validate:"required"`
+	FSType     string `json:"fsType"`
+	Persist    bool   `json:"persist"`
+}
+
+// LocalUnmountRequest 本地块设备卸载请求
+type LocalUnmountRequest struct {
+	MountPoint  string `json:"mountPoint" validate:"required"`
+	RemoveFstab bool   `json:"removeFstab"`
+}
+
 // RemoteMountRequest 远程挂载请求
 type RemoteMountRequest struct {
 	Protocol   string `json:"protocol" validate:"required,oneof=smb nfs cifs"`
