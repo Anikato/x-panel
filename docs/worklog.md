@@ -4,6 +4,59 @@
 
 ---
 
+## 2026-04-12 — Session #72：历史监控功能
+
+### 完成内容
+
+**后端 — 独立监控数据库**：
+- [x] `global.MonitorDB` — 独立 `monitor.db`，避免与主业务库锁竞争
+- [x] 数据模型：`MonitorBase`（CPU%/内存%/负载）、`MonitorIO`（磁盘读写速率）、`MonitorNetwork`（网络上下行速率）
+- [x] `InitMonitorDB()` + AutoMigrate
+
+**后端 — 采集 Service**：
+- [x] `MonitorHistoryService.Run()` — gopsutil 采集 CPU/内存/负载
+- [x] IO/网络差分采样 — channel 两次采样计算速率（参考 1Panel 模式）
+- [x] cron 注册 — `@every {interval}s` 动态注册
+- [x] 过期清理 — 每次采集结束按 `MonitorStoreDays` 删除过期数据
+- [x] `StartMonitorCollector()` — 统一的启动/重启/停止逻辑
+
+**后端 — API 路由**：
+- [x] `POST /monitor/history` — 按时间范围查询历史数据
+- [x] `GET /monitor/setting` — 获取监控设置
+- [x] `POST /monitor/setting/update` — 更新设置（动态开关/间隔调整）
+- [x] `POST /monitor/history/clean` — 清空监控数据
+- [x] `GET /monitor/io-options` — 可选 IO 设备列表
+- [x] `GET /monitor/network-options` — 可选网卡列表
+
+**后端 — 默认设置**：
+- [x] MonitorStatus=enable, MonitorInterval=300, MonitorStoreDays=7, DefaultNetwork=all, DefaultIO=all
+
+**前端 — 历史图表页**：
+- [x] 监控页新增 Tab 切换（实时 / 历史），保留原有实时概览
+- [x] 时间范围选择器 + 快捷按钮（1h/6h/24h/7d）
+- [x] 5 个 ECharts 折线图：负载（Load1/5/15 三线）、CPU、内存、磁盘IO（读/写）、网络（上/下行）
+- [x] 所有图表支持 dataZoom（内置缩放 + 底部滑块）
+- [x] IO/网络设备选择下拉
+
+**前端 — 监控设置 UI**：
+- [x] 齿轮按钮打开设置对话框
+- [x] 启用/禁用监控采集 Switch
+- [x] 采集间隔选择（60s/120s/300s/600s）
+- [x] 保留天数选择（1/3/7/14/30 天）
+- [x] 默认网卡/IO 设备选择
+- [x] 清空监控数据按钮（带确认）
+
+### 关键决策
+- 独立 `monitor.db` 文件，与主库分离，参考 1Panel 验证过的方案
+- IO/网络速率通过两次采样差分计算，确保数据准确性
+- 默认 5 分钟间隔 × 7 天保留，数据量约 600KB，SQLite 无压力
+
+### 下一步
+- 部署验证历史数据采集和图表展示
+- 观察长时间运行下的数据库大小和性能
+
+---
+
 ## 2026-04-12 — Session #71：样式和功能优化合集
 
 ### 完成内容

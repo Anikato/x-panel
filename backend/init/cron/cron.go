@@ -18,6 +18,18 @@ func Init() {
 	trafficService := service.NewITrafficService()
 	trafficService.StartCollector()
 
+	// 启动监控数据采集
+	monitorStatus, _ := service.NewISettingService().GetValueByKey("MonitorStatus")
+	if monitorStatus == "enable" {
+		monitorInterval, _ := service.NewISettingService().GetValueByKey("MonitorInterval")
+		if monitorInterval == "" {
+			monitorInterval = "300"
+		}
+		if err := service.StartMonitorCollector(false, monitorInterval); err != nil {
+			global.LOG.Errorf("Failed to start monitor collector: %v", err)
+		}
+	}
+
 	// 每天凌晨 2 点检查证书续期
 	global.CRON.AddFunc("0 2 * * *", func() {
 		service.AutoRenewCerts()

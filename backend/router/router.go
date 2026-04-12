@@ -140,6 +140,12 @@ func Setup(mode string) *gin.Engine {
 
 		// 系统监控
 		privateGroup.GET("/monitor/stats", api.GetCurrentStats)
+		privateGroup.POST("/monitor/history", api.LoadMonitorHistory)
+		privateGroup.GET("/monitor/setting", api.GetMonitorSetting)
+		privateGroup.POST("/monitor/setting/update", api.UpdateMonitorSetting)
+		privateGroup.POST("/monitor/history/clean", api.CleanMonitorData)
+		privateGroup.GET("/monitor/io-options", api.GetIOOptions)
+		privateGroup.GET("/monitor/network-options", api.GetNetworkOptions)
 
 		// 进程管理
 		privateGroup.POST("/process/search", api.ListProcesses)

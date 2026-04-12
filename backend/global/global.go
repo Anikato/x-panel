@@ -21,12 +21,15 @@ type ipTracker interface {
 
 var (
 	DB        *gorm.DB
+	MonitorDB *gorm.DB
 	LOG       *logrus.Logger
 	CONF      ServerConfig
 	Vp        *viper.Viper
 	I18n      *i18n.Localizer
 	IPTracker ipTracker
 	CRON      *cron.Cron
+
+	MonitorCronID cron.EntryID
 )
 
 // ServerConfig 服务器配置结构

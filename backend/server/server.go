@@ -45,6 +45,7 @@ func Start() {
 
 	// 3. 数据库连接
 	initDB.Init()
+	initDB.InitMonitorDB()
 
 	// 4. 数据库迁移 + 默认数据
 	migration.Init()

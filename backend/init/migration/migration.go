@@ -47,6 +47,7 @@ func Init() {
 
 	initDefaultSettings()
 	ensureSSLDir()
+	migrateMonitorDB()
 	global.LOG.Info("Database migration completed")
 }
 
@@ -201,6 +202,19 @@ func migrateWildcardCertDirs(certsDir string) {
 	}
 }
 
+func migrateMonitorDB() {
+	if global.MonitorDB == nil {
+		return
+	}
+	if err := global.MonitorDB.AutoMigrate(
+		&model.MonitorBase{},
+		&model.MonitorIO{},
+		&model.MonitorNetwork{},
+	); err != nil {
+		global.LOG.Errorf("Failed to auto-migrate monitor database: %v", err)
+	}
+}
+
 func getDefaultPanelName() string {
 	info, err := hostUtil.Info()
 	if err == nil && info.Hostname != "" {
@@ -228,6 +242,11 @@ func initDefaultSettings() {
 		{Key: "AppearanceConfig", Value: "{}"},
 		{Key: "CertServerEnabled", Value: "disable"},
 		{Key: "CertServerToken", Value: ""},
+		{Key: "MonitorStatus", Value: "enable"},
+		{Key: "MonitorInterval", Value: "300"},
+		{Key: "MonitorStoreDays", Value: "7"},
+		{Key: "DefaultNetwork", Value: "all"},
+		{Key: "DefaultIO", Value: "all"},
 	}
 
 	for _, s := range defaults {
