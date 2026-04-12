@@ -44,6 +44,8 @@ export const useGlobalStore = defineStore('global', {
     termBgOpacity: 1.0,
     cardBorderStyle: 'accent-left' as CardBorderStyle,
     sidebarWidth: 'default' as SidebarWidthPreset,
+    showServerClock: true,
+    dashboardRefreshInterval: 5000,
   }),
   actions: {
     setLogin(status: boolean) {
@@ -97,6 +99,8 @@ export const useGlobalStore = defineStore('global', {
         accentKey: this.accentKey,
         accentCustom: this.accentCustom,
         theme: this.theme,
+        showServerClock: this.showServerClock,
+        dashboardRefreshInterval: this.dashboardRefreshInterval,
       }
     },
 
@@ -127,6 +131,8 @@ export const useGlobalStore = defineStore('global', {
         if (config.accentKey) this.accentKey = config.accentKey
         if (config.accentCustom !== undefined) this.accentCustom = config.accentCustom
         if (config.theme) this.theme = config.theme
+        if (config.showServerClock !== undefined) this.showServerClock = config.showServerClock
+        if (config.dashboardRefreshInterval !== undefined) this.dashboardRefreshInterval = config.dashboardRefreshInterval
       } catch { /* ignore */ }
     },
   },
@@ -137,6 +143,7 @@ export const useGlobalStore = defineStore('global', {
       'bgPreset', 'uiFont', 'uiDensity', 'borderRadiusPreset', 'reduceMotion',
       'termTheme', 'termFont', 'termFontSize', 'termBgOpacity',
       'cardBorderStyle', 'sidebarWidth',
+      'showServerClock', 'dashboardRefreshInterval',
     ],
   },
 })

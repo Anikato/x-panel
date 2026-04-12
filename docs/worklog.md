@@ -4,6 +4,90 @@
 
 ---
 
+## 2026-04-12 — Session #69：首页重构与多项 Bug 修复
+
+### 完成内容
+
+**文件上传进度修复**：
+- [x] 修复 Vue 响应式断裂 Bug：`doUploadFiles` 中 `items` 引用原始对象而非响应式代理，导致进度始终 0%
+- [x] 改为从 `uploadQueue.value` 取响应式引用，进度实时更新
+- [x] 删除手动设置的 `Content-Type: multipart/form-data`，让 Axios 自动处理 boundary
+- [x] 上传全部完成 3 秒后自动清理进度浮窗
+
+**浏览器标签页 title 动态化**：
+- [x] `App.vue` 新增 `watchEffect` 动态设置 `document.title`
+- [x] 格式：`页面名 - 面板名称`，解决多服务器标签页无法区分的问题
+
+**首页三合一卡片重构**：
+- [x] 原 Card1（系统信息+网络）和 Card2（资源+磁盘）合并为单卡片三等分
+- [x] 布局：资源占用（左）| 网络（中）| 系统信息（右）
+- [x] 资源占用 CPU/内存/Load/磁盘全部竖向排列，每项一行
+- [x] 网络 IP 使用 `grid-template-columns: auto 1fr` 实现左对齐
+- [x] 系统信息改为单列竖排，去除之前的 auto-fill grid
+- [x] 响应式：<1200px 降为单列堆叠
+
+**顶栏时钟兼容性修复**：
+- [x] 后端 `getTimezone()` 增加 3 层 fallback：`/etc/localtime` 符号链接 → `timedatectl` → `TZ` 环境变量
+- [x] 确保各种 Linux 发行版/容器都能返回有效的 IANA 时区名
+- [x] 前端新增 `showServerClock` 开关（默认开启），纳入个性化设置
+
+**仪表盘刷新间隔可配置**：
+- [x] global store 新增 `dashboardRefreshInterval`（默认 5000ms）
+- [x] 设置页新增下拉选择：2s / 5s / 10s / 30s / 不自动刷新
+- [x] 首页 `watch` 该值动态重建 interval
+
+**个性化设置同步完善**：
+- [x] `showServerClock` 和 `dashboardRefreshInterval` 加入 `getAppearanceKeys`、`loadAppearanceFromBackend`、`persist.pick`
+- [x] `App.vue` 的 appearance watch 列表同步更新
+- [x] 确认所有 16 个外观字段在三处（同步/加载/持久化）完全一致
+
+### 关键决策
+- HTTPS 自动跳转需额外监听端口，用户确认暂不实施
+- 面板名称默认值初始化时取自 hostname，之后为独立设置项（设计正确，无需修改）
+
+### 涉及文件
+- `frontend/src/views/home/index.vue`（完全重写）
+- `frontend/src/views/host/file/index.vue`（上传进度修复）
+- `frontend/src/api/modules/file.ts`（删除手动 Content-Type）
+- `frontend/src/App.vue`（title 动态化 + 新字段 watch）
+- `frontend/src/store/modules/global.ts`（新增 2 字段 + 同步）
+- `frontend/src/views/setting/index.vue`（新增 2 个设置项）
+- `frontend/src/layout/components/Header.vue`（时钟开关）
+- `frontend/src/i18n/zh.ts`（新增翻译）
+- `backend/app/service/monitor.go`（时区 fallback）
+
+---
+
+## 2026-04-09 — Session #68：多项体验增强
+
+### 完成内容
+
+**顶栏时间修复**：
+- [x] 后端返回 `"America/Los_Angeles (PDT)"` 格式的 timezone，`Intl.DateTimeFormat` 需要纯 IANA 格式
+- [x] 前端 `extractIANA()` 提取 IANA 部分，时间格式改为 `zh-CN`（年月日时分秒）
+
+**Fail2ban 增强**：
+- [x] 封禁列表新增「封禁时长」和「预计解封时间 (CST)」两列
+- [x] 后端 `parseBanDuration()` 支持 `90d`、`10m`、`-1`（永久）等 fail2ban 格式
+- [x] 封禁时间统一转换为 `Asia/Shanghai` 上海时区显示
+- [x] SSH 端口默认改为空值（自动检测 sshd 实际监听端口），提示文字更新
+
+**外观设置持久化到后端**：
+- [x] 新增 `AppearanceConfig` Setting 键，存储 JSON 格式的外观配置
+- [x] `global.ts` store 新增 `syncAppearanceToBackend()` 和 `loadAppearanceFromBackend()` 方法
+- [x] 登录后自动从后端加载外观配置，修改时 1.5s 防抖自动同步
+- [x] 解决了换浏览器外观设置丢失的问题
+
+**Nginx 日志 IP 下钻**：
+- [x] 后端 drilldown 新增 `ip` 过滤类型：按 IP 统计访问的 URL
+- [x] Top IP 排行表格中 IP 可点击，弹窗展示该 IP 访问的所有 URL
+- [x] 威胁 IP 排行同理，IP 可点击下钻
+
+### 版本
+- v0.5.68
+
+---
+
 ## 2026-04-09 — Session #67：证书同步修复 + 路由加载条
 
 ### 完成内容

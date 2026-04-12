@@ -1,41 +1,61 @@
 <template>
   <div class="dashboard">
-    <!-- Card 1: 系统概览 — 左系统信息 右网络 -->
+    <!-- 系统概览：三等分卡片 [资源占用 | 网络 | 系统信息] -->
     <el-card shadow="never" class="dash-card">
-      <div class="overview-grid">
-        <div class="ov-sys">
-          <div class="ov-hd"><el-icon><Monitor /></el-icon><span>{{ t('home.systemInfo') }}</span></div>
-          <div class="kv-grid">
-            <div class="kv-item" v-for="item in sysInfoItems" :key="item.label">
-              <span class="kv-k">{{ item.label }}</span>
-              <span class="kv-v" :title="item.value">
-                {{ item.value }}
-                <el-icon class="copy-btn" @click="copyText(item.value)" v-if="item.value && item.value !== '-'"><CopyDocument /></el-icon>
-              </span>
+      <div class="tri-grid">
+        <!-- 左列：资源占用 -->
+        <div class="tri-col">
+          <div class="col-hd"><el-icon><Odometer /></el-icon><span>{{ t('home.resourceUsage') }}</span></div>
+          <div class="res-list">
+            <div class="res-item">
+              <div class="res-hd"><div class="res-dot cpu-dot"></div><span>CPU</span><span class="res-pct" :class="pctCls(stats.cpu?.usagePercent)">{{ fmtPct(stats.cpu?.usagePercent) }}</span></div>
+              <div class="bar-bg"><div class="bar-fg" :style="barSty(stats.cpu?.usagePercent, 'cpu')"></div></div>
+              <div class="res-foot">{{ stats.cpu?.cores }} {{ t('home.physical') }} / {{ stats.cpu?.logicalCores }} {{ t('home.logical') }}</div>
             </div>
-          </div>
-        </div>
-        <div class="ov-divider"></div>
-        <div class="ov-net">
-          <div class="ov-hd"><el-icon><Connection /></el-icon><span>{{ t('home.network') }}</span></div>
-          <div class="net-ips">
-            <div class="kv-item" v-if="stats.host?.publicIPv4">
-              <span class="kv-k">{{ t('home.publicIPv4') }}</span>
-              <span class="kv-v accent">{{ stats.host.publicIPv4 }}<el-icon class="copy-btn" @click="copyText(stats.host.publicIPv4)"><CopyDocument /></el-icon></span>
+            <div class="res-item">
+              <div class="res-hd"><div class="res-dot mem-dot"></div><span>{{ t('home.memory') }}</span><span class="res-pct" :class="pctCls(stats.memory?.usedPercent)">{{ fmtPct(stats.memory?.usedPercent) }}</span></div>
+              <div class="bar-bg"><div class="bar-fg" :style="barSty(stats.memory?.usedPercent, 'mem')"></div></div>
+              <div class="res-foot">{{ formatBytes(stats.memory?.used) }} / {{ formatBytes(stats.memory?.total) }}</div>
+              <div class="res-sub" v-if="(stats.memory?.swapTotal ?? 0) > 0">Swap: {{ formatBytes(stats.memory?.swapUsed) }} / {{ formatBytes(stats.memory?.swapTotal) }} ({{ (stats.memory?.swapPercent ?? 0).toFixed(0) }}%)</div>
             </div>
-            <div class="kv-item" v-if="stats.host?.publicIPv6">
-              <span class="kv-k">{{ t('home.publicIPv6') }}</span>
-              <span class="kv-v mono">{{ stats.host.publicIPv6 }}<el-icon class="copy-btn" @click="copyText(stats.host.publicIPv6)"><CopyDocument /></el-icon></span>
+            <div class="res-item">
+              <div class="res-hd"><div class="res-dot load-dot"></div><span>{{ t('home.load') }}</span><span class="res-pct" :class="pctCls(loadPct)">{{ loadPct.toFixed(0) }}%</span></div>
+              <div class="bar-bg"><div class="bar-fg" :style="barSty(loadPct, 'load')"></div></div>
+              <div class="res-foot load-triple"><span>1m: {{ stats.load?.load1?.toFixed(2) || '-' }}</span><span>5m: {{ stats.load?.load5?.toFixed(2) || '-' }}</span><span>15m: {{ stats.load?.load15?.toFixed(2) || '-' }}</span></div>
             </div>
-            <template v-for="iface in stats.host?.interfaces" :key="iface.name">
-              <div class="kv-item" v-for="ip in iface.ipv4" :key="ip">
-                <span class="kv-k"><el-tag size="small" :type="iface.status === 'up' ? 'success' : 'info'" effect="plain" round>{{ iface.name }}</el-tag></span>
-                <span class="kv-v mono">{{ ip }}<el-icon class="copy-btn" @click="copyText(ip.split('/')[0])"><CopyDocument /></el-icon></span>
+            <template v-for="disk in filteredDisks" :key="disk.mountPoint">
+              <div class="res-item disk-item">
+                <div class="res-hd"><div class="res-dot disk-dot"></div><span>{{ disk.mountPoint }}</span><span class="res-pct" :class="pctCls(disk.usedPercent)">{{ disk.usedPercent.toFixed(1) }}%</span></div>
+                <div class="bar-bg"><div class="bar-fg" :style="barSty(disk.usedPercent, 'disk')"></div></div>
+                <div class="res-foot">{{ disk.device }} · {{ disk.fsType }} · {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}</div>
               </div>
             </template>
-            <div class="kv-item" v-if="stats.host?.dnsServers?.length">
-              <span class="kv-k">DNS</span>
-              <span class="kv-v mono">{{ stats.host.dnsServers.join(', ') }}<el-icon class="copy-btn" @click="copyText(stats.host.dnsServers.join(', '))"><CopyDocument /></el-icon></span>
+          </div>
+        </div>
+
+        <div class="tri-sep"></div>
+
+        <!-- 中列：网络 -->
+        <div class="tri-col">
+          <div class="col-hd"><el-icon><Connection /></el-icon><span>{{ t('home.network') }}</span></div>
+          <div class="net-list">
+            <div class="net-row" v-if="stats.host?.publicIPv4">
+              <span class="net-label">{{ t('home.publicIPv4') }}</span>
+              <span class="net-val accent">{{ stats.host.publicIPv4 }}<el-icon class="copy-btn" @click="copyText(stats.host.publicIPv4)"><CopyDocument /></el-icon></span>
+            </div>
+            <div class="net-row" v-if="stats.host?.publicIPv6">
+              <span class="net-label">{{ t('home.publicIPv6') }}</span>
+              <span class="net-val mono">{{ stats.host.publicIPv6 }}<el-icon class="copy-btn" @click="copyText(stats.host.publicIPv6)"><CopyDocument /></el-icon></span>
+            </div>
+            <template v-for="iface in stats.host?.interfaces" :key="iface.name">
+              <div class="net-row" v-for="ip in iface.ipv4" :key="ip">
+                <span class="net-label"><el-tag size="small" :type="iface.status === 'up' ? 'success' : 'info'" effect="plain" round>{{ iface.name }}</el-tag></span>
+                <span class="net-val mono">{{ ip }}<el-icon class="copy-btn" @click="copyText(ip.split('/')[0])"><CopyDocument /></el-icon></span>
+              </div>
+            </template>
+            <div class="net-row" v-if="stats.host?.dnsServers?.length">
+              <span class="net-label">DNS</span>
+              <span class="net-val mono">{{ stats.host.dnsServers.join(', ') }}<el-icon class="copy-btn" @click="copyText(stats.host.dnsServers.join(', '))"><CopyDocument /></el-icon></span>
             </div>
           </div>
           <table class="traffic-tbl" v-if="mainNics.length">
@@ -52,51 +72,26 @@
             </tfoot>
           </table>
         </div>
-      </div>
-    </el-card>
 
-    <!-- Card 2: 资源 + 磁盘 -->
-    <el-card shadow="never" class="dash-card">
-      <template #header>
-        <div class="card-hd"><el-icon><Odometer /></el-icon><span>{{ t('home.resourceUsage') }}</span></div>
-      </template>
-      <!-- 资源三格 -->
-      <div class="res-row">
-        <div class="res-cell">
-          <div class="res-hd"><div class="res-dot cpu-dot"></div><span>CPU</span><span class="res-pct" :class="pctCls(stats.cpu?.usagePercent)">{{ fmtPct(stats.cpu?.usagePercent) }}</span></div>
-          <div class="bar-bg"><div class="bar-fg" :style="barSty(stats.cpu?.usagePercent, 'cpu')"></div></div>
-          <div class="res-foot">{{ stats.cpu?.cores }} {{ t('home.physical') }} / {{ stats.cpu?.logicalCores }} {{ t('home.logical') }}</div>
-        </div>
-        <div class="res-sep"></div>
-        <div class="res-cell">
-          <div class="res-hd"><div class="res-dot mem-dot"></div><span>{{ t('home.memory') }}</span><span class="res-pct" :class="pctCls(stats.memory?.usedPercent)">{{ fmtPct(stats.memory?.usedPercent) }}</span></div>
-          <div class="bar-bg"><div class="bar-fg" :style="barSty(stats.memory?.usedPercent, 'mem')"></div></div>
-          <div class="res-foot">{{ formatBytes(stats.memory?.used) }} / {{ formatBytes(stats.memory?.total) }}</div>
-          <div class="res-sub" v-if="(stats.memory?.swapTotal ?? 0) > 0">Swap: {{ formatBytes(stats.memory?.swapUsed) }} / {{ formatBytes(stats.memory?.swapTotal) }} ({{ (stats.memory?.swapPercent ?? 0).toFixed(0) }}%)</div>
-        </div>
-        <div class="res-sep"></div>
-        <div class="res-cell">
-          <div class="res-hd"><div class="res-dot load-dot"></div><span>{{ t('home.load') }}</span><span class="res-pct" :class="pctCls(loadPct)">{{ loadPct.toFixed(0) }}%</span></div>
-          <div class="bar-bg"><div class="bar-fg" :style="barSty(loadPct, 'load')"></div></div>
-          <div class="res-foot load-triple"><span>1m: {{ stats.load?.load1?.toFixed(2) || '-' }}</span><span>5m: {{ stats.load?.load5?.toFixed(2) || '-' }}</span><span>15m: {{ stats.load?.load15?.toFixed(2) || '-' }}</span></div>
-        </div>
-      </div>
-      <!-- 磁盘 -->
-      <div class="disk-area" v-if="filteredDisks.length">
-        <div class="disk-divider"></div>
-        <div class="disk-rows">
-          <div class="dk-row" v-for="disk in filteredDisks" :key="disk.mountPoint">
-            <span class="dk-mount" :title="disk.mountPoint">{{ disk.mountPoint }}</span>
-            <span class="dk-dev">{{ disk.device }} · {{ disk.fsType }}</span>
-            <div class="dk-bar"><div class="bar-bg"><div class="bar-fg" :style="barSty(disk.usedPercent, 'disk')"></div></div></div>
-            <span class="dk-pct" :class="pctCls(disk.usedPercent)">{{ disk.usedPercent.toFixed(1) }}%</span>
-            <span class="dk-size">{{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}</span>
+        <div class="tri-sep"></div>
+
+        <!-- 右列：系统信息 -->
+        <div class="tri-col">
+          <div class="col-hd"><el-icon><Monitor /></el-icon><span>{{ t('home.systemInfo') }}</span></div>
+          <div class="sys-list">
+            <div class="sys-row" v-for="item in sysInfoItems" :key="item.label">
+              <span class="sys-label">{{ item.label }}</span>
+              <span class="sys-val" :title="item.value">
+                {{ item.value }}
+                <el-icon class="copy-btn" @click="copyText(item.value)" v-if="item.value && item.value !== '-'"><CopyDocument /></el-icon>
+              </span>
+            </div>
           </div>
         </div>
       </div>
     </el-card>
 
-    <!-- Card 3: 快速入口 + Top 进程 -->
+    <!-- 快速入口 + Top 进程 -->
     <el-row :gutter="16">
       <el-col :xs="24" :lg="10">
         <el-card shadow="never" class="dash-card">
@@ -133,9 +128,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, markRaw } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useGlobalStore } from '@/store/modules/global'
 import { getSystemStats } from '@/api/modules/monitor'
 import { ElMessage } from 'element-plus'
 import type { SystemStats, HostInfo } from '@/api/interface'
@@ -147,12 +143,23 @@ import ShieldIcon from '@/components/icons/ShieldIcon.vue'
 
 const router = useRouter()
 const { t } = useI18n()
+const globalStore = useGlobalStore()
 const stats = ref<Partial<SystemStats>>({})
 let timer: ReturnType<typeof setInterval> | null = null
 
 const loadStats = async () => {
   try { const r = await getSystemStats(); stats.value = r.data || {} } catch {}
 }
+
+const refreshInterval = computed(() => globalStore.dashboardRefreshInterval ?? 5000)
+
+const resetTimer = () => {
+  if (timer) { clearInterval(timer); timer = null }
+  const ms = refreshInterval.value
+  if (ms > 0) timer = setInterval(loadStats, ms)
+}
+
+watch(refreshInterval, resetTimer)
 
 const formatUptime = (seconds?: number) => {
   if (!seconds) return '-'
@@ -250,7 +257,7 @@ const formatSpeed = (s?: number) => {
   return (s / 1048576).toFixed(2) + ' MB/s'
 }
 
-onMounted(() => { loadStats(); timer = setInterval(loadStats, 5000) })
+onMounted(() => { loadStats(); resetTimer() })
 onUnmounted(() => { if (timer) clearInterval(timer) })
 </script>
 
@@ -267,49 +274,97 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   .el-icon { color: var(--xp-accent); opacity: 0.8; }
 }
 
-/* ==================== Card 1: Overview ==================== */
-.overview-grid {
-  display: flex; gap: 0;
+/* ==================== Tri-column grid ==================== */
+.tri-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 0;
 }
 
-.ov-sys { flex: 1; min-width: 0; padding-right: 24px; }
-.ov-net { flex: 0 0 340px; min-width: 0; padding-left: 24px; }
-
-@media (min-width: 1600px) {
-  .ov-sys { flex: 3; }
-  .ov-net { flex: 1; min-width: 340px; }
+.tri-col {
+  min-width: 0;
+  padding: 0 20px;
+  &:first-child { padding-left: 0; }
+  &:last-child { padding-right: 0; }
 }
 
-.ov-divider {
+.tri-sep {
   width: 1px; align-self: stretch;
   background: var(--xp-border-light);
 }
 
-.ov-hd {
+.col-hd {
   display: flex; align-items: center; gap: 8px;
   font-weight: 600; font-size: 13px; color: var(--xp-text-primary);
   margin-bottom: 14px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--xp-border-light);
+  .el-icon { color: var(--xp-accent); opacity: 0.8; }
 }
 
-/* Key-Value */
-.kv-grid {
+/* ==================== Left: Resources ==================== */
+.res-list {
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+.res-item { /* each resource block */ }
+
+.res-hd {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  span:first-of-type { font-size: 13px; font-weight: 600; color: var(--xp-text-primary); flex: 1; }
+}
+
+.res-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.cpu-dot { background: var(--xp-accent); }
+.mem-dot { background: #818cf8; }
+.load-dot { background: #34d399; }
+.disk-dot { background: #60a5fa; }
+
+.res-pct {
+  font-size: 18px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.c-ok { color: var(--xp-accent); }
+.c-warn { color: #f59e0b; }
+.c-danger { color: #ef4444; }
+
+.bar-bg {
+  width: 100%; height: 6px;
+  background: var(--xp-progress-trail, rgba(255,255,255,0.06));
+  border-radius: 3px; overflow: hidden; margin-bottom: 6px;
+}
+
+.bar-fg {
+  height: 100%; border-radius: 3px; min-width: 2px;
+  transition: width .8s cubic-bezier(.4,0,.2,1), background .4s ease;
+}
+
+.res-foot { font-size: 11px; color: var(--xp-text-secondary); }
+.res-sub { font-size: 11px; color: var(--xp-text-muted); margin-top: 2px; }
+.load-triple { display: flex; gap: 10px; }
+
+/* ==================== Center: Network ==================== */
+.net-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+.net-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px 24px;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
 }
 
-.kv-item {
-  display: flex; align-items: baseline; gap: 8px; min-width: 0;
-}
-
-.kv-k {
+.net-label {
   font-size: 12px; color: var(--xp-text-muted);
-  white-space: nowrap; flex-shrink: 0; min-width: 50px;
+  white-space: nowrap; flex-shrink: 0;
 }
 
-.kv-v {
+.net-val {
   font-size: 13px; color: var(--xp-text-primary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 4px; min-width: 0;
@@ -322,12 +377,9 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   color: var(--xp-text-muted);
   &:hover { color: var(--xp-accent); }
 }
-.kv-item:hover .copy-btn { opacity: 1; }
+.net-row:hover .copy-btn,
+.sys-row:hover .copy-btn { opacity: 1; }
 
-/* Network IPs */
-.net-ips { display: flex; flex-direction: column; gap: 5px; }
-
-/* Traffic table */
 .traffic-tbl {
   width: 100%; border-collapse: collapse; margin-top: 12px;
   font-size: 12px; font-variant-numeric: tabular-nums;
@@ -337,8 +389,8 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   th { font-weight: 500; color: var(--xp-text-muted); font-size: 11px; }
   th:first-child, td:first-child { text-align: left; }
 
-  .col-up { text-align: right; width: 100px; color: var(--xp-color-up, #34d399); }
-  .col-down { text-align: right; width: 100px; color: var(--xp-color-down, #a78bfa); }
+  .col-up { text-align: right; width: 90px; color: var(--xp-color-up, #34d399); }
+  .col-down { text-align: right; width: 90px; color: var(--xp-color-down, #a78bfa); }
   .td-nic { color: var(--xp-text-secondary); font-weight: 500; }
   .tr-total td {
     border-top: 1px solid var(--xp-border-light); padding-top: 5px;
@@ -346,92 +398,31 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   }
 }
 
-/* ==================== Card 2: Resources + Disk ==================== */
-.res-row {
-  display: flex; align-items: flex-start;
+/* ==================== Right: System Info ==================== */
+.sys-list {
+  display: flex; flex-direction: column; gap: 6px;
 }
 
-.res-cell { flex: 1; min-width: 0; padding: 0 20px; }
-.res-cell:first-child { padding-left: 0; }
-.res-cell:last-child { padding-right: 0; }
-
-.res-sep {
-  width: 1px; align-self: stretch; min-height: 60px;
-  background: var(--xp-border-light);
-}
-
-.res-hd {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-  span:first-of-type { font-size: 13px; font-weight: 600; color: var(--xp-text-primary); flex: 1; }
-}
-
-.res-dot {
-  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-}
-.cpu-dot { background: var(--xp-accent); }
-.mem-dot { background: #818cf8; }
-.load-dot { background: #34d399; }
-
-.res-pct {
-  font-size: 20px; font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.c-ok { color: var(--xp-accent); }
-.c-warn { color: #f59e0b; }
-.c-danger { color: #ef4444; }
-
-.bar-bg {
-  width: 100%; height: 6px;
-  background: var(--xp-progress-trail, rgba(255,255,255,0.06));
-  border-radius: 3px; overflow: hidden; margin-bottom: 8px;
-}
-
-.bar-fg {
-  height: 100%; border-radius: 3px; min-width: 2px;
-  transition: width .8s cubic-bezier(.4,0,.2,1), background .4s ease;
-}
-
-.res-foot { font-size: 12px; color: var(--xp-text-secondary); }
-.res-sub { font-size: 11px; color: var(--xp-text-muted); margin-top: 2px; }
-.load-triple { display: flex; gap: 12px; }
-
-/* Disk area */
-.disk-divider {
-  height: 1px; background: var(--xp-border-light); margin: 18px 0 14px;
-}
-
-.disk-rows { display: flex; flex-direction: column; gap: 10px; }
-
-.dk-row {
+.sys-row {
   display: grid;
-  grid-template-columns: 100px 140px 1fr 60px 130px;
-  align-items: center; gap: 12px;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
 }
 
-.dk-mount {
-  font-size: 13px; font-weight: 600; color: var(--xp-text-primary);
+.sys-label {
+  font-size: 12px; color: var(--xp-text-muted);
+  white-space: nowrap; flex-shrink: 0;
+}
+
+.sys-val {
+  font-size: 13px; color: var(--xp-text-primary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0;
 }
 
-.dk-dev {
-  font-size: 11px; color: var(--xp-text-muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.dk-bar { min-width: 0; .bar-bg { margin-bottom: 0; } }
-
-.dk-pct {
-  font-size: 14px; font-weight: 700; text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.dk-size {
-  font-size: 12px; color: var(--xp-text-secondary); text-align: right;
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-
-/* ==================== Card 3: Quick & Process ==================== */
+/* ==================== Quick & Process ==================== */
 .quick-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
 }
@@ -467,24 +458,21 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 /* ==================== Responsive ==================== */
 @media (max-width: 1200px) {
-  .overview-grid { flex-direction: column; }
-  .ov-sys { padding-right: 0; padding-bottom: 16px; }
-  .ov-net { flex: none; padding-left: 0; padding-top: 16px; }
-  .ov-divider { width: 100%; height: 1px; }
-  .dk-row { grid-template-columns: 80px 110px 1fr 50px 110px; gap: 8px; }
+  .tri-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .tri-col { padding: 0; }
+  .tri-col + .tri-sep { display: none; }
+  .tri-sep { display: none; }
+  .tri-col + .tri-col {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--xp-border-light);
+  }
 }
 
 @media (max-width: 768px) {
-  .kv-grid { grid-template-columns: 1fr; }
-  .res-row { flex-direction: column; gap: 20px; }
-  .res-cell { padding: 0; }
-  .res-sep { width: 100%; height: 1px; min-height: 0; }
-  .dk-row { grid-template-columns: 1fr 1fr; gap: 4px 8px; }
-  .dk-bar { grid-column: 1 / -1; }
-  .dk-mount { grid-column: 1; }
-  .dk-dev { display: none; }
-  .dk-pct { text-align: left; }
-  .dk-size { text-align: left; }
   .quick-grid { grid-template-columns: repeat(3, 1fr); }
 }
 

@@ -27,7 +27,7 @@
           <el-icon :size="12"><Clock /></el-icon>
           <span>{{ t('home.uptime') }}: {{ formatUptime(globalStore.serverInfo.uptime) }}</span>
         </div>
-        <el-tooltip v-if="serverClock" :content="globalStore.serverInfo.timezone" placement="bottom">
+        <el-tooltip v-if="globalStore.showServerClock && serverClock" :content="globalStore.serverInfo.timezone" placement="bottom">
           <div class="server-clock">
             <el-icon :size="12"><Timer /></el-icon>
             <span>{{ serverClock }}</span>

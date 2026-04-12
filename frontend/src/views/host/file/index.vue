@@ -776,10 +776,11 @@ const uploadAllDone = computed(() => uploadQueue.value.length > 0 && uploadDoneC
 
 async function doUploadFiles(files: File[]) {
   const dir = currentTab.value?.path || '/'
-  const items: UploadItem[] = files.map(f => ({ id: ++uploadIdSeq, name: f.name, progress: 0, error: false }))
-  uploadQueue.value.push(...items)
+  const startIdx = uploadQueue.value.length
+  const raw: UploadItem[] = files.map(f => ({ id: ++uploadIdSeq, name: f.name, progress: 0, error: false }))
+  uploadQueue.value.push(...raw)
   for (let i = 0; i < files.length; i++) {
-    const item = items[i]
+    const item = uploadQueue.value[startIdx + i]
     try {
       await uploadFile(dir, files[i], (pct: number) => { item.progress = pct })
       item.progress = 100
@@ -788,11 +789,17 @@ async function doUploadFiles(files: File[]) {
     }
   }
   refreshFiles()
-  if (items.every(i => !i.error)) {
+  const reactiveItems = uploadQueue.value.slice(startIdx, startIdx + files.length)
+  if (reactiveItems.every(i => !i.error)) {
     ElMessage.success(t('file.uploadComplete', { count: files.length }))
   } else {
     ElMessage.warning(t('file.uploadPartial'))
   }
+  setTimeout(() => {
+    if (uploadQueue.value.length > 0 && uploadQueue.value.every(i => i.progress >= 100 || i.error)) {
+      uploadQueue.value = []
+    }
+  }, 3000)
 }
 
 const handleUploadChange = async (file: { raw?: File }) => {

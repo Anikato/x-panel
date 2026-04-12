@@ -53,7 +53,6 @@ export const uploadFile = (path: string, file: File, onProgress?: (percent: numb
   formData.append('path', path)
   formData.append('file', file)
   return http.post('/files/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 600000,
     onUploadProgress: onProgress
       ? (e: { loaded: number; total?: number }) => {

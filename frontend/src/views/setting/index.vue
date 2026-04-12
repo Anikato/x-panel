@@ -176,6 +176,24 @@
           </el-radio-group>
         </div>
 
+        <!-- 显示服务器时钟 -->
+        <div class="appearance-row">
+          <span class="appearance-label">{{ t('setting.showServerClock') }}</span>
+          <el-switch v-model="globalStore.showServerClock" />
+        </div>
+
+        <!-- 仪表盘刷新间隔 -->
+        <div class="appearance-row">
+          <span class="appearance-label">{{ t('setting.dashboardRefresh') }}</span>
+          <el-select v-model="globalStore.dashboardRefreshInterval" style="width: 160px">
+            <el-option :label="'2 ' + t('setting.seconds')" :value="2000" />
+            <el-option :label="'5 ' + t('setting.seconds')" :value="5000" />
+            <el-option :label="'10 ' + t('setting.seconds')" :value="10000" />
+            <el-option :label="'30 ' + t('setting.seconds')" :value="30000" />
+            <el-option :label="t('setting.disableAutoRefresh')" :value="0" />
+          </el-select>
+        </div>
+
         <!-- 减弱动画 -->
         <div class="appearance-row">
           <span class="appearance-label">{{ t('setting.reduceMotion') }}</span>

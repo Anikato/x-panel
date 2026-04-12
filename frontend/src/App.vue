@@ -4,14 +4,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, watch, watchEffect, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useGlobalStore } from '@/store/modules/global'
 import type { ThemeMode } from '@/store/modules/global'
 import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'
 import { applyAppearance } from '@/utils/appearance'
 
 const globalStore = useGlobalStore()
+const route = useRoute()
+const { t } = useI18n()
+
+watchEffect(() => {
+  const panelName = globalStore.panelName || 'X-Panel'
+  const titleKey = route.meta?.title as string | undefined
+  const pageTitle = titleKey ? t(titleKey) : ''
+  document.title = pageTitle ? `${pageTitle} - ${panelName}` : panelName
+})
 
 const applyTheme = (mode: ThemeMode) => {
   let isDark: boolean
@@ -66,6 +76,8 @@ const allAppearanceKeys = [
   () => globalStore.theme,
   () => globalStore.accentKey,
   () => globalStore.accentCustom,
+  () => globalStore.showServerClock,
+  () => globalStore.dashboardRefreshInterval,
 ] as const
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null

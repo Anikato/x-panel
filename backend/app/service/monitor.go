@@ -281,20 +281,47 @@ func fetchPublicIP(url string, timeout time.Duration) string {
 	return strings.TrimSpace(string(body))
 }
 
-// getTimezone 获取系统时区
+// getTimezone 获取系统时区，确保返回有效的 IANA 时区名
 func getTimezone() string {
 	zone, _ := time.Now().Zone()
+
+	// 1. Go 原生 Location（非 "Local" 时通常已是 IANA 名）
 	loc := time.Now().Location()
 	if loc != nil && loc.String() != "Local" {
 		return fmt.Sprintf("%s (%s)", loc.String(), zone)
 	}
-	// Linux: 从 /etc/timezone 或 timedatectl 读取
+
+	// 2. /etc/timezone（Debian/Ubuntu）
 	if data, err := os.ReadFile("/etc/timezone"); err == nil {
 		tz := strings.TrimSpace(string(data))
 		if tz != "" {
 			return fmt.Sprintf("%s (%s)", tz, zone)
 		}
 	}
+
+	// 3. /etc/localtime 符号链接解析 IANA 名
+	if target, err := os.Readlink("/etc/localtime"); err == nil {
+		if idx := strings.Index(target, "zoneinfo/"); idx >= 0 {
+			iana := target[idx+len("zoneinfo/"):]
+			if iana != "" {
+				return fmt.Sprintf("%s (%s)", iana, zone)
+			}
+		}
+	}
+
+	// 4. timedatectl（systemd 系统）
+	if out, err := exec.Command("timedatectl", "show", "--property=Timezone", "--value").Output(); err == nil {
+		tz := strings.TrimSpace(string(out))
+		if tz != "" {
+			return fmt.Sprintf("%s (%s)", tz, zone)
+		}
+	}
+
+	// 5. TZ 环境变量
+	if tz := os.Getenv("TZ"); tz != "" {
+		return fmt.Sprintf("%s (%s)", tz, zone)
+	}
+
 	return zone
 }
 
