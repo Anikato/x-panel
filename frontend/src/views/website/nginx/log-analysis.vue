@@ -108,7 +108,7 @@
                       <span class="count-text">{{ formatNumber(row.count) }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="$t('nginx.status')" width="80" align="center">
+                  <el-table-column :label="$t('nginx.logStatus')" width="80" align="center">
                     <template #default="{ row }">
                       <el-tag v-if="row.banned" type="danger" size="small" effect="dark">{{ $t('nginx.banned') }}</el-tag>
                       <span v-else-if="isHighTraffic(row)" class="high-traffic-tag">{{ $t('nginx.highTraffic') }}</span>
@@ -193,7 +193,7 @@
                       <span class="count-text threat-count">{{ formatNumber(row.count) }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column :label="$t('nginx.status')" width="80" align="center">
+                  <el-table-column :label="$t('nginx.logStatus')" width="80" align="center">
                     <template #default="{ row }">
                       <el-tag v-if="row.banned" type="danger" size="small" effect="dark">{{ $t('nginx.banned') }}</el-tag>
                     </template>
@@ -381,7 +381,7 @@
               <span class="count-text">{{ formatNumber(row.count) }}</span>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('nginx.status')" width="80" align="center">
+          <el-table-column :label="$t('nginx.logStatus')" width="80" align="center">
             <template #default="{ row }">
               <el-tag v-if="row.banned" type="danger" size="small" effect="dark">{{ $t('nginx.banned') }}</el-tag>
             </template>
@@ -420,7 +420,7 @@ import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog, drilldownNginxLog 
 import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import UAParser from 'ua-parser-js'
+import { UAParser } from 'ua-parser-js'
 
 const { t } = useI18n()
 

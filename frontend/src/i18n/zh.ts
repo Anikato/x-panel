@@ -717,7 +717,7 @@ export default {
     bothInstalledTitle: '检测到两种 Nginx 安装',
     bothInstalledDesc: '同时存在系统包安装 (apt) 和自包含安装的 Nginx。当前优先使用系统包模式。如需切换，可在配置文件 config.yaml 中设置 nginx.mode 为 system 或 prefix。建议卸载不使用的那个以避免冲突。',
     uninstallInactive: '卸载{mode}',
-    uninstallConfirm: '确定要卸载不使用的 {mode} 吗？此操作会彻底清理相关文件。',
+    uninstallInactiveConfirm: '确定要卸载不使用的 {mode} 吗？此操作会彻底清理相关文件。',
     // 版本更新
     checkUpdate: '检查更新',
     alreadyLatest: '当前已是最新版本',
@@ -786,7 +786,7 @@ export default {
     banSuccess: '已封禁 {ip}',
     unbanSuccess: '已解封 {ip}',
     highTraffic: '高流量',
-    status: '状态',
+    logStatus: '状态',
     actions: '操作',
     threatCount: '威胁数',
     crawlerDetection: '爬虫检测',

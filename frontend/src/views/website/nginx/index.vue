@@ -49,7 +49,7 @@
         </div>
         <div style="display: flex; gap: 8px;">
           <el-popconfirm
-            :title="$t('nginx.uninstallConfirm', { mode: status.systemMode ? $t('nginx.prefixMode') : $t('nginx.systemMode') })"
+            :title="$t('nginx.uninstallInactiveConfirm', { mode: status.systemMode ? $t('nginx.prefixMode') : $t('nginx.systemMode') })"
             @confirm="handleUninstallInactive"
           >
             <template #reference>
