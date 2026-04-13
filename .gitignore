@@ -16,6 +16,8 @@ backend/data/
 
 # IDE
 .idea/
+.cursor/
+.kiro/
 *.swp
 *.swo
 .DS_Store
