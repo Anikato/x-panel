@@ -58,6 +58,14 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 # 作为 Agent 节点安装（被主面板管理）
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
   | bash -s -- --agent-token YOUR_SECRET_TOKEN
+
+# 预设管理员账户（跳过首次初始化向导，装完直接登录）
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
+  | bash -s -- --username admin --password mypass123
+
+# 组合使用
+curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
+  | bash -s -- --port 8443 --entrance mySecret --username admin --password mypass123
 ```
 
 | 参数 | 说明 |
@@ -68,6 +76,8 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 | `--ssl` / `--no-ssl` | 启用/禁用 HTTPS（默认启用） |
 | `--version, -v <版本>` | 安装指定版本 |
 | `--agent-token <密钥>` | 设置 Agent Token，用于被主面板管理 |
+| `--username, -u <用户名>` | 预设管理员用户名（可选，不填则安装后在面板初始化） |
+| `--password, -P <密码>` | 预设管理员密码（可选，与 `--username` 配合使用） |
 
 ### 卸载
 
