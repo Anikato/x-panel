@@ -11,6 +11,7 @@ import { useGlobalStore } from '@/store/modules/global'
 import type { ThemeMode } from '@/store/modules/global'
 import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'
 import { applyAppearance } from '@/utils/appearance'
+import { getSettingInfo } from '@/api/modules/setting'
 
 const globalStore = useGlobalStore()
 const route = useRoute()
@@ -109,10 +110,18 @@ router.afterEach(() => {
   setTimeout(() => { routeLoading.value = false }, 150)
 })
 
-onMounted(() => {
+onMounted(async () => {
   applyTheme(globalStore.theme)
   applyAccent()
   applyAllAppearance()
+
+  // 从后端获取面板名称
+  try {
+    const res = await getSettingInfo()
+    if (res.data?.panelName) {
+      globalStore.setPanelName(res.data.panelName)
+    }
+  } catch { /* backend not ready */ }
 
   const mq = window.matchMedia('(prefers-color-scheme: dark)')
   mq.addEventListener('change', () => {

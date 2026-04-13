@@ -644,6 +644,17 @@ else
     log_info "请稍后检查: systemctl status $SERVICE_NAME"
 fi
 
+# ==================== 预设管理员账户 ====================
+if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ] && [ "$IS_UPGRADE" = false ]; then
+    sleep 1  # 再等 1 秒确保数据库初始化完成
+    log_step "配置管理员账户..."
+    if "$INSTALL_DIR/xpanel" setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>/dev/null; then
+        log_info "管理员账户已设置: ${INIT_USERNAME}"
+    else
+        log_warn "管理员账户设置失败，请在面板中手动完成初始化"
+    fi
+fi
+
 # ==================== 安全入口 ====================
 if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
     log_step "配置安全入口: /${ENTRANCE}"
@@ -748,15 +759,5 @@ if { [ -n "$ENTRANCE" ] || [ -n "$AGENT_TOKEN" ]; } && [ "$IS_UPGRADE" = false ]
         log_warn "sqlite3 不可用或数据库未创建"
         [ -n "$ENTRANCE" ] && log_info "安全入口需在面板设置中手动配置"
         [ -n "$AGENT_TOKEN" ] && log_info "Agent Token 需在面板设置中手动配置"
-    fi
-fi
-
-# ==================== 预设管理员账户 ====================
-if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ] && [ "$IS_UPGRADE" = false ]; then
-    log_step "配置管理员账户..."
-    if "$INSTALL_DIR/xpanel" setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>/dev/null; then
-        log_info "管理员账户已设置: ${INIT_USERNAME}"
-    else
-        log_warn "管理员账户设置失败，请在面板中手动完成初始化"
     fi
 fi

@@ -264,6 +264,12 @@
             <el-form-item :label="t('setting.panelName')">
               <el-input v-model="form.panelName" />
             </el-form-item>
+            <el-form-item :label="t('setting.serverPort')">
+              <el-input-number v-model="form.port" :min="1" :max="65535" :step="1" />
+              <div style="margin-top: 4px">
+                <el-text type="info" size="small">{{ t('setting.portChangeHint') }}</el-text>
+              </div>
+            </el-form-item>
             <el-form-item :label="t('setting.sessionTimeout')">
               <el-input-number v-model="form.sessionTimeout" :min="3600" :step="3600" />
             </el-form-item>
@@ -277,18 +283,6 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :loading="saving" @click="handleSave">{{ t('setting.save') }}</el-button>
-            </el-form-item>
-          </el-form>
-        </el-collapse-item>
-
-        <el-collapse-item :title="t('setting.portSetting')" name="port">
-          <el-form :model="portForm" label-width="140px" style="max-width: 600px">
-            <el-form-item :label="t('setting.serverPort')">
-              <el-input-number v-model="portForm.port" :min="1" :max="65535" :step="1" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingPort" @click="handleSavePort">{{ t('setting.save') }}</el-button>
-              <el-text type="info" size="small" style="margin-left: 12px">{{ t('setting.portChangeHint') }}</el-text>
             </el-form-item>
           </el-form>
         </el-collapse-item>
@@ -371,10 +365,7 @@ const onCustomAccent = (e: Event) => {
 
 const loading = ref(false)
 const saving = ref(false)
-const form = reactive({ panelName: 'X-Panel', sessionTimeout: 86400, securityEntrance: '' })
-
-const savingPort = ref(false)
-const portForm = reactive({ port: 7777 })
+const form = reactive({ panelName: 'X-Panel', port: 7777, sessionTimeout: 86400, securityEntrance: '' })
 
 const savingAgentToken = ref(false)
 const agentTokenForm = reactive({ token: '' })
@@ -471,10 +462,10 @@ const fetchSettings = async () => {
     const res = await getSettingInfo()
     if (res.data) {
       form.panelName = res.data.panelName || 'X-Panel'
+      form.port = parseInt(res.data.serverPort) || 7777
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
       form.securityEntrance = res.data.securityEntrance || ''
       githubToken.value = res.data.githubToken || ''
-      portForm.port = parseInt(res.data.serverPort) || 7777
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
       agentTokenForm.token = res.data.agentToken || ''
@@ -486,19 +477,12 @@ const handleSave = async () => {
   saving.value = true
   try {
     await updateSetting({ key: 'PanelName', value: form.panelName })
+    await updatePort({ port: String(form.port) })
     await updateSetting({ key: 'SessionTimeout', value: String(form.sessionTimeout) })
     await updateSetting({ key: 'SecurityEntrance', value: form.securityEntrance })
     globalStore.setPanelName(form.panelName)
     ElMessage.success(t('commons.success'))
   } catch { /* */ } finally { saving.value = false }
-}
-
-const handleSavePort = async () => {
-  savingPort.value = true
-  try {
-    await updatePort({ port: String(portForm.port) })
-    ElMessage.success(t('setting.portChangedSuccess'))
-  } catch { /* */ } finally { savingPort.value = false }
 }
 
 const generateAgentToken = () => {
