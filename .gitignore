@@ -30,6 +30,7 @@ backend/data/
 
 # Local notes
 待处理.md
+*.log
 
 # SSH keys (never commit!)
 main_id_rsa
