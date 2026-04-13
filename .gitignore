@@ -32,6 +32,9 @@ backend/data/
 待处理.md
 *.log
 
+# Docs
+docs/
+
 # SSH keys (never commit!)
 main_id_rsa
 *.pem
