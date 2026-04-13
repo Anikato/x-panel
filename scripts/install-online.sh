@@ -70,6 +70,8 @@ CUSTOM_PATH=""
 ENTRANCE=""
 ENABLE_SSL=true
 AGENT_TOKEN=""
+INIT_USERNAME=""
+INIT_PASSWORD=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -95,6 +97,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --agent-token)
             AGENT_TOKEN="$2"
+            shift 2
+            ;;
+        --username|-u)
+            INIT_USERNAME="$2"
+            shift 2
+            ;;
+        --password|-P)
+            INIT_PASSWORD="$2"
             shift 2
             ;;
         --ssl)
@@ -127,6 +137,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-ssl              禁用 HTTPS，使用 HTTP"
             echo "  --version, -v <版本>  安装指定版本 (如 v1.0.0)"
             echo "  --agent-token <TOKEN> 设置 Agent Token（用于被主面板管理）"
+            echo "  --username, -u <用户名> 预设管理员用户名（跳过初始化向导）"
+            echo "  --password, -P <密码>   预设管理员密码（跳过初始化向导）"
             echo "  --token, -t <TOKEN>   GitHub Token（私有仓库）"
             echo "  --uninstall           卸载 X-Panel"
             echo "  --yes, -y             跳过确认提示"
@@ -693,8 +705,13 @@ echo "    systemctl status $SERVICE_NAME    # 查看状态"
 echo "    journalctl -u $SERVICE_NAME -f    # 查看日志"
 echo ""
 if [ "$IS_UPGRADE" = false ]; then
-    echo -e "  ${YELLOW}${BOLD}⚠ 首次安装需要初始化管理员账户${NC}"
-    echo -e "  ${YELLOW}请打开面板地址完成初始化设置${NC}"
+    if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ]; then
+        echo -e "  ${GREEN}${BOLD}✓ 管理员账户已预设，可直接登录${NC}"
+        echo -e "  ${BOLD}用户名:${NC} ${INIT_USERNAME}"
+    else
+        echo -e "  ${YELLOW}${BOLD}⚠ 首次安装需要初始化管理员账户${NC}"
+        echo -e "  ${YELLOW}请打开面板地址完成初始化设置${NC}"
+    fi
     echo ""
 fi
 echo -e "  ${BOLD}卸载命令:${NC}"
@@ -731,5 +748,15 @@ if { [ -n "$ENTRANCE" ] || [ -n "$AGENT_TOKEN" ]; } && [ "$IS_UPGRADE" = false ]
         log_warn "sqlite3 不可用或数据库未创建"
         [ -n "$ENTRANCE" ] && log_info "安全入口需在面板设置中手动配置"
         [ -n "$AGENT_TOKEN" ] && log_info "Agent Token 需在面板设置中手动配置"
+    fi
+fi
+
+# ==================== 预设管理员账户 ====================
+if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ] && [ "$IS_UPGRADE" = false ]; then
+    log_step "配置管理员账户..."
+    if "$INSTALL_DIR/xpanel" setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>/dev/null; then
+        log_info "管理员账户已设置: ${INIT_USERNAME}"
+    else
+        log_warn "管理员账户设置失败，请在面板中手动完成初始化"
     fi
 fi
