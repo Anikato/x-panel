@@ -14,6 +14,14 @@ type SettingInfo struct {
 	AgentToken       string `json:"agentToken"`
 	AutoUpgrade      string `json:"autoUpgrade"`
 	AppearanceConfig string `json:"appearanceConfig"`
+	ProxyEnable      string `json:"proxyEnable"`
+	ProxyAddress     string `json:"proxyAddress"`
+	ProxyNoProxy     string `json:"proxyNoProxy"`
+}
+
+// ProxyTest 代理连通性测试请求
+type ProxyTest struct {
+	Address string `json:"address" binding:"required"`
 }
 
 // SettingUpdate 设置更新请求

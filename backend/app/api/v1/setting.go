@@ -81,6 +81,22 @@ func (s *SettingAPI) ShutdownServer(c *gin.Context) {
 	}()
 }
 
+// TestProxy 测试代理连通性
+func (s *SettingAPI) TestProxy(c *gin.Context) {
+	var req dto.ProxyTest
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := settingService.TestProxy(req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusOK, err.Error())
+		return
+	}
+
+	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
+}
+
 // RestartPanel 重启面板
 func (s *SettingAPI) RestartPanel(c *gin.Context) {
 	global.LOG.Warn("Panel restart requested by user")

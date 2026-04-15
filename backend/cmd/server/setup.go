@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"xpanel/utils/encrypt"
-	initViper "xpanel/init/viper"
+	"xpanel/global"
 	initDB "xpanel/init/db"
 	"xpanel/init/migration"
-	"xpanel/global"
+	initViper "xpanel/init/viper"
+	"xpanel/utils/encrypt"
+
+	"github.com/sirupsen/logrus"
 )
 
 // runSetup 初始化管理员用户名和密码
@@ -33,6 +35,13 @@ func runSetup(args []string) {
 
 	// 初始化配置和数据库（不启动 HTTP 服务）
 	initViper.Init()
+
+	// setup 命令只需简单日志输出，不需要写日志文件
+	logger := logrus.New()
+	logger.SetLevel(logrus.WarnLevel)
+	logger.SetOutput(os.Stderr)
+	global.LOG = logger
+
 	initDB.Init()
 	migration.Init()
 

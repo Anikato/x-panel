@@ -247,6 +247,9 @@ func initDefaultSettings() {
 		{Key: "MonitorStoreDays", Value: "7"},
 		{Key: "DefaultNetwork", Value: "all"},
 		{Key: "DefaultIO", Value: "all"},
+		{Key: "ProxyEnable", Value: "disable"},
+		{Key: "ProxyAddress", Value: ""},
+		{Key: "ProxyNoProxy", Value: "localhost,127.0.0.1,::1"},
 	}
 
 	for _, s := range defaults {

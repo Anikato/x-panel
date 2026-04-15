@@ -304,6 +304,37 @@
           </el-form>
         </el-collapse-item>
 
+        <el-collapse-item :title="t('setting.proxy')" name="proxy">
+          <el-form label-width="140px" style="max-width: 600px">
+            <el-form-item :label="t('setting.proxyAddress')">
+              <el-input v-model="proxyForm.address" :placeholder="t('setting.proxyAddressPlaceholder')" clearable />
+              <div style="margin-top: 4px">
+                <el-text type="info" size="small">{{ t('setting.proxyAddressHint') }}</el-text>
+              </div>
+            </el-form-item>
+            <el-form-item :label="t('setting.proxyNoProxy')">
+              <el-input v-model="proxyForm.noProxy" placeholder="localhost,127.0.0.1,::1" clearable />
+              <div style="margin-top: 4px">
+                <el-text type="info" size="small">{{ t('setting.proxyNoProxyHint') }}</el-text>
+              </div>
+            </el-form-item>
+            <el-form-item :label="t('setting.proxyEnable')">
+              <div style="display: flex; align-items: center; gap: 12px; width: 100%">
+                <el-switch v-model="proxyForm.enable" :loading="savingProxy" @change="handleProxyToggle" />
+                <el-button :loading="testingProxy" :disabled="!proxyForm.address" @click="handleTestProxy">
+                  {{ testingProxy ? t('setting.proxyTesting') : t('setting.proxyTest') }}
+                </el-button>
+              </div>
+              <div style="margin-top: 4px">
+                <el-text type="info" size="small">{{ t('setting.proxyHint') }}</el-text>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="savingProxy" @click="handleSaveProxy">{{ t('setting.save') }}</el-button>
+            </el-form-item>
+          </el-form>
+        </el-collapse-item>
+
         <el-collapse-item :title="t('setting.accountSetting')" name="account">
           <el-form label-width="140px" style="max-width: 600px">
             <el-form-item :label="t('setting.userName')">
@@ -336,7 +367,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting, InfoFilled, User, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
-import { getSettingInfo, updateSetting, updatePort } from '@/api/modules/setting'
+import { getSettingInfo, updateSetting, updatePort, testProxy } from '@/api/modules/setting'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
 import { updatePassword } from '@/api/modules/auth'
 import { useGlobalStore, type ThemeMode } from '@/store/modules/global'
@@ -369,6 +400,10 @@ const form = reactive({ panelName: 'X-Panel', port: 7777, sessionTimeout: 86400,
 
 const savingAgentToken = ref(false)
 const agentTokenForm = reactive({ token: '' })
+
+const savingProxy = ref(false)
+const testingProxy = ref(false)
+const proxyForm = reactive({ address: '', noProxy: 'localhost,127.0.0.1,::1', enable: false })
 
 const savingUserName = ref(false)
 const savingPassword = ref(false)
@@ -469,6 +504,9 @@ const fetchSettings = async () => {
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
       agentTokenForm.token = res.data.agentToken || ''
+      proxyForm.address = res.data.proxyAddress || ''
+      proxyForm.noProxy = res.data.proxyNoProxy || 'localhost,127.0.0.1,::1'
+      proxyForm.enable = res.data.proxyEnable === 'enable'
     }
   } catch { /* */ } finally { loading.value = false }
 }
@@ -521,6 +559,43 @@ const handleSavePassword = async () => {
     passwordForm.newPassword = ''
     passwordForm.confirmPassword = ''
   } catch { /* */ } finally { savingPassword.value = false }
+}
+
+const handleSaveProxy = async () => {
+  savingProxy.value = true
+  try {
+    await updateSetting({ key: 'ProxyAddress', value: proxyForm.address })
+    await updateSetting({ key: 'ProxyNoProxy', value: proxyForm.noProxy })
+    await updateSetting({ key: 'ProxyEnable', value: proxyForm.enable ? 'enable' : 'disable' })
+    ElMessage.success(t('commons.success'))
+  } catch { /* */ } finally { savingProxy.value = false }
+}
+
+const handleProxyToggle = async (val: boolean) => {
+  if (val && !proxyForm.address.trim()) {
+    proxyForm.enable = false
+    ElMessage.warning(t('setting.proxyAddressPlaceholder'))
+    return
+  }
+  savingProxy.value = true
+  try {
+    if (val) {
+      await updateSetting({ key: 'ProxyAddress', value: proxyForm.address })
+      await updateSetting({ key: 'ProxyNoProxy', value: proxyForm.noProxy })
+    }
+    await updateSetting({ key: 'ProxyEnable', value: val ? 'enable' : 'disable' })
+    ElMessage.success(t('commons.success'))
+  } catch { proxyForm.enable = !val } finally { savingProxy.value = false }
+}
+
+const handleTestProxy = async () => {
+  testingProxy.value = true
+  try {
+    await testProxy({ address: proxyForm.address })
+    ElMessage.success(t('setting.proxyTestSuccess'))
+  } catch {
+    ElMessage.error(t('setting.proxyTestFail'))
+  } finally { testingProxy.value = false }
 }
 
 onMounted(() => { fetchVersion(); fetchSettings() })

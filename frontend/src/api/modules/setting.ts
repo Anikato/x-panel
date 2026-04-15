@@ -15,6 +15,11 @@ export const updatePort = (data: { port: string }) => {
   return http.post('/settings/port/update', data)
 }
 
+/** 测试代理连通性 */
+export const testProxy = (data: { address: string }) => {
+  return http.post('/settings/proxy/test', data)
+}
+
 /** 重启服务器 */
 export const rebootServer = () => {
   return http.post('/settings/reboot')
