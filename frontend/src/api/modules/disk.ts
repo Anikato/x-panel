@@ -8,6 +8,15 @@ export const listRemoteMounts = () => {
   return http.get('/disk/remote')
 }
 
+export const browseShares = (data: {
+  protocol: string
+  server: string
+  username?: string
+  password?: string
+}) => {
+  return http.post('/disk/remote/browse-shares', data)
+}
+
 export const mountRemote = (data: {
   protocol: string
   server: string

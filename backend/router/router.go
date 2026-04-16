@@ -177,6 +177,7 @@ func Setup(mode string) *gin.Engine {
 		// 磁盘管理
 		privateGroup.GET("/disk/info", api.GetDiskInfo)
 		privateGroup.GET("/disk/remote", api.ListRemoteMounts)
+		privateGroup.POST("/disk/remote/browse-shares", api.BrowseShares)
 		privateGroup.POST("/disk/remote/mount", api.MountRemote)
 		privateGroup.POST("/disk/remote/unmount", api.UnmountRemote)
 		privateGroup.GET("/disk/block-devices", api.ListBlockDevices)

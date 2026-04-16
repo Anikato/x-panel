@@ -16,6 +16,7 @@ import (
 
 type IDiskService interface {
 	GetDiskInfo() ([]dto.PartitionInfo, error)
+	BrowseShares(req dto.BrowseSharesRequest) ([]string, error)
 	MountRemote(req dto.RemoteMountRequest) error
 	UnmountRemote(req dto.RemoteUnmountRequest) error
 	ListRemoteMounts() ([]dto.RemoteMountInfo, error)
@@ -76,6 +77,87 @@ func (s *DiskService) GetDiskInfo() ([]dto.PartitionInfo, error) {
 		seen[p.Mountpoint] = true
 	}
 	return result, nil
+}
+
+// BrowseShares 列出远程服务器上可用的共享/导出路径
+func (s *DiskService) BrowseShares(req dto.BrowseSharesRequest) ([]string, error) {
+	switch req.Protocol {
+	case "nfs":
+		return browseNFSExports(req.Server)
+	case "smb", "cifs":
+		return browseSMBShares(req.Server, req.Username, req.Password)
+	default:
+		return nil, fmt.Errorf("unsupported protocol: %s", req.Protocol)
+	}
+}
+
+// browseNFSExports 使用 showmount -e 列出 NFS 导出路径
+func browseNFSExports(server string) ([]string, error) {
+	if _, err := exec.LookPath("showmount"); err != nil {
+		return nil, fmt.Errorf("showmount not found, please install nfs-common: %v", err)
+	}
+	out, err := exec.Command("showmount", "-e", "--no-headers", server).Output()
+	if err != nil {
+		// 某些发行版不支持 --no-headers，退而求其次
+		out, err = exec.Command("showmount", "-e", server).Output()
+		if err != nil {
+			return nil, fmt.Errorf("showmount failed: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	var exports []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(strings.ToLower(line), "export list") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) >= 1 && strings.HasPrefix(fields[0], "/") {
+			exports = append(exports, fields[0])
+		}
+	}
+	if len(exports) == 0 {
+		return nil, fmt.Errorf("no NFS exports found on %s", server)
+	}
+	return exports, nil
+}
+
+// browseSMBShares 使用 smbclient -gL 列出 SMB/CIFS 共享名
+func browseSMBShares(server, username, password string) ([]string, error) {
+	if _, err := exec.LookPath("smbclient"); err != nil {
+		return nil, fmt.Errorf("smbclient not found, please install samba-client: %v", err)
+	}
+	args := []string{"-gL", "//" + server}
+	if username != "" {
+		creds := username
+		if password != "" {
+			creds += "%" + password
+		}
+		args = append(args, "-U", creds)
+	} else {
+		args = append(args, "-N")
+	}
+	// 设置超时，避免长时间等待
+	args = append(args, "--timeout=10")
+	out, _ := exec.Command("smbclient", args...).CombinedOutput()
+
+	var shares []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// -g 格式：Type|Name|Comment，取 Disk 类型
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) >= 2 && strings.EqualFold(parts[0], "Disk") {
+			name := strings.TrimSpace(parts[1])
+			if name != "" {
+				shares = append(shares, name)
+			}
+		}
+	}
+	if len(shares) == 0 {
+		return nil, fmt.Errorf("no SMB shares found on %s (check credentials or server availability)", server)
+	}
+	return shares, nil
 }
 
 func (s *DiskService) MountRemote(req dto.RemoteMountRequest) error {

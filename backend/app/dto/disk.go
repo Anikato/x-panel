@@ -48,6 +48,14 @@ type LocalUnmountRequest struct {
 	RemoveFstab bool   `json:"removeFstab"`
 }
 
+// BrowseSharesRequest 浏览远程共享请求
+type BrowseSharesRequest struct {
+	Protocol string `json:"protocol" binding:"required"`
+	Server   string `json:"server" binding:"required"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 // RemoteMountRequest 远程挂载请求
 type RemoteMountRequest struct {
 	Protocol   string `json:"protocol" validate:"required,oneof=smb nfs cifs"`

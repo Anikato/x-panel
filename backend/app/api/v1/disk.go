@@ -21,6 +21,20 @@ func (a *DiskAPI) GetDiskInfo(c *gin.Context) {
 	helper.SuccessWithData(c, info)
 }
 
+func (a *DiskAPI) BrowseShares(c *gin.Context) {
+	var req dto.BrowseSharesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	shares, err := service.NewIDiskService().BrowseShares(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, shares)
+}
+
 func (a *DiskAPI) MountRemote(c *gin.Context) {
 	var req dto.RemoteMountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

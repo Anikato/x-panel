@@ -66,7 +66,8 @@
       <el-table-column :label="$t('disk.mountPoint')" min-width="140">
         <template #default="{ row }">
           <span v-if="row.mountPoint">{{ row.mountPoint }}</span>
-          <el-tag v-else size="small" type="warning">{{ $t('disk.notMounted') }}</el-tag>
+          <el-tag v-else-if="row.type !== 'disk'" size="small" type="warning">{{ $t('disk.notMounted') }}</el-tag>
+          <span v-else class="text-muted">-</span>
         </template>
       </el-table-column>
       <el-table-column prop="type" :label="$t('disk.type')" width="70" />
@@ -171,22 +172,57 @@
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('disk.server')" prop="server">
-          <el-input v-model="mountForm.server" placeholder="192.168.1.100" />
+          <el-input v-model="mountForm.server" placeholder="192.168.1.100" @change="resetBrowse" />
         </el-form-item>
+        <template v-if="mountForm.protocol === 'cifs'">
+          <el-form-item :label="$t('disk.username')">
+            <el-input v-model="mountForm.username" :placeholder="$t('disk.usernameHint')" @change="resetBrowse" />
+          </el-form-item>
+          <el-form-item :label="$t('disk.password')">
+            <el-input v-model="mountForm.password" type="password" show-password :placeholder="$t('disk.passwordHint')" @change="resetBrowse" />
+          </el-form-item>
+        </template>
         <el-form-item :label="$t('disk.sharePath')" prop="sharePath">
-          <el-input v-model="mountForm.sharePath" :placeholder="mountForm.protocol === 'nfs' ? '/data/share' : 'share_name'" />
+          <div style="width:100%">
+            <!-- 已发现共享：显示下拉选择 -->
+            <div v-if="discoveredShares.length > 0 && !shareManualMode" style="display:flex;gap:8px;align-items:center">
+              <el-select
+                v-model="mountForm.sharePath"
+                :placeholder="$t('disk.sharePathSelectPlaceholder')"
+                style="flex:1"
+                filterable
+              >
+                <el-option v-for="s in discoveredShares" :key="s" :label="s" :value="s" />
+              </el-select>
+              <el-button text size="small" @click="shareManualMode = true">{{ $t('disk.sharePathManual') }}</el-button>
+            </div>
+            <!-- 手动输入模式 -->
+            <div v-else style="display:flex;gap:8px;align-items:center">
+              <el-input
+                v-model="mountForm.sharePath"
+                :placeholder="mountForm.protocol === 'nfs' ? $t('disk.sharePathPlaceholderNfs') : $t('disk.sharePathPlaceholderCifs')"
+                style="flex:1"
+              />
+              <el-tooltip :content="$t('disk.browseSharesTip')" placement="top">
+                <el-button
+                  :icon="Search"
+                  :loading="browsingShares"
+                  :disabled="!mountForm.server"
+                  @click="handleBrowseShares"
+                >
+                  {{ browsingShares ? $t('disk.browsing') : $t('disk.browseShares') }}
+                </el-button>
+              </el-tooltip>
+            </div>
+            <!-- 浏览失败提示 -->
+            <div v-if="browseError" style="margin-top:4px">
+              <el-text type="warning" size="small">{{ browseError }}</el-text>
+            </div>
+          </div>
         </el-form-item>
         <el-form-item :label="$t('disk.mountPoint')" prop="mountPoint">
           <el-input v-model="mountForm.mountPoint" placeholder="/mnt/remote" />
         </el-form-item>
-        <template v-if="mountForm.protocol === 'cifs'">
-          <el-form-item :label="$t('disk.username')">
-            <el-input v-model="mountForm.username" :placeholder="$t('disk.usernameHint')" />
-          </el-form-item>
-          <el-form-item :label="$t('disk.password')">
-            <el-input v-model="mountForm.password" type="password" show-password :placeholder="$t('disk.passwordHint')" />
-          </el-form-item>
-        </template>
 
         <el-form-item :label="$t('disk.networkPreset')">
           <el-radio-group v-model="mountForm.preset" @change="onPresetChange">
@@ -243,8 +279,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { Refresh, Coin, Plus, Document } from '@element-plus/icons-vue'
-import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote, listBlockDevices, mountLocal, unmountLocal } from '@/api/modules/disk'
+import { Refresh, Coin, Plus, Document, Search } from '@element-plus/icons-vue'
+import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote, listBlockDevices, mountLocal, unmountLocal, browseShares } from '@/api/modules/disk'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -303,6 +339,44 @@ const mountForm = reactive({
   persist: false,
 })
 
+const browsingShares = ref(false)
+const discoveredShares = ref<string[]>([])
+const shareManualMode = ref(false)
+const browseError = ref('')
+
+const resetBrowse = () => {
+  discoveredShares.value = []
+  shareManualMode.value = false
+  browseError.value = ''
+}
+
+const handleBrowseShares = async () => {
+  if (!mountForm.server) return
+  browsingShares.value = true
+  browseError.value = ''
+  try {
+    const res = await browseShares({
+      protocol: mountForm.protocol,
+      server: mountForm.server,
+      username: mountForm.username || undefined,
+      password: mountForm.password || undefined,
+    })
+    const shares: string[] = res.data || []
+    if (shares.length === 0) {
+      browseError.value = t('disk.noSharesFound')
+    } else {
+      discoveredShares.value = shares
+      shareManualMode.value = false
+      // 如果只有一个共享，自动选中
+      if (shares.length === 1) mountForm.sharePath = shares[0]
+    }
+  } catch (e: any) {
+    browseError.value = t('disk.browseSharesFailed')
+  } finally {
+    browsingShares.value = false
+  }
+}
+
 const previewOptions = computed(() => {
   const presets = mountForm.protocol === 'nfs' ? nfsPresets : cifsPresets
   return presets[mountForm.preset] || presets['default']
@@ -311,6 +385,7 @@ const previewOptions = computed(() => {
 const onProtocolChange = () => {
   mountForm.preset = 'default'
   mountForm.options = ''
+  resetBrowse()
 }
 
 const onPresetChange = (val: string) => {
@@ -324,6 +399,7 @@ const resetForm = () => {
     protocol: 'nfs', server: '', sharePath: '', mountPoint: '',
     username: '', password: '', options: '', preset: 'default', persist: false,
   })
+  resetBrowse()
 }
 
 const flatDevices = computed(() => {
