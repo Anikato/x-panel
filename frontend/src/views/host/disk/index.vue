@@ -214,8 +214,25 @@
                 </el-button>
               </el-tooltip>
             </div>
-            <!-- 浏览失败提示 -->
-            <div v-if="browseError" style="margin-top:4px">
+            <!-- 依赖工具未安装：安装提示 + 一键安装 -->
+            <div v-if="missingDepsPackage" style="margin-top:6px">
+              <el-alert type="warning" :closable="false" style="padding:8px 12px">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <span style="font-weight:500">{{ t('disk.depsNotInstalled') }}：<code>{{ missingDepsPackage }}</code></span>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:12px;color:var(--xp-text-muted)">{{ t('disk.depsInstallCmd') }}：</span>
+                    <code style="font-size:12px">apt-get install -y {{ missingDepsPackage }}</code>
+                  </div>
+                  <div>
+                    <el-button type="primary" size="small" :loading="installingDeps" @click="handleInstallDeps">
+                      {{ installingDeps ? t('disk.depsInstalling') : t('disk.depsInstallBtn') }}
+                    </el-button>
+                  </div>
+                </div>
+              </el-alert>
+            </div>
+            <!-- 普通浏览失败提示 -->
+            <div v-else-if="browseError" style="margin-top:4px">
               <el-text type="warning" size="small">{{ browseError }}</el-text>
             </div>
           </div>
@@ -280,7 +297,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Refresh, Coin, Plus, Document, Search } from '@element-plus/icons-vue'
-import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote, listBlockDevices, mountLocal, unmountLocal, browseShares } from '@/api/modules/disk'
+import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote, listBlockDevices, mountLocal, unmountLocal, browseShares, installShareDeps } from '@/api/modules/disk'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -343,17 +360,21 @@ const browsingShares = ref(false)
 const discoveredShares = ref<string[]>([])
 const shareManualMode = ref(false)
 const browseError = ref('')
+const missingDepsPackage = ref('')   // 非空时显示安装提示
+const installingDeps = ref(false)
 
 const resetBrowse = () => {
   discoveredShares.value = []
   shareManualMode.value = false
   browseError.value = ''
+  missingDepsPackage.value = ''
 }
 
 const handleBrowseShares = async () => {
   if (!mountForm.server) return
   browsingShares.value = true
   browseError.value = ''
+  missingDepsPackage.value = ''
   try {
     const res = await browseShares({
       protocol: mountForm.protocol,
@@ -361,19 +382,37 @@ const handleBrowseShares = async () => {
       username: mountForm.username || undefined,
       password: mountForm.password || undefined,
     })
-    const shares: string[] = res.data || []
-    if (shares.length === 0) {
-      browseError.value = t('disk.noSharesFound')
+    const result = res.data as { shares?: string[]; depsPackage?: string; depsError?: string }
+    if (result.depsPackage) {
+      missingDepsPackage.value = result.depsPackage
     } else {
-      discoveredShares.value = shares
-      shareManualMode.value = false
-      // 如果只有一个共享，自动选中
-      if (shares.length === 1) mountForm.sharePath = shares[0]
+      const shares = result.shares || []
+      if (shares.length === 0) {
+        browseError.value = t('disk.noSharesFound')
+      } else {
+        discoveredShares.value = shares
+        shareManualMode.value = false
+        if (shares.length === 1) mountForm.sharePath = shares[0]
+      }
     }
-  } catch (e: any) {
+  } catch {
     browseError.value = t('disk.browseSharesFailed')
   } finally {
     browsingShares.value = false
+  }
+}
+
+const handleInstallDeps = async () => {
+  if (!missingDepsPackage.value) return
+  installingDeps.value = true
+  try {
+    await installShareDeps({ package: missingDepsPackage.value })
+    ElMessage.success(t('disk.depsInstallSuccess'))
+    missingDepsPackage.value = ''
+  } catch {
+    ElMessage.error(t('disk.depsInstallFailed'))
+  } finally {
+    installingDeps.value = false
   }
 }
 

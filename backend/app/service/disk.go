@@ -16,7 +16,8 @@ import (
 
 type IDiskService interface {
 	GetDiskInfo() ([]dto.PartitionInfo, error)
-	BrowseShares(req dto.BrowseSharesRequest) ([]string, error)
+	BrowseShares(req dto.BrowseSharesRequest) (dto.BrowseSharesResult, error)
+	InstallShareDeps(req dto.InstallShareDepsRequest) error
 	MountRemote(req dto.RemoteMountRequest) error
 	UnmountRemote(req dto.RemoteUnmountRequest) error
 	ListRemoteMounts() ([]dto.RemoteMountInfo, error)
@@ -79,16 +80,55 @@ func (s *DiskService) GetDiskInfo() ([]dto.PartitionInfo, error) {
 	return result, nil
 }
 
-// BrowseShares 列出远程服务器上可用的共享/导出路径
-func (s *DiskService) BrowseShares(req dto.BrowseSharesRequest) ([]string, error) {
+// BrowseShares 列出远程服务器上可用的共享/导出路径。
+// 工具缺失时返回 BrowseSharesResult.DepsPackage 而非 error，使前端可以渲染安装提示。
+func (s *DiskService) BrowseShares(req dto.BrowseSharesRequest) (dto.BrowseSharesResult, error) {
+	var (
+		shares  []string
+		err     error
+		depsPkg string
+	)
 	switch req.Protocol {
 	case "nfs":
-		return browseNFSExports(req.Server)
+		depsPkg = "nfs-common"
+		shares, err = browseNFSExports(req.Server)
 	case "smb", "cifs":
-		return browseSMBShares(req.Server, req.Username, req.Password)
+		depsPkg = "smbclient"
+		shares, err = browseSMBShares(req.Server, req.Username, req.Password)
 	default:
-		return nil, fmt.Errorf("unsupported protocol: %s", req.Protocol)
+		return dto.BrowseSharesResult{}, fmt.Errorf("unsupported protocol: %s", req.Protocol)
 	}
+
+	if err != nil {
+		// 工具未找到：转为结构化结果，不作为 HTTP 500
+		if strings.Contains(err.Error(), "not found") {
+			return dto.BrowseSharesResult{
+				DepsPackage: depsPkg,
+				DepsError:   err.Error(),
+			}, nil
+		}
+		return dto.BrowseSharesResult{}, err
+	}
+	return dto.BrowseSharesResult{Shares: shares}, nil
+}
+
+// InstallShareDeps 安装浏览共享所需工具（仅允许白名单包名）
+func (s *DiskService) InstallShareDeps(req dto.InstallShareDepsRequest) error {
+	allowed := map[string]bool{
+		"nfs-common": true,
+		"smbclient":  true,
+	}
+	if !allowed[req.Package] {
+		return fmt.Errorf("package not allowed: %s", req.Package)
+	}
+
+	cmd := exec.Command("apt-get", "install", "-y", req.Package)
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("install failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // browseNFSExports 使用 showmount -e 列出 NFS 导出路径

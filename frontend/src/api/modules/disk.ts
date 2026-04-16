@@ -17,6 +17,10 @@ export const browseShares = (data: {
   return http.post('/disk/remote/browse-shares', data)
 }
 
+export const installShareDeps = (data: { package: string }) => {
+  return http.post('/disk/install-share-deps', data)
+}
+
 export const mountRemote = (data: {
   protocol: string
   server: string

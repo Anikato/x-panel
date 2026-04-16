@@ -27,12 +27,25 @@ func (a *DiskAPI) BrowseShares(c *gin.Context) {
 		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	shares, err := service.NewIDiskService().BrowseShares(req)
+	result, err := service.NewIDiskService().BrowseShares(req)
 	if err != nil {
 		helper.HandleError(c, err)
 		return
 	}
-	helper.SuccessWithData(c, shares)
+	helper.SuccessWithData(c, result)
+}
+
+func (a *DiskAPI) InstallShareDeps(c *gin.Context) {
+	var req dto.InstallShareDepsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := service.NewIDiskService().InstallShareDeps(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, nil)
 }
 
 func (a *DiskAPI) MountRemote(c *gin.Context) {

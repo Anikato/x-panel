@@ -56,6 +56,18 @@ type BrowseSharesRequest struct {
 	Password string `json:"password"`
 }
 
+// BrowseSharesResult 浏览共享结果（总是 HTTP 200，deps 缺失时填 DepsPackage）
+type BrowseSharesResult struct {
+	Shares      []string `json:"shares"`
+	DepsPackage string   `json:"depsPackage,omitempty"` // 需要安装的包名（缺失时非空）
+	DepsError   string   `json:"depsError,omitempty"`   // 工具缺失的描述
+}
+
+// InstallShareDepsRequest 安装共享依赖请求
+type InstallShareDepsRequest struct {
+	Package string `json:"package" binding:"required"`
+}
+
 // RemoteMountRequest 远程挂载请求
 type RemoteMountRequest struct {
 	Protocol   string `json:"protocol" validate:"required,oneof=smb nfs cifs"`
