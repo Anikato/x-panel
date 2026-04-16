@@ -305,11 +305,27 @@
         </el-collapse-item>
 
         <el-collapse-item :title="t('setting.proxy')" name="proxy">
-          <el-form label-width="140px" style="max-width: 600px">
-            <el-form-item :label="t('setting.proxyAddress')">
-              <el-input v-model="proxyForm.address" :placeholder="t('setting.proxyAddressPlaceholder')" clearable />
+          <el-form label-width="140px" style="max-width: 640px">
+            <el-form-item :label="t('setting.proxyType')">
+              <el-radio-group v-model="proxyForm.type">
+                <el-radio-button value="mix">
+                  {{ t('setting.proxyTypeMix') }}
+                </el-radio-button>
+                <el-radio-button value="http">
+                  {{ t('setting.proxyTypeHttp') }}
+                </el-radio-button>
+                <el-radio-button value="socks5">
+                  {{ t('setting.proxyTypeSocks5') }}
+                </el-radio-button>
+              </el-radio-group>
               <div style="margin-top: 4px">
-                <el-text type="info" size="small">{{ t('setting.proxyAddressHint') }}</el-text>
+                <el-text type="info" size="small">{{ proxyTypeDesc }}</el-text>
+              </div>
+            </el-form-item>
+            <el-form-item :label="t('setting.proxyAddress')">
+              <el-input v-model="proxyForm.address" :placeholder="proxyAddressPlaceholder" clearable />
+              <div style="margin-top: 4px">
+                <el-text type="info" size="small">{{ proxyAddressHint }}</el-text>
               </div>
             </el-form-item>
             <el-form-item :label="t('setting.proxyNoProxy')">
@@ -318,6 +334,14 @@
                 <el-text type="info" size="small">{{ t('setting.proxyNoProxyHint') }}</el-text>
               </div>
             </el-form-item>
+            <el-alert
+              v-if="proxyForm.type === 'socks5'"
+              type="warning"
+              :title="t('setting.proxySocks5Warning')"
+              show-icon
+              :closable="false"
+              style="margin-bottom: 16px"
+            />
             <el-form-item :label="t('setting.proxyEnable')">
               <div style="display: flex; align-items: center; gap: 12px; width: 100%">
                 <el-switch v-model="proxyForm.enable" :loading="savingProxy" @change="handleProxyToggle" />
@@ -327,6 +351,11 @@
               </div>
               <div style="margin-top: 4px">
                 <el-text type="info" size="small">{{ t('setting.proxyHint') }}</el-text>
+              </div>
+              <div style="margin-top: 4px">
+                <el-text type="info" size="small">
+                  {{ proxyForm.type === 'socks5' ? t('setting.proxyCoverageSocks5') : t('setting.proxyCoverage') }}
+                </el-text>
               </div>
             </el-form-item>
             <el-form-item>
@@ -364,7 +393,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting, InfoFilled, User, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
 import { getSettingInfo, updateSetting, updatePort, testProxy } from '@/api/modules/setting'
@@ -403,7 +432,34 @@ const agentTokenForm = reactive({ token: '' })
 
 const savingProxy = ref(false)
 const testingProxy = ref(false)
-const proxyForm = reactive({ address: '', noProxy: 'localhost,127.0.0.1,::1', enable: false })
+const proxyForm = reactive({ type: 'mix', address: '', noProxy: 'localhost,127.0.0.1,::1', enable: false })
+
+const proxyTypeDesc = computed(() => {
+  const map: Record<string, string> = {
+    mix: t('setting.proxyTypeMixDesc'),
+    http: t('setting.proxyTypeHttpDesc'),
+    socks5: t('setting.proxyTypeSocks5Desc'),
+  }
+  return map[proxyForm.type] || ''
+})
+
+const proxyAddressPlaceholder = computed(() => {
+  const map: Record<string, string> = {
+    mix: t('setting.proxyAddressPlaceholderMix'),
+    http: t('setting.proxyAddressPlaceholderHttp'),
+    socks5: t('setting.proxyAddressPlaceholderSocks5'),
+  }
+  return map[proxyForm.type] || ''
+})
+
+const proxyAddressHint = computed(() => {
+  const map: Record<string, string> = {
+    mix: t('setting.proxyAddressHintMix'),
+    http: t('setting.proxyAddressHintHttp'),
+    socks5: t('setting.proxyAddressHintSocks5'),
+  }
+  return map[proxyForm.type] || ''
+})
 
 const savingUserName = ref(false)
 const savingPassword = ref(false)
@@ -504,6 +560,7 @@ const fetchSettings = async () => {
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
       agentTokenForm.token = res.data.agentToken || ''
+      proxyForm.type = res.data.proxyType || 'mix'
       proxyForm.address = res.data.proxyAddress || ''
       proxyForm.noProxy = res.data.proxyNoProxy || 'localhost,127.0.0.1,::1'
       proxyForm.enable = res.data.proxyEnable === 'enable'
@@ -564,27 +621,33 @@ const handleSavePassword = async () => {
 const handleSaveProxy = async () => {
   savingProxy.value = true
   try {
+    await updateSetting({ key: 'ProxyType', value: proxyForm.type })
     await updateSetting({ key: 'ProxyAddress', value: proxyForm.address })
     await updateSetting({ key: 'ProxyNoProxy', value: proxyForm.noProxy })
     await updateSetting({ key: 'ProxyEnable', value: proxyForm.enable ? 'enable' : 'disable' })
     ElMessage.success(t('commons.success'))
+    if (proxyForm.enable) {
+      ElMessage.info(t('setting.proxyRestartHint'))
+    }
   } catch { /* */ } finally { savingProxy.value = false }
 }
 
 const handleProxyToggle = async (val: boolean) => {
   if (val && !proxyForm.address.trim()) {
     proxyForm.enable = false
-    ElMessage.warning(t('setting.proxyAddressPlaceholder'))
+    ElMessage.warning(proxyAddressPlaceholder.value)
     return
   }
   savingProxy.value = true
   try {
     if (val) {
+      await updateSetting({ key: 'ProxyType', value: proxyForm.type })
       await updateSetting({ key: 'ProxyAddress', value: proxyForm.address })
       await updateSetting({ key: 'ProxyNoProxy', value: proxyForm.noProxy })
     }
     await updateSetting({ key: 'ProxyEnable', value: val ? 'enable' : 'disable' })
     ElMessage.success(t('commons.success'))
+    ElMessage.info(t('setting.proxyRestartHint'))
   } catch { proxyForm.enable = !val } finally { savingProxy.value = false }
 }
 

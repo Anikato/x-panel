@@ -15,6 +15,7 @@ type SettingInfo struct {
 	AutoUpgrade      string `json:"autoUpgrade"`
 	AppearanceConfig string `json:"appearanceConfig"`
 	ProxyEnable      string `json:"proxyEnable"`
+	ProxyType        string `json:"proxyType"`
 	ProxyAddress     string `json:"proxyAddress"`
 	ProxyNoProxy     string `json:"proxyNoProxy"`
 }

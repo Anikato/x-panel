@@ -50,6 +50,9 @@ func Start() {
 	// 4. 数据库迁移 + 默认数据
 	migration.Init()
 
+	// 4.5 恢复面板进程代理环境
+	service.SyncProxyOnStartup()
+
 	// 5. i18n 国际化
 	i18n.Init()
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ type ISettingService interface {
 	UpdatePort(req dto.PortUpdate) error
 	GetValueByKey(key string) (string, error)
 	TestProxy(req dto.ProxyTest) error
+	SyncProxyToSystem()
 }
 
 // NewISettingService 创建设置服务实例
@@ -60,6 +62,7 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		AutoUpgrade:      settingMap["AutoUpgrade"],
 		AppearanceConfig: settingMap["AppearanceConfig"],
 		ProxyEnable:      settingMap["ProxyEnable"],
+		ProxyType:        settingMap["ProxyType"],
 		ProxyAddress:     settingMap["ProxyAddress"],
 		ProxyNoProxy:     settingMap["ProxyNoProxy"],
 	}, nil
@@ -72,7 +75,8 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 		"SecurityEntrance": true, "GitHubToken": true,
 		"UserName": true, "AgentToken": true,
 		"AutoUpgrade": true, "AppearanceConfig": true,
-		"ProxyEnable": true, "ProxyAddress": true, "ProxyNoProxy": true,
+		"ProxyEnable": true, "ProxyType": true,
+		"ProxyAddress": true, "ProxyNoProxy": true,
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)
@@ -82,20 +86,22 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 		return err
 	}
 
-	if req.Key == "ProxyEnable" || req.Key == "ProxyAddress" || req.Key == "ProxyNoProxy" {
-		go s.syncProxyToSystem()
+	proxyKeys := map[string]bool{
+		"ProxyEnable": true, "ProxyType": true,
+		"ProxyAddress": true, "ProxyNoProxy": true,
+	}
+	if proxyKeys[req.Key] {
+		s.SyncProxyToSystem()
 	}
 	return nil
 }
 
 func (s *SettingService) UpdatePort(req dto.PortUpdate) error {
-	// 验证端口合法性
 	port, err := strconv.Atoi(req.Port)
 	if err != nil || port < 1 || port > 65535 {
 		return buserr.New(constant.ErrInvalidParams)
 	}
 
-	// 更新 Viper 配置并写入文件
 	if global.Vp == nil {
 		return fmt.Errorf("viper instance not initialized")
 	}
@@ -104,7 +110,6 @@ func (s *SettingService) UpdatePort(req dto.PortUpdate) error {
 		return fmt.Errorf("failed to write config: %v", err)
 	}
 
-	// 更新运行时配置
 	global.CONF.System.Port = req.Port
 	return nil
 }
@@ -113,17 +118,60 @@ func (s *SettingService) GetValueByKey(key string) (string, error) {
 	return settingRepo.GetValueByKey(key)
 }
 
-const proxyProfilePath = "/etc/profile.d/xpanel-proxy.sh"
+// --- proxy file paths ---
 
-func (s *SettingService) syncProxyToSystem() {
+const (
+	proxyProfilePath = "/etc/profile.d/xpanel-proxy.sh"
+	proxyAptPath     = "/etc/apt/apt.conf.d/99xpanel-proxy"
+	proxyDockerDir   = "/etc/systemd/system/docker.service.d"
+	proxyDockerPath  = "/etc/systemd/system/docker.service.d/http-proxy.conf"
+	envPath          = "/etc/environment"
+)
+
+var proxyEnvKeys = []string{
+	"http_proxy", "HTTP_PROXY",
+	"https_proxy", "HTTPS_PROXY",
+	"no_proxy", "NO_PROXY",
+}
+
+func resolveProxyURLs(proxyType, addr string) (envURL, httpURL string, hasHTTP bool) {
+	switch proxyType {
+	case "mix":
+		host := strings.TrimPrefix(strings.TrimPrefix(addr, "http://"), "https://")
+		host = strings.TrimPrefix(host, "socks5://")
+		httpURL = "http://" + host
+		envURL = httpURL
+		hasHTTP = true
+	case "http":
+		if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+			addr = "http://" + addr
+		}
+		envURL = addr
+		httpURL = addr
+		hasHTTP = true
+	case "socks5":
+		if !strings.HasPrefix(addr, "socks5://") {
+			addr = "socks5://" + addr
+		}
+		envURL = addr
+		httpURL = ""
+		hasHTTP = false
+	default:
+		envURL = addr
+		httpURL = addr
+		hasHTTP = true
+	}
+	return
+}
+
+func (s *SettingService) SyncProxyToSystem() {
 	enable, _ := settingRepo.GetValueByKey("ProxyEnable")
+	proxyType, _ := settingRepo.GetValueByKey("ProxyType")
 	addr, _ := settingRepo.GetValueByKey("ProxyAddress")
 	noProxy, _ := settingRepo.GetValueByKey("ProxyNoProxy")
 
 	if enable != "enable" || strings.TrimSpace(addr) == "" {
-		os.Remove(proxyProfilePath)
-		removeProxyFromEnvironment()
-		global.LOG.Info("System proxy disabled, config files removed")
+		disableAllProxy()
 		return
 	}
 
@@ -132,80 +180,160 @@ func (s *SettingService) syncProxyToSystem() {
 	if noProxy == "" {
 		noProxy = "localhost,127.0.0.1,::1"
 	}
+	if proxyType == "" {
+		proxyType = "mix"
+	}
 
-	// /etc/profile.d/xpanel-proxy.sh
-	profileContent := fmt.Sprintf(`# Managed by X-Panel - do not edit manually
+	envURL, httpURL, hasHTTP := resolveProxyURLs(proxyType, addr)
+
+	writeProfileProxy(envURL, noProxy)
+	writeEnvironmentProxy(envURL, noProxy)
+	setProcessProxy(envURL, noProxy)
+
+	if hasHTTP {
+		writeAptProxy(httpURL)
+		writeDockerProxy(httpURL, noProxy)
+	} else {
+		os.Remove(proxyAptPath)
+		removeDockerProxy()
+	}
+
+	global.LOG.Infof("System proxy enabled: type=%s url=%s", proxyType, envURL)
+}
+
+func disableAllProxy() {
+	os.Remove(proxyProfilePath)
+	os.Remove(proxyAptPath)
+	removeDockerProxy()
+	removeEnvironmentProxy()
+	unsetProcessProxy()
+	global.LOG.Info("System proxy disabled, all config files removed")
+}
+
+func writeProfileProxy(envURL, noProxy string) {
+	content := fmt.Sprintf(`# Managed by X-Panel - do not edit manually
 export http_proxy="%s"
 export https_proxy="%s"
 export HTTP_PROXY="%s"
 export HTTPS_PROXY="%s"
 export no_proxy="%s"
 export NO_PROXY="%s"
-`, addr, addr, addr, addr, noProxy, noProxy)
+`, envURL, envURL, envURL, envURL, noProxy, noProxy)
 
-	if err := os.WriteFile(proxyProfilePath, []byte(profileContent), 0644); err != nil {
-		global.LOG.Errorf("Failed to write proxy profile: %v", err)
-		return
+	if err := os.WriteFile(proxyProfilePath, []byte(content), 0644); err != nil {
+		global.LOG.Errorf("Failed to write %s: %v", proxyProfilePath, err)
 	}
-
-	writeProxyToEnvironment(addr, noProxy)
-	global.LOG.Infof("System proxy enabled: %s", addr)
 }
 
-func writeProxyToEnvironment(addr, noProxy string) {
-	const envPath = "/etc/environment"
+func writeEnvironmentProxy(envURL, noProxy string) {
 	content, _ := os.ReadFile(envPath)
-	lines := strings.Split(string(content), "\n")
-
-	// Remove existing proxy lines managed by us
-	var cleaned []string
-	for _, line := range lines {
-		lower := strings.ToLower(strings.TrimSpace(line))
-		if strings.HasPrefix(lower, "http_proxy=") || strings.HasPrefix(lower, "https_proxy=") ||
-			strings.HasPrefix(lower, "no_proxy=") {
-			continue
-		}
-		cleaned = append(cleaned, line)
-	}
-
-	// Remove trailing empty lines
-	for len(cleaned) > 0 && strings.TrimSpace(cleaned[len(cleaned)-1]) == "" {
-		cleaned = cleaned[:len(cleaned)-1]
-	}
+	cleaned := filterProxyLines(string(content))
 
 	cleaned = append(cleaned,
-		fmt.Sprintf(`http_proxy="%s"`, addr),
-		fmt.Sprintf(`https_proxy="%s"`, addr),
-		fmt.Sprintf(`HTTP_PROXY="%s"`, addr),
-		fmt.Sprintf(`HTTPS_PROXY="%s"`, addr),
+		fmt.Sprintf(`http_proxy="%s"`, envURL),
+		fmt.Sprintf(`https_proxy="%s"`, envURL),
+		fmt.Sprintf(`HTTP_PROXY="%s"`, envURL),
+		fmt.Sprintf(`HTTPS_PROXY="%s"`, envURL),
 		fmt.Sprintf(`no_proxy="%s"`, noProxy),
 		fmt.Sprintf(`NO_PROXY="%s"`, noProxy),
 		"",
 	)
 
 	if err := os.WriteFile(envPath, []byte(strings.Join(cleaned, "\n")), 0644); err != nil {
-		global.LOG.Errorf("Failed to write /etc/environment: %v", err)
+		global.LOG.Errorf("Failed to write %s: %v", envPath, err)
 	}
 }
 
-func removeProxyFromEnvironment() {
-	const envPath = "/etc/environment"
+func removeEnvironmentProxy() {
 	content, err := os.ReadFile(envPath)
 	if err != nil {
 		return
 	}
-	lines := strings.Split(string(content), "\n")
+	cleaned := filterProxyLines(string(content))
+	_ = os.WriteFile(envPath, []byte(strings.Join(cleaned, "\n")), 0644)
+}
+
+func filterProxyLines(content string) []string {
+	lines := strings.Split(content, "\n")
 	var cleaned []string
 	for _, line := range lines {
-		lower := strings.ToLower(strings.TrimSpace(line))
-		if strings.HasPrefix(lower, "http_proxy=") || strings.HasPrefix(lower, "https_proxy=") ||
-			strings.HasPrefix(lower, "no_proxy=") {
+		trimmed := strings.TrimSpace(line)
+		key := strings.ToLower(strings.SplitN(trimmed, "=", 2)[0])
+		if key == "http_proxy" || key == "https_proxy" || key == "no_proxy" {
 			continue
 		}
 		cleaned = append(cleaned, line)
 	}
-	os.WriteFile(envPath, []byte(strings.Join(cleaned, "\n")), 0644)
+	for len(cleaned) > 0 && strings.TrimSpace(cleaned[len(cleaned)-1]) == "" {
+		cleaned = cleaned[:len(cleaned)-1]
+	}
+	return cleaned
 }
+
+func writeAptProxy(httpURL string) {
+	content := fmt.Sprintf(`// Managed by X-Panel
+Acquire::http::Proxy "%s";
+Acquire::https::Proxy "%s";
+`, httpURL, httpURL)
+
+	if err := os.WriteFile(proxyAptPath, []byte(content), 0644); err != nil {
+		global.LOG.Errorf("Failed to write %s: %v", proxyAptPath, err)
+	}
+}
+
+func writeDockerProxy(httpURL, noProxy string) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return
+	}
+
+	if err := os.MkdirAll(proxyDockerDir, 0755); err != nil {
+		global.LOG.Errorf("Failed to create %s: %v", proxyDockerDir, err)
+		return
+	}
+
+	content := fmt.Sprintf(`# Managed by X-Panel
+[Service]
+Environment="HTTP_PROXY=%s"
+Environment="HTTPS_PROXY=%s"
+Environment="NO_PROXY=%s"
+`, httpURL, httpURL, noProxy)
+
+	if err := os.WriteFile(proxyDockerPath, []byte(content), 0644); err != nil {
+		global.LOG.Errorf("Failed to write %s: %v", proxyDockerPath, err)
+		return
+	}
+
+	_ = exec.Command("systemctl", "daemon-reload").Run()
+}
+
+func removeDockerProxy() {
+	if _, err := os.Stat(proxyDockerPath); err != nil {
+		return
+	}
+	os.Remove(proxyDockerPath)
+	dir, _ := os.ReadDir(proxyDockerDir)
+	if len(dir) == 0 {
+		os.Remove(proxyDockerDir)
+	}
+	_ = exec.Command("systemctl", "daemon-reload").Run()
+}
+
+func setProcessProxy(envURL, noProxy string) {
+	os.Setenv("http_proxy", envURL)
+	os.Setenv("https_proxy", envURL)
+	os.Setenv("HTTP_PROXY", envURL)
+	os.Setenv("HTTPS_PROXY", envURL)
+	os.Setenv("no_proxy", noProxy)
+	os.Setenv("NO_PROXY", noProxy)
+}
+
+func unsetProcessProxy() {
+	for _, key := range proxyEnvKeys {
+		os.Unsetenv(key)
+	}
+}
+
+// --- proxy test ---
 
 func (s *SettingService) TestProxy(req dto.ProxyTest) error {
 	addr := strings.TrimSpace(req.Address)
@@ -213,7 +341,10 @@ func (s *SettingService) TestProxy(req dto.ProxyTest) error {
 		return buserr.New(constant.ErrInvalidParams)
 	}
 
-	parsed, err := url.Parse(addr)
+	proxyType, _ := settingRepo.GetValueByKey("ProxyType")
+	testAddr := resolveTestAddr(proxyType, addr)
+
+	parsed, err := url.Parse(testAddr)
 	if err != nil {
 		return fmt.Errorf("invalid proxy address: %v", err)
 	}
@@ -254,3 +385,39 @@ func (s *SettingService) TestProxy(req dto.ProxyTest) error {
 	resp.Body.Close()
 	return nil
 }
+
+func resolveTestAddr(proxyType, addr string) string {
+	if proxyType == "mix" {
+		host := strings.TrimPrefix(strings.TrimPrefix(addr, "http://"), "https://")
+		host = strings.TrimPrefix(host, "socks5://")
+		return "http://" + host
+	}
+	return addr
+}
+
+// SyncProxyOnStartup is called during server boot to restore panel process proxy env.
+// Only sets os.Setenv; file-level configs are already persisted.
+func SyncProxyOnStartup() {
+	enable, _ := settingRepo.GetValueByKey("ProxyEnable")
+	proxyType, _ := settingRepo.GetValueByKey("ProxyType")
+	addr, _ := settingRepo.GetValueByKey("ProxyAddress")
+	noProxy, _ := settingRepo.GetValueByKey("ProxyNoProxy")
+
+	if enable != "enable" || strings.TrimSpace(addr) == "" {
+		return
+	}
+
+	addr = strings.TrimSpace(addr)
+	noProxy = strings.TrimSpace(noProxy)
+	if noProxy == "" {
+		noProxy = "localhost,127.0.0.1,::1"
+	}
+	if proxyType == "" {
+		proxyType = "mix"
+	}
+
+	envURL, _, _ := resolveProxyURLs(proxyType, addr)
+	setProcessProxy(envURL, noProxy)
+	global.LOG.Infof("Restored panel proxy on startup: type=%s url=%s", proxyType, envURL)
+}
+
