@@ -505,6 +505,7 @@ export interface HostInfo {
   kernelArch: string
   virtualization: string
   timezone: string
+  tcpCongestion: string
   publicIPv4: string
   publicIPv6: string
   interfaces: NetInterface[]

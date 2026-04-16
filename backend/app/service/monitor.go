@@ -64,6 +64,7 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 	stats.Host.Timezone = getTimezone()
 	stats.Host.DNSServers = getDNSServers()
 	stats.Host.Interfaces = getNetworkInterfaces()
+	stats.Host.TCPCongestion = getTCPCongestion()
 
 	ipv4, ipv6 := getCachedPublicIP()
 	stats.Host.PublicIPv4 = ipv4
@@ -279,6 +280,15 @@ func fetchPublicIP(url string, timeout time.Duration) string {
 		return ""
 	}
 	return strings.TrimSpace(string(body))
+}
+
+// getTCPCongestion 获取当前 TCP 拥塞控制算法
+func getTCPCongestion() string {
+	data, err := os.ReadFile("/proc/sys/net/ipv4/tcp_congestion_control")
+	if err != nil {
+		return "-"
+	}
+	return strings.TrimSpace(string(data))
 }
 
 // getTimezone 获取系统时区，确保返回有效的 IANA 时区名

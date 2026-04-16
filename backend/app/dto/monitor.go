@@ -27,6 +27,7 @@ type SystemHostInfo struct {
 	Timezone        string          `json:"timezone"`
 	Virtualization  string          `json:"virtualization"`
 	DNSServers      []string        `json:"dnsServers"`
+	TCPCongestion   string          `json:"tcpCongestion"`
 }
 
 // InterfaceInfo 网卡信息

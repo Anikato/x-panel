@@ -183,6 +183,7 @@ const sysInfoItems = computed(() => {
     { label: t('home.uptime'), value: formatUptime(stats.value.uptime) },
     { label: t('home.timezone'), value: h.timezone || '-' },
     { label: t('home.virtualization'), value: h.virtualization || '-' },
+    { label: t('home.tcpCongestion'), value: h.tcpCongestion || '-' },
     { label: t('home.cpuModel'), value: stats.value.cpu?.modelName || '-' },
     { label: t('home.cpuCores'), value: stats.value.cpu ? `${stats.value.cpu.cores} ${t('home.physical')} / ${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-' },
     { label: t('home.totalMemory'), value: formatBytes(stats.value.memory?.total) },

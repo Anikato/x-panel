@@ -130,6 +130,7 @@ export default {
     publicIPv6: '公网 IPv6',
     timezone: '时区',
     virtualization: '虚拟化',
+    tcpCongestion: 'TCP 拥塞控制',
     physicalMachine: '物理机',
     rebootServer: '重启服务器',
     shutdownServer: '关机',
