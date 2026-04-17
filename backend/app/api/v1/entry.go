@@ -35,4 +35,6 @@ type ApiGroup struct {
 }
 
 // ApiGroupApp 全局 API 实例
-var ApiGroupApp = new(ApiGroup)
+var ApiGroupApp = &ApiGroup{
+	AppAPI: *NewAppAPI(),
+}
