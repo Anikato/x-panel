@@ -24,7 +24,7 @@ func (r *HostRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model.Ho
 		items []model.Host
 		total int64
 	)
-	db := getDB().Model(&model.Host{})
+	db := getDb(opts...).Model(&model.Host{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -35,7 +35,7 @@ func (r *HostRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model.Ho
 
 func (r *HostRepo) GetList(opts ...DBOption) ([]model.Host, error) {
 	var items []model.Host
-	db := getDB().Model(&model.Host{})
+	db := getDb(opts...).Model(&model.Host{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -45,7 +45,7 @@ func (r *HostRepo) GetList(opts ...DBOption) ([]model.Host, error) {
 
 func (r *HostRepo) Get(opts ...DBOption) (model.Host, error) {
 	var item model.Host
-	db := getDB().Model(&model.Host{})
+	db := getDb(opts...).Model(&model.Host{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -54,15 +54,15 @@ func (r *HostRepo) Get(opts ...DBOption) (model.Host, error) {
 }
 
 func (r *HostRepo) Create(host *model.Host) error {
-	return getDB().Create(host).Error
+	return getDb().Create(host).Error
 }
 
 func (r *HostRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.Host{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.Host{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *HostRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -89,7 +89,7 @@ func (r *CommandRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model
 		items []model.Command
 		total int64
 	)
-	db := getDB().Model(&model.Command{})
+	db := getDb(opts...).Model(&model.Command{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -100,7 +100,7 @@ func (r *CommandRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model
 
 func (r *CommandRepo) GetList(opts ...DBOption) ([]model.Command, error) {
 	var items []model.Command
-	db := getDB().Model(&model.Command{})
+	db := getDb(opts...).Model(&model.Command{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -110,7 +110,7 @@ func (r *CommandRepo) GetList(opts ...DBOption) ([]model.Command, error) {
 
 func (r *CommandRepo) Get(opts ...DBOption) (model.Command, error) {
 	var item model.Command
-	db := getDB().Model(&model.Command{})
+	db := getDb(opts...).Model(&model.Command{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -119,15 +119,15 @@ func (r *CommandRepo) Get(opts ...DBOption) (model.Command, error) {
 }
 
 func (r *CommandRepo) Create(cmd *model.Command) error {
-	return getDB().Create(cmd).Error
+	return getDb().Create(cmd).Error
 }
 
 func (r *CommandRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.Command{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.Command{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *CommandRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -150,7 +150,7 @@ type GroupRepo struct{}
 
 func (r *GroupRepo) GetList(opts ...DBOption) ([]model.Group, error) {
 	var items []model.Group
-	db := getDB().Model(&model.Group{})
+	db := getDb(opts...).Model(&model.Group{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -160,7 +160,7 @@ func (r *GroupRepo) GetList(opts ...DBOption) ([]model.Group, error) {
 
 func (r *GroupRepo) Get(opts ...DBOption) (model.Group, error) {
 	var item model.Group
-	db := getDB().Model(&model.Group{})
+	db := getDb(opts...).Model(&model.Group{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -169,15 +169,15 @@ func (r *GroupRepo) Get(opts ...DBOption) (model.Group, error) {
 }
 
 func (r *GroupRepo) Create(group *model.Group) error {
-	return getDB().Create(group).Error
+	return getDb().Create(group).Error
 }
 
 func (r *GroupRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.Group{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.Group{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *GroupRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -191,12 +191,5 @@ func WithByGroupID(groupID uint) DBOption {
 			return db
 		}
 		return db.Where("group_id = ?", groupID)
-	}
-}
-
-// WithByType 按 Type 查询
-func WithByType(t string) DBOption {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("type = ?", t)
 	}
 }

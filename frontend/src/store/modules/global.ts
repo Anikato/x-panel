@@ -137,7 +137,7 @@ export const useGlobalStore = defineStore('global', {
     },
   },
   persist: {
-    pick: [
+    paths: [
       'isLogin', 'menuCollapse', 'panelName', 'theme', 'accentKey', 'accentCustom',
       'version', 'currentNodeID', 'currentNodeName',
       'bgPreset', 'uiFont', 'uiDensity', 'borderRadiusPreset', 'reduceMotion',

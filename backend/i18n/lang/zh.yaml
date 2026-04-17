@@ -152,6 +152,88 @@ ErrHAProxyBackendHasRefs:
 ErrHAProxySocketFailed:
   other: "HAProxy Runtime 通信失败: {{.err}}"
 
+# 应用中心
+ErrAppStoreSyncing:
+  other: "应用商店正在同步中，请稍后再试"
+ErrDownloadAppList:
+  other: "下载应用列表失败: {{.detail}}"
+ErrParseAppList:
+  other: "解析应用列表失败: {{.detail}}"
+ErrDownloadTags:
+  other: "下载标签列表失败: {{.detail}}"
+ErrParseTags:
+  other: "解析标签列表失败: {{.detail}}"
+ErrAppNameExist:
+  other: "应用名称已存在"
+ErrPortInUse:
+  other: "端口 {{.detail}} 已被占用"
+ErrNoAvailablePort:
+  other: "没有可用端口"
+ErrCreateDir:
+  other: "创建目录失败: {{.detail}}"
+ErrParseCompose:
+  other: "解析 docker-compose.yml 失败: {{.detail}}"
+ErrInvalidCompose:
+  other: "无效的 docker-compose.yml 文件"
+ErrDockerComposeUp:
+  other: "启动容器失败: {{.detail}}"
+ErrDockerComposeStart:
+  other: "启动容器失败: {{.detail}}"
+ErrDockerComposeStop:
+  other: "停止容器失败: {{.detail}}"
+ErrDockerComposeRestart:
+  other: "重启容器失败: {{.detail}}"
+ErrDockerComposeDown:
+  other: "删除容器失败: {{.detail}}"
+ErrNotImplemented:
+  other: "功能尚未实现"
+ErrCreateBackupDir:
+  other: "创建备份目录失败: {{.detail}}"
+ErrBackupFailed:
+  other: "备份失败: {{.detail}}"
+ErrRestoreFailed:
+  other: "恢复失败: {{.detail}}"
+ErrContainerNotFound:
+  other: "容器未找到"
+ErrGetContainerLogs:
+  other: "获取容器日志失败: {{.detail}}"
+ErrBackupFileNotFound:
+  other: "备份文件不存在"
+ErrOpenBackup:
+  other: "打开备份文件失败: {{.detail}}"
+ErrDecompressBackup:
+  other: "解压备份文件失败: {{.detail}}"
+ErrReadBackup:
+  other: "读取备份文件失败: {{.detail}}"
+ErrReadMeta:
+  other: "读取备份元数据失败: {{.detail}}"
+ErrParseMeta:
+  other: "解析备份元数据失败: {{.detail}}"
+ErrReadCompose:
+  other: "读取 docker-compose.yml 失败: {{.detail}}"
+ErrCopyData:
+  other: "复制数据失败: {{.detail}}"
+ErrWriteFile:
+  other: "写入文件失败: {{.detail}}"
+ErrGenerateCompose:
+  other: "生成 docker-compose.yml 失败: {{.detail}}"
+ErrStartContainer:
+  other: "启动容器失败: {{.detail}}"
+# 导入功能新增错误
+ErrInvalidBackupFormat:
+  other: "无效的备份文件格式，仅支持 .tar.gz 文件"
+ErrCreateApp:
+  other: "创建应用记录失败: {{.detail}}"
+ErrCreateAppDetail:
+  other: "创建应用版本记录失败: {{.detail}}"
+ErrImportTaskRunning:
+  other: "同名导入任务正在进行中，请稍后再试"
+ErrImportTaskNotFound:
+  other: "导入任务不存在"
+ErrCreateImportTask:
+  other: "创建导入任务失败: {{.detail}}"
+  other: "启动容器失败: {{.detail}}"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"

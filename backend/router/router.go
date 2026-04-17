@@ -399,6 +399,28 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/toolbox/ip/db/info", api.GetIPDBInfo)
 		privateGroup.POST("/toolbox/ip/db/download", api.DownloadIPDB)
 
+		// 应用中心
+		privateGroup.POST("/apps/sync", api.SyncAppStore)
+		privateGroup.POST("/apps/search", api.PageApps)
+		privateGroup.GET("/apps/tags", api.GetTags)
+		privateGroup.GET("/apps/:key", api.GetAppByKey)
+		privateGroup.GET("/apps/detail", api.GetAppDetail)
+		privateGroup.POST("/apps/install", api.InstallApp)
+		privateGroup.POST("/apps/import", api.ImportApp)
+		privateGroup.GET("/apps/import/progress/:name", api.GetImportProgress)
+		privateGroup.GET("/apps/import/tasks", api.GetImportTasks)
+		privateGroup.POST("/apps/installed/search", api.PageInstalled)
+		privateGroup.GET("/apps/installed/:id", api.GetInstalled)
+		privateGroup.GET("/apps/installed/:id/logs", api.GetAppLogs)
+		privateGroup.POST("/apps/operate", api.OperateApp)
+		privateGroup.POST("/apps/uninstall", api.UninstallApp)
+		privateGroup.POST("/apps/update", api.UpdateApp)
+		privateGroup.POST("/apps/backup", api.BackupApp)
+		privateGroup.POST("/apps/restore", api.RestoreApp)
+		privateGroup.POST("/apps/backups/search", api.PageBackups)
+		privateGroup.POST("/apps/backups/del", api.DeleteBackup)
+
+
 		// SSH 私钥管理
 		privateGroup.GET("/ssh/keys", api.ListSSHKeys)
 		privateGroup.GET("/ssh/keys/private", api.GetSSHPrivateKey)

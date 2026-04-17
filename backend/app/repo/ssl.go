@@ -20,7 +20,7 @@ type AcmeAccountRepo struct{}
 
 func (r *AcmeAccountRepo) GetList(opts ...DBOption) ([]model.AcmeAccount, error) {
 	var items []model.AcmeAccount
-	db := getDB().Model(&model.AcmeAccount{})
+	db := getDb(opts...).Model(&model.AcmeAccount{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -30,7 +30,7 @@ func (r *AcmeAccountRepo) GetList(opts ...DBOption) ([]model.AcmeAccount, error)
 
 func (r *AcmeAccountRepo) Get(opts ...DBOption) (model.AcmeAccount, error) {
 	var item model.AcmeAccount
-	db := getDB().Model(&model.AcmeAccount{})
+	db := getDb(opts...).Model(&model.AcmeAccount{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -39,15 +39,15 @@ func (r *AcmeAccountRepo) Get(opts ...DBOption) (model.AcmeAccount, error) {
 }
 
 func (r *AcmeAccountRepo) Create(item *model.AcmeAccount) error {
-	return getDB().Create(item).Error
+	return getDb().Create(item).Error
 }
 
 func (r *AcmeAccountRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.AcmeAccount{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.AcmeAccount{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *AcmeAccountRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -70,7 +70,7 @@ type DnsAccountRepo struct{}
 
 func (r *DnsAccountRepo) GetList(opts ...DBOption) ([]model.DnsAccount, error) {
 	var items []model.DnsAccount
-	db := getDB().Model(&model.DnsAccount{})
+	db := getDb(opts...).Model(&model.DnsAccount{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -80,7 +80,7 @@ func (r *DnsAccountRepo) GetList(opts ...DBOption) ([]model.DnsAccount, error) {
 
 func (r *DnsAccountRepo) Get(opts ...DBOption) (model.DnsAccount, error) {
 	var item model.DnsAccount
-	db := getDB().Model(&model.DnsAccount{})
+	db := getDb(opts...).Model(&model.DnsAccount{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -89,15 +89,15 @@ func (r *DnsAccountRepo) Get(opts ...DBOption) (model.DnsAccount, error) {
 }
 
 func (r *DnsAccountRepo) Create(item *model.DnsAccount) error {
-	return getDB().Create(item).Error
+	return getDb().Create(item).Error
 }
 
 func (r *DnsAccountRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.DnsAccount{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.DnsAccount{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *DnsAccountRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -125,7 +125,7 @@ func (r *CertificateRepo) Page(page, pageSize int, opts ...DBOption) (int64, []m
 		items []model.Certificate
 		total int64
 	)
-	db := getDB().Model(&model.Certificate{})
+	db := getDb(opts...).Model(&model.Certificate{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -136,7 +136,7 @@ func (r *CertificateRepo) Page(page, pageSize int, opts ...DBOption) (int64, []m
 
 func (r *CertificateRepo) GetList(opts ...DBOption) ([]model.Certificate, error) {
 	var items []model.Certificate
-	db := getDB().Model(&model.Certificate{})
+	db := getDb(opts...).Model(&model.Certificate{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -146,7 +146,7 @@ func (r *CertificateRepo) GetList(opts ...DBOption) ([]model.Certificate, error)
 
 func (r *CertificateRepo) Get(opts ...DBOption) (model.Certificate, error) {
 	var item model.Certificate
-	db := getDB().Model(&model.Certificate{})
+	db := getDb(opts...).Model(&model.Certificate{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -155,19 +155,19 @@ func (r *CertificateRepo) Get(opts ...DBOption) (model.Certificate, error) {
 }
 
 func (r *CertificateRepo) Create(item *model.Certificate) error {
-	return getDB().Create(item).Error
+	return getDb().Create(item).Error
 }
 
 func (r *CertificateRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.Certificate{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.Certificate{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *CertificateRepo) Save(item *model.Certificate) error {
-	return getDB().Save(item).Error
+	return getDb().Save(item).Error
 }
 
 func (r *CertificateRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}

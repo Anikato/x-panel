@@ -25,7 +25,7 @@ func (r *WebsiteRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model
 		items []model.Website
 		total int64
 	)
-	db := getDB().Model(&model.Website{})
+	db := getDb(opts...).Model(&model.Website{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -36,7 +36,7 @@ func (r *WebsiteRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model
 
 func (r *WebsiteRepo) GetList(opts ...DBOption) ([]model.Website, error) {
 	var items []model.Website
-	db := getDB().Model(&model.Website{})
+	db := getDb(opts...).Model(&model.Website{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -46,7 +46,7 @@ func (r *WebsiteRepo) GetList(opts ...DBOption) ([]model.Website, error) {
 
 func (r *WebsiteRepo) Get(opts ...DBOption) (model.Website, error) {
 	var item model.Website
-	db := getDB().Model(&model.Website{})
+	db := getDb(opts...).Model(&model.Website{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -55,16 +55,16 @@ func (r *WebsiteRepo) Get(opts ...DBOption) (model.Website, error) {
 }
 
 func (r *WebsiteRepo) Create(item *model.Website) error {
-	return getDB().Create(item).Error
+	return getDb().Create(item).Error
 }
 
 func (r *WebsiteRepo) Save(item *model.Website) error {
-	return getDB().Save(item).Error
+	return getDb().Save(item).Error
 }
 
 func (r *WebsiteRepo) Count(opts ...DBOption) (int64, error) {
 	var count int64
-	db := getDB().Model(&model.Website{})
+	db := getDb(opts...).Model(&model.Website{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -73,7 +73,7 @@ func (r *WebsiteRepo) Count(opts ...DBOption) (int64, error) {
 }
 
 func (r *WebsiteRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}

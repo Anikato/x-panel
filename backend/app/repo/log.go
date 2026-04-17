@@ -22,7 +22,7 @@ func NewILogRepo() ILogRepo {
 type LogRepo struct{}
 
 func (l *LogRepo) CreateLoginLog(log *model.LoginLog) error {
-	return getDB().Create(log).Error
+	return getDb().Create(log).Error
 }
 
 func (l *LogRepo) PageLoginLog(page, pageSize int, opts ...DBOption) (int64, []model.LoginLog, error) {
@@ -30,7 +30,7 @@ func (l *LogRepo) PageLoginLog(page, pageSize int, opts ...DBOption) (int64, []m
 		total int64
 		logs  []model.LoginLog
 	)
-	db := getDB().Model(&model.LoginLog{})
+	db := getDb(opts...).Model(&model.LoginLog{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -40,7 +40,7 @@ func (l *LogRepo) PageLoginLog(page, pageSize int, opts ...DBOption) (int64, []m
 }
 
 func (l *LogRepo) CreateOperationLog(log *model.OperationLog) error {
-	return getDB().Create(log).Error
+	return getDb().Create(log).Error
 }
 
 func (l *LogRepo) PageOperationLog(page, pageSize int, opts ...DBOption) (int64, []model.OperationLog, error) {
@@ -48,7 +48,7 @@ func (l *LogRepo) PageOperationLog(page, pageSize int, opts ...DBOption) (int64,
 		total int64
 		logs  []model.OperationLog
 	)
-	db := getDB().Model(&model.OperationLog{})
+	db := getDb(opts...).Model(&model.OperationLog{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -58,9 +58,9 @@ func (l *LogRepo) PageOperationLog(page, pageSize int, opts ...DBOption) (int64,
 }
 
 func (l *LogRepo) CleanLoginLog() error {
-	return getDB().Where("1 = 1").Delete(&model.LoginLog{}).Error
+	return getDb().Where("1 = 1").Delete(&model.LoginLog{}).Error
 }
 
 func (l *LogRepo) CleanOperationLog() error {
-	return getDB().Where("1 = 1").Delete(&model.OperationLog{}).Error
+	return getDb().Where("1 = 1").Delete(&model.OperationLog{}).Error
 }

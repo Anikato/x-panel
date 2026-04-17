@@ -24,7 +24,7 @@ type SettingRepo struct{}
 
 func (s *SettingRepo) GetList(opts ...DBOption) ([]model.Setting, error) {
 	var settings []model.Setting
-	db := getDB().Model(&model.Setting{})
+	db := getDb(opts...).Model(&model.Setting{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -34,7 +34,7 @@ func (s *SettingRepo) GetList(opts ...DBOption) ([]model.Setting, error) {
 
 func (s *SettingRepo) Get(opts ...DBOption) (model.Setting, error) {
 	var setting model.Setting
-	db := getDB().Model(&model.Setting{})
+	db := getDb(opts...).Model(&model.Setting{})
 	for _, opt := range opts {
 		db = opt(db)
 	}
@@ -44,7 +44,7 @@ func (s *SettingRepo) Get(opts ...DBOption) (model.Setting, error) {
 
 func (s *SettingRepo) GetValueByKey(key string) (string, error) {
 	var setting model.Setting
-	err := getDB().Model(&model.Setting{}).Where("`key` = ?", key).First(&setting).Error
+	err := getDb().Model(&model.Setting{}).Where("`key` = ?", key).First(&setting).Error
 	if err != nil {
 		return "", err
 	}
@@ -52,24 +52,24 @@ func (s *SettingRepo) GetValueByKey(key string) (string, error) {
 }
 
 func (s *SettingRepo) Create(setting *model.Setting) error {
-	return getDB().Create(setting).Error
+	return getDb().Create(setting).Error
 }
 
 func (s *SettingRepo) Update(key, value string) error {
-	return getDB().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error
+	return getDb().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error
 }
 
 func (s *SettingRepo) CreateOrUpdate(key, value string) error {
 	var count int64
-	getDB().Model(&model.Setting{}).Where("`key` = ?", key).Count(&count)
+	getDb().Model(&model.Setting{}).Where("`key` = ?", key).Count(&count)
 	if count == 0 {
-		return getDB().Create(&model.Setting{Key: key, Value: value}).Error
+		return getDb().Create(&model.Setting{Key: key, Value: value}).Error
 	}
-	return getDB().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error
+	return getDb().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error
 }
 
 func (s *SettingRepo) Delete(opts ...DBOption) error {
-	db := getDB()
+	db := getDb(opts...)
 	for _, opt := range opts {
 		db = opt(db)
 	}

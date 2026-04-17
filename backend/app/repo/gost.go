@@ -29,10 +29,7 @@ func (r *GostServiceRepo) Page(page, pageSize int, opts ...DBOption) (int64, []m
 		items []model.GostService
 		total int64
 	)
-	db := getDB().Model(&model.GostService{})
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...).Model(&model.GostService{})
 	db.Count(&total)
 	err := db.Offset((page-1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
 	return total, items, err
@@ -40,43 +37,34 @@ func (r *GostServiceRepo) Page(page, pageSize int, opts ...DBOption) (int64, []m
 
 func (r *GostServiceRepo) GetList(opts ...DBOption) ([]model.GostService, error) {
 	var items []model.GostService
-	db := getDB().Model(&model.GostService{})
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...).Model(&model.GostService{})
 	err := db.Find(&items).Error
 	return items, err
 }
 
 func (r *GostServiceRepo) Get(opts ...DBOption) (model.GostService, error) {
 	var item model.GostService
-	db := getDB().Model(&model.GostService{})
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...).Model(&model.GostService{})
 	err := db.First(&item).Error
 	return item, err
 }
 
 func (r *GostServiceRepo) Create(svc *model.GostService) error {
-	return getDB().Create(svc).Error
+	return getDb().Create(svc).Error
 }
 
 func (r *GostServiceRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.GostService{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.GostService{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *GostServiceRepo) Delete(opts ...DBOption) error {
-	db := getDB()
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...)
 	return db.Delete(&model.GostService{}).Error
 }
 
 func (r *GostServiceRepo) CountByChainID(chainID uint) (int64, error) {
 	var count int64
-	err := getDB().Model(&model.GostService{}).Where("chain_id = ?", chainID).Count(&count).Error
+	err := getDb().Model(&model.GostService{}).Where("chain_id = ?", chainID).Count(&count).Error
 	return count, err
 }
 
@@ -87,7 +75,7 @@ type IGostChainRepo interface {
 	GetList(opts ...DBOption) ([]model.GostChain, error)
 	Get(opts ...DBOption) (model.GostChain, error)
 	Create(chain *model.GostChain) error
-	Update(id uint, updates map[string]interface{}) error
+	Update(id uint, updates map[string] interface{}) error
 	Delete(opts ...DBOption) error
 }
 
@@ -100,10 +88,7 @@ func (r *GostChainRepo) Page(page, pageSize int, opts ...DBOption) (int64, []mod
 		items []model.GostChain
 		total int64
 	)
-	db := getDB().Model(&model.GostChain{})
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...).Model(&model.GostChain{})
 	db.Count(&total)
 	err := db.Offset((page-1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
 	return total, items, err
@@ -111,37 +96,28 @@ func (r *GostChainRepo) Page(page, pageSize int, opts ...DBOption) (int64, []mod
 
 func (r *GostChainRepo) GetList(opts ...DBOption) ([]model.GostChain, error) {
 	var items []model.GostChain
-	db := getDB().Model(&model.GostChain{})
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...).Model(&model.GostChain{})
 	err := db.Find(&items).Error
 	return items, err
 }
 
 func (r *GostChainRepo) Get(opts ...DBOption) (model.GostChain, error) {
 	var item model.GostChain
-	db := getDB().Model(&model.GostChain{})
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...).Model(&model.GostChain{})
 	err := db.First(&item).Error
 	return item, err
 }
 
 func (r *GostChainRepo) Create(chain *model.GostChain) error {
-	return getDB().Create(chain).Error
+	return getDb().Create(chain).Error
 }
 
 func (r *GostChainRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.GostChain{}).Where("id = ?", id).Updates(updates).Error
+	return getDb().Model(&model.GostChain{}).Where("id = ?", id).Updates(updates).Error
 }
 
 func (r *GostChainRepo) Delete(opts ...DBOption) error {
-	db := getDB()
-	for _, opt := range opts {
-		db = opt(db)
-	}
+	db := getDb(opts...)
 	return db.Delete(&model.GostChain{}).Error
 }
 

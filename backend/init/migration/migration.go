@@ -44,6 +44,14 @@ func Init() {
 		&model.HAProxyServer{},
 		&model.HAProxyACLRule{},
 		&model.HAProxyConfigVersion{},
+		// 应用中心
+		&model.App{},
+		&model.AppDetail{},
+		&model.AppInstall{},
+		&model.AppTag{},
+		&model.Tag{},
+		&model.AppBackupRecord{},
+		&model.AppImportTask{}, // 新增导入任务表
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
