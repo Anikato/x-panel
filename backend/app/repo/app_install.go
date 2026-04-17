@@ -63,11 +63,18 @@ func (a *AppInstallRepo) WithPort(port int) DBOption {
 }
 
 func (a *AppInstallRepo) Page(page, size int, opts ...DBOption) (int64, []model.AppInstall, error) {
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
 	var installs []model.AppInstall
-	db := getDb(opts...).Model(&model.AppInstall{})
-	count := int64(0)
-	db = db.Count(&count)
-	err := db.Limit(size).Offset(size * (page - 1)).Preload("App").Preload("AppDetail").Find(&installs).Error
+	var count int64
+	if err := getDb(opts...).Model(&model.AppInstall{}).Count(&count).Error; err != nil {
+		return 0, nil, err
+	}
+	err := getDb(opts...).Model(&model.AppInstall{}).Limit(size).Offset(size*(page-1)).Preload("App").Preload("AppDetail").Find(&installs).Error
 	return count, installs, err
 }
 

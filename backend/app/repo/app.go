@@ -63,11 +63,19 @@ func (a *AppRepo) OrderByRecommend() DBOption {
 }
 
 func (a *AppRepo) Page(page, size int, opts ...DBOption) (int64, []model.App, error) {
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
 	var apps []model.App
+	var count int64
 	db := getDb(opts...).Model(&model.App{})
-	count := int64(0)
-	db = db.Count(&count)
-	err := db.Limit(size).Offset(size * (page - 1)).Find(&apps).Error
+	if err := db.Count(&count).Error; err != nil {
+		return 0, nil, err
+	}
+	err := getDb(opts...).Model(&model.App{}).Limit(size).Offset(size * (page - 1)).Find(&apps).Error
 	return count, apps, err
 }
 
