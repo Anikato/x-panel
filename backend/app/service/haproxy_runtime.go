@@ -26,6 +26,9 @@ type HAProxyRuntimeService struct{}
 func NewIHAProxyRuntimeService() IHAProxyRuntimeService { return &HAProxyRuntimeService{} }
 
 func (s *HAProxyRuntimeService) ToggleServerLive(req dto.HAProxyServerToggleLive) error {
+	if !isHAProxyInstalled() {
+		return buserr.New(constant.ErrHAProxyNotInstalled)
+	}
 	srv, err := repo.NewIHAProxyServerRepo().Get(repo.WithByID(req.ID))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
@@ -48,6 +51,9 @@ func (s *HAProxyRuntimeService) ToggleServerLive(req dto.HAProxyServerToggleLive
 }
 
 func (s *HAProxyRuntimeService) SetServerWeightLive(req dto.HAProxyServerWeightLive) error {
+	if !isHAProxyInstalled() {
+		return buserr.New(constant.ErrHAProxyNotInstalled)
+	}
 	srv, err := repo.NewIHAProxyServerRepo().Get(repo.WithByID(req.ID))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
@@ -74,6 +80,9 @@ type statsCache struct {
 var haproxyStatsCache = &statsCache{}
 
 func (s *HAProxyRuntimeService) GetStats() (*dto.HAProxyStatsInfo, error) {
+	if !isHAProxyInstalled() {
+		return nil, buserr.New(constant.ErrHAProxyNotInstalled)
+	}
 	haproxyStatsCache.mu.Lock()
 	defer haproxyStatsCache.mu.Unlock()
 	if haproxyStatsCache.data != nil && time.Now().Before(haproxyStatsCache.expiresAt) {
@@ -139,6 +148,9 @@ func (s *HAProxyRuntimeService) GetStats() (*dto.HAProxyStatsInfo, error) {
 }
 
 func (s *HAProxyRuntimeService) GetInfo() (*dto.HAProxyRuntimeInfo, error) {
+	if !isHAProxyInstalled() {
+		return nil, buserr.New(constant.ErrHAProxyNotInstalled)
+	}
 	sock := haproxyutil.NewSocket(haproxyutil.DefaultSocketPath)
 	raw, err := sock.ShowInfo()
 	if err != nil {
@@ -148,6 +160,9 @@ func (s *HAProxyRuntimeService) GetInfo() (*dto.HAProxyRuntimeInfo, error) {
 }
 
 func (s *HAProxyRuntimeService) ClearCounters() error {
+	if !isHAProxyInstalled() {
+		return buserr.New(constant.ErrHAProxyNotInstalled)
+	}
 	sock := haproxyutil.NewSocket(haproxyutil.DefaultSocketPath)
 	if err := sock.ClearCounters(); err != nil {
 		return buserr.WithErr(constant.ErrHAProxySocketFailed, err)

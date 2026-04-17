@@ -63,4 +63,4 @@ export const rollbackHAProxyConfig = (id: number) =>
 
 // --- 证书（HTTP LB 选择证书时使用） ---
 export const listCertificatesForHAProxy = () =>
-  http.post('/certificates/search', { page: 1, pageSize: 200 })
+  http.post('/certificates/search', { page: 1, pageSize: 100 })

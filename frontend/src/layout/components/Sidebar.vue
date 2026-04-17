@@ -98,23 +98,12 @@ const menuList = computed(() => [
       { path: '/host/system', title: t('menu.systemSetting') },
     ],
   },
-  { path: '/traffic', title: t('menu.traffic'), icon: 'Odometer' },
   {
-    path: '/gost',
-    title: t('menu.gost'),
-    icon: 'Promotion',
+    path: '/network',
+    title: t('menu.network'),
+    icon: 'Connection',
     children: [
-      { path: '/gost/status', title: t('menu.gostStatus') },
-      { path: '/gost/forward', title: t('menu.gostForward') },
-      { path: '/gost/relay', title: t('menu.gostRelay') },
-      { path: '/gost/chain', title: t('menu.gostChain') },
-    ],
-  },
-  {
-    path: '/haproxy',
-    title: t('menu.haproxy'),
-    icon: 'Aim',
-    children: [
+      { path: '/traffic', title: t('menu.traffic') },
       { path: '/haproxy/status', title: t('menu.haproxyStatus') },
       { path: '/haproxy/http-lb', title: t('menu.haproxyHTTPLB') },
       { path: '/haproxy/tcp-lb', title: t('menu.haproxyTCPLB') },
@@ -122,6 +111,10 @@ const menuList = computed(() => [
       { path: '/haproxy/stats', title: t('menu.haproxyStats') },
       { path: '/haproxy/config', title: t('menu.haproxyConfig') },
       { path: '/haproxy/history', title: t('menu.haproxyHistory') },
+      { path: '/gost/status', title: t('menu.gostStatus') },
+      { path: '/gost/forward', title: t('menu.gostForward') },
+      { path: '/gost/relay', title: t('menu.gostRelay') },
+      { path: '/gost/chain', title: t('menu.gostChain') },
     ],
   },
   {

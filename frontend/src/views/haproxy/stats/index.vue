@@ -7,9 +7,22 @@
         <el-button style="margin-left: 12px;" @click="loadAll">
           <el-icon><Refresh /></el-icon>{{ $t('commons.refresh') }}
         </el-button>
-        <el-button type="warning" @click="clearAll">{{ $t('haproxy.clearCounters') }}</el-button>
+        <el-button type="warning" @click="clearAll" :disabled="!hasData">{{ $t('haproxy.clearCounters') }}</el-button>
       </div>
     </div>
+
+    <!-- 未安装提示 -->
+    <el-alert v-if="notInstalledError" type="warning" :closable="false" show-icon style="margin-bottom: 16px;">
+      <template #title>
+        {{ $t('haproxy.notInstalled') }}
+      </template>
+      <template #default>
+        {{ $t('haproxy.pleaseInstallFirst') }}
+        <el-button type="primary" size="small" style="margin-left: 12px;" @click="goToStatus">
+          {{ $t('haproxy.goToInstall') }}
+        </el-button>
+      </template>
+    </el-alert>
 
     <el-row :gutter="16" v-loading="loading">
       <el-col :span="6">
@@ -96,14 +109,21 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { getHAProxyStats, getHAProxyRuntimeInfo, clearHAProxyCounters } from '@/api/modules/haproxy'
 
 const { t } = useI18n()
+const router = useRouter()
 const loading = ref(false)
 const stats = ref<any>({ frontends: [], backends: [], servers: [] })
 const infoRaw = ref('')
 const autoRefresh = ref(false)
+const notInstalledError = ref(false)
 let timer: any = null
+
+const hasData = computed(() => {
+  return stats.value.frontends?.length > 0 || stats.value.backends?.length > 0 || stats.value.servers?.length > 0
+})
 
 const infoMap = computed(() => {
   const m: Record<string, string> = {}
@@ -137,10 +157,21 @@ const formatBytes = (n: number) => {
 
 const loadAll = async () => {
   loading.value = true
+  notInstalledError.value = false
   try {
     const [s, i] = await Promise.all([getHAProxyStats(), getHAProxyRuntimeInfo()])
     stats.value = s.data || { frontends: [], backends: [], servers: [] }
     infoRaw.value = i.data?.raw || ''
+  } catch (err: any) {
+    // 检查是否是未安装错误
+    if (err?.message?.includes('未安装') || err?.message?.includes('not installed')) {
+      notInstalledError.value = true
+      // 停止自动刷新
+      if (autoRefresh.value) {
+        autoRefresh.value = false
+        toggleAutoRefresh(false)
+      }
+    }
   } finally {
     loading.value = false
   }
@@ -148,9 +179,15 @@ const loadAll = async () => {
 
 const clearAll = async () => {
   await ElMessageBox.confirm(t('haproxy.clearCountersConfirm'), t('commons.warning'), { type: 'warning' })
-  await clearHAProxyCounters()
-  ElMessage.success(t('commons.operationSuccess'))
-  loadAll()
+  try {
+    await clearHAProxyCounters()
+    ElMessage.success(t('commons.operationSuccess'))
+    loadAll()
+  } catch (err: any) {
+    if (err?.message?.includes('未安装') || err?.message?.includes('not installed')) {
+      notInstalledError.value = true
+    }
+  }
 }
 
 const toggleAutoRefresh = (v: boolean) => {
@@ -159,6 +196,10 @@ const toggleAutoRefresh = (v: boolean) => {
   } else if (timer) {
     clearInterval(timer); timer = null
   }
+}
+
+const goToStatus = () => {
+  router.push('/haproxy/status')
 }
 
 onMounted(() => loadAll())
