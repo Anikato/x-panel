@@ -39,6 +39,11 @@ func Init() {
 		&model.GostChain{},
 		&model.CertSource{},
 		&model.CertSyncLog{},
+		&model.HAProxyLB{},
+		&model.HAProxyBackend{},
+		&model.HAProxyServer{},
+		&model.HAProxyACLRule{},
+		&model.HAProxyConfigVersion{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

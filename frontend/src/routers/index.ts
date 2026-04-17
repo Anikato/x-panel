@@ -14,6 +14,7 @@ import nodeRoutes from './modules/node'
 import settingRoutes from './modules/setting'
 import trafficRoutes from './modules/traffic'
 import gostRoutes from './modules/gost'
+import haproxyRoutes from './modules/haproxy'
 import toolboxRoutes from './modules/toolbox'
 import { setupGuard } from './guard'
 
@@ -46,6 +47,7 @@ const routes: RouteRecordRaw[] = [
       ...logRoutes,
       ...trafficRoutes,
       ...gostRoutes,
+      ...haproxyRoutes,
       ...toolboxRoutes,
       ...nodeRoutes,
       ...settingRoutes,

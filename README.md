@@ -17,6 +17,7 @@
 - 📊 **系统监控**：CPU/内存/磁盘/网络实时监控
 - 🔥 **防火墙管理**：ufw 端口/IP 规则管理
 - 🐳 **容器管理**：Docker 容器/镜像/网络/存储卷/Compose 编排
+- ⚖️ **HAProxy 负载均衡**：apt 一键安装，HTTP/TCP 负载均衡向导 + ACL 路由 + 复用 X-Panel SSL 证书 + Runtime Socket 实时上下线不 reload + 三段式安全变更 + 配置历史回滚
 - 🗄️ **数据库管理**：MySQL/MariaDB、PostgreSQL 数据库管理
 - ⏱️ **计划任务**：Shell 脚本、URL 请求、网站/数据库/目录定时备份
 - 💾 **备份系统**：支持本地、S3、SFTP、WebDAV 多种备份存储
@@ -51,9 +52,9 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
   | bash -s -- --no-ssl
 
-# 安装指定版本
+# 安装指定版本（版本号以 GitHub Releases 为准，须为实际存在的 v* tag）
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
-  | bash -s -- --version v1.0.0
+  | bash -s -- --version v0.7.6
 
 # 作为 Agent 节点安装（被主面板管理）
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \

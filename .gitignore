@@ -32,8 +32,10 @@ backend/data/
 待处理.md
 *.log
 
-# Docs
-docs/
+# Docs（默认忽略；仅追踪工作日志与版本发版说明）
+docs/*
+!docs/worklog.md
+!docs/versioning.md
 
 # SSH keys (never commit!)
 main_id_rsa

@@ -111,6 +111,20 @@ const menuList = computed(() => [
     ],
   },
   {
+    path: '/haproxy',
+    title: t('menu.haproxy'),
+    icon: 'Aim',
+    children: [
+      { path: '/haproxy/status', title: t('menu.haproxyStatus') },
+      { path: '/haproxy/http-lb', title: t('menu.haproxyHTTPLB') },
+      { path: '/haproxy/tcp-lb', title: t('menu.haproxyTCPLB') },
+      { path: '/haproxy/backends', title: t('menu.haproxyBackends') },
+      { path: '/haproxy/stats', title: t('menu.haproxyStats') },
+      { path: '/haproxy/config', title: t('menu.haproxyConfig') },
+      { path: '/haproxy/history', title: t('menu.haproxyHistory') },
+    ],
+  },
+  {
     path: '/toolbox',
     title: t('menu.toolbox'),
     icon: 'SetUp',

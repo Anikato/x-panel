@@ -134,6 +134,24 @@ ErrFail2banReload:
 ErrIPDBDownload:
   other: "IP 数据库下载失败: {{.detail}}"
 
+# HAProxy
+ErrHAProxyNotInstalled:
+  other: "HAProxy 未安装"
+ErrHAProxyAlreadyInstalled:
+  other: "HAProxy 已安装"
+ErrHAProxyCheckFailed:
+  other: "HAProxy 配置校验失败: {{.detail}}"
+ErrHAProxyReloadFailed:
+  other: "HAProxy 重载失败: {{.detail}}"
+ErrHAProxyNameExist:
+  other: "名称已存在"
+ErrHAProxyPortInUse:
+  other: "端口 {{.name}} 已被其他 LB 占用"
+ErrHAProxyBackendHasRefs:
+  other: "后端池被 LB 或 ACL 引用，请先解除引用"
+ErrHAProxySocketFailed:
+  other: "HAProxy Runtime 通信失败: {{.err}}"
+
 # 操作消息
 MsgLoginSuccess:
   other: "登录成功"

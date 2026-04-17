@@ -26,6 +26,7 @@ type ApiGroup struct {
 	NodeAPI
 	TrafficAPI
 	GostAPI
+	HAProxyAPI
 	ToolboxAPI
 	HostSystemAPI
 	SSHKeyAPI

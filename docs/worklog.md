@@ -4,6 +4,71 @@
 
 ---
 
+## 2026-04-17 — Session #75：HAProxy 负载均衡可视化管理（apt 安装版）
+
+### 完成内容
+
+**设计文档**：
+- [x] `docs/haproxy-design.md` — 从 HAProxy 用户视角出发的完整设计文档
+  - 三大设计原则：场景化菜单、三段式安全变更、Runtime 黄金通道（admin socket）
+  - 数据模型（LB/Backend/Server/ACL/ConfigVersion）与功能映射
+  - 配置生成器与证书合并策略、apt 安装流程、实时统计流水线
+  - 完整 API 设计与前端模块拆分
+
+**后端（Go）**：
+- [x] `backend/app/model/haproxy.go` — LB/Backend/Server/ACL/ConfigVersion 模型
+- [x] `backend/app/dto/haproxy.go` — 全部 HAProxy 相关 DTO
+- [x] `backend/utils/haproxy/socket.go` — admin socket 客户端（disable/enable/set-weight/show stat/show info/clear counters）
+- [x] `backend/utils/haproxy/parser.go` — `show stat` CSV 解析 + 版本号提取
+- [x] `backend/utils/haproxy/builder.go` — 基于数据库模型生成 `haproxy.cfg`（global/defaults/frontend/backend/listen stats），支持 HTTP/TCP 模式、ACL 路由、证书合并
+- [x] `backend/app/repo/haproxy.go` — 五类模型的 GORM Repo + 共用 DBOption
+- [x] `backend/app/service/haproxy_install.go` — apt 安装/升级/卸载，systemd 控制，初始化默认配置 + rsyslog
+- [x] `backend/app/service/haproxy.go` — 业务核心：CRUD + **三段式 ApplyChange**（生成→`haproxy -c -f` 校验→备份→写入→reload→失败自动回滚→记录版本）
+- [x] `backend/app/service/haproxy_runtime.go` — 运行时通道：实时上下线/调整权重，统计聚合带 2 秒缓存
+- [x] `backend/app/service/haproxy.go` — 新增 `PreviewConfig()`（只生成不应用，用于前端向导预览）
+- [x] `backend/app/api/v1/haproxy.go` — 全部 HTTP Handler + 统一响应 + `operator` 上下文提取
+- [x] `backend/router/router.go` — 注册所有 `/haproxy/*` 路由
+- [x] `backend/init/migration/migration.go` — AutoMigrate 5 个新模型
+- [x] `backend/constant/errs.go` + `backend/i18n/lang/zh.yaml` — HAProxy 专属业务错误
+
+**前端（Vue 3 + Element Plus）**：
+- [x] `frontend/src/api/modules/haproxy.ts` — 全部 API 客户端封装
+- [x] `frontend/src/routers/modules/haproxy.ts` + `routers/index.ts` — 7 个路由注册
+- [x] `frontend/src/layout/components/Sidebar.vue` — 顶级菜单：概览/HTTP LB/TCP LB/后端池/实时监控/原始配置/配置历史
+- [x] `frontend/src/views/haproxy/status/index.vue` — 概览页：安装/升级/启停/自启/Runtime 通道/Stats 端点展示
+- [x] `frontend/src/views/haproxy/components/LBList.vue` — HTTP/TCP 共用的 LB 列表+表单（SSL 证书下拉、默认后端、超时、备注）
+- [x] `frontend/src/views/haproxy/components/ACLDialog.vue` — HTTP LB 的 ACL 规则管理（host/path/header/src 7 种匹配类型）
+- [x] `frontend/src/views/haproxy/http-lb/index.vue` + `tcp-lb/index.vue` — 复用 LBList 组件
+- [x] `frontend/src/views/haproxy/backends/index.vue` — 后端池列表（可展开查看成员）+ 完整表单（负载算法/会话保持/健康检查 7 种类型）
+- [x] `frontend/src/views/haproxy/components/BackendServers.vue` — 嵌入式成员表，权重调整/上下线都走 admin socket **不 reload**
+- [x] `frontend/src/views/haproxy/stats/index.vue` — 实时监控：Frontends/Backends/Servers 三张表 + 自动刷新 + 关键指标卡片
+- [x] `frontend/src/views/haproxy/config/index.vue` — 原始配置三模式切换（向导预览/当前激活/自定义编辑）+ `haproxy -c` 校验 + 保存并热重载
+- [x] `frontend/src/views/haproxy/history/index.vue` — 配置历史 + 详情查看 + 一键回滚
+- [x] `frontend/src/i18n/zh.ts` — 新增 `commons.online/offline/failed/view` 及 `haproxy.*` 约 90 条文案
+
+### 关键决策
+
+- **Nginx 并存**：HAProxy 走 apt 系统包（`/etc/haproxy/` + `systemctl`），与 X-Panel 原有 Nginx 并存，互不干扰
+- **配置安全**：所有变更（CRUD + 原始编辑 + 回滚）统一走 `ApplyChange`，失败自动 `rollback` 回旧版本并重载
+- **运行时操作不 reload**：上下线成员、调整权重通过 admin socket 立即生效，同时更新数据库；数据库成为"意图真理源"，下次 reload 自动保持
+- **SSL 证书复用**：自动把 X-Panel 已签发的 `fullchain.pem` + `privkey.pem` 合并为 HAProxy 需要的单 PEM，写入 `/etc/haproxy/certs/cert-{id}.pem`
+- **ACL 分层**：ACL 规则按 priority 排序生成，匹配失败走 LB 的 `defaultBackendID`
+- **版本历史**：成功/失败/回滚都记录，最多保留 50 个版本，防止无限增长
+
+### 验证
+
+- [x] `go build ./...` 通过
+- [x] `ReadLints` 对 haproxy 后端/前端文件无错误
+- [ ] 待真实 Ubuntu 服务器上端到端验证 apt 安装/配置/运行时切换/SSL 证书合并流程
+
+### 下一步
+
+- 在真实 Ubuntu 24 服务器上验证完整流程（apt 安装 → 创建 LB → 成员上下线不断连 → SSL 跳转 → 日志查看）
+- 可选扩展：配置历史 diff 对比、日志查看器、防火墙自动开端口、跨节点同步（Agent 模式）
+- 发版：以 **GitHub 上当前最新 `v*` tag** 为基准递增 PATCH（截至本段编写时最新为 `v0.7.5`，则下一发为 `v0.7.6`），推送 tag 触发 CI；勿再使用已废弃的四段式 tag 格式
+
+---
+
 ## 2026-04-15 — Session #74：系统代理功能重构
 
 ### 完成内容

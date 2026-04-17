@@ -55,4 +55,14 @@ const (
 	ErrGostAlreadyInstalled = "ErrGostAlreadyInstalled"
 	ErrGostAPIUnavailable   = "ErrGostAPIUnavailable"
 	ErrGostNameExist        = "ErrGostNameExist"
+
+	// HAProxy
+	ErrHAProxyNotInstalled     = "ErrHAProxyNotInstalled"
+	ErrHAProxyAlreadyInstalled = "ErrHAProxyAlreadyInstalled"
+	ErrHAProxyCheckFailed      = "ErrHAProxyCheckFailed"
+	ErrHAProxyReloadFailed     = "ErrHAProxyReloadFailed"
+	ErrHAProxyNameExist        = "ErrHAProxyNameExist"
+	ErrHAProxyPortInUse        = "ErrHAProxyPortInUse"
+	ErrHAProxyBackendHasRefs   = "ErrHAProxyBackendHasRefs"
+	ErrHAProxySocketFailed     = "ErrHAProxySocketFailed"
 )
