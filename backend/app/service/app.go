@@ -12,13 +12,12 @@ import (
 	"xpanel/app/repo"
 	"xpanel/buserr"
 	"xpanel/global"
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	// 默认应用商店配置（兼容 1Panel）
-	DefaultAppStoreRepo   = "https://github.com/1Panel-dev/appstore"
-	DefaultAppStoreBranch = "main"
-	DefaultAppStoreURL    = "https://resource.1panel.hk/appstore"
+	appstoreGitHubAPI  = "https://api.github.com/repos/1Panel-dev/appstore/contents"
+	appstoreRawBase    = "https://raw.githubusercontent.com/1Panel-dev/appstore/main"
 )
 
 var (
@@ -104,46 +103,89 @@ func (s *AppService) SyncAppStore(force bool) error {
 	return nil
 }
 
-// downloadAppList 下载应用列表
+// downloadAppList 从 GitHub 获取应用列表
 func (s *AppService) downloadAppList() (*AppListResponse, error) {
-	// 下载 1panel.json
-	url := fmt.Sprintf("%s/1panel.json", DefaultAppStoreURL)
-	resp, err := http.Get(url)
+	// 1. 列出 apps/ 目录下所有子目录
+	entries, err := fetchGitHubDir(appstoreGitHubAPI + "/apps")
 	if err != nil {
 		return nil, buserr.WithDetail("ErrDownloadAppList", err.Error(), err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, buserr.WithDetail("ErrDownloadAppList", fmt.Sprintf("status code: %d", resp.StatusCode), nil)
+	var apps []AppData
+	for _, entry := range entries {
+		if entry.Type != "dir" {
+			continue
+		}
+		appData, err := s.fetchAppData(entry.Name)
+		if err != nil {
+			global.LOG.Warnf("[AppStore] Skip app %s: %v", entry.Name, err)
+			continue
+		}
+		apps = append(apps, *appData)
 	}
 
-	var appList AppListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&appList); err != nil {
-		return nil, buserr.WithDetail("ErrParseAppList", err.Error(), err)
-	}
-
-	return &appList, nil
+	return &AppListResponse{Apps: apps}, nil
 }
 
-// downloadTags 下载标签列表
+// fetchAppData 拉取单个应用的 data.yml 和所有版本
+func (s *AppService) fetchAppData(appKey string) (*AppData, error) {
+	// 读 apps/{key}/data.yml
+	raw, err := fetchRaw(appstoreRawBase + "/apps/" + appKey + "/data.yml")
+	if err != nil {
+		return nil, err
+	}
+
+	var meta appYAML
+	if err := parseYAML(raw, &meta); err != nil {
+		return nil, err
+	}
+
+	ap := meta.toAppData(appKey)
+
+	// 列出版本子目录
+	entries, err := fetchGitHubDir(appstoreGitHubAPI + "/apps/" + appKey)
+	if err != nil {
+		return &ap, nil
+	}
+	for _, entry := range entries {
+		if entry.Type != "dir" {
+			continue
+		}
+		versionRaw, err := fetchRaw(appstoreRawBase + "/apps/" + appKey + "/" + entry.Name + "/data.yml")
+		if err != nil {
+			continue
+		}
+		var verMeta versionYAML
+		if err := parseYAML(versionRaw, &verMeta); err != nil {
+			continue
+		}
+		composeRaw, _ := fetchRaw(appstoreRawBase + "/apps/" + appKey + "/" + entry.Name + "/docker-compose.yml")
+		ap.Versions = append(ap.Versions, AppVersionData{
+			Version:       entry.Name,
+			Params:        verMeta.toParams(),
+			DockerCompose: composeRaw,
+		})
+	}
+
+	return &ap, nil
+}
+
+// downloadTags 从 GitHub 获取标签列表（根 data.yaml）
 func (s *AppService) downloadTags() ([]TagData, error) {
-	url := fmt.Sprintf("%s/tags.json", DefaultAppStoreURL)
-	resp, err := http.Get(url)
+	raw, err := fetchRaw(appstoreRawBase + "/data.yaml")
 	if err != nil {
 		return nil, buserr.WithDetail("ErrDownloadTags", err.Error(), err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, buserr.WithDetail("ErrDownloadTags", fmt.Sprintf("status code: %d", resp.StatusCode), nil)
-	}
-
-	var tags []TagData
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+	var root rootYAML
+	if err := parseYAML(raw, &root); err != nil {
 		return nil, buserr.WithDetail("ErrParseTags", err.Error(), err)
 	}
 
+	var tags []TagData
+	for _, t := range root.AdditionalProperties.Tags {
+		tags = append(tags, TagData{Key: t.Key, Name: t.Name, Sort: t.Sort})
+	}
 	return tags, nil
 }
 
@@ -548,27 +590,27 @@ type AppListResponse struct {
 }
 
 type AppData struct {
-	Name                 string                 `json:"name"`
-	Key                  string                 `json:"key"`
-	ShortDescZh          string                 `json:"shortDescZh"`
-	ShortDescEn          string                 `json:"shortDescEn"`
-	Description          string                 `json:"description"`
-	Icon                 string                 `json:"icon"`
-	Type                 string                 `json:"type"`
-	Required             string                 `json:"required"`
-	CrossVersionUpdate   bool                   `json:"crossVersionUpdate"`
-	Limit                int                    `json:"limit"`
-	Website              string                 `json:"website"`
-	Github               string                 `json:"github"`
-	Document             string                 `json:"document"`
-	Recommend            int                    `json:"recommend"`
-	Architectures        []string               `json:"architectures"`
-	MemoryRequired       int                    `json:"memoryRequired"`
-	GpuSupport           bool                   `json:"gpuSupport"`
-	RequiredPanelVersion string                 `json:"requiredPanelVersion"`
-	BatchInstallSupport  bool                   `json:"batchInstallSupport"`
-	Tags                 []string               `json:"tags"`
-	Versions             []AppVersionData       `json:"versions"`
+	Name                 string           `json:"name"`
+	Key                  string           `json:"key"`
+	ShortDescZh          string           `json:"shortDescZh"`
+	ShortDescEn          string           `json:"shortDescEn"`
+	Description          string           `json:"description"`
+	Icon                 string           `json:"icon"`
+	Type                 string           `json:"type"`
+	Required             string           `json:"required"`
+	CrossVersionUpdate   bool             `json:"crossVersionUpdate"`
+	Limit                int              `json:"limit"`
+	Website              string           `json:"website"`
+	Github               string           `json:"github"`
+	Document             string           `json:"document"`
+	Recommend            int              `json:"recommend"`
+	Architectures        []string         `json:"architectures"`
+	MemoryRequired       int              `json:"memoryRequired"`
+	GpuSupport           bool             `json:"gpuSupport"`
+	RequiredPanelVersion string           `json:"requiredPanelVersion"`
+	BatchInstallSupport  bool             `json:"batchInstallSupport"`
+	Tags                 []string         `json:"tags"`
+	Versions             []AppVersionData `json:"versions"`
 }
 
 type AppVersionData struct {
@@ -582,4 +624,136 @@ type TagData struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 	Sort int    `json:"sort"`
+}
+
+// --- GitHub API 辅助 ---
+
+type ghEntry struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+func fetchGitHubDir(url string) ([]ghEntry, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
+	}
+	var entries []ghEntry
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func fetchRaw(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
+	}
+	var buf []byte
+	buf = make([]byte, 0, 4096)
+	tmp := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if err != nil {
+			break
+		}
+	}
+	return string(buf), nil
+}
+
+func parseYAML(raw string, out interface{}) error {
+	return yaml.Unmarshal([]byte(raw), out)
+}
+
+// --- YAML 数据结构 ---
+
+type rootYAML struct {
+	AdditionalProperties struct {
+		Tags []struct {
+			Key  string `yaml:"key"`
+			Name string `yaml:"name"`
+			Sort int    `yaml:"sort"`
+		} `yaml:"tags"`
+	} `yaml:"additionalProperties"`
+}
+
+type appYAML struct {
+	AdditionalProperties struct {
+		Key                string   `yaml:"key"`
+		Name               string   `yaml:"name"`
+		Tags               []string `yaml:"tags"`
+		ShortDescZh        string   `yaml:"shortDescZh"`
+		ShortDescEn        string   `yaml:"shortDescEn"`
+		Type               string   `yaml:"type"`
+		CrossVersionUpdate bool     `yaml:"crossVersionUpdate"`
+		Limit              int      `yaml:"limit"`
+		Recommend          int      `yaml:"recommend"`
+		Website            string   `yaml:"website"`
+		Github             string   `yaml:"github"`
+		Document           string   `yaml:"document"`
+		Architectures      []string `yaml:"architectures"`
+	} `yaml:"additionalProperties"`
+}
+
+func (a *appYAML) toAppData(dirKey string) AppData {
+	p := a.AdditionalProperties
+	key := p.Key
+	if key == "" {
+		key = dirKey
+	}
+	return AppData{
+		Name:        p.Name,
+		Key:         key,
+		ShortDescZh: p.ShortDescZh,
+		ShortDescEn: p.ShortDescEn,
+		Type:        p.Type,
+		CrossVersionUpdate: p.CrossVersionUpdate,
+		Limit:         p.Limit,
+		Recommend:     p.Recommend,
+		Website:       p.Website,
+		Github:        p.Github,
+		Document:      p.Document,
+		Architectures: p.Architectures,
+		Tags:          p.Tags,
+	}
+}
+
+type versionYAML struct {
+	AdditionalProperties struct {
+		FormFields []struct {
+			EnvKey  string      `yaml:"envKey"`
+			Default interface{} `yaml:"default"`
+			Type    string      `yaml:"type"`
+			LabelZh string      `yaml:"labelZh"`
+			LabelEn string      `yaml:"labelEn"`
+			Required bool       `yaml:"required"`
+		} `yaml:"formFields"`
+	} `yaml:"additionalProperties"`
+}
+
+func (v *versionYAML) toParams() map[string]interface{} {
+	params := make(map[string]interface{})
+	for _, f := range v.AdditionalProperties.FormFields {
+		if f.EnvKey == "" {
+			continue
+		}
+		params[f.EnvKey] = map[string]interface{}{
+			"type":     f.Type,
+			"default":  f.Default,
+			"labelZh":  f.LabelZh,
+			"labelEn":  f.LabelEn,
+			"required": f.Required,
+		}
+	}
+	return params
 }
