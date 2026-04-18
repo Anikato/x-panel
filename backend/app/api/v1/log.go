@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
@@ -65,4 +66,24 @@ func (l *LogAPI) CleanOperationLog(c *gin.Context) {
 		return
 	}
 	helper.SuccessWithMsg(c, "MsgDeleteSuccess")
+}
+
+// GetSystemLog 获取系统日志
+func (l *LogAPI) GetSystemLog(c *gin.Context) {
+	linesStr := c.DefaultQuery("lines", "100")
+	lines, err := strconv.Atoi(linesStr)
+	if err != nil || lines <= 0 {
+		lines = 100
+	}
+	if lines > 1000 {
+		lines = 1000
+	}
+
+	logs, err := logService.GetSystemLog(lines)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+
+	helper.SuccessWithData(c, logs)
 }

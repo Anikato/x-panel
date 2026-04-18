@@ -138,6 +138,7 @@ const menuList = computed(() => [
     title: t('menu.log'),
     icon: 'Document',
     children: [
+      { path: '/log/system', title: t('menu.systemLog') },
       { path: '/log/login', title: t('menu.loginLog') },
       { path: '/log/operation', title: t('menu.operationLog') },
     ],

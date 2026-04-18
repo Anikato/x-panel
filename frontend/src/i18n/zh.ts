@@ -93,6 +93,7 @@ export default {
     log: '日志审计',
     loginLog: '登录日志',
     operationLog: '操作日志',
+    systemLog: '面板日志',
     traffic: '流量统计',
     gost: '代理管理',
     gostStatus: 'GOST 状态',

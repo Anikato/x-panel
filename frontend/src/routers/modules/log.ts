@@ -13,6 +13,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/log/operation/index.vue'),
     meta: { title: 'menu.operationLog', icon: 'Notebook' },
   },
+  {
+    path: '/log/system',
+    name: 'SystemLog',
+    component: () => import('@/views/log/system/index.vue'),
+    meta: { title: 'menu.systemLog', icon: 'Monitor' },
+  },
 ]
 
 export default routes
