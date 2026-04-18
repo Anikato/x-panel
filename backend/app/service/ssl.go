@@ -493,7 +493,8 @@ func (s *CertificateService) ResolveCertFilePaths(certID uint) (string, string, 
 	if err != nil {
 		return "", "", buserr.New(constant.ErrRecordNotFound)
 	}
-	if cert.Status != "ready" {
+	// 与证书管理一致：ACME/上传成功后为 applied；新建未申请为 ready；证书同步写入为 applied
+	if cert.Status != "ready" && cert.Status != "applied" {
 		return "", "", buserr.New(constant.ErrPanelSSLCertNotReady)
 	}
 	sslDir := s.GetSSLDir()

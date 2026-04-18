@@ -489,9 +489,10 @@ const fetchPanelSSL = async () => {
 
 const fetchReadyCertificates = async () => {
   try {
-    const res = await searchCertificate({ page: 1, pageSize: 500, info: '' })
+    const res = await searchCertificate({ page: 1, pageSize: 100, info: '' })
     const items = (res as { data?: { items?: Certificate[] } }).data?.items ?? []
-    readyCerts.value = items.filter((c) => c.status === 'ready')
+    // ready：已创建未签发；applied：ACME/上传/证书同步成功后落盘
+    readyCerts.value = items.filter((c) => c.status === 'ready' || c.status === 'applied')
   } catch {
     readyCerts.value = []
   }

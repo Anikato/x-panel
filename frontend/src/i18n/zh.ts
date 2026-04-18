@@ -281,7 +281,7 @@ export default {
     panelHttpsSelectRequired: '请选择一张证书',
     panelHttpsRestartHint: '保存后请重启面板服务，新的证书才会生效。',
     panelHttpsSaveSuccess: '配置已保存，请重启面板使证书生效',
-    panelHttpsNoReadyCert: '暂无已就绪的证书，请先在证书管理中申请或上传',
+    panelHttpsNoReadyCert: '当前页暂无可用证书（状态需为「已就绪」或「已应用」）。证书同步导入为「已应用」；若证书很多请用证书管理搜索后再来绑定。',
   },
   log: {
     loginLog: '登录日志',
