@@ -13,6 +13,7 @@ type IAppDetailRepo interface {
 	WithAppID(appID uint) DBOption
 	WithVersion(version string) DBOption
 	WithAppIDAndVersion(appID uint, version string) DBOption
+	WithAppIDIn(appIDs []uint) DBOption
 
 	// CRUD 操作
 	GetFirst(opts ...DBOption) (model.AppDetail, error)
@@ -44,6 +45,12 @@ func (a *AppDetailRepo) WithVersion(version string) DBOption {
 func (a *AppDetailRepo) WithAppIDAndVersion(appID uint, version string) DBOption {
 	return func(g *gorm.DB) *gorm.DB {
 		return g.Where("app_id = ? AND version = ?", appID, version)
+	}
+}
+
+func (a *AppDetailRepo) WithAppIDIn(appIDs []uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("app_id IN (?)", appIDs)
 	}
 }
 

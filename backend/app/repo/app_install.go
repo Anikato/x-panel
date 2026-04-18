@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"xpanel/app/model"
+	"xpanel/global"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -20,6 +21,7 @@ type IAppInstallRepo interface {
 	Page(page, size int, opts ...DBOption) (int64, []model.AppInstall, error)
 	GetFirst(opts ...DBOption) (model.AppInstall, error)
 	GetBy(opts ...DBOption) ([]model.AppInstall, error)
+	CountByAppIDs(appIDs []uint) (map[uint]int, error)
 	Create(ctx context.Context, install *model.AppInstall) error
 	Save(ctx context.Context, install *model.AppInstall) error
 	Delete(ctx context.Context, install *model.AppInstall) error
@@ -90,6 +92,31 @@ func (a *AppInstallRepo) GetBy(opts ...DBOption) ([]model.AppInstall, error) {
 	db := getDb(opts...).Model(&model.AppInstall{})
 	err := db.Preload("App").Preload("AppDetail").Find(&installs).Error
 	return installs, err
+}
+
+type appInstallCount struct {
+	AppID uint
+	Count int
+}
+
+func (a *AppInstallRepo) CountByAppIDs(appIDs []uint) (map[uint]int, error) {
+	if len(appIDs) == 0 {
+		return map[uint]int{}, nil
+	}
+	var results []appInstallCount
+	err := global.DB.Model(&model.AppInstall{}).
+		Select("app_id, count(*) as count").
+		Where("app_id IN (?)", appIDs).
+		Group("app_id").
+		Scan(&results).Error
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[uint]int, len(results))
+	for _, r := range results {
+		counts[r.AppID] = r.Count
+	}
+	return counts, nil
 }
 
 func (a *AppInstallRepo) Create(ctx context.Context, install *model.AppInstall) error {

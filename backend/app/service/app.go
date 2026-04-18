@@ -40,18 +40,20 @@ type IAppService interface {
 }
 
 type AppService struct {
-	appRepo       repo.IAppRepo
-	appDetailRepo repo.IAppDetailRepo
-	appTagRepo    repo.IAppTagRepo
-	tagRepo       repo.ITagRepo
+	appRepo           repo.IAppRepo
+	appDetailRepo     repo.IAppDetailRepo
+	appTagRepo        repo.IAppTagRepo
+	tagRepo           repo.ITagRepo
+	appInstallRepo    repo.IAppInstallRepo
 }
 
 func NewIAppService() IAppService {
 	return &AppService{
-		appRepo:       repo.NewIAppRepo(),
-		appDetailRepo: repo.NewIAppDetailRepo(),
-		appTagRepo:    repo.NewIAppTagRepo(),
-		tagRepo:       repo.NewITagRepo(),
+		appRepo:        repo.NewIAppRepo(),
+		appDetailRepo:  repo.NewIAppDetailRepo(),
+		appTagRepo:     repo.NewIAppTagRepo(),
+		tagRepo:        repo.NewITagRepo(),
+		appInstallRepo: repo.NewIAppInstallRepo(),
 	}
 }
 
@@ -379,11 +381,50 @@ func (s *AppService) PageApps(req dto.AppSearchReq) (int64, []dto.AppDTO, error)
 		return 0, nil, err
 	}
 
-	// 转换为 DTO
-	var appDTOs []dto.AppDTO
-	for _, app := range apps {
+	if len(apps) == 0 {
+		return total, []dto.AppDTO{}, nil
+	}
+
+	// 收集所有 appID，批量查询关联数据
+	appIDs := make([]uint, len(apps))
+	for i, app := range apps {
+		appIDs[i] = app.ID
+	}
+
+	// 批量查版本
+	allDetails, err := s.appDetailRepo.GetBy(s.appDetailRepo.WithAppIDIn(appIDs))
+	if err != nil {
+		return 0, nil, err
+	}
+	versionMap := make(map[uint][]string, len(apps))
+	for _, d := range allDetails {
+		versionMap[d.AppID] = append(versionMap[d.AppID], d.Version)
+	}
+
+	// 批量查标签
+	allTags, err := s.appTagRepo.GetBy(s.appTagRepo.WithAppIDIn(appIDs))
+	if err != nil {
+		return 0, nil, err
+	}
+	tagMap := make(map[uint][]string, len(apps))
+	for _, t := range allTags {
+		tagMap[t.AppID] = append(tagMap[t.AppID], t.TagKey)
+	}
+
+	// 批量查安装数
+	installCounts, err := s.appInstallRepo.CountByAppIDs(appIDs)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	// 组装 DTO
+	appDTOs := make([]dto.AppDTO, len(apps))
+	for i, app := range apps {
 		appDTO := s.convertAppToDTO(app)
-		appDTOs = append(appDTOs, appDTO)
+		appDTO.Versions = versionMap[app.ID]
+		appDTO.Tags = tagMap[app.ID]
+		appDTO.InstalledCount = installCounts[app.ID]
+		appDTOs[i] = appDTO
 	}
 
 	return total, appDTOs, nil

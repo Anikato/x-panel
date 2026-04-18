@@ -11,6 +11,7 @@ type IAppTagRepo interface {
 	// 查询选项
 	WithAppID(appID uint) DBOption
 	WithTagKey(tagKey string) DBOption
+	WithAppIDIn(appIDs []uint) DBOption
 
 	// CRUD 操作
 	GetBy(opts ...DBOption) ([]model.AppTag, error)
@@ -34,6 +35,12 @@ func (a *AppTagRepo) WithAppID(appID uint) DBOption {
 func (a *AppTagRepo) WithTagKey(tagKey string) DBOption {
 	return func(g *gorm.DB) *gorm.DB {
 		return g.Where("tag_key = ?", tagKey)
+	}
+}
+
+func (a *AppTagRepo) WithAppIDIn(appIDs []uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("app_id IN (?)", appIDs)
 	}
 }
 
