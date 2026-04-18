@@ -34,3 +34,13 @@ export const shutdownServer = () => {
 export const restartPanel = () => {
   return http.post('/settings/restart-panel')
 }
+
+/** 获取面板 HTTPS 配置 */
+export const getPanelSSL = () => {
+  return http.get('/settings/panel-ssl')
+}
+
+/** 将面板 HTTPS 切换为证书管理中的指定证书 */
+export const updatePanelSSL = (data: { certificateId: number }) => {
+  return http.post('/settings/panel-ssl/update', data)
+}

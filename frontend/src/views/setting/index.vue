@@ -287,6 +287,54 @@
           </el-form>
         </el-collapse-item>
 
+        <el-collapse-item :title="t('setting.panelHttpsCert')" name="panelSsl">
+          <div v-loading="loadingPanelSSL">
+            <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+              {{ t('setting.panelHttpsCertHint') }}
+            </el-alert>
+            <el-descriptions :column="1" border size="small" style="max-width: 720px; margin-bottom: 16px">
+              <el-descriptions-item :label="t('setting.panelHttpsEnabled')">
+                {{ panelSSLInfo.enable ? t('setting.panelHttpsOn') : t('setting.panelHttpsOff') }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="panelSSLInfo.primaryDomain" :label="t('setting.panelHttpsBoundDomain')">
+                {{ panelSSLInfo.primaryDomain }}
+              </el-descriptions-item>
+              <el-descriptions-item :label="t('setting.panelHttpsCertPath')">
+                <el-text class="mono-text" size="small">{{ panelSSLInfo.certPath || '—' }}</el-text>
+              </el-descriptions-item>
+              <el-descriptions-item :label="t('setting.panelHttpsKeyPath')">
+                <el-text class="mono-text" size="small">{{ panelSSLInfo.keyPath || '—' }}</el-text>
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-form label-width="160px" style="max-width: 640px">
+              <el-form-item :label="t('setting.panelHttpsSelectCert')">
+                <el-select
+                  v-model="panelSSLCertSelect"
+                  filterable
+                  clearable
+                  :placeholder="t('setting.panelHttpsSelectCert')"
+                  style="width: 100%; max-width: 520px"
+                >
+                  <el-option
+                    v-for="c in readyCerts"
+                    :key="c.id"
+                    :label="`${c.primaryDomain} (ID ${c.id})`"
+                    :value="c.id"
+                  />
+                </el-select>
+                <div v-if="readyCerts.length === 0" style="margin-top: 6px">
+                  <el-text type="warning" size="small">{{ t('setting.panelHttpsNoReadyCert') }}</el-text>
+                </div>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" :loading="savingPanelSSL" @click="handleSavePanelSSL">{{ t('setting.save') }}</el-button>
+                <el-button @click="handleRestartPanelForSsl">{{ t('home.restartPanel') }}</el-button>
+              </el-form-item>
+              <el-text type="info" size="small">{{ t('setting.panelHttpsRestartHint') }}</el-text>
+            </el-form>
+          </div>
+        </el-collapse-item>
+
         <el-collapse-item :title="t('setting.agentSetting')" name="agent">
           <el-form label-width="140px" style="max-width: 600px">
             <el-form-item :label="t('setting.agentToken')">
@@ -396,12 +444,13 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting, InfoFilled, User, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
-import { getSettingInfo, updateSetting, updatePort, testProxy } from '@/api/modules/setting'
+import { getSettingInfo, updateSetting, updatePort, testProxy, getPanelSSL, updatePanelSSL, restartPanel } from '@/api/modules/setting'
+import { searchCertificate } from '@/api/modules/ssl'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
 import { updatePassword } from '@/api/modules/auth'
 import { useGlobalStore, type ThemeMode } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
-import type { UpgradeInfo } from '@/api/interface'
+import type { UpgradeInfo, Certificate } from '@/api/interface'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 import { BG_PRESETS, FONT_PRESETS, CARD_BORDER_STYLES } from '@/utils/appearance'
 import { TERMINAL_THEME_PRESETS, TERMINAL_FONT_PRESETS } from '@/utils/terminal-theme'
@@ -410,6 +459,78 @@ const { t } = useI18n()
 const globalStore = useGlobalStore()
 
 const activeCollapse = ref(['panel'])
+
+const panelSSLInfo = reactive({
+  enable: false,
+  certPath: '',
+  keyPath: '',
+  certificateId: 0,
+  primaryDomain: '',
+})
+const readyCerts = ref<Certificate[]>([])
+const panelSSLCertSelect = ref<number | undefined>(undefined)
+const loadingPanelSSL = ref(false)
+const savingPanelSSL = ref(false)
+
+const fetchPanelSSL = async () => {
+  loadingPanelSSL.value = true
+  try {
+    const res = await getPanelSSL() as { data?: typeof panelSSLInfo }
+    if (res.data) {
+      Object.assign(panelSSLInfo, res.data)
+      panelSSLCertSelect.value = res.data.certificateId ? res.data.certificateId : undefined
+    }
+  } catch {
+    /* ignore */
+  } finally {
+    loadingPanelSSL.value = false
+  }
+}
+
+const fetchReadyCertificates = async () => {
+  try {
+    const res = await searchCertificate({ page: 1, pageSize: 500, info: '' })
+    const items = (res as { data?: { items?: Certificate[] } }).data?.items ?? []
+    readyCerts.value = items.filter((c) => c.status === 'ready')
+  } catch {
+    readyCerts.value = []
+  }
+}
+
+const handleSavePanelSSL = async () => {
+  if (!panelSSLCertSelect.value) {
+    ElMessage.warning(t('setting.panelHttpsSelectRequired'))
+    return
+  }
+  savingPanelSSL.value = true
+  try {
+    await updatePanelSSL({ certificateId: panelSSLCertSelect.value })
+    ElMessage.success(t('setting.panelHttpsSaveSuccess'))
+    await fetchPanelSSL()
+  } catch {
+    /* ElMessage from http */
+  } finally {
+    savingPanelSSL.value = false
+  }
+}
+
+const handleRestartPanelForSsl = async () => {
+  try {
+    await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), {
+      type: 'warning',
+      confirmButtonText: t('commons.confirm'),
+      cancelButtonText: t('commons.cancel'),
+    })
+  } catch {
+    return
+  }
+  try {
+    await restartPanel()
+    ElMessage.success(t('home.restartPanelSuccess'))
+  } catch {
+    /* ignore */
+  }
+}
 
 const selectPreset = (key: string) => {
   globalStore.setAccent(key)
@@ -661,7 +782,12 @@ const handleTestProxy = async () => {
   } finally { testingProxy.value = false }
 }
 
-onMounted(() => { fetchVersion(); fetchSettings() })
+onMounted(() => {
+  fetchVersion()
+  fetchSettings()
+  fetchPanelSSL()
+  fetchReadyCertificates()
+})
 onUnmounted(() => { if (logTimer) clearInterval(logTimer) })
 </script>
 

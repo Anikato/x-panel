@@ -97,6 +97,30 @@ func (s *SettingAPI) TestProxy(c *gin.Context) {
 	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
 }
 
+// GetPanelSSL 获取面板 HTTPS 配置
+func (s *SettingAPI) GetPanelSSL(c *gin.Context) {
+	info, err := settingService.GetPanelSSL()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, info)
+}
+
+// UpdatePanelSSL 将面板 HTTPS 切换为证书管理中的证书（写 config，需重启生效）
+func (s *SettingAPI) UpdatePanelSSL(c *gin.Context) {
+	var req dto.PanelSSLUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := settingService.UpdatePanelSSL(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
+}
+
 // RestartPanel 重启面板
 func (s *SettingAPI) RestartPanel(c *gin.Context) {
 	global.LOG.Warn("Panel restart requested by user")

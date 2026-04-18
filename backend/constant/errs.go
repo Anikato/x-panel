@@ -31,6 +31,9 @@ const (
 	ErrSSLAcmeRegister = "ErrSSLAcmeRegister"
 	ErrSSLApply        = "ErrSSLApply"
 	ErrSSLRenew        = "ErrSSLRenew"
+	ErrPanelSSLCertNotReady   = "ErrPanelSSLCertNotReady"
+	ErrPanelSSLCertFiles      = "ErrPanelSSLCertFiles"
+	ErrPanelSSLKeyPairInvalid = "ErrPanelSSLKeyPairInvalid"
 
 	// Nginx
 	ErrNginxNotInstalled    = "ErrNginxNotInstalled"

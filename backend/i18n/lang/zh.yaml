@@ -55,6 +55,12 @@ ErrSSLApply:
   other: "证书申请失败: {{.detail}}"
 ErrSSLRenew:
   other: "证书续签失败: {{.detail}}"
+ErrPanelSSLCertNotReady:
+  other: "证书未就绪或不存在，请先在证书管理中签发完成（状态为已就绪）"
+ErrPanelSSLCertFiles:
+  other: "证书文件缺失: {{.detail}}"
+ErrPanelSSLKeyPairInvalid:
+  other: "证书与私钥不匹配或格式无效: {{.detail}}"
 
 # Nginx 错误
 ErrNginxNotInstalled:
