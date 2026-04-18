@@ -56,7 +56,7 @@ ErrSSLApply:
 ErrSSLRenew:
   other: "证书续签失败: {{.detail}}"
 ErrPanelSSLCertNotReady:
-  other: "证书未就绪或不存在，请先在证书管理中签发完成（状态为已就绪）"
+  other: "证书状态不可用（需为已就绪或已应用），或记录不存在"
 ErrPanelSSLCertFiles:
   other: "证书文件缺失: {{.detail}}"
 ErrPanelSSLKeyPairInvalid:
