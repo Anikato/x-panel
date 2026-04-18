@@ -46,6 +46,12 @@
             </el-input>
             <el-button :loading="savingToken" @click="handleSaveToken">{{ t('setting.save') }}</el-button>
           </div>
+          <div class="update-url-row" style="margin-top: 8px">
+            <el-input v-model="appStoreURL" clearable style="flex: 1; margin-right: 12px">
+              <template #prepend>{{ t('setting.appStoreURL') }}</template>
+            </el-input>
+            <el-button :loading="savingAppStoreURL" @click="handleSaveAppStoreURL">{{ t('setting.save') }}</el-button>
+          </div>
           <div class="update-url-hint">
             <el-text type="info" size="small">{{ t('setting.upgradeUrlHint') }}。{{ t('setting.githubTokenHint') }}</el-text>
           </div>
@@ -592,6 +598,8 @@ const versionInfo = reactive({ version: '', commitHash: '', buildTime: '', goVer
 const upgradeUrl = ref('')
 const githubToken = ref('')
 const savingToken = ref(false)
+const appStoreURL = ref('')
+const savingAppStoreURL = ref(false)
 const autoUpgradeEnabled = ref(false)
 const checking = ref(false)
 const upgrading = ref(false)
@@ -669,6 +677,14 @@ const handleSaveToken = async () => {
   } catch { /* */ } finally { savingToken.value = false }
 }
 
+const handleSaveAppStoreURL = async () => {
+  savingAppStoreURL.value = true
+  try {
+    await updateSetting({ key: 'AppStoreURL', value: appStoreURL.value })
+    ElMessage.success(t('commons.success'))
+  } catch { /* */ } finally { savingAppStoreURL.value = false }
+}
+
 const fetchSettings = async () => {
   loading.value = true
   try {
@@ -679,6 +695,7 @@ const fetchSettings = async () => {
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
       form.securityEntrance = res.data.securityEntrance || ''
       githubToken.value = res.data.githubToken || ''
+      appStoreURL.value = res.data.appStoreURL || ''
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
       agentTokenForm.token = res.data.agentToken || ''

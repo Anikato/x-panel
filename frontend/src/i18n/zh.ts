@@ -191,6 +191,7 @@ export default {
     githubToken: 'GitHub Token',
     githubTokenPlaceholder: '私有仓库需要填写 Personal Access Token',
     githubTokenHint: '私有仓库需要配置 GitHub Token 才能检查更新和下载升级包',
+    appStoreURL: '应用商店源',
     autoUpgrade: '自动升级',
     autoUpgradeHint: '开启后每天凌晨 3:30 自动检查并升级到最新版本',
     securityEntrance: '安全入口',

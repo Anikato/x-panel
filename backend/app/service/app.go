@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"xpanel/app/dto"
@@ -16,8 +17,7 @@ import (
 )
 
 const (
-	appstoreGitHubAPI  = "https://api.github.com/repos/1Panel-dev/appstore/contents"
-	appstoreRawBase    = "https://raw.githubusercontent.com/1Panel-dev/appstore/main"
+	defaultAppStoreURL = "https://github.com/Anikato/1panelappstore"
 )
 
 var (
@@ -39,11 +39,12 @@ type IAppService interface {
 }
 
 type AppService struct {
-	appRepo           repo.IAppRepo
-	appDetailRepo     repo.IAppDetailRepo
-	appTagRepo        repo.IAppTagRepo
-	tagRepo           repo.ITagRepo
-	appInstallRepo    repo.IAppInstallRepo
+	appRepo        repo.IAppRepo
+	appDetailRepo  repo.IAppDetailRepo
+	appTagRepo     repo.IAppTagRepo
+	tagRepo        repo.ITagRepo
+	appInstallRepo repo.IAppInstallRepo
+	settingRepo    repo.ISettingRepo
 }
 
 func NewIAppService() IAppService {
@@ -53,6 +54,31 @@ func NewIAppService() IAppService {
 		appTagRepo:     repo.NewIAppTagRepo(),
 		tagRepo:        repo.NewITagRepo(),
 		appInstallRepo: repo.NewIAppInstallRepo(),
+		settingRepo:    repo.NewISettingRepo(),
+	}
+}
+
+// appStoreURLs 从配置的 GitHub 仓库 URL 推导出 API 地址和 raw 地址
+type appStoreURLs struct {
+	apiBase string // https://api.github.com/repos/{owner}/{repo}/contents
+	rawBase string // https://raw.githubusercontent.com/{owner}/{repo}/main
+}
+
+func (s *AppService) resolveStoreURLs() appStoreURLs {
+	repoURL, _ := s.settingRepo.GetValueByKey("AppStoreURL")
+	if repoURL == "" {
+		repoURL = defaultAppStoreURL
+	}
+	// 从 https://github.com/{owner}/{repo} 提取 owner/repo
+	repoURL = strings.TrimRight(repoURL, "/")
+	parts := strings.Split(repoURL, "github.com/")
+	ownerRepo := "Anikato/1panelappstore"
+	if len(parts) == 2 && strings.Count(parts[1], "/") >= 1 {
+		ownerRepo = parts[1]
+	}
+	return appStoreURLs{
+		apiBase: "https://api.github.com/repos/" + ownerRepo + "/contents",
+		rawBase: "https://raw.githubusercontent.com/" + ownerRepo + "/main",
 	}
 }
 
@@ -72,29 +98,23 @@ func (s *AppService) SyncAppStore(force bool) error {
 		appStoreSyncMu.Unlock()
 	}()
 
-	global.LOG.Info("[AppStore] Starting sync from remote")
+	urls := s.resolveStoreURLs()
+	global.LOG.Infof("[AppStore] Starting sync from %s", urls.rawBase)
 
-	// 1. 下载应用列表
-	appList, err := s.downloadAppList()
+	appList, err := s.downloadAppList(urls)
 	if err != nil {
 		return err
 	}
 
-	// 2. 下载标签列表
-	tags, err := s.downloadTags()
+	tags, err := s.downloadTags(urls)
 	if err != nil {
 		return err
 	}
 
-	// 3. 保存到数据库
 	ctx := context.Background()
-	
-	// 保存标签
 	if err := s.saveTags(ctx, tags); err != nil {
 		return err
 	}
-
-	// 保存应用
 	if err := s.saveApps(ctx, appList); err != nil {
 		return err
 	}
@@ -104,9 +124,8 @@ func (s *AppService) SyncAppStore(force bool) error {
 }
 
 // downloadAppList 从 GitHub 获取应用列表
-func (s *AppService) downloadAppList() (*AppListResponse, error) {
-	// 1. 列出 apps/ 目录下所有子目录
-	entries, err := fetchGitHubDir(appstoreGitHubAPI + "/apps")
+func (s *AppService) downloadAppList(urls appStoreURLs) (*AppListResponse, error) {
+	entries, err := fetchGitHubDir(urls.apiBase + "/apps")
 	if err != nil {
 		return nil, buserr.WithDetail("ErrDownloadAppList", err.Error(), err)
 	}
@@ -116,7 +135,7 @@ func (s *AppService) downloadAppList() (*AppListResponse, error) {
 		if entry.Type != "dir" {
 			continue
 		}
-		appData, err := s.fetchAppData(entry.Name)
+		appData, err := s.fetchAppData(urls, entry.Name)
 		if err != nil {
 			global.LOG.Warnf("[AppStore] Skip app %s: %v", entry.Name, err)
 			continue
@@ -128,9 +147,8 @@ func (s *AppService) downloadAppList() (*AppListResponse, error) {
 }
 
 // fetchAppData 拉取单个应用的 data.yml 和所有版本
-func (s *AppService) fetchAppData(appKey string) (*AppData, error) {
-	// 读 apps/{key}/data.yml
-	raw, err := fetchRaw(appstoreRawBase + "/apps/" + appKey + "/data.yml")
+func (s *AppService) fetchAppData(urls appStoreURLs, appKey string) (*AppData, error) {
+	raw, err := fetchRaw(urls.rawBase + "/apps/" + appKey + "/data.yml")
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +160,7 @@ func (s *AppService) fetchAppData(appKey string) (*AppData, error) {
 
 	ap := meta.toAppData(appKey)
 
-	// 列出版本子目录
-	entries, err := fetchGitHubDir(appstoreGitHubAPI + "/apps/" + appKey)
+	entries, err := fetchGitHubDir(urls.apiBase + "/apps/" + appKey)
 	if err != nil {
 		return &ap, nil
 	}
@@ -151,7 +168,7 @@ func (s *AppService) fetchAppData(appKey string) (*AppData, error) {
 		if entry.Type != "dir" {
 			continue
 		}
-		versionRaw, err := fetchRaw(appstoreRawBase + "/apps/" + appKey + "/" + entry.Name + "/data.yml")
+		versionRaw, err := fetchRaw(urls.rawBase + "/apps/" + appKey + "/" + entry.Name + "/data.yml")
 		if err != nil {
 			continue
 		}
@@ -159,7 +176,7 @@ func (s *AppService) fetchAppData(appKey string) (*AppData, error) {
 		if err := parseYAML(versionRaw, &verMeta); err != nil {
 			continue
 		}
-		composeRaw, _ := fetchRaw(appstoreRawBase + "/apps/" + appKey + "/" + entry.Name + "/docker-compose.yml")
+		composeRaw, _ := fetchRaw(urls.rawBase + "/apps/" + appKey + "/" + entry.Name + "/docker-compose.yml")
 		ap.Versions = append(ap.Versions, AppVersionData{
 			Version:       entry.Name,
 			Params:        verMeta.toParams(),
@@ -171,8 +188,8 @@ func (s *AppService) fetchAppData(appKey string) (*AppData, error) {
 }
 
 // downloadTags 从 GitHub 获取标签列表（根 data.yaml）
-func (s *AppService) downloadTags() ([]TagData, error) {
-	raw, err := fetchRaw(appstoreRawBase + "/data.yaml")
+func (s *AppService) downloadTags(urls appStoreURLs) ([]TagData, error) {
+	raw, err := fetchRaw(urls.rawBase + "/data.yaml")
 	if err != nil {
 		return nil, buserr.WithDetail("ErrDownloadTags", err.Error(), err)
 	}

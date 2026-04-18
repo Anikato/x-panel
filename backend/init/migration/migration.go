@@ -264,6 +264,7 @@ func initDefaultSettings() {
 		{Key: "ProxyType", Value: "mix"},
 		{Key: "ProxyAddress", Value: ""},
 		{Key: "ProxyNoProxy", Value: "localhost,127.0.0.1,::1"},
+		{Key: "AppStoreURL", Value: "https://github.com/Anikato/1panelappstore"},
 	}
 
 	for _, s := range defaults {

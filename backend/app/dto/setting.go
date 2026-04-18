@@ -10,6 +10,7 @@ type SettingInfo struct {
 	SecurityEntrance string `json:"securityEntrance"`
 	MFAStatus        string `json:"mfaStatus"`
 	GitHubToken      string `json:"githubToken"`
+	AppStoreURL      string `json:"appStoreURL"`
 	ServerPort       string `json:"serverPort"`
 	AgentToken       string `json:"agentToken"`
 	AutoUpgrade      string `json:"autoUpgrade"`
