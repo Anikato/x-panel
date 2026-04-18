@@ -61,7 +61,7 @@ func NewIAppService() IAppService {
 // appStoreURLs 从配置的 GitHub 仓库 URL 推导出 API 地址和 raw 地址
 type appStoreURLs struct {
 	apiBase string // https://api.github.com/repos/{owner}/{repo}/contents
-	rawBase string // https://raw.githubusercontent.com/{owner}/{repo}/main
+	rawBase string // https://raw.githubusercontent.com/{owner}/{repo}/{branch}
 }
 
 func (s *AppService) resolveStoreURLs() appStoreURLs {
@@ -69,17 +69,36 @@ func (s *AppService) resolveStoreURLs() appStoreURLs {
 	if repoURL == "" {
 		repoURL = defaultAppStoreURL
 	}
-	// 从 https://github.com/{owner}/{repo} 提取 owner/repo
 	repoURL = strings.TrimRight(repoURL, "/")
 	parts := strings.Split(repoURL, "github.com/")
 	ownerRepo := "Anikato/1panelappstore"
 	if len(parts) == 2 && strings.Count(parts[1], "/") >= 1 {
 		ownerRepo = parts[1]
 	}
+
+	// 查询仓库默认分支，避免 main/dev/master 不一致
+	branch := fetchDefaultBranch(ownerRepo)
+
 	return appStoreURLs{
 		apiBase: "https://api.github.com/repos/" + ownerRepo + "/contents",
-		rawBase: "https://raw.githubusercontent.com/" + ownerRepo + "/main",
+		rawBase: "https://raw.githubusercontent.com/" + ownerRepo + "/" + branch,
 	}
+}
+
+// fetchDefaultBranch 通过 GitHub API 获取仓库默认分支，失败时回退 "main"
+func fetchDefaultBranch(ownerRepo string) string {
+	resp, err := http.Get("https://api.github.com/repos/" + ownerRepo)
+	if err != nil {
+		return "main"
+	}
+	defer resp.Body.Close()
+	var result struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || result.DefaultBranch == "" {
+		return "main"
+	}
+	return result.DefaultBranch
 }
 
 // SyncAppStore 从远程同步应用商店数据
