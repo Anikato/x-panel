@@ -60,8 +60,9 @@ func NewIAppService() IAppService {
 
 // appStoreURLs 从配置的 GitHub 仓库 URL 推导出 API 地址和 raw 地址
 type appStoreURLs struct {
-	apiBase string // https://api.github.com/repos/{owner}/{repo}/contents
-	rawBase string // https://raw.githubusercontent.com/{owner}/{repo}/{branch}
+	apiBase string
+	rawBase string
+	token   string // GitHub Personal Access Token，用于突破 API 频率限制
 }
 
 func (s *AppService) resolveStoreURLs() appStoreURLs {
@@ -69,6 +70,8 @@ func (s *AppService) resolveStoreURLs() appStoreURLs {
 	if repoURL == "" {
 		repoURL = defaultAppStoreURL
 	}
+	token, _ := s.settingRepo.GetValueByKey("GitHubToken")
+
 	repoURL = strings.TrimRight(repoURL, "/")
 	parts := strings.Split(repoURL, "github.com/")
 	ownerRepo := "Anikato/1panelappstore"
@@ -76,18 +79,18 @@ func (s *AppService) resolveStoreURLs() appStoreURLs {
 		ownerRepo = parts[1]
 	}
 
-	// 查询仓库默认分支，避免 main/dev/master 不一致
-	branch := fetchDefaultBranch(ownerRepo)
+	branch := fetchDefaultBranch(ownerRepo, token)
 
 	return appStoreURLs{
 		apiBase: "https://api.github.com/repos/" + ownerRepo + "/contents",
 		rawBase: "https://raw.githubusercontent.com/" + ownerRepo + "/" + branch,
+		token:   token,
 	}
 }
 
 // fetchDefaultBranch 通过 GitHub API 获取仓库默认分支，失败时回退 "main"
-func fetchDefaultBranch(ownerRepo string) string {
-	resp, err := http.Get("https://api.github.com/repos/" + ownerRepo)
+func fetchDefaultBranch(ownerRepo, token string) string {
+	resp, err := githubGet("https://api.github.com/repos/"+ownerRepo, token)
 	if err != nil {
 		return "main"
 	}
@@ -99,6 +102,18 @@ func fetchDefaultBranch(ownerRepo string) string {
 		return "main"
 	}
 	return result.DefaultBranch
+}
+
+// githubGet 发起带可选 Authorization 头的 GET 请求
+func githubGet(url, token string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return http.DefaultClient.Do(req)
 }
 
 // SyncAppStore 从远程同步应用商店数据
@@ -144,7 +159,7 @@ func (s *AppService) SyncAppStore(force bool) error {
 
 // downloadAppList 从 GitHub 获取应用列表
 func (s *AppService) downloadAppList(urls appStoreURLs) (*AppListResponse, error) {
-	entries, err := fetchGitHubDir(urls.apiBase + "/apps")
+	entries, err := fetchGitHubDir(urls.apiBase+"/apps", urls.token)
 	if err != nil {
 		return nil, buserr.WithDetail("ErrDownloadAppList", err.Error(), err)
 	}
@@ -167,7 +182,7 @@ func (s *AppService) downloadAppList(urls appStoreURLs) (*AppListResponse, error
 
 // fetchAppData 拉取单个应用的 data.yml 和所有版本
 func (s *AppService) fetchAppData(urls appStoreURLs, appKey string) (*AppData, error) {
-	raw, err := fetchRaw(urls.rawBase + "/apps/" + appKey + "/data.yml")
+	raw, err := fetchRaw(urls.rawBase+"/apps/"+appKey+"/data.yml", urls.token)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +194,7 @@ func (s *AppService) fetchAppData(urls appStoreURLs, appKey string) (*AppData, e
 
 	ap := meta.toAppData(appKey)
 
-	entries, err := fetchGitHubDir(urls.apiBase + "/apps/" + appKey)
+	entries, err := fetchGitHubDir(urls.apiBase+"/apps/"+appKey, urls.token)
 	if err != nil {
 		return &ap, nil
 	}
@@ -187,7 +202,7 @@ func (s *AppService) fetchAppData(urls appStoreURLs, appKey string) (*AppData, e
 		if entry.Type != "dir" {
 			continue
 		}
-		versionRaw, err := fetchRaw(urls.rawBase + "/apps/" + appKey + "/" + entry.Name + "/data.yml")
+		versionRaw, err := fetchRaw(urls.rawBase+"/apps/"+appKey+"/"+entry.Name+"/data.yml", urls.token)
 		if err != nil {
 			continue
 		}
@@ -195,7 +210,7 @@ func (s *AppService) fetchAppData(urls appStoreURLs, appKey string) (*AppData, e
 		if err := parseYAML(versionRaw, &verMeta); err != nil {
 			continue
 		}
-		composeRaw, _ := fetchRaw(urls.rawBase + "/apps/" + appKey + "/" + entry.Name + "/docker-compose.yml")
+		composeRaw, _ := fetchRaw(urls.rawBase+"/apps/"+appKey+"/"+entry.Name+"/docker-compose.yml", urls.token)
 		ap.Versions = append(ap.Versions, AppVersionData{
 			Version:       entry.Name,
 			Params:        verMeta.toParams(),
@@ -208,7 +223,7 @@ func (s *AppService) fetchAppData(urls appStoreURLs, appKey string) (*AppData, e
 
 // downloadTags 从 GitHub 获取标签列表（根 data.yaml）
 func (s *AppService) downloadTags(urls appStoreURLs) ([]TagData, error) {
-	raw, err := fetchRaw(urls.rawBase + "/data.yaml")
+	raw, err := fetchRaw(urls.rawBase+"/data.yaml", urls.token)
 	if err != nil {
 		return nil, buserr.WithDetail("ErrDownloadTags", err.Error(), err)
 	}
@@ -669,8 +684,8 @@ type ghEntry struct {
 	Type string `json:"type"`
 }
 
-func fetchGitHubDir(url string) ([]ghEntry, error) {
-	resp, err := http.Get(url)
+func fetchGitHubDir(url, token string) ([]ghEntry, error) {
+	resp, err := githubGet(url, token)
 	if err != nil {
 		return nil, err
 	}
@@ -685,8 +700,8 @@ func fetchGitHubDir(url string) ([]ghEntry, error) {
 	return entries, nil
 }
 
-func fetchRaw(url string) (string, error) {
-	resp, err := http.Get(url)
+func fetchRaw(url, token string) (string, error) {
+	resp, err := githubGet(url, token)
 	if err != nil {
 		return "", err
 	}
