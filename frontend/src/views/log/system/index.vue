@@ -29,6 +29,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { getSystemLog } from '@/api/modules/log'
 import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const lines = ref(500)
