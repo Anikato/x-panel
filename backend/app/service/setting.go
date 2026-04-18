@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xpanel/app/dto"
+	"xpanel/app/repo"
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
@@ -28,6 +29,8 @@ type ISettingService interface {
 	GetValueByKey(key string) (string, error)
 	TestProxy(req dto.ProxyTest) error
 	SyncProxyToSystem()
+	GetPanelSSL() (*dto.PanelSSLInfo, error)
+	UpdatePanelSSL(req dto.PanelSSLUpdate) error
 }
 
 // NewISettingService 创建设置服务实例
@@ -112,6 +115,53 @@ func (s *SettingService) UpdatePort(req dto.PortUpdate) error {
 
 	global.CONF.System.Port = req.Port
 	return nil
+}
+
+// GetPanelSSL 返回当前 config 中的面板 TLS 配置及上次在 UI 选择的证书 ID（若有）
+func (s *SettingService) GetPanelSSL() (*dto.PanelSSLInfo, error) {
+	info := &dto.PanelSSLInfo{
+		Enable:   global.CONF.System.SSL.Enable,
+		CertPath: global.CONF.System.SSL.CertPath,
+		KeyPath:  global.CONF.System.SSL.KeyPath,
+	}
+	idStr, err := settingRepo.GetValueByKey("PanelSSLCertificateID")
+	if err == nil && idStr != "" {
+		if id, e := strconv.ParseUint(idStr, 10, 64); e == nil {
+			info.CertificateID = uint(id)
+		}
+	}
+	if info.CertificateID > 0 {
+		cert, err := repo.NewICertificateRepo().Get(repo.WithByID(info.CertificateID))
+		if err == nil {
+			info.PrimaryDomain = cert.PrimaryDomain
+		}
+	}
+	return info, nil
+}
+
+// UpdatePanelSSL 将面板 HTTPS 证书切换为证书管理中指定记录对应落盘文件，并写回 config.yaml
+func (s *SettingService) UpdatePanelSSL(req dto.PanelSSLUpdate) error {
+	if req.CertificateID == 0 {
+		return buserr.New(constant.ErrInvalidParams)
+	}
+	certPath, keyPath, err := NewICertificateService().ResolveCertFilePaths(req.CertificateID)
+	if err != nil {
+		return err
+	}
+	if global.Vp == nil {
+		return fmt.Errorf("viper instance not initialized")
+	}
+	global.Vp.Set("system.ssl.enable", true)
+	global.Vp.Set("system.ssl.cert_path", certPath)
+	global.Vp.Set("system.ssl.key_path", keyPath)
+	if err := global.Vp.WriteConfig(); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+	global.CONF.System.SSL.Enable = true
+	global.CONF.System.SSL.CertPath = certPath
+	global.CONF.System.SSL.KeyPath = keyPath
+	idStr := strconv.FormatUint(uint64(req.CertificateID), 10)
+	return settingRepo.CreateOrUpdate("PanelSSLCertificateID", idStr)
 }
 
 func (s *SettingService) GetValueByKey(key string) (string, error) {

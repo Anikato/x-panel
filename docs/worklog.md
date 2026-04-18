@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-04-18 — Session：面板 HTTPS 绑定证书管理
+
+### 完成内容
+
+- [x] 后端：`CertificateService.ResolveCertFilePaths`；`SettingService.GetPanelSSL` / `UpdatePanelSSL`；`GET/POST /api/v1/settings/panel-ssl`；设置键 `PanelSSLCertificateID`；`constant` + `zh.yaml` 错误文案
+- [x] 前端：面板设置「面板 HTTPS 证书」；证书下拉（仅 `ready`）；保存与重启提示
+
+### 说明
+
+- 保存后写入 `config.yaml` 的 `system.ssl`，需重启面板进程后 TLS 重新加载。
+
 ## 2026-04-18 — Session #80：应用中心编译修复 + 前后端全量编译通过
 
 ### 完成内容

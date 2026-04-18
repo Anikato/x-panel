@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -32,6 +33,8 @@ type ICertificateService interface {
 	GetSSLDir() string
 	UpdateSSLDir(dir string) error
 	GetLog(id uint) (string, error)
+	// ResolveCertFilePaths 解析证书管理中某条记录在磁盘上的 fullchain/privkey 路径并校验可读与密钥匹配
+	ResolveCertFilePaths(certID uint) (certPath, keyPath string, err error)
 }
 
 type CertificateService struct {
@@ -479,6 +482,33 @@ func (s *CertificateService) UpdateSSLDir(dir string) error {
 		return fmt.Errorf("创建目录失败: %v", err)
 	}
 	return s.settingRepo.Update("SSLDir", dir)
+}
+
+// ResolveCertFilePaths 返回证书管理落盘的 PEM 路径，并校验文件存在及证书私钥匹配
+func (s *CertificateService) ResolveCertFilePaths(certID uint) (string, string, error) {
+	if certID == 0 {
+		return "", "", buserr.New(constant.ErrInvalidParams)
+	}
+	cert, err := s.certRepo.Get(repo.WithByID(certID))
+	if err != nil {
+		return "", "", buserr.New(constant.ErrRecordNotFound)
+	}
+	if cert.Status != "ready" {
+		return "", "", buserr.New(constant.ErrPanelSSLCertNotReady)
+	}
+	sslDir := s.GetSSLDir()
+	certPath := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "fullchain.pem")
+	keyPath := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "privkey.pem")
+	if _, err := os.Stat(certPath); err != nil {
+		return "", "", buserr.WithDetail(constant.ErrPanelSSLCertFiles, certPath, err)
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		return "", "", buserr.WithDetail(constant.ErrPanelSSLCertFiles, keyPath, err)
+	}
+	if _, err := tls.LoadX509KeyPair(certPath, keyPath); err != nil {
+		return "", "", buserr.WithDetail(constant.ErrPanelSSLKeyPairInvalid, err.Error(), err)
+	}
+	return certPath, keyPath, nil
 }
 
 // safeDomainDir converts a domain name into a filesystem-safe directory name.

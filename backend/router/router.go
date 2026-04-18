@@ -55,6 +55,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/settings", api.GetSettingInfo)
 		privateGroup.POST("/settings/update", api.Update)
 		privateGroup.POST("/settings/port/update", api.UpdatePort)
+		privateGroup.GET("/settings/panel-ssl", api.GetPanelSSL)
+		privateGroup.POST("/settings/panel-ssl/update", api.UpdatePanelSSL)
 		privateGroup.POST("/settings/proxy/test", api.TestProxy)
 		privateGroup.POST("/settings/reboot", api.RebootServer)
 		privateGroup.POST("/settings/shutdown", api.ShutdownServer)
