@@ -64,6 +64,7 @@ func Setup(mode string) *gin.Engine {
 
 		// 日志
 		privateGroup.GET("/logs/system", api.GetSystemLog)
+		privateGroup.POST("/logs/system/clean", api.CleanSystemLog)
 		privateGroup.POST("/logs/login", api.PageLoginLog)
 		privateGroup.POST("/logs/operation", api.PageOperationLog)
 		privateGroup.POST("/logs/login/clean", api.CleanLoginLog)

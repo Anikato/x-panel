@@ -1,64 +1,213 @@
 <template>
   <div class="card-container">
     <div class="header">
-      <h3>{{ $t('menu.systemLog') }}</h3>
-      <div class="actions">
-        <el-select v-model="lines" class="lines-select" @change="fetchLog">
-          <el-option label="最近 100 行" :value="100" />
-          <el-option label="最近 500 行" :value="500" />
-          <el-option label="最近 1000 行" :value="1000" />
+      <div class="left-actions">
+        <el-select v-model="filter.level" class="level-select" :placeholder="$t('menu.level')" @change="fetchLog" clearable>
+          <el-option :label="$t('menu.levelAll')" value="" />
+          <el-option :label="$t('menu.levelInfo')" value="INFO" />
+          <el-option :label="$t('menu.levelWarn')" value="WARN" />
+          <el-option :label="$t('menu.levelError')" value="ERROR" />
         </el-select>
-        <el-button type="primary" @click="fetchLog" :loading="loading">
+        <el-input 
+          v-model="filter.keyword" 
+          class="keyword-input" 
+          :placeholder="$t('menu.keywordPlaceholder')" 
+          clearable 
+          @change="fetchLog"
+          @keyup.enter="fetchLog">
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
+      <div class="right-actions">
+        <el-switch
+          v-model="autoRefresh"
+          :active-text="$t('menu.autoRefresh')"
+          @change="handleAutoRefreshChange"
+        />
+        <el-select v-model="filter.lines" class="lines-select" @change="fetchLog">
+          <el-option :label="$t('menu.lines100')" :value="100" />
+          <el-option :label="$t('menu.lines500')" :value="500" />
+          <el-option :label="$t('menu.lines1000')" :value="1000" />
+          <el-option :label="$t('menu.lines5000')" :value="5000" />
+        </el-select>
+        <el-button @click="downloadLog" :disabled="!logContent">
+          <el-icon><Download /></el-icon>
+          {{ $t('commons.download') }}
+        </el-button>
+        <el-button type="primary" @click="fetchLog" :loading="loading" :disabled="autoRefresh">
           <el-icon><Refresh /></el-icon>
           {{ $t('commons.refresh') }}
         </el-button>
+        <el-popconfirm
+          :title="$t('log.cleanConfirm')"
+          @confirm="handleClean"
+          width="250"
+        >
+          <template #reference>
+            <el-button type="danger">
+              <el-icon><Delete /></el-icon>
+              {{ $t('commons.clean') }}
+            </el-button>
+          </template>
+        </el-popconfirm>
       </div>
     </div>
     
-    <div class="log-container" ref="logContainer">
+    <div class="log-container" ref="logContainerRef" @scroll="handleScroll">
       <el-skeleton :rows="10" animated v-if="loading && !logContent" />
       <div v-else-if="!logContent" class="empty-log">
         {{ $t('commons.noData') }}
       </div>
-      <pre v-else class="log-content">{{ logContent }}</pre>
+      <div v-else class="log-content" v-html="parsedLog"></div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { getSystemLog } from '@/api/modules/log'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { getSystemLog, cleanSystemLog } from '@/api/modules/log'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Search, Delete, Download } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const loading = ref(false)
-const lines = ref(500)
+const autoRefresh = ref(false)
 const logContent = ref('')
-const logContainer = ref<HTMLElement | null>(null)
+const logContainerRef = ref<HTMLElement | null>(null)
+let refreshTimer: any = null
+const isAtBottom = ref(true)
+
+const filter = ref({
+  level: '',
+  keyword: '',
+  lines: 500
+})
 
 const fetchLog = async () => {
   loading.value = true
   try {
-    const res = await getSystemLog(lines.value)
+    const res = await getSystemLog(filter.value.lines, filter.value.level, filter.value.keyword)
     logContent.value = res.data || ''
-    scrollToBottom()
+    
+    // 如果用户当前在底部，或者开启了自动刷新，则新数据来时保持在底部
+    if (isAtBottom.value || autoRefresh.value) {
+      scrollToBottom()
+    }
   } catch (error: any) {
     ElMessage.error(error.message || '获取日志失败')
+    if (autoRefresh.value) {
+      autoRefresh.value = false
+      clearInterval(refreshTimer)
+    }
   } finally {
     loading.value = false
   }
 }
 
+const handleClean = async () => {
+  try {
+    await cleanSystemLog()
+    ElMessage.success(t('commons.operationSuccess'))
+    fetchLog()
+  } catch (error: any) {
+    ElMessage.error(error.message || '清理失败')
+  }
+}
+
+const downloadLog = () => {
+  if (!logContent.value) return
+  const blob = new Blob([logContent.value], { type: 'text/plain;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `xpanel-system-${new Date().getTime()}.log`)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(url)
+}
+
+const handleAutoRefreshChange = (val: boolean) => {
+  if (val) {
+    fetchLog()
+    refreshTimer = setInterval(() => {
+      fetchLog()
+    }, 3000)
+  } else {
+    clearInterval(refreshTimer)
+  }
+}
+
+const handleScroll = (e: Event) => {
+  const target = e.target as HTMLElement
+  // 判定是否在底部的阈值
+  isAtBottom.value = target.scrollHeight - target.scrollTop - target.clientHeight < 10
+}
+
 const scrollToBottom = () => {
   nextTick(() => {
-    if (logContainer.value) {
-      logContainer.value.scrollTop = logContainer.value.scrollHeight
+    if (logContainerRef.value) {
+      logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
     }
   })
 }
 
+// 解析日志进行高亮
+const parsedLog = computed(() => {
+  if (!logContent.value) return ''
+  
+  // 防止 xss，并处理换行
+  const escapeHTML = (str: string) => {
+    return str.replace(/[&<>'"]/g, 
+      tag => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          "'": '&#39;',
+          '"': '&quot;'
+        }[tag] || tag)
+    )
+  }
+
+  const lines = logContent.value.split('\n')
+  return lines.map(line => {
+    if (!line.trim()) return ''
+    
+    const escaped = escapeHTML(line)
+    // 匹配 logrus 默认格式: INFO[2024-01-01 12:00:00] message...
+    const match = escaped.match(/^(INFO|WARN|ERRO|FATA|PANI|DEBU)\[(.*?)\]\s*(.*)$/)
+    
+    if (match) {
+      const level = match[1]
+      const time = match[2]
+      const msg = match[3]
+      
+      let levelClass = 'log-level-info'
+      if (level === 'WARN') levelClass = 'log-level-warn'
+      if (['ERRO', 'FATA', 'PANI'].includes(level)) levelClass = 'log-level-error'
+      if (level === 'DEBU') levelClass = 'log-level-debug'
+      
+      return `<div class="log-line">
+        <span class="log-level ${levelClass}">${level}</span>
+        <span class="log-time">[${time}]</span>
+        <span class="log-msg">${msg}</span>
+      </div>`
+    }
+    
+    // 如果没有匹配上格式，按原样输出（可能是一些 panic 堆栈或异常）
+    return `<div class="log-line"><span class="log-msg">${escaped}</span></div>`
+  }).join('')
+})
+
 onMounted(() => {
   fetchLog()
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 
@@ -78,20 +227,28 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 16px;
   
-  h3 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--xp-text-primary);
-  }
-  
-  .actions {
+  .left-actions {
     display: flex;
     gap: 12px;
     
-    .lines-select {
+    .level-select {
       width: 140px;
+    }
+    .keyword-input {
+      width: 240px;
+    }
+  }
+  
+  .right-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    
+    .lines-select {
+      width: 130px;
     }
   }
 }
@@ -114,12 +271,40 @@ onMounted(() => {
   
   .log-content {
     margin: 0;
-    color: #d4d4d4;
     font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
     font-size: 13px;
-    line-height: 1.5;
-    white-space: pre-wrap;
+    line-height: 1.6;
     word-break: break-all;
+    
+    :deep(.log-line) {
+      display: flex;
+      gap: 8px;
+      padding: 2px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      
+      &:hover {
+        background: rgba(255,255,255,0.05);
+      }
+      
+      .log-level {
+        font-weight: 700;
+        min-width: 45px;
+      }
+      .log-time {
+        color: #858585;
+        white-space: nowrap;
+      }
+      .log-msg {
+        color: #d4d4d4;
+        flex: 1;
+        white-space: pre-wrap;
+      }
+      
+      .log-level-info { color: #4CAF50; }
+      .log-level-warn { color: #FF9800; }
+      .log-level-error { color: #F44336; }
+      .log-level-debug { color: #2196F3; }
+    }
   }
 }
 </style>

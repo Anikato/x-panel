@@ -26,6 +26,11 @@ export const cleanOperationLogs = () => {
 }
 
 /** 获取面板系统日志 */
-export const getSystemLog = (lines: number = 100) => {
-  return http.get<string>('/logs/system', { params: { lines } })
+export const getSystemLog = (lines: number = 100, level: string = '', keyword: string = '') => {
+  return http.get<string>('/logs/system', { params: { lines, level, keyword } })
+}
+
+/** 清空面板系统日志 */
+export const cleanSystemLog = () => {
+  return http.post('/logs/system/clean')
 }

@@ -1,9 +1,11 @@
 package service
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"strings"
+	"fmt"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
@@ -17,7 +19,8 @@ type ILogService interface {
 	CreateLoginLog(log model.LoginLog) error
 	CleanLoginLog() error
 	CleanOperationLog() error
-	GetSystemLog(lines int) (string, error)
+	GetSystemLog(lines int, level string, keyword string) (string, error)
+	CleanSystemLog() error
 }
 
 // NewILogService 创建日志服务实例
@@ -47,17 +50,53 @@ func (l *LogService) CleanOperationLog() error {
 	return logRepo.CleanOperationLog()
 }
 
-func (l *LogService) GetSystemLog(lines int) (string, error) {
+func (l *LogService) GetSystemLog(lines int, level string, keyword string) (string, error) {
 	logPath := global.CONF.Log.Path
 	if logPath == "" {
 		return "", nil
 	}
 	logFile := filepath.Join(logPath, "xpanel.log")
 
-	cmd := exec.Command("tail", "-n", strconv.Itoa(lines), logFile)
+	// 构造 bash 命令管道
+	cmdStr := fmt.Sprintf("cat %s", logFile)
+	if level != "" {
+		var prefix string
+		switch level {
+		case "INFO":
+			prefix = "^INFO"
+		case "WARN":
+			prefix = "^WARN"
+		case "ERROR":
+			prefix = "^(ERRO|FATA|PANI)"
+		}
+		if prefix != "" {
+			cmdStr += fmt.Sprintf(" | grep -a -E '%s'", prefix)
+		}
+	}
+	if keyword != "" {
+		// 简单的防注入和单引号转义
+		safeKeyword := strings.ReplaceAll(keyword, "'", "'\\''")
+		cmdStr += fmt.Sprintf(" | grep -a -F '%s'", safeKeyword)
+	}
+	cmdStr += fmt.Sprintf(" | tail -n %d", lines)
+
+	cmd := exec.Command("bash", "-c", cmdStr)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		// 如果 grep 没找到内容，返回退出码 1 是正常的
+		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			return string(out), nil
+		}
 		return string(out), err
 	}
 	return string(out), nil
+}
+
+func (l *LogService) CleanSystemLog() error {
+	logPath := global.CONF.Log.Path
+	if logPath == "" {
+		return nil
+	}
+	logFile := filepath.Join(logPath, "xpanel.log")
+	return os.Truncate(logFile, 0)
 }
