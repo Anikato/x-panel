@@ -63,11 +63,11 @@ func (l *LogService) GetSystemLog(lines int, level string, keyword string) (stri
 		var prefix string
 		switch level {
 		case "INFO":
-			prefix = "^INFO"
+			prefix = "level=info"
 		case "WARN":
-			prefix = "^WARN"
+			prefix = "level=warning"
 		case "ERROR":
-			prefix = "^(ERRO|FATA|PANI)"
+			prefix = "level=(error|fatal|panic)"
 		}
 		if prefix != "" {
 			cmdStr += fmt.Sprintf(" | grep -a -E '%s'", prefix)

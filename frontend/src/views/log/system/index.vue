@@ -48,7 +48,7 @@
           <template #reference>
             <el-button type="danger">
               <el-icon><Delete /></el-icon>
-              {{ $t('commons.clean') }}
+              {{ $t('log.clean') }}
             </el-button>
           </template>
         </el-popconfirm>
@@ -177,18 +177,18 @@ const parsedLog = computed(() => {
     if (!line.trim()) return ''
     
     const escaped = escapeHTML(line)
-    // 匹配 logrus 默认格式: INFO[2024-01-01 12:00:00] message...
-    const match = escaped.match(/^(INFO|WARN|ERRO|FATA|PANI|DEBU)\[(.*?)\]\s*(.*)$/)
+    // 匹配 logrus text 格式: time="2026-04-19 10:45:04" level=info msg="message..."
+    const match = escaped.match(/^time="(.*?)"\s+level=([a-zA-Z]+)\s+msg=(.*)$/)
     
     if (match) {
-      const level = match[1]
-      const time = match[2]
+      const time = match[1]
+      const level = match[2].toUpperCase()
       const msg = match[3]
       
       let levelClass = 'log-level-info'
-      if (level === 'WARN') levelClass = 'log-level-warn'
-      if (['ERRO', 'FATA', 'PANI'].includes(level)) levelClass = 'log-level-error'
-      if (level === 'DEBU') levelClass = 'log-level-debug'
+      if (level === 'WARNING' || level === 'WARN') levelClass = 'log-level-warn'
+      if (['ERROR', 'FATAL', 'PANIC'].includes(level)) levelClass = 'log-level-error'
+      if (level === 'DEBUG') levelClass = 'log-level-debug'
       
       return `<div class="log-line">
         <span class="log-level ${levelClass}">${level}</span>
