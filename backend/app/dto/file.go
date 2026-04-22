@@ -56,10 +56,11 @@ type FileRenameReq struct {
 
 // FileMoveReq 移动/复制
 type FileMoveReq struct {
-	SrcPaths []string `json:"srcPaths" binding:"required"`
-	DstPath  string   `json:"dstPath" binding:"required"`
-	IsCopy   bool     `json:"isCopy"`
-	Cover    bool     `json:"cover"`
+	SrcPaths       []string `json:"srcPaths" binding:"required"`
+	DstPath        string   `json:"dstPath" binding:"required"`
+	IsCopy         bool     `json:"isCopy"`
+	Cover          bool     `json:"cover"`           // 兼容旧字段
+	ConflictPolicy string   `json:"conflictPolicy"`  // overwrite | skip（默认 overwrite）
 }
 
 // FileContentReq 获取文件内容

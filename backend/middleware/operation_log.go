@@ -15,6 +15,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// maxLogBodySize 操作日志最大读取 body 大小（1MB）
+const maxLogBodySize = 1 << 20
+
+// isMultipartOrUpload 检查是否为文件上传等大 body 请求
+func isMultipartOrUpload(c *gin.Context) bool {
+	ct := c.GetHeader("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		return true
+	}
+	path := c.Request.URL.Path
+	return strings.HasSuffix(path, "/files/upload")
+}
+
 // OperationLog 操作日志中间件
 func OperationLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -25,12 +38,20 @@ func OperationLog() gin.HandlerFunc {
 			return
 		}
 
-		// 读取请求体
+		// 对文件上传等大 body 请求，不读取 body，避免 OOM
 		var body string
-		if c.Request.Body != nil {
-			bodyBytes, err := io.ReadAll(c.Request.Body)
+		if isMultipartOrUpload(c) {
+			body = "[file upload]"
+		} else if c.Request.Body != nil {
+			// 限制最大读取 1MB，防止异常大请求消耗内存
+			limited := io.LimitReader(c.Request.Body, maxLogBodySize+1)
+			bodyBytes, err := io.ReadAll(limited)
 			if err == nil {
-				body = string(bodyBytes)
+				if len(bodyBytes) > maxLogBodySize {
+					body = string(bodyBytes[:maxLogBodySize]) + "...(truncated)"
+				} else {
+					body = string(bodyBytes)
+				}
 				// 恢复请求体供后续处理使用
 				c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 			}

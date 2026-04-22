@@ -20,7 +20,7 @@ export const renameFile = (params: { oldName: string; newName: string }) => {
   return http.post('/files/rename', params)
 }
 
-export const moveFile = (params: { srcPaths: string[]; dstPath: string; isCopy?: boolean; cover?: boolean }) => {
+export const moveFile = (params: { srcPaths: string[]; dstPath: string; isCopy?: boolean; cover?: boolean; conflictPolicy?: string }) => {
   return http.post('/files/move', params)
 }
 
@@ -78,4 +78,39 @@ export const getDirSize = (params: { path: string }) => {
 
 export const getUsersAndGroups = () => {
   return http.post('/files/user/group', {})
+}
+
+// ===================== 异步任务 =====================
+
+export const getFileTaskStatus = (taskID: string) => {
+  return http.get('/files/task', { params: { id: taskID } })
+}
+
+export const listFileTasks = () => {
+  return http.get('/files/tasks')
+}
+
+/**
+ * 轮询文件操作任务直到完成
+ */
+export const pollFileTask = async (
+  taskID: string,
+  interval = 2000,
+  timeout = 24 * 60 * 60 * 1000,
+): Promise<{ status: string; message?: string }> => {
+  const start = Date.now()
+  while (Date.now() - start < timeout) {
+    const res: any = await getFileTaskStatus(taskID)
+    const task = res.data
+    if (task.status === 'success') return task
+    if (task.status === 'failed') throw new Error(task.message || '操作失败')
+    await new Promise((r) => setTimeout(r, interval))
+  }
+  throw new Error('操作超时')
+}
+
+// ===================== 冲突检测 =====================
+
+export const checkConflict = (params: { srcPaths: string[]; dstPath: string }) => {
+  return http.post('/files/check-conflict', params)
 }

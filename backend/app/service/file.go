@@ -37,6 +37,7 @@ type IFileService interface {
 	GetFileTree(req dto.FileTreeReq) ([]dto.FileTreeNode, error)
 	GetUsersAndGroups() (*dto.UserGroupResp, error)
 	GetDirSize(req dto.DirSizeReq) (*dto.DirSizeResp, error)
+	CheckConflict(srcPaths []string, dstPath string) []string
 }
 
 type FileService struct{}
@@ -388,8 +389,6 @@ func (s *FileService) Rename(req dto.FileRenameReq) error {
 	return nil
 }
 
-// ===================== 移动/复制 =====================
-
 // Move 移动或复制
 func (s *FileService) Move(req dto.FileMoveReq) error {
 	dstDir := filepath.Clean(req.DstPath)
@@ -397,6 +396,17 @@ func (s *FileService) Move(req dto.FileMoveReq) error {
 		return buserr.New(constant.ErrFileNotExist)
 	}
 
+	// 确定冲突策略：优先使用新字段，兼容旧 Cover 字段
+	policy := req.ConflictPolicy
+	if policy == "" {
+		if req.Cover {
+			policy = "overwrite"
+		} else {
+			policy = "overwrite" // 默认覆盖
+		}
+	}
+
+	var skippedCount int
 	for _, src := range req.SrcPaths {
 		srcClean := filepath.Clean(src)
 		dstClean := filepath.Join(dstDir, filepath.Base(srcClean))
@@ -408,12 +418,20 @@ func (s *FileService) Move(req dto.FileMoveReq) error {
 
 		// 目标已存在的冲突处理
 		if _, err := os.Stat(dstClean); err == nil {
-			if !req.Cover {
-				return buserr.WithDetail(constant.ErrRecordExist, dstClean, nil)
-			}
-			// 覆盖模式：先删除目标
-			if err := os.RemoveAll(dstClean); err != nil {
-				return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+			switch policy {
+			case "skip":
+				skippedCount++
+				global.LOG.Infof("File conflict skipped: %s (target exists)", dstClean)
+				continue
+			case "overwrite":
+				if err := os.RemoveAll(dstClean); err != nil {
+					return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+				}
+			default:
+				// 未知策略，默认覆盖
+				if err := os.RemoveAll(dstClean); err != nil {
+					return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+				}
 			}
 		}
 
@@ -437,7 +455,24 @@ func (s *FileService) Move(req dto.FileMoveReq) error {
 			global.LOG.Infof("File moved: %s → %s", srcClean, dstClean)
 		}
 	}
+	if skippedCount > 0 {
+		global.LOG.Infof("File operation: skipped %d conflicting files", skippedCount)
+	}
 	return nil
+}
+
+// CheckConflict 检查目标目录中是否存在冲突文件
+func (s *FileService) CheckConflict(srcPaths []string, dstPath string) []string {
+	dstDir := filepath.Clean(dstPath)
+	var conflicts []string
+	for _, src := range srcPaths {
+		srcClean := filepath.Clean(src)
+		dstClean := filepath.Join(dstDir, filepath.Base(srcClean))
+		if _, err := os.Stat(dstClean); err == nil {
+			conflicts = append(conflicts, filepath.Base(srcClean))
+		}
+	}
+	return conflicts
 }
 
 // ===================== 权限修改 =====================

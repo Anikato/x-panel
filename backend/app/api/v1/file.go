@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -123,7 +124,7 @@ func (a *FileAPI) RenameFile(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
-// MoveFile 移动/复制文件
+// MoveFile 移动/复制文件（异步执行，返回任务 ID）
 func (a *FileAPI) MoveFile(c *gin.Context) {
 	var req dto.FileMoveReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -131,11 +132,25 @@ func (a *FileAPI) MoveFile(c *gin.Context) {
 		return
 	}
 	svc := service.NewIFileService()
-	if err := svc.Move(req); err != nil {
-		helper.HandleError(c, err)
+	// 对于单个同分区移动（rename），直接同步执行（瞬时完成）
+	if !req.IsCopy && len(req.SrcPaths) == 1 {
+		if err := svc.Move(req); err != nil {
+			helper.HandleError(c, err)
+			return
+		}
+		helper.SuccessWithOutData(c)
 		return
 	}
-	helper.SuccessWithOutData(c)
+	// 多文件移动/复制 → 异步执行
+	opType := "移动"
+	if req.IsCopy {
+		opType = "复制"
+	}
+	taskName := fmt.Sprintf("%s %d 个文件到 %s", opType, len(req.SrcPaths), filepath.Base(req.DstPath))
+	task := service.StartFileTask("move", taskName, func() error {
+		return svc.Move(req)
+	})
+	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }
 
 // ChangeMode 修改文件权限
@@ -211,7 +226,7 @@ func (a *FileAPI) GetDirSize(c *gin.Context) {
 	helper.SuccessWithData(c, data)
 }
 
-// CompressFile 压缩
+// CompressFile 压缩（异步执行）
 func (a *FileAPI) CompressFile(c *gin.Context) {
 	var req dto.FileCompressReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -219,14 +234,14 @@ func (a *FileAPI) CompressFile(c *gin.Context) {
 		return
 	}
 	svc := service.NewIFileService()
-	if err := svc.Compress(req); err != nil {
-		helper.HandleError(c, err)
-		return
-	}
-	helper.SuccessWithOutData(c)
+	taskName := fmt.Sprintf("压缩 %d 个文件 → %s", len(req.Paths), req.Name)
+	task := service.StartFileTask("compress", taskName, func() error {
+		return svc.Compress(req)
+	})
+	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }
 
-// DecompressFile 解压
+// DecompressFile 解压（异步执行）
 func (a *FileAPI) DecompressFile(c *gin.Context) {
 	var req dto.FileDecompressReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -234,11 +249,47 @@ func (a *FileAPI) DecompressFile(c *gin.Context) {
 		return
 	}
 	svc := service.NewIFileService()
-	if err := svc.Decompress(req); err != nil {
+	taskName := fmt.Sprintf("解压 %s → %s", filepath.Base(req.Path), filepath.Base(req.Dst))
+	task := service.StartFileTask("decompress", taskName, func() error {
+		return svc.Decompress(req)
+	})
+	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
+}
+
+// GetFileTaskStatus 查询单个文件操作任务状态
+func (a *FileAPI) GetFileTaskStatus(c *gin.Context) {
+	taskID := c.Query("id")
+	if taskID == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "task id is required")
+		return
+	}
+	task := service.GetFileTask(taskID)
+	if task == nil {
+		helper.ErrorWithDetail(c, http.StatusNotFound, "task not found")
+		return
+	}
+	helper.SuccessWithData(c, task)
+}
+
+// ListFileTasks 获取所有文件操作任务列表
+func (a *FileAPI) ListFileTasks(c *gin.Context) {
+	tasks := service.ListFileTasks()
+	helper.SuccessWithData(c, tasks)
+}
+
+// CheckConflict 检查移动/复制目标冲突
+func (a *FileAPI) CheckConflict(c *gin.Context) {
+	var req dto.FileMoveReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		helper.HandleError(c, err)
 		return
 	}
-	helper.SuccessWithOutData(c)
+	svc := service.NewIFileService()
+	conflicts := svc.CheckConflict(req.SrcPaths, req.DstPath)
+	helper.SuccessWithData(c, map[string]interface{}{
+		"conflicts": conflicts,
+		"count":     len(conflicts),
+	})
 }
 
 // WgetFile 远程下载文件

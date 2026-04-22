@@ -89,6 +89,9 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/files/tree", api.GetFileTree)
 		privateGroup.POST("/files/size", api.GetDirSize)
 		privateGroup.POST("/files/user/group", api.GetUsersAndGroups)
+		privateGroup.GET("/files/task", api.GetFileTaskStatus)
+		privateGroup.GET("/files/tasks", api.ListFileTasks)
+		privateGroup.POST("/files/check-conflict", api.CheckConflict)
 
 		// 主机管理
 		privateGroup.POST("/hosts", api.CreateHost)
@@ -185,6 +188,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/disk/install-share-deps", api.InstallShareDeps)
 		privateGroup.POST("/disk/remote/mount", api.MountRemote)
 		privateGroup.POST("/disk/remote/unmount", api.UnmountRemote)
+		privateGroup.POST("/disk/remote/remount", api.RemountFromFstab)
 		privateGroup.GET("/disk/block-devices", api.ListBlockDevices)
 		privateGroup.POST("/disk/local/mount", api.MountLocal)
 		privateGroup.POST("/disk/local/unmount", api.UnmountLocal)

@@ -26,12 +26,16 @@ func NodeProxy() gin.HandlerFunc {
 			return
 		}
 
-		var bodyBytes []byte
+		// 仅在确认需要代理时才读取 body
+		// 对 multipart 上传请求，直接透传 body 流，不缓冲到内存
+		var bodyReader io.Reader
 		if c.Request.Body != nil {
-			bodyBytes, _ = io.ReadAll(c.Request.Body)
+			bodyReader = c.Request.Body
+		} else {
+			bodyReader = bytes.NewReader(nil)
 		}
 
-		data, statusCode, err := nodeService.ProxyRequest(uint(nodeID), c.Request.Method, c.Request.URL.Path, bytes.NewReader(bodyBytes))
+		data, statusCode, err := nodeService.ProxyRequest(uint(nodeID), c.Request.Method, c.Request.URL.Path, bodyReader)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"code": 502, "message": "proxy error: " + err.Error()})
 			c.Abort()

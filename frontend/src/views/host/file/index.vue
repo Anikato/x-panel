@@ -383,11 +383,12 @@
     <!-- 子组件 -->
     <CodeEditor ref="codeEditorRef" @saved="refreshFiles" />
     <TerminalDialog ref="terminalRef" />
-    <CompressDialog ref="compressRef" @done="refreshFiles" />
+    <CompressDialog ref="compressRef" @done="onAsyncDone" />
     <PermissionDialog ref="permissionRef" @done="refreshFiles" />
     <ChownDialog ref="chownRef" @done="refreshFiles" />
     <DetailDrawer ref="detailRef" />
     <FilePreview ref="filePreviewRef" />
+    <FileTaskPanel ref="taskPanelRef" />
   </div>
 </template>
 
@@ -396,7 +397,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listFiles, createFile, deleteFile, batchDeleteFile, renameFile,
-  moveFile, getDownloadUrl, uploadFile, getDirSize,
+  moveFile, getDownloadUrl, uploadFile, getDirSize, checkConflict,
 } from '@/api/modules/file'
 import { useI18n } from 'vue-i18n'
 import type { FileInfo } from '@/api/interface'
@@ -414,6 +415,7 @@ import PermissionDialog from './permission-dialog.vue'
 import ChownDialog from './chown-dialog.vue'
 import DetailDrawer from './detail-drawer.vue'
 import FilePreview from './FilePreview.vue'
+import FileTaskPanel from './file-task-panel.vue'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -825,8 +827,14 @@ async function doUploadFiles(files: File[]) {
   }, 3000)
 }
 
+const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024 // 2GB
+
 const handleUploadChange = async (file: { raw?: File }) => {
   if (!file?.raw) return
+  if (file.raw.size > MAX_UPLOAD_SIZE) {
+    ElMessage.error(t('file.fileTooLarge'))
+    return
+  }
   await doUploadFiles([file.raw])
 }
 
@@ -877,7 +885,14 @@ async function handleDrop(e: DragEvent) {
   isDragging.value = false
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
-  await doUploadFiles(Array.from(files))
+  const validFiles = Array.from(files).filter(f => {
+    if (f.size > MAX_UPLOAD_SIZE) {
+      ElMessage.error(`${f.name}: ${t('file.fileTooLarge')}`)
+      return false
+    }
+    return true
+  })
+  if (validFiles.length > 0) await doUploadFiles(validFiles)
 }
 
 // ===================== 剪贴板（复制/移动） =====================
@@ -897,16 +912,62 @@ function clearClipboard() {
   clipboard.value = { type: 'copy', paths: [] }
 }
 
+const taskPanelRef = ref<InstanceType<typeof FileTaskPanel>>()
+
+function onAsyncDone() {
+  taskPanelRef.value?.refresh()
+  refreshFiles()
+}
+
 async function doPaste() {
   if (clipboard.value.paths.length === 0) return
-  loading.value = true
+  const dstPath = currentTab.value?.path || '/'
+
+  // 检查冲突
   try {
-    await moveFile({
+    const conflictRes: any = await checkConflict({
       srcPaths: clipboard.value.paths,
-      dstPath: currentTab.value?.path || '/',
-      isCopy: clipboard.value.type === 'copy',
+      dstPath,
     })
-    ElMessage.success(t('commons.success'))
+    const conflicts: string[] = conflictRes.data?.conflicts || []
+
+    let conflictPolicy = 'overwrite'
+    if (conflicts.length > 0) {
+      // 弹窗让用户选择策略
+      try {
+        const action = await ElMessageBox({
+          title: t('file.conflictTitle'),
+          message: t('file.conflictMessage', { count: conflicts.length, files: conflicts.slice(0, 5).join(', ') }),
+          distinguishCancelAndClose: true,
+          confirmButtonText: t('file.conflictOverwrite'),
+          cancelButtonText: t('file.conflictSkip'),
+          type: 'warning',
+        })
+        conflictPolicy = action === 'confirm' ? 'overwrite' : 'skip'
+      } catch (action) {
+        if (action === 'cancel') {
+          conflictPolicy = 'skip'
+        } else {
+          // 关闭弹窗 = 取消操作
+          return
+        }
+      }
+    }
+
+    loading.value = true
+    const res: any = await moveFile({
+      srcPaths: clipboard.value.paths,
+      dstPath,
+      isCopy: clipboard.value.type === 'copy',
+      conflictPolicy,
+    })
+
+    if (res.data?.taskID) {
+      ElMessage.info(t('file.taskStarted'))
+      taskPanelRef.value?.refresh()
+    } else {
+      ElMessage.success(t('commons.success'))
+    }
     clearClipboard()
     refreshFiles()
   } catch { /* */ } finally {

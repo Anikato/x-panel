@@ -74,8 +74,12 @@ const doCompress = async () => {
   if (!f.name) return
   loading.value = true
   try {
-    await compressFile({ paths: f.paths, dst: f.dst, name: f.name + '.' + f.type, type: f.type })
-    ElMessage.success(t('commons.success'))
+    const res: any = await compressFile({ paths: f.paths, dst: f.dst, name: f.name + '.' + f.type, type: f.type })
+    if (res.data?.taskID) {
+      ElMessage.info(t('file.taskStarted'))
+    } else {
+      ElMessage.success(t('commons.success'))
+    }
     compressVisible.value = false
     emit('done')
   } catch { /* */ } finally {
@@ -95,8 +99,12 @@ const openDecompress = (path: string, currentDir: string) => {
 const doDecompress = async () => {
   loading.value = true
   try {
-    await decompressFile(decompressForm.value)
-    ElMessage.success(t('commons.success'))
+    const res: any = await decompressFile(decompressForm.value)
+    if (res.data?.taskID) {
+      ElMessage.info(t('file.taskStarted'))
+    } else {
+      ElMessage.success(t('commons.success'))
+    }
     decompressVisible.value = false
     emit('done')
   } catch { /* */ } finally {
