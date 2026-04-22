@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"xpanel/app/dto"
 	dockerUtil "xpanel/utils/docker"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -41,6 +45,15 @@ type IContainerService interface {
 	RemoveVolume(name string) error
 
 	DockerStatus() dto.DockerStatusResp
+
+	// 新增功能
+	Inspect(req dto.InspectReq) (string, error)
+	Prune(req dto.PruneReq) (dto.PruneReport, error)
+	RenameContainer(req dto.ContainerRename) error
+	CleanContainerLog(req dto.ContainerLogClean) error
+	CommitContainer(req dto.ContainerCommit) error
+	LoadDockerMirrors() ([]string, error)
+	UpdateDockerMirrors(mirrors []string) error
 }
 
 func NewIContainerService() IContainerService {
@@ -482,4 +495,226 @@ func (s *ContainerService) RemoveVolume(name string) error {
 // Compose operations use docker compose CLI
 func (s *ContainerService) ComposeUp(path string) error {
 	return nil // implemented in compose service
+}
+
+// ======================== 新增功能 ========================
+
+func (s *ContainerService) Inspect(req dto.InspectReq) (string, error) {
+	cli, err := dockerUtil.NewClient()
+	if err != nil {
+		return "", err
+	}
+	defer cli.Close()
+	ctx := context.Background()
+
+	var inspectInfo interface{}
+	switch req.Type {
+	case "container":
+		inspectInfo, err = cli.ContainerInspect(ctx, req.ID)
+	case "image":
+		inspectInfo, _, err = cli.ImageInspectWithRaw(ctx, req.ID)
+	case "network":
+		inspectInfo, err = cli.NetworkInspect(ctx, req.ID, network.InspectOptions{})
+	case "volume":
+		inspectInfo, err = cli.VolumeInspect(ctx, req.ID)
+	default:
+		return "", fmt.Errorf("unknown inspect type: %s", req.Type)
+	}
+	if err != nil {
+		return "", err
+	}
+	data, err := json.MarshalIndent(inspectInfo, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (s *ContainerService) Prune(req dto.PruneReq) (dto.PruneReport, error) {
+	report := dto.PruneReport{}
+	cli, err := dockerUtil.NewClient()
+	if err != nil {
+		return report, err
+	}
+	defer cli.Close()
+	ctx := context.Background()
+	pruneFilters := filters.NewArgs()
+
+	switch req.PruneType {
+	case "container":
+		rep, e := cli.ContainersPrune(ctx, pruneFilters)
+		if e != nil {
+			return report, e
+		}
+		report.DeletedCount = len(rep.ContainersDeleted)
+		report.SpaceReclaimed = int64(rep.SpaceReclaimed)
+	case "image":
+		if !req.WithAll {
+			pruneFilters.Add("dangling", "true")
+		}
+		rep, e := cli.ImagesPrune(ctx, pruneFilters)
+		if e != nil {
+			return report, e
+		}
+		report.DeletedCount = len(rep.ImagesDeleted)
+		report.SpaceReclaimed = int64(rep.SpaceReclaimed)
+	case "network":
+		rep, e := cli.NetworksPrune(ctx, pruneFilters)
+		if e != nil {
+			return report, e
+		}
+		report.DeletedCount = len(rep.NetworksDeleted)
+	case "volume":
+		rep, e := cli.VolumesPrune(ctx, pruneFilters)
+		if e != nil {
+			return report, e
+		}
+		report.DeletedCount = len(rep.VolumesDeleted)
+		report.SpaceReclaimed = int64(rep.SpaceReclaimed)
+	case "buildcache":
+		rep, e := cli.BuildCachePrune(ctx, types.BuildCachePruneOptions{All: true})
+		if e != nil {
+			return report, e
+		}
+		report.DeletedCount = len(rep.CachesDeleted)
+		report.SpaceReclaimed = int64(rep.SpaceReclaimed)
+	default:
+		return report, fmt.Errorf("unknown prune type: %s", req.PruneType)
+	}
+	return report, nil
+}
+
+func (s *ContainerService) RenameContainer(req dto.ContainerRename) error {
+	cli, err := dockerUtil.NewClient()
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+	return cli.ContainerRename(context.Background(), req.ContainerID, req.NewName)
+}
+
+func (s *ContainerService) CleanContainerLog(req dto.ContainerLogClean) error {
+	cli, err := dockerUtil.NewClient()
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+	ctx := context.Background()
+
+	info, err := cli.ContainerInspect(ctx, req.ContainerID)
+	if err != nil {
+		return err
+	}
+	logPath := info.LogPath
+	if logPath == "" {
+		return fmt.Errorf("container log path not found")
+	}
+
+	// stop → truncate → start
+	_ = cli.ContainerStop(ctx, req.ContainerID, container.StopOptions{})
+
+	f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		// 尝试重启容器
+		_ = cli.ContainerStart(ctx, req.ContainerID, container.StartOptions{})
+		return fmt.Errorf("failed to open log file: %v", err)
+	}
+	_ = f.Truncate(0)
+	f.Close()
+
+	// 清理轮转日志
+	rotated, _ := filepath.Glob(logPath + ".*")
+	for _, r := range rotated {
+		_ = os.Remove(r)
+	}
+
+	return cli.ContainerStart(ctx, req.ContainerID, container.StartOptions{})
+}
+
+func (s *ContainerService) CommitContainer(req dto.ContainerCommit) error {
+	cli, err := dockerUtil.NewClient()
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+	_, err = cli.ContainerCommit(context.Background(), req.ContainerID, container.CommitOptions{
+		Reference: req.NewImageName,
+		Comment:   req.Comment,
+		Pause:     req.Pause,
+	})
+	return err
+}
+
+const daemonJSONPath = "/etc/docker/daemon.json"
+
+func (s *ContainerService) LoadDockerMirrors() ([]string, error) {
+	data, err := os.ReadFile(daemonJSONPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	var conf map[string]interface{}
+	if err := json.Unmarshal(data, &conf); err != nil {
+		return nil, fmt.Errorf("parse daemon.json failed: %v", err)
+	}
+	mirrors, ok := conf["registry-mirrors"]
+	if !ok {
+		return []string{}, nil
+	}
+	arr, ok := mirrors.([]interface{})
+	if !ok {
+		return []string{}, nil
+	}
+	var result []string
+	for _, v := range arr {
+		if s, ok := v.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
+func (s *ContainerService) UpdateDockerMirrors(mirrors []string) error {
+	var conf map[string]interface{}
+
+	data, err := os.ReadFile(daemonJSONPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		conf = make(map[string]interface{})
+	} else {
+		if err := json.Unmarshal(data, &conf); err != nil {
+			return fmt.Errorf("parse daemon.json failed: %v", err)
+		}
+	}
+
+	if len(mirrors) == 0 {
+		delete(conf, "registry-mirrors")
+	} else {
+		conf["registry-mirrors"] = mirrors
+	}
+
+	out, err := json.MarshalIndent(conf, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll("/etc/docker", 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(daemonJSONPath, out, 0644); err != nil {
+		return err
+	}
+
+	// reload + restart docker
+	if output, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+		return fmt.Errorf("daemon-reload failed: %s", string(output))
+	}
+	if output, err := exec.Command("systemctl", "restart", "docker").CombinedOutput(); err != nil {
+		return fmt.Errorf("restart docker failed: %s", string(output))
+	}
+	return nil
 }

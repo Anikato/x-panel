@@ -125,3 +125,44 @@ type ComposeOperate struct {
 	Path      string `json:"path" binding:"required"`
 	Operation string `json:"operation" binding:"required"`
 }
+
+// Inspect
+type InspectReq struct {
+	Type string `json:"type" binding:"required"` // container | image | network | volume
+	ID   string `json:"id" binding:"required"`
+}
+
+// Prune
+type PruneReq struct {
+	PruneType string `json:"pruneType" binding:"required"` // container | image | network | volume | buildcache
+	WithAll   bool   `json:"withAll"`
+}
+
+type PruneReport struct {
+	DeletedCount   int   `json:"deletedCount"`
+	SpaceReclaimed int64 `json:"spaceReclaimed"`
+}
+
+// Rename
+type ContainerRename struct {
+	ContainerID string `json:"containerID" binding:"required"`
+	NewName     string `json:"newName" binding:"required"`
+}
+
+// Log Clean
+type ContainerLogClean struct {
+	ContainerID string `json:"containerID" binding:"required"`
+}
+
+// Commit
+type ContainerCommit struct {
+	ContainerID  string `json:"containerID" binding:"required"`
+	NewImageName string `json:"newImageName" binding:"required"`
+	Comment      string `json:"comment"`
+	Pause        bool   `json:"pause"`
+}
+
+// Docker mirror config
+type DockerMirrorUpdate struct {
+	Mirrors []string `json:"mirrors"`
+}

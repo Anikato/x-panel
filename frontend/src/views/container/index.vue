@@ -84,6 +84,10 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item @click="viewLogs(row)">{{ t('container.logs') }}</el-dropdown-item>
+                      <el-dropdown-item @click="handleInspect('container', row.id)">Inspect</el-dropdown-item>
+                      <el-dropdown-item @click="openRename(row)">{{ t('container.rename') }}</el-dropdown-item>
+                      <el-dropdown-item @click="handleCommitOpen(row)">{{ t('container.commit') }}</el-dropdown-item>
+                      <el-dropdown-item @click="handleCleanLog(row)">{{ t('container.cleanLog') }}</el-dropdown-item>
                       <el-dropdown-item divided @click="handleRemoveContainer(row)">
                         <span style="color: var(--el-color-danger)">{{ t('commons.delete') }}</span>
                       </el-dropdown-item>
@@ -101,6 +105,7 @@
         <el-tab-pane :label="t('container.images')" name="images">
           <div class="app-toolbar">
             <el-button type="primary" @click="pullDrawer = true">{{ t('container.pullImage') }}</el-button>
+            <el-button @click="handlePruneImages">{{ t('container.pruneImages') }}</el-button>
           </div>
           <el-table :data="images" v-loading="imageLoading">
             <el-table-column prop="id" label="ID" width="140" />
@@ -110,8 +115,9 @@
             <el-table-column :label="t('container.size')" width="120">
               <template #default="{ row }">{{ formatSize(row.size) }}</template>
             </el-table-column>
-            <el-table-column :label="t('commons.actions')" width="100">
+            <el-table-column :label="t('commons.actions')" width="160">
               <template #default="{ row }">
+                <el-button link type="primary" @click="handleInspect('image', row.id)">Inspect</el-button>
                 <el-button link type="danger" @click="handleRemoveImage(row)">{{ t('commons.delete') }}</el-button>
               </template>
             </el-table-column>
@@ -150,8 +156,91 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
+
+        <el-tab-pane :label="t('container.dockerConfig')" name="config">
+          <div class="mirror-config">
+            <h4>{{ t('container.registryMirrors') }}</h4>
+            <p class="config-desc">{{ t('container.registryMirrorsDesc') }}</p>
+
+            <div class="preset-mirrors">
+              <span class="preset-label">{{ t('container.presetMirrors') }}：</span>
+              <el-tag
+                v-for="p in presetMirrors" :key="p.url"
+                :type="currentMirrors.includes(p.url) ? 'success' : 'info'"
+                class="preset-tag"
+                @click="togglePreset(p.url)"
+                style="cursor: pointer"
+              >
+                {{ p.name }}
+              </el-tag>
+            </div>
+
+            <div class="mirror-list">
+              <div v-for="(m, idx) in currentMirrors" :key="idx" class="mirror-item">
+                <el-input v-model="currentMirrors[idx]" style="flex:1" />
+                <el-button link type="danger" @click="currentMirrors.splice(idx, 1)">{{ t('commons.delete') }}</el-button>
+              </div>
+              <el-button text type="primary" @click="currentMirrors.push('')" style="margin-top:4px">+ {{ t('container.addMirror') }}</el-button>
+            </div>
+
+            <el-alert type="warning" :closable="false" style="margin:12px 0">
+              {{ t('container.mirrorRestartWarning') }}
+            </el-alert>
+
+            <el-button type="primary" :loading="savingMirrors" @click="handleSaveMirrors">{{ t('commons.save') }}</el-button>
+          </div>
+
+          <el-divider />
+
+          <h4>{{ t('container.pruneTitle') }}</h4>
+          <p class="config-desc">{{ t('container.pruneDesc') }}</p>
+          <div class="prune-btns">
+            <el-button @click="handlePrune('container')">{{ t('container.pruneContainers') }}</el-button>
+            <el-button @click="handlePrune('image')">{{ t('container.pruneImages') }}</el-button>
+            <el-button @click="handlePrune('network')">{{ t('container.pruneNetworks') }}</el-button>
+            <el-button @click="handlePrune('volume')">{{ t('container.pruneVolumes') }}</el-button>
+            <el-button @click="handlePrune('buildcache')">{{ t('container.pruneBuildCache') }}</el-button>
+          </div>
+        </el-tab-pane>
       </el-tabs>
     </template>
+
+    <!-- Inspect Dialog -->
+    <el-dialog v-model="inspectDialog" title="Inspect" width="720px" destroy-on-close>
+      <pre class="log-content" style="max-height:500px">{{ inspectData }}</pre>
+    </el-dialog>
+
+    <!-- Rename Dialog -->
+    <el-dialog v-model="renameDialog" :title="t('container.rename')" width="420px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item :label="t('container.newName')">
+          <el-input v-model="renameNewName" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="renameDialog = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleRename">{{ t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Commit Dialog -->
+    <el-dialog v-model="commitDialog" :title="t('container.commit')" width="480px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item :label="t('container.newImageName')">
+          <el-input v-model="commitForm.newImageName" placeholder="myimage:latest" />
+        </el-form-item>
+        <el-form-item :label="t('container.commitComment')">
+          <el-input v-model="commitForm.comment" />
+        </el-form-item>
+        <el-form-item :label="t('container.commitPause')">
+          <el-switch v-model="commitForm.pause" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="commitDialog = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleCommit">{{ t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
 
     <!-- Create Container Drawer -->
     <el-drawer v-model="createContainerDrawer" :title="t('container.createContainer')" size="560px" destroy-on-close>
@@ -229,6 +318,8 @@ import {
   listImages, pullImage, removeImage,
   listNetworks, createNetwork, removeNetwork,
   listVolumes, createVolume, removeVolume,
+  inspectDocker, pruneDocker, renameContainer, cleanContainerLog, commitContainer,
+  loadDockerMirrors, updateDockerMirrors,
 } from '@/api/modules/container'
 
 const { t } = useI18n()
@@ -344,6 +435,7 @@ watch(activeTab, (tab) => {
   else if (tab === 'images') loadImages()
   else if (tab === 'networks') loadNetworks()
   else if (tab === 'volumes') loadVolumes()
+  else if (tab === 'config') loadMirrors()
 })
 
 const operate = async (row: Container, op: string) => {
@@ -422,6 +514,105 @@ const handleCreateVolume = async () => {
     volumeCreateDialog.value = false
     await loadVolumes()
   } finally { submitting.value = false }
+}
+
+// ======================== 新增功能 ========================
+
+const inspectDialog = ref(false)
+const inspectData = ref('')
+const handleInspect = async (type: string, id: string) => {
+  const res = await inspectDocker({ type, id })
+  inspectData.value = res.data || ''
+  inspectDialog.value = true
+}
+
+const renameDialog = ref(false)
+const renameContainerID = ref('')
+const renameNewName = ref('')
+const openRename = (row: Container) => {
+  renameContainerID.value = row.id
+  renameNewName.value = row.name
+  renameDialog.value = true
+}
+const handleRename = async () => {
+  submitting.value = true
+  try {
+    await renameContainer({ containerID: renameContainerID.value, newName: renameNewName.value })
+    ElMessage.success(t('commons.success'))
+    renameDialog.value = false
+    loadContainers()
+  } finally { submitting.value = false }
+}
+
+const handleCleanLog = async (row: Container) => {
+  await ElMessageBox.confirm(t('container.cleanLogConfirm'), t('commons.tip'), { type: 'warning' })
+  await cleanContainerLog({ containerID: row.id })
+  ElMessage.success(t('commons.success'))
+}
+
+const commitDialog = ref(false)
+const commitForm = reactive({ containerID: '', newImageName: '', comment: '', pause: true })
+const handleCommitOpen = (row: Container) => {
+  commitForm.containerID = row.id
+  commitForm.newImageName = ''
+  commitForm.comment = ''
+  commitForm.pause = true
+  commitDialog.value = true
+}
+const handleCommit = async () => {
+  submitting.value = true
+  try {
+    await commitContainer(commitForm)
+    ElMessage.success(t('commons.success'))
+    commitDialog.value = false
+  } finally { submitting.value = false }
+}
+
+const handlePrune = async (type: string) => {
+  await ElMessageBox.confirm(t('container.pruneConfirm'), t('commons.tip'), { type: 'warning' })
+  const res = await pruneDocker({ pruneType: type, withAll: type === 'image' })
+  const report = res.data || {}
+  ElMessage.success(`${t('container.pruneSuccess')}: ${report.deletedCount || 0} ${t('container.items')}, ${formatSize(report.spaceReclaimed || 0)} ${t('container.reclaimed')}`)
+}
+
+const handlePruneImages = async () => {
+  await handlePrune('image')
+  loadImages()
+}
+
+const presetMirrors = [
+  { name: 'DaoCloud', url: 'https://docker.m.daocloud.io' },
+  { name: '阿里云', url: 'https://registry.cn-hangzhou.aliyuncs.com' },
+  { name: '华为云', url: 'https://05f073ad3c0010ea0f4bc00b7105ec20.mirror.swr.myhuaweicloud.com' },
+  { name: '中科大', url: 'https://docker.mirrors.ustc.edu.cn' },
+  { name: 'Docker 官方', url: 'https://registry-1.docker.io' },
+]
+const currentMirrors = ref<string[]>([])
+const savingMirrors = ref(false)
+
+const loadMirrors = async () => {
+  try {
+    const res = await loadDockerMirrors()
+    currentMirrors.value = res.data || []
+  } catch { currentMirrors.value = [] }
+}
+
+const togglePreset = (url: string) => {
+  const idx = currentMirrors.value.indexOf(url)
+  if (idx >= 0) {
+    currentMirrors.value.splice(idx, 1)
+  } else {
+    currentMirrors.value.push(url)
+  }
+}
+
+const handleSaveMirrors = async () => {
+  await ElMessageBox.confirm(t('container.mirrorSaveConfirm'), t('commons.tip'), { type: 'warning' })
+  savingMirrors.value = true
+  try {
+    await updateDockerMirrors({ mirrors: currentMirrors.value.filter(Boolean) })
+    ElMessage.success(t('commons.success'))
+  } finally { savingMirrors.value = false }
 }
 
 const handleRemoveVolume = async (row: ContainerVolume) => {
@@ -569,5 +760,47 @@ onUnmounted(() => {
 }
 :deep(.row-stopped) {
   opacity: 0.7;
+}
+.mirror-config h4 {
+  margin: 0 0 8px;
+  color: var(--xp-text-primary);
+}
+.config-desc {
+  color: var(--xp-text-muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+.preset-mirrors {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.preset-label {
+  font-size: 13px;
+  color: var(--xp-text-secondary);
+}
+.preset-tag {
+  transition: all 0.2s;
+}
+.preset-tag:hover {
+  transform: scale(1.05);
+}
+.mirror-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+}
+.mirror-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.prune-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>

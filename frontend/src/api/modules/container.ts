@@ -34,3 +34,13 @@ export const createCompose = (data: { name: string; path: string; content: strin
   http.post('/containers/compose', data)
 export const operateCompose = (data: { name: string; operation: string }) =>
   http.post('/containers/compose/operate', data)
+
+// 新增功能
+export const inspectDocker = (data: { type: string; id: string }) => http.post('/containers/inspect', data)
+export const pruneDocker = (data: { pruneType: string; withAll?: boolean }) => http.post('/containers/prune', data)
+export const renameContainer = (data: { containerID: string; newName: string }) => http.post('/containers/rename', data)
+export const cleanContainerLog = (data: { containerID: string }) => http.post('/containers/log/clean', data)
+export const commitContainer = (data: { containerID: string; newImageName: string; comment?: string; pause?: boolean }) =>
+  http.post('/containers/commit', data)
+export const loadDockerMirrors = () => http.get('/containers/docker/mirrors')
+export const updateDockerMirrors = (data: { mirrors: string[] }) => http.post('/containers/docker/mirrors', data)

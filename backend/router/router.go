@@ -16,6 +16,7 @@ import (
 func Setup(mode string) *gin.Engine {
 	gin.SetMode(mode)
 	r := gin.New()
+	r.MaxMultipartMemory = 32 << 20 // 32MB: 只缓冲 multipart 元数据，文件流由 handler 自行处理
 
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
@@ -281,6 +282,13 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/containers/compose", api.ListCompose)
 		privateGroup.POST("/containers/compose", api.CreateCompose)
 		privateGroup.POST("/containers/compose/operate", api.OperateCompose)
+		privateGroup.POST("/containers/inspect", api.Inspect)
+		privateGroup.POST("/containers/prune", api.Prune)
+		privateGroup.POST("/containers/rename", api.RenameContainer)
+		privateGroup.POST("/containers/log/clean", api.CleanContainerLog)
+		privateGroup.POST("/containers/commit", api.CommitContainer)
+		privateGroup.GET("/containers/docker/mirrors", api.LoadDockerMirrors)
+		privateGroup.POST("/containers/docker/mirrors", api.UpdateDockerMirrors)
 
 		// 流量统计
 		privateGroup.GET("/traffic/configs", api.ListConfigs)

@@ -248,3 +248,94 @@ func (a *ContainerAPI) OperateCompose(c *gin.Context) {
 	}
 	helper.SuccessWithOutData(c)
 }
+
+// ======================== 新增功能 ========================
+
+func (a *ContainerAPI) Inspect(c *gin.Context) {
+	var req dto.InspectReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	data, err := containerService.Inspect(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ContainerAPI) Prune(c *gin.Context) {
+	var req dto.PruneReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	report, err := containerService.Prune(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, report)
+}
+
+func (a *ContainerAPI) RenameContainer(c *gin.Context) {
+	var req dto.ContainerRename
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := containerService.RenameContainer(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ContainerAPI) CleanContainerLog(c *gin.Context) {
+	var req dto.ContainerLogClean
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := containerService.CleanContainerLog(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ContainerAPI) CommitContainer(c *gin.Context) {
+	var req dto.ContainerCommit
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := containerService.CommitContainer(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ContainerAPI) LoadDockerMirrors(c *gin.Context) {
+	mirrors, err := containerService.LoadDockerMirrors()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, mirrors)
+}
+
+func (a *ContainerAPI) UpdateDockerMirrors(c *gin.Context) {
+	var req dto.DockerMirrorUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := containerService.UpdateDockerMirrors(req.Mirrors); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
