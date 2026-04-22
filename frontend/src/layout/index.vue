@@ -5,6 +5,7 @@
       <Header />
       <AppMain />
     </div>
+    <UploadPanel />
   </div>
 </template>
 
@@ -12,6 +13,7 @@
 import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
 import AppMain from './components/AppMain.vue'
+import UploadPanel from './components/UploadPanel.vue'
 import { useGlobalStore } from '@/store/modules/global'
 
 const globalStore = useGlobalStore()
