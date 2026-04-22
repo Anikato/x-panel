@@ -307,7 +307,7 @@ func (a *FileAPI) CheckConflict(c *gin.Context) {
 	})
 }
 
-// WgetFile 远程下载文件
+// WgetFile 远程下载文件（异步执行，返回 taskID）
 func (a *FileAPI) WgetFile(c *gin.Context) {
 	var req dto.FileWgetReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -315,11 +315,11 @@ func (a *FileAPI) WgetFile(c *gin.Context) {
 		return
 	}
 	svc := service.NewIFileService()
-	if err := svc.Wget(req); err != nil {
-		helper.HandleError(c, err)
-		return
-	}
-	helper.SuccessWithOutData(c)
+	taskName := fmt.Sprintf("远程下载 %s", req.URL)
+	task := service.StartFileTask("download", taskName, func() error {
+		return svc.Wget(req)
+	})
+	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }
 
 // UploadFile 上传文件（流式写盘，支持大文件）

@@ -810,13 +810,15 @@ async function doRemoteDownload() {
   remoteDownloading.value = true
   try {
     const dir = currentTab.value?.path || '/'
-    // 使用 wget/curl 下载到当前目录
-    await import('@/api/http').then(m =>
-      m.default.post('/files/wget', { url: remoteUrl.value, path: dir })
-    )
-    ElMessage.success(t('commons.success'))
+    const http = (await import('@/api/http')).default
+    const res: any = await http.post('/files/wget', { url: remoteUrl.value, path: dir })
+    if (res.data?.taskID) {
+      ElMessage.info('下载任务已在后台启动，请在任务面板查看进度')
+      taskPanelRef.value?.refresh()
+    } else {
+      ElMessage.success(t('commons.success'))
+    }
     remoteDownloadVisible.value = false
-    refreshFiles()
   } catch { /* */ } finally {
     remoteDownloading.value = false
   }
