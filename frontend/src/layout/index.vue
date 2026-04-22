@@ -6,6 +6,7 @@
       <AppMain />
     </div>
     <UploadPanel />
+    <FileTaskPanel />
   </div>
 </template>
 
@@ -14,9 +15,17 @@ import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
 import AppMain from './components/AppMain.vue'
 import UploadPanel from './components/UploadPanel.vue'
+import FileTaskPanel from './components/FileTaskPanel.vue'
 import { useGlobalStore } from '@/store/modules/global'
+import { useFileTaskStore } from '@/store/modules/fileTask'
+import { onMounted } from 'vue'
 
 const globalStore = useGlobalStore()
+const fileTaskStore = useFileTaskStore()
+
+onMounted(() => {
+  fileTaskStore.init()
+})
 </script>
 
 <style lang="scss" scoped>

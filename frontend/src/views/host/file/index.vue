@@ -377,7 +377,6 @@
     <ChownDialog ref="chownRef" @done="refreshFiles" />
     <DetailDrawer ref="detailRef" />
     <FilePreview ref="filePreviewRef" />
-    <FileTaskPanel ref="taskPanelRef" />
   </div>
 </template>
 
@@ -405,7 +404,9 @@ import PermissionDialog from './permission-dialog.vue'
 import ChownDialog from './chown-dialog.vue'
 import DetailDrawer from './detail-drawer.vue'
 import FilePreview from './FilePreview.vue'
-import FileTaskPanel from './file-task-panel.vue'
+import { useFileTaskStore } from '@/store/modules/fileTask'
+
+const fileTaskStore = useFileTaskStore()
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -814,7 +815,7 @@ async function doRemoteDownload() {
     const res: any = await http.post('/files/wget', { url: remoteUrl.value, path: dir })
     if (res.data?.taskID) {
       ElMessage.info('下载任务已在后台启动，请在任务面板查看进度')
-      taskPanelRef.value?.refresh()
+      fileTaskStore.fetchTasks()
     } else {
       ElMessage.success(t('commons.success'))
     }
@@ -867,10 +868,8 @@ function clearClipboard() {
   clipboard.value = { type: 'copy', paths: [] }
 }
 
-const taskPanelRef = ref<InstanceType<typeof FileTaskPanel>>()
-
 function onAsyncDone() {
-  taskPanelRef.value?.refresh()
+  fileTaskStore.fetchTasks()
   refreshFiles()
 }
 
@@ -919,7 +918,7 @@ async function doPaste() {
 
     if (res.data?.taskID) {
       ElMessage.info(t('file.taskStarted'))
-      taskPanelRef.value?.refresh()
+      fileTaskStore.fetchTasks()
     } else {
       ElMessage.success(t('commons.success'))
     }
