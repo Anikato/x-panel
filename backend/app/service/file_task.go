@@ -4,18 +4,59 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 // FileTaskStatus 文件操作任务状态
 type FileTaskStatus struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`              // 任务描述（如 "复制 3 个文件到 /data"）
-	Type      string `json:"type"`              // move, compress, decompress
-	Status    string `json:"status"`            // running, success, failed
-	Message   string `json:"message,omitempty"` // 错误信息
-	StartTime int64  `json:"startTime"`
-	EndTime   int64  `json:"endTime,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`              // 任务描述
+	Type        string `json:"type"`              // move, compress, decompress
+	Status      string `json:"status"`            // running, success, failed
+	Message     string `json:"message,omitempty"` // 错误信息
+	StartTime   int64  `json:"startTime"`
+	EndTime     int64  `json:"endTime,omitempty"`
+	// 进度信息
+	Progress    int    `json:"progress"`          // 0-100
+	BytesDone   int64  `json:"bytesDone"`
+	BytesTotal  int64  `json:"bytesTotal"`
+	Speed       int64  `json:"speed"`             // bytes/s 滑动平均
+	CurrentFile string `json:"currentFile"`       // 正在处理的文件名
+}
+
+// ProgressTracker 内部速度计算器（导出，供 API 层传递）
+type ProgressTracker struct {
+	task         *FileTaskStatus
+	mu           sync.Mutex
+	lastTime     time.Time
+	lastBytes    int64
+}
+
+func newProgressTracker(task *FileTaskStatus) *ProgressTracker {
+	return &ProgressTracker{task: task, lastTime: time.Now()}
+}
+
+// AddBytes 原子累加已完成字节，并按500ms采样更新速度
+func (pt *ProgressTracker) AddBytes(n int64) {
+	done := atomic.AddInt64(&pt.task.BytesDone, n)
+	total := atomic.LoadInt64(&pt.task.BytesTotal)
+	if total > 0 {
+		pct := int(done * 100 / total)
+		if pct > 99 { pct = 99 }
+		pt.task.Progress = pct
+	}
+
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	now := time.Now()
+	elapsed := now.Sub(pt.lastTime).Seconds()
+	if elapsed >= 0.5 {
+		bytesDelta := done - pt.lastBytes
+		pt.task.Speed = int64(float64(bytesDelta) / elapsed)
+		pt.lastBytes = done
+		pt.lastTime = now
+	}
 }
 
 var (
@@ -56,6 +97,7 @@ func completeFileTask(task *FileTaskStatus, err error) {
 		task.Message = err.Error()
 	} else {
 		task.Status = "success"
+		task.Progress = 100
 	}
 }
 
@@ -86,7 +128,7 @@ func ListFileTasks() []*FileTaskStatus {
 	return result
 }
 
-// StartFileTask 启动异步文件任务
+// StartFileTask 启动异步文件任务（不带进度）
 func StartFileTask(taskType, name string, fn func() error) *FileTaskStatus {
 	task := newFileTask(taskType, name)
 	go func() {
@@ -94,6 +136,23 @@ func StartFileTask(taskType, name string, fn func() error) *FileTaskStatus {
 		completeFileTask(task, err)
 	}()
 	return task
+}
+
+// StartFileTaskWithProgress 启动带进度追踪的异步文件任务
+func StartFileTaskWithProgress(taskType, name string, totalBytes int64, fn func(*ProgressTracker) error) *FileTaskStatus {
+	task := newFileTask(taskType, name)
+	task.BytesTotal = totalBytes
+	tracker := newProgressTracker(task)
+	go func() {
+		err := fn(tracker)
+		completeFileTask(task, err)
+	}()
+	return task
+}
+
+// CalcDirBytes 递归统计目录总字节数（导出供 API 层使用）
+func CalcDirBytes(root string) int64 {
+	return calcDirBytes(root)
 }
 
 // cleanOldTasks 清理已完成超过 10 分钟的任务

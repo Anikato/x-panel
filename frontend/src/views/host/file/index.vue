@@ -264,7 +264,15 @@
     </el-table>
 
     <div class="file-footer">
-      <span>{{ fileList.length }} {{ t('file.items', { count: fileList.length }) }}</span>
+      <span class="footer-stats">
+        {{ t('file.items', { count: fileList.length }) }}
+        （{{ t('file.fileCount', { count: fileOnlyCount }) }} · {{ t('file.dirCount', { count: dirOnlyCount }) }}）
+        <template v-if="selectedRows.length > 0">
+          &nbsp;｜ {{ t('file.selectedCount', { count: selectedRows.length }) }}
+          <template v-if="selectedSizeTotal > 0">（{{ formatSize(selectedSizeTotal) }}）</template>
+        </template>
+      </span>
+      <span class="footer-hint">F2 重命名 &nbsp;·&nbsp; Del 删除 &nbsp;·&nbsp; Ctrl+C/X/V 复制/剪切/粘贴 &nbsp;·&nbsp; Ctrl+A 全选</span>
     </div>
 
     <!-- 右键菜单 -->
@@ -319,6 +327,13 @@
         <div class="context-divider" />
         <div class="context-item danger" @click="handleDelete(contextMenu.row)">
           <el-icon><Delete /></el-icon>{{ t('file.delete') }}
+        </div>
+        <div class="context-divider" />
+        <div class="context-item" @click="showCreate('file'); contextMenu.visible = false">
+          <el-icon><DocumentAdd /></el-icon>{{ t('file.newFile') }}
+        </div>
+        <div class="context-item" @click="showCreate('dir'); contextMenu.visible = false">
+          <el-icon><FolderAdd /></el-icon>{{ t('file.newDir') }}
         </div>
       </div>
     </Teleport>
@@ -643,6 +658,7 @@ function getFileIconColor(row: FileInfo) {
 
 // ===================== Refs =====================
 
+const tableRef = ref<any>()
 const codeEditorRef = ref<InstanceType<typeof CodeEditor>>()
 const terminalRef = ref<InstanceType<typeof TerminalDialog>>()
 const compressRef = ref<InstanceType<typeof CompressDialog>>()
@@ -777,14 +793,8 @@ async function doUploadFiles(files: File[]) {
   // 全局上传面板会自动显示进度
 }
 
-const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024 // 2GB
-
 const handleUploadChange = async (file: { raw?: File }) => {
   if (!file?.raw) return
-  if (file.raw.size > MAX_UPLOAD_SIZE) {
-    ElMessage.error(t('file.fileTooLarge'))
-    return
-  }
   await doUploadFiles([file.raw])
 }
 
@@ -835,14 +845,7 @@ async function handleDrop(e: DragEvent) {
   isDragging.value = false
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
-  const validFiles = Array.from(files).filter(f => {
-    if (f.size > MAX_UPLOAD_SIZE) {
-      ElMessage.error(`${f.name}: ${t('file.fileTooLarge')}`)
-      return false
-    }
-    return true
-  })
-  if (validFiles.length > 0) await doUploadFiles(validFiles)
+  await doUploadFiles(Array.from(files))
 }
 
 // ===================== 剪贴板（复制/移动） =====================
@@ -1013,6 +1016,42 @@ const formatTime = (iso: string): string => {
   return d.toLocaleString('zh-CN', { hour12: false })
 }
 
+// ===================== 键盘快捷键 =====================
+
+function handleKeydown(e: KeyboardEvent) {
+  // 如果焦点在 input/textarea/contenteditable 里，不触发
+  const tag = (e.target as HTMLElement).tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
+
+  if (e.key === 'F2') {
+    e.preventDefault()
+    if (selectedRows.value.length === 1) handleRename(selectedRows.value[0])
+  } else if (e.key === 'Delete' || e.key === 'Backspace' && e.metaKey) {
+    e.preventDefault()
+    if (selectedRows.value.length > 0) handleBatchDelete()
+  } else if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'c') {
+      e.preventDefault()
+      if (selectedRows.value.length > 0) setClipboard('copy', selectedRows.value)
+    } else if (e.key === 'x') {
+      e.preventDefault()
+      if (selectedRows.value.length > 0) setClipboard('cut', selectedRows.value)
+    } else if (e.key === 'v') {
+      e.preventDefault()
+      if (clipboard.value.paths.length > 0) doPaste()
+    } else if (e.key === 'a') {
+      e.preventDefault()
+      tableRef.value?.toggleAllSelection()
+    }
+  }
+}
+
+// ===================== 状态栏计算 =====================
+
+const fileOnlyCount = computed(() => fileList.value.filter(f => !f.isDir).length)
+const dirOnlyCount = computed(() => fileList.value.filter(f => f.isDir).length)
+const selectedSizeTotal = computed(() => selectedRows.value.reduce((sum, f) => sum + (f.isDir ? 0 : f.size), 0))
+
 // ===================== 表格高度自适应 =====================
 
 function updateTableHeight() {
@@ -1027,11 +1066,13 @@ onMounted(() => {
   updateTableHeight()
   window.addEventListener('resize', updateTableHeight)
   document.addEventListener('click', closeContextMenu)
+  document.addEventListener('keydown', handleKeydown)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateTableHeight)
   document.removeEventListener('click', closeContextMenu)
+  document.removeEventListener('keydown', handleKeydown)
   if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
@@ -1235,11 +1276,30 @@ onBeforeUnmount(() => {
 .file-footer {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  justify-content: space-between;
+  padding: 8px 12px;
   font-size: 12px;
   color: var(--xp-text-muted);
   border-top: 1px solid var(--xp-border-light);
   margin-top: 8px;
+  gap: 12px;
+}
+
+.footer-stats {
+  flex: 1;
+  color: var(--xp-text-secondary);
+}
+
+.footer-hint {
+  font-size: 11px;
+  color: var(--xp-text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  display: none;
+}
+
+@media (min-width: 1200px) {
+  .footer-hint { display: block; }
 }
 </style>
 

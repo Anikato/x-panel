@@ -36,11 +36,39 @@
           </div>
           <div class="task-info">
             <div class="task-name">{{ task.name || taskTypeLabel(task.type) }}</div>
-            <div class="task-meta">
-              <span v-if="task.status === 'running'" class="task-time">{{ formatDuration(task.startTime) }}</span>
-              <span v-else-if="task.status === 'failed'" class="task-error">{{ task.message }}</span>
-              <span v-else class="task-time">{{ formatEndDuration(task.startTime, task.endTime) }}</span>
-            </div>
+
+            <!-- 运行中：显示进度条 + 速度 + ETA -->
+            <template v-if="task.status === 'running'">
+              <template v-if="task.bytesTotal > 0">
+                <el-progress
+                  :percentage="task.progress"
+                  :stroke-width="4"
+                  :show-text="false"
+                  class="task-progress"
+                />
+                <div class="task-stats">
+                  <span>{{ formatBytes(task.bytesDone) }} / {{ formatBytes(task.bytesTotal) }}</span>
+                  <span v-if="task.speed > 0">· {{ formatBytes(task.speed) }}/s</span>
+                  <span v-if="task.speed > 0 && task.bytesTotal > task.bytesDone">
+                    · 约{{ formatEta(task.bytesTotal - task.bytesDone, task.speed) }}
+                  </span>
+                </div>
+                <div v-if="task.currentFile" class="task-current-file">{{ task.currentFile }}</div>
+              </template>
+              <template v-else>
+                <span class="task-time">{{ formatDuration(task.startTime) }}</span>
+              </template>
+            </template>
+
+            <!-- 失败 -->
+            <template v-else-if="task.status === 'failed'">
+              <span class="task-error">{{ task.message }}</span>
+            </template>
+
+            <!-- 成功 -->
+            <template v-else>
+              <span class="task-time">{{ formatEndDuration(task.startTime, task.endTime) }}</span>
+            </template>
           </div>
         </div>
         <div v-if="tasks.length === 0" class="task-empty">{{ t('file.taskEmpty') }}</div>
@@ -50,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loading, CircleCheck, CircleClose, ArrowDown } from '@element-plus/icons-vue'
 import { listFileTasks } from '@/api/modules/file'
@@ -65,6 +93,11 @@ interface FileTask {
   message?: string
   startTime: number
   endTime?: number
+  progress: number
+  bytesDone: number
+  bytesTotal: number
+  speed: number
+  currentFile: string
 }
 
 const tasks = ref<FileTask[]>([])
@@ -81,6 +114,25 @@ function taskTypeLabel(type: string): string {
     decompress: '解压',
   }
   return map[type] || type
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+function formatEta(remainingBytes: number, speed: number): string {
+  if (speed <= 0) return '...'
+  const secs = Math.ceil(remainingBytes / speed)
+  if (secs < 60) return `${secs} 秒`
+  const mins = Math.floor(secs / 60)
+  const s = secs % 60
+  if (mins < 60) return `${mins} 分 ${s} 秒`
+  const hours = Math.floor(mins / 60)
+  return `${hours} 小时 ${mins % 60} 分`
 }
 
 function formatDuration(startTime: number): string {
@@ -115,17 +167,26 @@ function clearFinished() {
   tasks.value = tasks.value.filter(t => t.status === 'running')
 }
 
-// 暴露给父组件：手动触发刷新
 function refresh() {
   fetchTasks()
 }
 
-onMounted(() => {
-  fetchTasks()
-  // 有运行中任务时 2 秒轮询，否则 10 秒
+// 动态调整轮询频率：运行中 1s，空闲 30s
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer)
+  const interval = runningCount.value > 0 ? 1000 : 30000
   pollTimer = setInterval(() => {
     fetchTasks()
-  }, runningCount.value > 0 ? 2000 : 10000)
+  }, interval)
+}
+
+watch(runningCount, () => {
+  startPolling()
+})
+
+onMounted(() => {
+  fetchTasks()
+  startPolling()
 })
 
 onBeforeUnmount(() => {
@@ -140,12 +201,12 @@ defineExpose({ refresh })
   position: fixed;
   bottom: 16px;
   right: 16px;
-  width: 380px;
-  max-height: 400px;
+  width: 400px;
+  max-height: 420px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
   z-index: 2000;
   overflow: hidden;
   transition: all 0.3s ease;
@@ -193,7 +254,7 @@ defineExpose({ refresh })
 }
 
 .task-panel-body {
-  max-height: 340px;
+  max-height: 360px;
   overflow-y: auto;
   padding: 4px 0;
 }
@@ -227,15 +288,38 @@ defineExpose({ refresh })
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 4px;
 }
 
-.task-meta {
-  font-size: 12px;
+.task-progress {
+  margin: 4px 0;
+}
+
+.task-stats {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
   color: var(--el-text-color-secondary);
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.task-current-file {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-top: 2px;
 }
 
+.task-time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
 .task-error {
+  font-size: 12px;
   color: var(--el-color-danger);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -259,7 +343,6 @@ defineExpose({ refresh })
   to { transform: rotate(360deg); }
 }
 
-/* slide transition */
 .slide-enter-active,
 .slide-leave-active {
   transition: max-height 0.3s ease, opacity 0.3s ease;

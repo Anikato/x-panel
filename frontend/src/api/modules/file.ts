@@ -54,7 +54,7 @@ export const uploadFile = (path: string, file: File, onProgress?: (percent: numb
   formData.append('file', file)
   return http.post('/files/upload', formData, {
     headers: { 'Content-Type': undefined },
-    timeout: 600000,
+    timeout: 0, // 不设超时，大文件上传时间不可预知
     onUploadProgress: onProgress
       ? (e: { loaded: number; total?: number }) => {
           if (e.total) onProgress(Math.round((e.loaded / e.total) * 100))

@@ -3,6 +3,7 @@ package service
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -29,6 +30,7 @@ type IFileService interface {
 	BatchDelete(req dto.FileBatchDeleteReq) error
 	Rename(req dto.FileRenameReq) error
 	Move(req dto.FileMoveReq) error
+	MoveWithTracker(req dto.FileMoveReq, tracker *ProgressTracker) error
 	ChangeMode(req dto.FileModeReq) error
 	ChangeOwner(req dto.FileChownReq) error
 	Compress(req dto.FileCompressReq) error
@@ -391,72 +393,166 @@ func (s *FileService) Rename(req dto.FileRenameReq) error {
 
 // Move 移动或复制
 func (s *FileService) Move(req dto.FileMoveReq) error {
+	return s.MoveWithTracker(req, nil)
+}
+
+func (s *FileService) MoveWithTracker(req dto.FileMoveReq, tracker *ProgressTracker) error {
 	dstDir := filepath.Clean(req.DstPath)
 	if _, err := os.Stat(dstDir); os.IsNotExist(err) {
 		return buserr.New(constant.ErrFileNotExist)
 	}
 
-	// 确定冲突策略：优先使用新字段，兼容旧 Cover 字段
 	policy := req.ConflictPolicy
 	if policy == "" {
 		if req.Cover {
 			policy = "overwrite"
 		} else {
-			policy = "overwrite" // 默认覆盖
+			policy = "overwrite"
 		}
 	}
 
-	var skippedCount int
 	for _, src := range req.SrcPaths {
 		srcClean := filepath.Clean(src)
 		dstClean := filepath.Join(dstDir, filepath.Base(srcClean))
 
-		// 防止移动到自身内部
 		if strings.HasPrefix(dstDir, srcClean+"/") || dstDir == srcClean {
 			return buserr.WithDetail(constant.ErrInvalidParams, "cannot move to itself", nil)
 		}
 
-		// 目标已存在的冲突处理
 		if _, err := os.Stat(dstClean); err == nil {
 			switch policy {
 			case "skip":
-				skippedCount++
-				global.LOG.Infof("File conflict skipped: %s (target exists)", dstClean)
+				global.LOG.Infof("File conflict skipped: %s", dstClean)
 				continue
-			case "overwrite":
-				if err := os.RemoveAll(dstClean); err != nil {
-					return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-				}
 			default:
-				// 未知策略，默认覆盖
 				if err := os.RemoveAll(dstClean); err != nil {
 					return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 				}
 			}
 		}
 
-		if req.IsCopy {
-			cmd := exec.Command("cp", "-rp", srcClean, dstClean)
-			if output, err := cmd.CombinedOutput(); err != nil {
-				return buserr.WithDetail(constant.ErrInternalServer, string(output), err)
+		if !req.IsCopy {
+			// 同分区：瞬间 rename，无需进度
+			if err := os.Rename(srcClean, dstClean); err == nil {
+				global.LOG.Infof("File moved (rename): %s → %s", srcClean, dstClean)
+				continue
+			}
+			// 跨分区：回退到流式复制后删除
+			if err := copyPathStreaming(srcClean, dstClean, tracker); err != nil {
+				return err
+			}
+			if err := os.RemoveAll(srcClean); err != nil {
+				global.LOG.Warnf("Failed to remove source after cross-device move: %s", err.Error())
+			}
+			global.LOG.Infof("File moved (cross-device): %s → %s", srcClean, dstClean)
+		} else {
+			if err := copyPathStreaming(srcClean, dstClean, tracker); err != nil {
+				return err
 			}
 			global.LOG.Infof("File copied: %s → %s", srcClean, dstClean)
-		} else {
-			if err := os.Rename(srcClean, dstClean); err != nil {
-				// 跨分区移动：先复制后删除
-				cmd := exec.Command("cp", "-rp", srcClean, dstClean)
-				if output, err2 := cmd.CombinedOutput(); err2 != nil {
-					return buserr.WithDetail(constant.ErrInternalServer, string(output), err2)
-				}
-				if err2 := os.RemoveAll(srcClean); err2 != nil {
-					global.LOG.Warnf("Failed to remove source after cross-device move: %s", err2.Error())
-				}
-			}
-			global.LOG.Infof("File moved: %s → %s", srcClean, dstClean)
 		}
 	}
-	if skippedCount > 0 {
-		global.LOG.Infof("File operation: skipped %d conflicting files", skippedCount)
+	return nil
+}
+
+// ===================== 流式复制工具 =====================
+
+// calcDirBytes 递归统计目录总字节数（用于进度计算）
+func calcDirBytes(root string) int64 {
+	var total int64
+	_ = filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err == nil {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
+}
+
+// copyPathStreaming 流式复制单个文件或目录，tracker 可为 nil（不追踪进度）
+func copyPathStreaming(src, dst string, tracker *ProgressTracker) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if info.IsDir() {
+		return copyDirStreaming(src, dst, tracker)
+	}
+	return copyFileStreaming(src, dst, info, tracker)
+}
+
+// copyDirStreaming 递归复制目录
+func copyDirStreaming(src, dst string, tracker *ProgressTracker) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDirStreaming(srcPath, dstPath, tracker); err != nil {
+				return err
+			}
+		} else {
+			info, err := entry.Info()
+			if err != nil {
+				return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+			}
+			if tracker != nil {
+				tracker.task.CurrentFile = entry.Name()
+			}
+			if err := copyFileStreaming(srcPath, dstPath, info, tracker); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// copyFileStreaming 流式复制单个文件，每 chunk 后更新 tracker
+func copyFileStreaming(src, dst string, info fs.FileInfo, tracker *ProgressTracker) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	defer out.Close()
+
+	if tracker == nil {
+		_, err = io.Copy(out, in)
+	} else {
+		buf := make([]byte, 256*1024) // 256KB chunks
+		for {
+			n, err := in.Read(buf)
+			if n > 0 {
+				if _, werr := out.Write(buf[:n]); werr != nil {
+					return buserr.WithDetail(constant.ErrInternalServer, werr.Error(), werr)
+				}
+				tracker.AddBytes(int64(n))
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+			}
+		}
+	}
+	if err != nil && err != io.EOF {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 	return nil
 }

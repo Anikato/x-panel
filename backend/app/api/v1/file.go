@@ -141,14 +141,29 @@ func (a *FileAPI) MoveFile(c *gin.Context) {
 		helper.SuccessWithOutData(c)
 		return
 	}
-	// 多文件移动/复制 → 异步执行
+	// 多文件移动/复制 → 异步执行（带进度）
 	opType := "移动"
 	if req.IsCopy {
 		opType = "复制"
 	}
 	taskName := fmt.Sprintf("%s %d 个文件到 %s", opType, len(req.SrcPaths), filepath.Base(req.DstPath))
-	task := service.StartFileTask("move", taskName, func() error {
-		return svc.Move(req)
+
+	// 预先统计总字节数（用于进度百分比）
+	var totalBytes int64
+	for _, src := range req.SrcPaths {
+		info, err := os.Stat(src)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			totalBytes += service.CalcDirBytes(src)
+		} else {
+			totalBytes += info.Size()
+		}
+	}
+
+	task := service.StartFileTaskWithProgress("move", taskName, totalBytes, func(tracker *service.ProgressTracker) error {
+		return svc.MoveWithTracker(req, tracker)
 	})
 	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }

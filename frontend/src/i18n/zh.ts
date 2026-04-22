@@ -442,12 +442,16 @@ export default {
     uploadProgress: '上传中...',
     uploadComplete: '{count} 个文件上传完成',
     uploadPartial: '部分文件上传失败',
-    fileTooLarge: '文件大小超过 2GB 限制，请使用 SFTP 或 scp 上传',
+    fileTooLarge: '文件过大',
     taskStarted: '操作已在后台执行，请稍候...',
     taskRunning: '{count} 个任务执行中',
     taskAllDone: '所有任务已完成',
     taskClear: '清除',
     taskEmpty: '暂无任务',
+    // 状态栏
+    fileCount: '文件 {count} 个',
+    dirCount: '目录 {count} 个',
+    selectedCount: '已选 {count} 个',
     // 冲突处理
     conflictTitle: '文件冲突',
     conflictMessage: '目标目录中有 {count} 个同名文件：{files}',
