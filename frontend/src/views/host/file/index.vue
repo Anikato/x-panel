@@ -878,18 +878,14 @@ async function doPaste() {
   const dstPath = currentTab.value?.path || '/'
 
   // 检查冲突
+  let conflictPolicy = 'overwrite'
   try {
-    const conflictRes: any = await checkConflict({
-      srcPaths: clipboard.value.paths,
-      dstPath,
-    })
+    const conflictRes: any = await checkConflict({ srcPaths: clipboard.value.paths, dstPath })
     const conflicts: string[] = conflictRes.data?.conflicts || []
 
-    let conflictPolicy = 'overwrite'
     if (conflicts.length > 0) {
-      // 弹窗让用户选择策略
       try {
-        const action = await ElMessageBox({
+        await ElMessageBox({
           title: t('file.conflictTitle'),
           message: t('file.conflictMessage', { count: conflicts.length, files: conflicts.slice(0, 5).join(', ') }),
           distinguishCancelAndClose: true,
@@ -897,18 +893,22 @@ async function doPaste() {
           cancelButtonText: t('file.conflictSkip'),
           type: 'warning',
         })
-        conflictPolicy = action === 'confirm' ? 'overwrite' : 'skip'
+        conflictPolicy = 'overwrite'
       } catch (action) {
         if (action === 'cancel') {
           conflictPolicy = 'skip'
         } else {
-          // 关闭弹窗 = 取消操作
-          return
+          return  // 关闭弹窗 = 取消操作
         }
       }
     }
+  } catch (e: any) {
+    ElMessage.error('冲突检查失败：' + (e?.message || '未知错误'))
+    return
+  }
 
-    loading.value = true
+  loading.value = true
+  try {
     const res: any = await moveFile({
       srcPaths: clipboard.value.paths,
       dstPath,
@@ -917,14 +917,19 @@ async function doPaste() {
     })
 
     if (res.data?.taskID) {
+      // 大文件/跨分区 → 后台任务
       ElMessage.info(t('file.taskStarted'))
       fileTaskStore.fetchTasks()
     } else {
+      // 同分区 rename → 瞬时完成
       ElMessage.success(t('commons.success'))
     }
     clearClipboard()
     refreshFiles()
-  } catch { /* */ } finally {
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || '操作失败，请检查权限或目标路径'
+    ElMessage.error(msg)
+  } finally {
     loading.value = false
   }
 }

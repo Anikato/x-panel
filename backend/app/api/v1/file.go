@@ -124,7 +124,7 @@ func (a *FileAPI) RenameFile(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
-// MoveFile 移动/复制文件（异步执行，返回任务 ID）
+// MoveFile 移动/复制文件（全部异步执行，返回任务 ID 或瞬时完成）
 func (a *FileAPI) MoveFile(c *gin.Context) {
 	var req dto.FileMoveReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -132,16 +132,20 @@ func (a *FileAPI) MoveFile(c *gin.Context) {
 		return
 	}
 	svc := service.NewIFileService()
-	// 对于单个同分区移动（rename），直接同步执行（瞬时完成）
+
+	// 判断是否可以瞬时完成（同分区单文件 rename）
 	if !req.IsCopy && len(req.SrcPaths) == 1 {
-		if err := svc.Move(req); err != nil {
-			helper.HandleError(c, err)
+		srcClean := filepath.Clean(req.SrcPaths[0])
+		dstClean := filepath.Join(filepath.Clean(req.DstPath), filepath.Base(srcClean))
+		if err := os.Rename(srcClean, dstClean); err == nil {
+			// 同分区 rename：瞬时完成，直接返回成功
+			helper.SuccessWithOutData(c)
 			return
 		}
-		helper.SuccessWithOutData(c)
-		return
+		// rename 失败（跨设备等原因）→ 走异步任务
 	}
-	// 多文件移动/复制 → 异步执行（带进度）
+
+	// 其余情况（多文件、跨分区、复制）→ 异步执行（带进度）
 	opType := "移动"
 	if req.IsCopy {
 		opType = "复制"
