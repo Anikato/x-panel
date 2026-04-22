@@ -21,6 +21,7 @@ type IDiskService interface {
 	MountRemote(req dto.RemoteMountRequest) error
 	UnmountRemote(req dto.RemoteUnmountRequest) error
 	ListRemoteMounts() ([]dto.RemoteMountInfo, error)
+	RemountFromFstab(mountPoint string) error
 	ListBlockDevices() ([]dto.BlockDevice, error)
 	MountLocal(req dto.LocalMountRequest) error
 	UnmountLocal(req dto.LocalUnmountRequest) error
@@ -277,18 +278,23 @@ func (s *DiskService) ListRemoteMounts() ([]dto.RemoteMountInfo, error) {
 	}
 
 	fstabEntries := loadFstabMountPoints()
+	fstabRemoteEntries := loadFstabRemoteEntries()
 
+	// 已挂载的远程分区
+	mountedSet := make(map[string]bool)
 	var result []dto.RemoteMountInfo
 	for _, p := range partitions {
 		if !remoteFS[p.Fstype] {
 			continue
 		}
+		mountedSet[p.Mountpoint] = true
 		info := dto.RemoteMountInfo{
 			Device:     p.Device,
 			MountPoint: p.Mountpoint,
 			FSType:     p.Fstype,
 			Options:    strings.Join(p.Opts, ","),
 			InFstab:    fstabEntries[p.Mountpoint],
+			Status:     "mounted",
 		}
 		if usage, err := disk.Usage(p.Mountpoint); err == nil {
 			info.Total = usage.Total
@@ -298,7 +304,83 @@ func (s *DiskService) ListRemoteMounts() ([]dto.RemoteMountInfo, error) {
 		}
 		result = append(result, info)
 	}
+
+	// fstab 中有但未挂载的远程条目
+	for _, entry := range fstabRemoteEntries {
+		if mountedSet[entry.MountPoint] {
+			continue // 已在上面处理
+		}
+		result = append(result, dto.RemoteMountInfo{
+			Device:     entry.Source,
+			MountPoint: entry.MountPoint,
+			FSType:     entry.FSType,
+			Options:    entry.Options,
+			InFstab:    true,
+			Status:     "unmounted",
+		})
+	}
+
 	return result, nil
+}
+
+// fstabRemoteEntry fstab 中的远程挂载条目
+type fstabRemoteEntry struct {
+	Source     string
+	MountPoint string
+	FSType     string
+	Options    string
+}
+
+// loadFstabRemoteEntries 从 fstab 解析出远程挂载条目（nfs/cifs）
+func loadFstabRemoteEntries() []fstabRemoteEntry {
+	remoteFS := map[string]bool{
+		"nfs": true, "nfs4": true, "cifs": true, "smb": true, "smbfs": true, "fuse.sshfs": true,
+	}
+	var entries []fstabRemoteEntry
+	lines, err := readFstabLines()
+	if err != nil {
+		return entries
+	}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 4 {
+			continue
+		}
+		fsType := fields[2]
+		if !remoteFS[fsType] {
+			continue
+		}
+		entries = append(entries, fstabRemoteEntry{
+			Source:     fields[0],
+			MountPoint: fields[1],
+			FSType:     fsType,
+			Options:    fields[3],
+		})
+	}
+	return entries
+}
+
+// RemountFromFstab 根据 fstab 条目重新挂载
+func (s *DiskService) RemountFromFstab(mountPoint string) error {
+	mountPoint = filepath.Clean(mountPoint)
+	// 确保挂载点在 fstab 中
+	if !hasFstabEntry(mountPoint) {
+		return fmt.Errorf("mount point %s not found in fstab", mountPoint)
+	}
+	// 创建挂载点目录
+	if err := os.MkdirAll(mountPoint, 0755); err != nil {
+		return fmt.Errorf("failed to create mount point: %v", err)
+	}
+	// mount 命令会自动从 fstab 读取参数
+	out, err := exec.Command("mount", mountPoint).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mount failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // --- Block device helpers ---

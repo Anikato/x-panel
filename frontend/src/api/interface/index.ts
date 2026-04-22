@@ -646,6 +646,7 @@ export interface RemoteMountInfo {
   free: number
   percent: number
   inFstab: boolean
+  status: string // mounted | unmounted
 }
 
 // ======================== Traffic ========================

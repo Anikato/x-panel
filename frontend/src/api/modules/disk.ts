@@ -39,6 +39,10 @@ export const unmountRemote = (data: { mountPoint: string; removeFstab?: boolean 
   return http.post('/disk/remote/unmount', data)
 }
 
+export const remountFromFstab = (data: { mountPoint: string }) => {
+  return http.post('/disk/remote/remount', data)
+}
+
 export const listBlockDevices = () => {
   return http.get('/disk/block-devices')
 }

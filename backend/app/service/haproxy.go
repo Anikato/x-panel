@@ -746,7 +746,7 @@ func (s *HAProxyService) buildConfig() (string, error) {
 		GlobalLog:   readHAProxySetting("HAProxyGlobalLog", "127.0.0.1 local0"),
 		SocketPath:  haproxyutil.DefaultSocketPath,
 		StatsEnable: readHAProxySetting("HAProxyStatsEnable", "enable") == "enable",
-		StatsBind:   readHAProxySetting("HAProxyStatsBind", "127.0.0.1:9999"),
+		StatsBind:   readHAProxySetting("HAProxyStatsBind", "127.0.0.1:54321"),
 		StatsURI:    readHAProxySetting("HAProxyStatsURI", "/stats"),
 		StatsUser:   user,
 		StatsPass:   pass,

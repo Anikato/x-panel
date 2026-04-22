@@ -29,13 +29,22 @@
               <el-icon><component :is="item.icon" /></el-icon>
               <span>{{ item.title }}</span>
             </template>
-            <el-menu-item
-              v-for="child in item.children"
-              :key="child.path"
-              :index="child.path"
-            >
-              {{ child.title }}
-            </el-menu-item>
+            <template v-for="child in item.children" :key="child.path || child.group">
+              <!-- 分组标签 -->
+              <el-menu-item-group v-if="child.group" :title="child.group">
+                <el-menu-item
+                  v-for="sub in child.items"
+                  :key="sub.path"
+                  :index="sub.path"
+                >
+                  {{ sub.title }}
+                </el-menu-item>
+              </el-menu-item-group>
+              <!-- 普通菜单项 -->
+              <el-menu-item v-else :index="child.path">
+                {{ child.title }}
+              </el-menu-item>
+            </template>
           </el-sub-menu>
         </template>
       </el-menu>
@@ -104,17 +113,21 @@ const menuList = computed(() => [
     icon: 'Connection',
     children: [
       { path: '/traffic', title: t('menu.traffic') },
-      { path: '/haproxy/status', title: t('menu.haproxyStatus') },
-      { path: '/haproxy/http-lb', title: t('menu.haproxyHTTPLB') },
-      { path: '/haproxy/tcp-lb', title: t('menu.haproxyTCPLB') },
-      { path: '/haproxy/backends', title: t('menu.haproxyBackends') },
-      { path: '/haproxy/stats', title: t('menu.haproxyStats') },
-      { path: '/haproxy/config', title: t('menu.haproxyConfig') },
-      { path: '/haproxy/history', title: t('menu.haproxyHistory') },
-      { path: '/gost/status', title: t('menu.gostStatus') },
-      { path: '/gost/forward', title: t('menu.gostForward') },
-      { path: '/gost/relay', title: t('menu.gostRelay') },
-      { path: '/gost/chain', title: t('menu.gostChain') },
+      { group: 'HAProxy', items: [
+        { path: '/haproxy/status', title: t('menu.haproxyStatus') },
+        { path: '/haproxy/http-lb', title: t('menu.haproxyHTTPLB') },
+        { path: '/haproxy/tcp-lb', title: t('menu.haproxyTCPLB') },
+        { path: '/haproxy/backends', title: t('menu.haproxyBackends') },
+        { path: '/haproxy/stats', title: t('menu.haproxyStats') },
+        { path: '/haproxy/config', title: t('menu.haproxyConfig') },
+        { path: '/haproxy/history', title: t('menu.haproxyHistory') },
+      ]},
+      { group: 'GOST', items: [
+        { path: '/gost/status', title: t('menu.gostStatus') },
+        { path: '/gost/forward', title: t('menu.gostForward') },
+        { path: '/gost/relay', title: t('menu.gostRelay') },
+        { path: '/gost/chain', title: t('menu.gostChain') },
+      ]},
     ],
   },
   {
@@ -314,6 +327,22 @@ const menuList = computed(() => [
       bottom: 0;
       width: 1px;
       background: var(--xp-border-light);
+    }
+  }
+
+  // 分组标题样式
+  .el-menu-item-group {
+    :deep(.el-menu-item-group__title) {
+      padding-left: 48px !important;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--xp-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      opacity: 0.6;
+      height: 28px;
+      line-height: 28px;
+      margin-top: 4px;
     }
   }
 }

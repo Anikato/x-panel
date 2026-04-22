@@ -13,7 +13,7 @@ type Settings struct {
 	GlobalLog    string // "127.0.0.1 local0"
 	SocketPath   string // "/run/haproxy/admin.sock"
 	StatsEnable  bool
-	StatsBind    string // "127.0.0.1:9999"
+	StatsBind    string // "127.0.0.1:54321"
 	StatsURI     string // "/stats"
 	StatsUser    string
 	StatsPass    string
@@ -306,7 +306,7 @@ func writeBackend(sb *strings.Builder, be model.HAProxyBackend, servers []model.
 func writeStatsListen(sb *strings.Builder, s Settings) {
 	bind := s.StatsBind
 	if bind == "" {
-		bind = "127.0.0.1:9999"
+		bind = "127.0.0.1:54321"
 	}
 	uri := s.StatsURI
 	if uri == "" {

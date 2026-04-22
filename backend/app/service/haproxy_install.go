@@ -88,7 +88,7 @@ func applyHAProxyStatsSettings(status *dto.HAProxyStatus) {
 		return v.Value
 	}
 	status.StatsEnable = getv("HAProxyStatsEnable", "enable") == "enable"
-	status.StatsBind = getv("HAProxyStatsBind", "127.0.0.1:9999")
+	status.StatsBind = getv("HAProxyStatsBind", "127.0.0.1:54321")
 	status.StatsURI = getv("HAProxyStatsURI", "/stats")
 	status.StatsUser = getv("HAProxyStatsUser", "")
 }
@@ -305,7 +305,7 @@ func writeInitialHAProxyConfig() error {
 			GlobalLog:   "127.0.0.1 local0",
 			SocketPath:  haproxyutil.DefaultSocketPath,
 			StatsEnable: true,
-			StatsBind:   "127.0.0.1:9999",
+			StatsBind:   "127.0.0.1:54321",
 			StatsURI:    "/stats",
 			StatsUser:   user,
 			StatsPass:   pass,
@@ -331,7 +331,7 @@ func (s *HAProxyInstallService) seedInitialSettings() error {
 		}
 	}
 	ensure("HAProxyStatsEnable", "enable")
-	ensure("HAProxyStatsBind", "127.0.0.1:9999")
+	ensure("HAProxyStatsBind", "127.0.0.1:54321")
 	ensure("HAProxyStatsURI", "/stats")
 	ensure("HAProxyStatsUser", "xpanel")
 	if v, err := sr.Get(repo.WithByKey("HAProxyStatsPass")); err != nil || v.Value == "" {

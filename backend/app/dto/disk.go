@@ -98,4 +98,10 @@ type RemoteMountInfo struct {
 	Free       uint64  `json:"free"`
 	Percent    float64 `json:"percent"`
 	InFstab    bool    `json:"inFstab"`
+	Status     string  `json:"status"` // mounted | unmounted
+}
+
+// RemountRequest 重新挂载请求
+type RemountRequest struct {
+	MountPoint string `json:"mountPoint" validate:"required"`
 }

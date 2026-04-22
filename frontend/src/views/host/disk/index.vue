@@ -130,6 +130,12 @@
     </div>
 
     <el-table :data="remoteMounts" v-loading="remoteLoading" v-if="remoteMounts.length > 0">
+      <el-table-column :label="$t('disk.mountStatus')" width="90" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.status === 'mounted'" type="success" size="small">{{ $t('disk.mounted') }}</el-tag>
+          <el-tag v-else type="warning" size="small">{{ $t('disk.unmountedStatus') }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="device" :label="$t('disk.remoteSource')" min-width="200" show-overflow-tooltip />
       <el-table-column prop="mountPoint" :label="$t('disk.mountPoint')" min-width="140" />
       <el-table-column prop="fsType" :label="$t('disk.fsType')" width="80" />
@@ -149,11 +155,30 @@
         </template>
       </el-table-column>
       <el-table-column prop="options" :label="$t('disk.mountOptions')" min-width="200" show-overflow-tooltip />
-      <el-table-column :label="$t('commons.actions')" width="100" align="center">
+      <el-table-column :label="$t('commons.actions')" width="160" align="center">
         <template #default="{ row }">
-          <el-popconfirm :title="$t('disk.unmountConfirm')" @confirm="handleUnmount(row)">
+          <el-button
+            v-if="row.status === 'unmounted'"
+            type="primary" text size="small"
+            :loading="remounting"
+            @click="handleRemount(row)"
+          >{{ $t('disk.remount') }}</el-button>
+          <el-popconfirm
+            v-if="row.status === 'mounted'"
+            :title="$t('disk.unmountConfirm')"
+            @confirm="handleUnmount(row)"
+          >
             <template #reference>
               <el-button type="danger" text size="small">{{ $t('disk.unmount') }}</el-button>
+            </template>
+          </el-popconfirm>
+          <el-popconfirm
+            v-if="row.status === 'unmounted' && row.inFstab"
+            :title="$t('disk.removeFstabConfirm')"
+            @confirm="handleRemoveFstab(row)"
+          >
+            <template #reference>
+              <el-button type="danger" text size="small">{{ $t('commons.delete') }}</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -297,7 +322,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { Refresh, Coin, Plus, Document, Search } from '@element-plus/icons-vue'
-import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote, listBlockDevices, mountLocal, unmountLocal, browseShares, installShareDeps } from '@/api/modules/disk'
+import { getDiskInfo, listRemoteMounts, mountRemote, unmountRemote, remountFromFstab, listBlockDevices, mountLocal, unmountLocal, browseShares, installShareDeps } from '@/api/modules/disk'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -563,9 +588,29 @@ const handleMount = async () => {
   finally { mounting.value = false }
 }
 
+const remounting = ref(false)
+
 const handleUnmount = async (row: RemoteMountInfo) => {
   try {
     await unmountRemote({ mountPoint: row.mountPoint, removeFstab: row.inFstab })
+    ElMessage.success(t('commons.success'))
+    loadAll()
+  } catch { /* handled */ }
+}
+
+const handleRemount = async (row: RemoteMountInfo) => {
+  remounting.value = true
+  try {
+    await remountFromFstab({ mountPoint: row.mountPoint })
+    ElMessage.success(t('commons.success'))
+    loadAll()
+  } catch { /* handled by interceptor */ }
+  finally { remounting.value = false }
+}
+
+const handleRemoveFstab = async (row: RemoteMountInfo) => {
+  try {
+    await unmountRemote({ mountPoint: row.mountPoint, removeFstab: true })
     ElMessage.success(t('commons.success'))
     loadAll()
   } catch { /* handled */ }

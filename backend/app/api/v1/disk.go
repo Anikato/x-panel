@@ -83,6 +83,19 @@ func (a *DiskAPI) ListRemoteMounts(c *gin.Context) {
 	helper.SuccessWithData(c, list)
 }
 
+func (a *DiskAPI) RemountFromFstab(c *gin.Context) {
+	var req dto.RemountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := service.NewIDiskService().RemountFromFstab(req.MountPoint); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, nil)
+}
+
 func (a *DiskAPI) ListBlockDevices(c *gin.Context) {
 	list, err := service.NewIDiskService().ListBlockDevices()
 	if err != nil {
