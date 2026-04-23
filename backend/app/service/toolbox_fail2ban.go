@@ -561,17 +561,29 @@ func (s *Fail2banService) safeWriteConfig(data []byte) error {
 		return err
 	}
 
-	// restart (not reload) to force nftables chain recreation with correct port
-	out, err := exec.Command("systemctl", "restart", "fail2ban").CombinedOutput()
-	if err != nil {
-		if backupData, bErr := os.ReadFile(backup); bErr == nil {
-			_ = os.WriteFile(f2bJailLocal, backupData, 0644)
-			_ = exec.Command("systemctl", "restart", "fail2ban").Run()
+	// restart (not reload) to force nftables chain recreation with correct port.
+	// fail2ban prints "Failed to access socket" to stderr during its own startup
+	// (before the socket is ready), so we MUST NOT rely on CombinedOutput to
+	// determine success — check the actual service state instead.
+	_ = exec.Command("systemctl", "restart", "fail2ban").Run()
+
+	// Give fail2ban up to 5 seconds to become active
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second)
+		out, _ := exec.Command("systemctl", "is-active", "fail2ban").Output()
+		if strings.TrimSpace(string(out)) == "active" {
+			return nil
 		}
-		return fmt.Errorf("fail2ban restart failed: %s", strings.TrimSpace(string(out)))
 	}
-	return nil
+
+	// Service didn't come back up — restore backup and try again
+	if backupData, bErr := os.ReadFile(backup); bErr == nil {
+		_ = os.WriteFile(f2bJailLocal, backupData, 0644)
+		_ = exec.Command("systemctl", "restart", "fail2ban").Run()
+	}
+	return fmt.Errorf("fail2ban 重启后未能正常启动，配置已回滚。请检查配置是否合法：systemctl status fail2ban")
 }
+
 
 func (s *Fail2banService) getBannedIPs(jail string) []string {
 	out, err := exec.Command(f2bClient, "status", jail).CombinedOutput()
