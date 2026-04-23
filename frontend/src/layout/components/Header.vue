@@ -92,6 +92,17 @@
         </div>
       </el-popover>
 
+      <!-- 悬浮终端按钮 -->
+      <el-tooltip content="快速终端" placement="bottom">
+        <div
+          class="theme-btn"
+          :class="{ 'term-btn-active': globalStore.floatTermVisible }"
+          @click="toggleFloatTerm"
+        >
+          <el-icon :size="16"><Promotion /></el-icon>
+        </div>
+      </el-tooltip>
+
       <!-- 深浅模式切换 -->
       <el-tooltip :content="themeLabel" placement="bottom">
         <div class="theme-btn" @click="globalStore.cycleTheme()">
@@ -139,7 +150,7 @@ import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
 import { useI18n } from 'vue-i18n'
 import type { NodeItem } from '@/api/interface'
-import { Moon, Sunny, Check, Clock, RefreshRight, Timer } from '@element-plus/icons-vue'
+import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Promotion } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
@@ -305,6 +316,16 @@ const handleCommand = async (command: string) => {
     router.push('/setting')
   }
 }
+
+const toggleFloatTerm = () => {
+  if (globalStore.floatTermVisible && globalStore.floatTermMinimized) {
+    globalStore.floatTermMinimized = false
+  } else {
+    globalStore.floatTermVisible = !globalStore.floatTermVisible
+    if (globalStore.floatTermVisible) globalStore.floatTermMinimized = false
+  }
+}
+}
 </script>
 
 <style lang="scss" scoped>
@@ -398,6 +419,12 @@ const handleCommand = async (command: string) => {
     &:hover {
       background: var(--xp-accent-muted);
       color: var(--xp-accent);
+    }
+
+    &.term-btn-active {
+      color: var(--xp-accent);
+      background: var(--xp-accent-muted);
+      box-shadow: inset 0 0 0 1px var(--xp-accent-muted);
     }
   }
 }

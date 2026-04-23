@@ -7,6 +7,7 @@
     </div>
     <UploadPanel />
     <FileTaskPanel />
+    <FloatTerminal />
   </div>
 </template>
 
@@ -16,6 +17,7 @@ import Header from './components/Header.vue'
 import AppMain from './components/AppMain.vue'
 import UploadPanel from './components/UploadPanel.vue'
 import FileTaskPanel from './components/FileTaskPanel.vue'
+import FloatTerminal from './components/FloatTerminal.vue'
 import { useGlobalStore } from '@/store/modules/global'
 import { useFileTaskStore } from '@/store/modules/fileTask'
 import { onMounted } from 'vue'

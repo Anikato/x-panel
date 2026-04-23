@@ -46,6 +46,8 @@ export const useGlobalStore = defineStore('global', {
     sidebarWidth: 'narrow' as SidebarWidthPreset,
     showServerClock: true,
     dashboardRefreshInterval: 5000,
+    floatTermVisible: false,   // 悬浮终端显隐状态（不持久化，刷新后默认关闭）
+    floatTermMinimized: false, // 悬浮终端最小化状态
   }),
   actions: {
     setLogin(status: boolean) {
