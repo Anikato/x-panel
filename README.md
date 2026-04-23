@@ -67,6 +67,15 @@ curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install
 # 组合使用
 curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh \
   | bash -s -- --port 8443 --entrance mySecret --username admin --password mypass123
+
+# 本地包（已上传到服务器）
+bash install-online.sh --file /tmp/xpanel-v1.0.0-linux-amd64.tar.gz \
+  --port 7777 --entrance mySecret --username admin --password mypass123
+
+# 国内镜像/加速地址
+bash install-online.sh --file https://mirror.example.com/xpanel-v1.0.0-linux-amd64.tar.gz \
+  --username admin --password mypass123
+
 ```
 
 | 参数 | 说明 |
