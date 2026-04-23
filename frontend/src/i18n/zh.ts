@@ -442,7 +442,6 @@ export default {
     uploadProgress: '上传中...',
     uploadComplete: '{count} 个文件上传完成',
     uploadPartial: '部分文件上传失败',
-    fileTooLarge: '文件过大',
     taskStarted: '操作已在后台执行，请稍候...',
     taskRunning: '{count} 个任务执行中',
     taskAllDone: '所有任务已完成',
@@ -938,7 +937,7 @@ export default {
     proxyOnStaticHint: '当前为静态网站类型，如果设置了反向代理地址，location / 将自动切换为反向代理模式',
     webSocket: 'WebSocket 支持',
     upstream: 'Upstream 负载均衡',
-    upstreamPlaceholder: 'upstream backend {\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n}',
+    upstreamPlaceholder: "upstream backend {'{'}\n    server 127.0.0.1:8080;\n    server 127.0.0.1:8081;\n{'}'}",
     upstreamHint: '定义 upstream 块后，可在代理地址中使用 http://backend 引用。留空表示不使用负载均衡。',
     // HTTPS
     httpsSetting: 'HTTPS',
