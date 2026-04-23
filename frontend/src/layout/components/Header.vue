@@ -325,7 +325,6 @@ const toggleFloatTerm = () => {
     if (globalStore.floatTermVisible) globalStore.floatTermMinimized = false
   }
 }
-}
 </script>
 
 <style lang="scss" scoped>
