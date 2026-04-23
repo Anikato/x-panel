@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"xpanel/global"
 	initDB "xpanel/init/db"
@@ -20,6 +21,7 @@ func runSetup(args []string) {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 	username := fs.String("username", "", "管理员用户名")
 	password := fs.String("password", "", "管理员密码")
+	waitSec := fs.Int("wait", 15, "等待数据库就绪的最大秒数")
 	fs.Parse(args)
 
 	if *username == "" || *password == "" {
@@ -45,6 +47,19 @@ func runSetup(args []string) {
 	initDB.Init()
 	migration.Init()
 
+	// 等待 Password 字段就绪（migration 已创建，但第一次启动的 xpanel 服务
+	// 可能还在并发写入，此处兜底等待确保字段存在）
+	deadline := time.Now().Add(time.Duration(*waitSec) * time.Second)
+	for time.Now().Before(deadline) {
+		var count int64
+		global.DB.Table("settings").Where("`key` = ?", "Password").Count(&count)
+		if count > 0 {
+			break
+		}
+		fmt.Fprintln(os.Stderr, "等待数据库初始化...")
+		time.Sleep(time.Second)
+	}
+
 	// 哈希密码
 	hashed, err := encrypt.HashPassword(*password)
 	if err != nil {
@@ -59,6 +74,14 @@ func runSetup(args []string) {
 	}
 	if err := global.DB.Exec("UPDATE settings SET value = ? WHERE `key` = 'Password'", hashed).Error; err != nil {
 		fmt.Fprintf(os.Stderr, "写入密码失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 验证写入成功
+	var savedPwd string
+	global.DB.Table("settings").Where("`key` = ?", "Password").Pluck("value", &savedPwd)
+	if savedPwd == "" {
+		fmt.Fprintln(os.Stderr, "错误: 密码写入后验证失败，请检查数据库状态")
 		os.Exit(1)
 	}
 

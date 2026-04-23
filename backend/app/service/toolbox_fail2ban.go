@@ -239,32 +239,19 @@ func (s *Fail2banService) ListBanned() ([]dto.Fail2banBannedIP, error) {
 	}
 
 	jailNames := parseJailList(string(out))
-	banTimes := s.parseBanTimes()
-	jailConf := s.readAllJailConfig()
 	var result []dto.Fail2banBannedIP
 	seen := make(map[string]bool)
 
 	ipSvc := iplocation.GetService()
 	for _, jail := range jailNames {
-		banDuration := ""
-		if conf, ok := jailConf[jail]; ok {
-			banDuration = conf["bantime"]
-		}
-
 		ips := s.getBannedIPs(jail)
 		for _, ip := range ips {
 			seen[ip] = true
 			geo := ipSvc.Lookup(ip)
-			bannedAtStr := banTimes[ip]
-			unbanAt := calcUnbanAt(bannedAtStr, banDuration)
-			bannedAtCST := convertToCST(bannedAtStr)
 			result = append(result, dto.Fail2banBannedIP{
 				IP: ip, Jail: jail,
 				Country: geo.Country, CountryCode: geo.CountryCode,
 				City: geo.City, Region: geo.Region,
-				BannedAt:    bannedAtCST,
-				BanDuration: humanizeBanTime(banDuration),
-				UnbanAt:     unbanAt,
 			})
 		}
 	}
@@ -547,18 +534,18 @@ func (s *Fail2banService) ensureJailLocal() {
 # Override settings from jail.conf here
 
 [DEFAULT]
-bantime = 90d
-findtime = 10m
-maxretry = 5
+bantime = -1
+findtime = 1d
+maxretry = 3
 
 [sshd]
 enabled = true
 port = %s
 filter = sshd
 backend = %s
-maxretry = 5
-findtime = 10m
-bantime = 90d
+maxretry = 3
+findtime = 1d
+bantime = -1
 `, port, backend)
 		_ = os.WriteFile(f2bJailLocal, []byte(defaultContent), 0644)
 	}

@@ -11,7 +11,7 @@
       <el-table :data="tableData" v-loading="loading" stripe @expand-change="onExpandChange">
         <el-table-column type="expand">
           <template #default="{ row }">
-            <BackendServers :backend="row" :servers="serversByID[row.id] || []" @refresh="onServersRefresh(row.id)" />
+            <BackendServers :backend="row" :servers="serversByID[row.id] || []" @refresh="onServersRefresh(row.id)" @edit="openEditServer" />
           </template>
         </el-table-column>
         <el-table-column prop="name" :label="$t('haproxy.name')" min-width="140" />
@@ -267,7 +267,13 @@ const submitServer = async () => {
   }
 }
 
-defineExpose({ openEditServer: (s: any) => { serverForm.value = { ...s }; serverDialog.value = true } })
+const openEditServer = (s: any) => {
+  serverForm.value = { ...s }
+  serverDialog.value = true
+}
+
+// expose for external use if needed
+defineExpose({ openEditServer })
 
 onMounted(() => search())
 </script>
