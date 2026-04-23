@@ -221,60 +221,86 @@ type IPBatchLookupReq struct {
 // ===== Systemd Service Manager =====
 
 type SystemdServiceInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	LoadState   string `json:"loadState"`
-	ActiveState string `json:"activeState"`
-	SubState    string `json:"subState"`
-	Enabled     bool   `json:"enabled"`
-	IsPanel     bool   `json:"isPanel"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	LoadState     string `json:"loadState"`
+	ActiveState   string `json:"activeState"`
+	SubState      string `json:"subState"`
+	Enabled       bool   `json:"enabled"`
+	IsPanel       bool   `json:"isPanel"`
+	MemoryCurrent string `json:"memoryCurrent"`
+	RestartCount  int    `json:"restartCount"`
+	MainPID       int    `json:"mainPID"`
 }
 
 type SystemdServiceDetail struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	LoadState    string `json:"loadState"`
-	ActiveState  string `json:"activeState"`
-	SubState     string `json:"subState"`
-	Enabled      bool   `json:"enabled"`
-	IsPanel      bool   `json:"isPanel"`
-	MainPID      int    `json:"mainPID"`
-	ExecStart    string `json:"execStart"`
-	WorkingDir   string `json:"workingDir"`
-	User         string `json:"user"`
-	Restart      string `json:"restart"`
-	RestartSec   string `json:"restartSec"`
-	Environment  string `json:"environment"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	LoadState     string `json:"loadState"`
+	ActiveState   string `json:"activeState"`
+	SubState      string `json:"subState"`
+	Enabled       bool   `json:"enabled"`
+	IsPanel       bool   `json:"isPanel"`
+	MainPID       int    `json:"mainPID"`
+	Type          string `json:"type"`
+	ExecStart     string `json:"execStart"`
+	ExecStartPre  string `json:"execStartPre"`
+	ExecStopPost  string `json:"execStopPost"`
+	WorkingDir    string `json:"workingDir"`
+	User          string `json:"user"`
+	Restart       string `json:"restart"`
+	RestartSec    int    `json:"restartSec"`
+	Environment   string `json:"environment"`
+	AfterTarget   string `json:"afterTarget"`
+	StdOutput     string `json:"stdOutput"`
+	StdError      string `json:"stdError"`
+	TimeoutStart  int    `json:"timeoutStart"`
+	TimeoutStop   int    `json:"timeoutStop"`
 	MemoryCurrent string `json:"memoryCurrent"`
-	CPUUsage     string `json:"cpuUsage"`
-	StartedAt    string `json:"startedAt"`
-	UnitFile     string `json:"unitFile"`
-	UnitContent  string `json:"unitContent"`
+	CPUUsage      string `json:"cpuUsage"`
+	RestartCount  int    `json:"restartCount"`
+	StartedAt     string `json:"startedAt"`
+	UnitFile      string `json:"unitFile"`
+	UnitContent   string `json:"unitContent"`
 }
 
 type SystemdServiceCreate struct {
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description"`
-	ExecStart   string `json:"execStart" validate:"required"`
-	WorkingDir  string `json:"workingDir"`
-	User        string `json:"user"`
-	Restart     string `json:"restart"`
-	RestartSec  int    `json:"restartSec"`
-	Environment string `json:"environment"`
-	AfterTarget string `json:"afterTarget"`
-	AutoStart   bool   `json:"autoStart"`
+	Name         string `json:"name" validate:"required"`
+	Description  string `json:"description"`
+	Type         string `json:"type"`
+	ExecStart    string `json:"execStart" validate:"required"`
+	ExecStartPre string `json:"execStartPre"`
+	ExecStopPost string `json:"execStopPost"`
+	WorkingDir   string `json:"workingDir"`
+	User         string `json:"user"`
+	Restart      string `json:"restart"`
+	RestartSec   int    `json:"restartSec"`
+	Environment  string `json:"environment"`
+	AfterTarget  string `json:"afterTarget"`
+	StdOutput    string `json:"stdOutput"`
+	StdError     string `json:"stdError"`
+	TimeoutStart int    `json:"timeoutStart"`
+	TimeoutStop  int    `json:"timeoutStop"`
+	AutoStart    bool   `json:"autoStart"`
 }
 
 type SystemdServiceUpdate struct {
-	Name        string `json:"name" validate:"required"`
-	Description string `json:"description"`
-	ExecStart   string `json:"execStart" validate:"required"`
-	WorkingDir  string `json:"workingDir"`
-	User        string `json:"user"`
-	Restart     string `json:"restart"`
-	RestartSec  int    `json:"restartSec"`
-	Environment string `json:"environment"`
-	AfterTarget string `json:"afterTarget"`
+	Name         string `json:"name" validate:"required"`
+	Description  string `json:"description"`
+	Type         string `json:"type"`
+	ExecStart    string `json:"execStart" validate:"required"`
+	ExecStartPre string `json:"execStartPre"`
+	ExecStopPost string `json:"execStopPost"`
+	WorkingDir   string `json:"workingDir"`
+	User         string `json:"user"`
+	Restart      string `json:"restart"`
+	RestartSec   int    `json:"restartSec"`
+	Environment  string `json:"environment"`
+	AfterTarget  string `json:"afterTarget"`
+	StdOutput    string `json:"stdOutput"`
+	StdError     string `json:"stdError"`
+	TimeoutStart int    `json:"timeoutStart"`
+	TimeoutStop  int    `json:"timeoutStop"`
 }
 
 type SystemdServiceOperate struct {
@@ -290,3 +316,13 @@ type SystemdServiceLogReq struct {
 	Name  string `json:"name" validate:"required"`
 	Lines int    `json:"lines"`
 }
+
+type SystemdUnitContentReq struct {
+	Name string `json:"name" validate:"required"`
+}
+
+type SystemdUnitSaveReq struct {
+	Name    string `json:"name" validate:"required"`
+	Content string `json:"content" validate:"required"`
+}
+

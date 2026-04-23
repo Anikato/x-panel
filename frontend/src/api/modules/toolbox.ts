@@ -73,3 +73,6 @@ export const updateSystemdService = (params: object) => http.post('/toolbox/serv
 export const deleteSystemdService = (name: string) => http.post('/toolbox/services/delete', { name })
 export const operateSystemdService = (name: string, operation: string) => http.post('/toolbox/services/operate', { name, operation })
 export const getSystemdServiceLogs = (name: string, lines = 100) => http.get(`/toolbox/services/logs?name=${name}&lines=${lines}`)
+export const getServiceUnitContent = (name: string) => http.get(`/toolbox/services/unit?name=${name}`)
+export const saveServiceUnitContent = (name: string, content: string) => http.post('/toolbox/services/unit', { name, content })
+

@@ -548,3 +548,30 @@ func (a *ToolboxAPI) GetSystemdServiceLogs(c *gin.Context) {
 	}
 	helper.SuccessWithData(c, data)
 }
+
+func (a *ToolboxAPI) GetServiceUnitContent(c *gin.Context) {
+	name := c.Query("name")
+	if name == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "name is required")
+		return
+	}
+	data, err := service.NewISystemdService().GetUnitContent(name)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *ToolboxAPI) SaveServiceUnitContent(c *gin.Context) {
+	var req dto.SystemdUnitSaveReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewISystemdService().SaveUnitContent(req.Name, req.Content); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}

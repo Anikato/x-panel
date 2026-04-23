@@ -409,6 +409,9 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/toolbox/services/delete", api.DeleteSystemdService)
 		privateGroup.POST("/toolbox/services/operate", api.OperateSystemdService)
 		privateGroup.GET("/toolbox/services/logs", api.GetSystemdServiceLogs)
+		privateGroup.GET("/toolbox/services/unit", api.GetServiceUnitContent)
+		privateGroup.POST("/toolbox/services/unit", api.SaveServiceUnitContent)
+
 
 		// 工具箱 - IP 归属地
 		privateGroup.GET("/toolbox/ip/lookup", api.LookupIP)

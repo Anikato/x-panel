@@ -24,26 +24,38 @@
             <el-tag v-if="row.isPanel" type="success" size="small" style="margin-left: 6px;">{{ $t('toolbox.services.panelCreated') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="description" :label="$t('toolbox.services.description')" min-width="200" show-overflow-tooltip />
-        <el-table-column :label="$t('toolbox.services.status')" width="100" align="center">
+        <el-table-column prop="description" :label="$t('toolbox.services.description')" min-width="160" show-overflow-tooltip />
+        <el-table-column :label="$t('toolbox.services.status')" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="stateType(row.activeState)" size="small">{{ row.subState }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="$t('toolbox.services.autoStart')" width="90" align="center">
+        <el-table-column :label="$t('toolbox.services.memory')" width="90" align="center">
+          <template #default="{ row }">
+            <span style="font-size:12px;">{{ row.memoryCurrent || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('toolbox.services.restarts')" width="65" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.restartCount > 0" type="warning" size="small">{{ row.restartCount }}</el-tag>
+            <span v-else style="font-size:12px;">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('toolbox.services.autoStart')" width="75" align="center">
           <template #default="{ row }">
             <el-switch v-model="row.enabled" size="small" @change="(v: boolean) => handleToggleEnabled(row, v)" />
           </template>
         </el-table-column>
-        <el-table-column :label="$t('commons.actions')" width="320" align="center">
+        <el-table-column :label="$t('commons.actions')" width="300" align="center">
           <template #default="{ row }">
             <el-button-group size="small">
               <el-button text @click="handleOp(row.name, 'start')" :disabled="row.activeState === 'active'">{{ $t('toolbox.services.start') }}</el-button>
               <el-button text @click="handleOp(row.name, 'stop')" :disabled="row.activeState !== 'active'">{{ $t('toolbox.services.stop') }}</el-button>
               <el-button text @click="handleOp(row.name, 'restart')">{{ $t('toolbox.services.restart') }}</el-button>
             </el-button-group>
-            <el-button text size="small" @click="openDetail(row.name)">{{ $t('toolbox.services.detail') }}</el-button>
+            <el-button text size="small" @click="openEdit(row.name)">{{ $t('toolbox.services.edit') }}</el-button>
             <el-button text size="small" @click="openLogs(row.name)">{{ $t('toolbox.services.logs') }}</el-button>
+            <el-button text size="small" @click="openUnitEditor(row.name)">Unit</el-button>
             <el-popconfirm v-if="row.isPanel" :title="$t('toolbox.services.deleteConfirm')" @confirm="handleDelete(row.name)">
               <template #reference>
                 <el-button text type="danger" size="small">{{ $t('commons.delete') }}</el-button>
@@ -137,7 +149,8 @@
         <div class="log-viewer"><pre>{{ detailData.unitContent }}</pre></div>
       </div>
       <template #footer>
-        <el-button v-if="detailData?.isPanel" type="primary" size="small" @click="openEditFromDetail">{{ $t('commons.edit') }}</el-button>
+        <el-button type="primary" size="small" @click="openEditFromDetail">{{ $t('toolbox.services.edit') }}</el-button>
+        <el-button size="small" @click="openUnitEditor(detailData!.name); detailVisible=false">Unit</el-button>
         <el-popconfirm v-if="detailData?.isPanel" :title="$t('toolbox.services.deleteConfirm')" @confirm="handleDelete(detailData!.name)">
           <template #reference><el-button type="danger" size="small">{{ $t('commons.delete') }}</el-button></template>
         </el-popconfirm>
@@ -145,29 +158,43 @@
       </template>
     </el-dialog>
 
+    <!-- Unit 源码编辑对话框 -->
+    <el-dialog v-model="unitVisible" :title="unitServiceName + ' — Unit 文件'" width="760px" :close-on-click-modal="false">
+      <div style="font-size:12px;color:var(--xp-text-muted);margin-bottom:8px;">{{ $t('toolbox.services.unitEditorHint') }}</div>
+      <el-input v-model="unitContent" type="textarea" :rows="22" style="font-family:monospace;font-size:12px;" />
+      <template #footer>
+        <el-button @click="unitVisible = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="unitSaving" @click="handleSaveUnit">{{ $t('commons.save') }}</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 日志对话框 -->
-    <el-dialog v-model="logVisible" :title="$t('toolbox.services.serviceLogs') + ' - ' + logServiceName" width="800px">
-      <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
-        <el-select v-model="logLines" size="small" style="width: 120px">
-          <el-option label="100" :value="100" />
-          <el-option label="200" :value="200" />
-          <el-option label="500" :value="500" />
-          <el-option label="1000" :value="1000" />
+    <el-dialog v-model="logVisible" :title="$t('toolbox.services.serviceLogs') + ' - ' + logServiceName" width="860px" @closed="stopLogPoll">
+      <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;">
+        <el-select v-model="logLines" size="small" style="width:110px" @change="loadLogs">
+          <el-option label="100行" :value="100" />
+          <el-option label="200行" :value="200" />
+          <el-option label="500行" :value="500" />
+          <el-option label="1000行" :value="1000" />
         </el-select>
+        <el-switch v-model="logAutoRefresh" active-text="自动刷新(3s)" size="small" @change="toggleLogPoll" />
         <el-button size="small" :icon="Refresh" @click="loadLogs" :loading="logLoading">{{ $t('commons.refresh') }}</el-button>
       </div>
-      <div class="log-viewer" style="max-height: 500px;"><pre>{{ logContent || $t('toolbox.services.noLogs') }}</pre></div>
+      <div class="log-viewer" style="max-height:520px;" ref="logViewerRef">
+        <pre v-html="colorizedLog || $t('toolbox.services.noLogs')" />
+      </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import {
   listSystemdServices, getSystemdServiceDetail,
   createSystemdService, updateSystemdService, deleteSystemdService,
   operateSystemdService, getSystemdServiceLogs,
+  getServiceUnitContent, saveServiceUnitContent,
 } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
@@ -228,8 +255,14 @@ const isEdit = ref(false)
 const saving = ref(false)
 const formRef = ref()
 const editForm = reactive({
-  name: '', description: '', execStart: '', workingDir: '', user: '',
-  restart: 'on-failure', restartSec: 5, environment: '', afterTarget: 'network.target', autoStart: true,
+  name: '', description: '', type: 'simple',
+  execStart: '', execStartPre: '', execStopPost: '',
+  workingDir: '', user: '',
+  restart: 'on-failure', restartSec: 5,
+  environment: '', afterTarget: 'network.target',
+  stdOutput: 'journal', stdError: 'journal',
+  timeoutStart: 0, timeoutStop: 0,
+  autoStart: true,
 })
 
 const formRules = {
@@ -237,24 +270,58 @@ const formRules = {
   execStart: [{ required: true, message: t('toolbox.services.execStartRequired'), trigger: 'blur' }],
 }
 
+const resetForm = () => Object.assign(editForm, {
+  name: '', description: '', type: 'simple',
+  execStart: '', execStartPre: '', execStopPost: '',
+  workingDir: '', user: '',
+  restart: 'on-failure', restartSec: 5,
+  environment: '', afterTarget: 'network.target',
+  stdOutput: 'journal', stdError: 'journal',
+  timeoutStart: 0, timeoutStop: 0,
+  autoStart: true,
+})
+
 const openCreate = () => {
   isEdit.value = false
-  Object.assign(editForm, {
-    name: '', description: '', execStart: '', workingDir: '', user: '',
-    restart: 'on-failure', restartSec: 5, environment: '', afterTarget: 'network.target', autoStart: true,
-  })
+  resetForm()
   editVisible.value = true
+}
+
+const fillFormFromDetail = (d: any) => {
+  Object.assign(editForm, {
+    name: d.name,
+    description: d.description || '',
+    type: d.type || 'simple',
+    execStart: d.execStart || '',
+    execStartPre: d.execStartPre || '',
+    execStopPost: d.execStopPost || '',
+    workingDir: d.workingDir || '',
+    user: d.user || '',
+    restart: d.restart || 'on-failure',
+    restartSec: typeof d.restartSec === 'number' ? d.restartSec : 5,
+    environment: d.environment || '',
+    afterTarget: d.afterTarget || 'network.target',
+    stdOutput: d.stdOutput || 'journal',
+    stdError: d.stdError || 'journal',
+    timeoutStart: d.timeoutStart || 0,
+    timeoutStop: d.timeoutStop || 0,
+    autoStart: true,
+  })
+}
+
+const openEdit = async (name: string) => {
+  try {
+    const res = await getSystemdServiceDetail(name)
+    isEdit.value = true
+    fillFormFromDetail(res.data)
+    editVisible.value = true
+  } catch {}
 }
 
 const openEditFromDetail = () => {
   if (!detailData.value) return
-  const d = detailData.value
   isEdit.value = true
-  Object.assign(editForm, {
-    name: d.name, description: d.description || '', execStart: d.execStart || '',
-    workingDir: d.workingDir || '', user: d.user || '', restart: d.restart || 'on-failure',
-    restartSec: 5, environment: d.environment || '', afterTarget: 'network.target', autoStart: true,
-  })
+  fillFormFromDetail(detailData.value)
   detailVisible.value = false
   editVisible.value = true
 }
@@ -295,16 +362,57 @@ const handleDelete = async (name: string) => {
   } catch {}
 }
 
+// Unit 源码编辑
+const unitVisible = ref(false)
+const unitServiceName = ref('')
+const unitContent = ref('')
+const unitSaving = ref(false)
+
+const openUnitEditor = async (name: string) => {
+  unitServiceName.value = name
+  unitContent.value = ''
+  try {
+    const res = await getServiceUnitContent(name)
+    unitContent.value = res.data || ''
+  } catch {}
+  unitVisible.value = true
+}
+
+const handleSaveUnit = async () => {
+  unitSaving.value = true
+  try {
+    await saveServiceUnitContent(unitServiceName.value, unitContent.value)
+    ElMessage.success(t('commons.saveSuccess'))
+    unitVisible.value = false
+    loadServices()
+  } catch {}
+  finally { unitSaving.value = false }
+}
+
 // Logs
 const logVisible = ref(false)
 const logServiceName = ref('')
 const logContent = ref('')
 const logLines = ref(100)
 const logLoading = ref(false)
+const logAutoRefresh = ref(false)
+const logViewerRef = ref<HTMLElement>()
+let logPollTimer: ReturnType<typeof setInterval> | null = null
+
+const colorizedLog = computed(() => {
+  if (!logContent.value) return ''
+  return logContent.value
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/(\bERROR\b|\berror\b|\bERR\b|\bFailed\b|\bfailed\b)/g, '<span style="color:#f56c6c">$1</span>')
+    .replace(/(\bWARN\b|\bwarning\b|\bWARNING\b)/g, '<span style="color:#e6a23c">$1</span>')
+    .replace(/(\bINFO\b|\binfo\b|\bStarted\b|\bactive\b)/g, '<span style="color:#67c23a">$1</span>')
+    .replace(/(\bDEBUG\b|\bdebug\b)/g, '<span style="color:#909399">$1</span>')
+})
 
 const openLogs = (name: string) => {
   logServiceName.value = name
   logContent.value = ''
+  logAutoRefresh.value = false
   logVisible.value = true
   loadLogs()
 }
@@ -314,11 +422,27 @@ const loadLogs = async () => {
   try {
     const res = await getSystemdServiceLogs(logServiceName.value, logLines.value)
     logContent.value = res.data || ''
+    await nextTick()
+    if (logViewerRef.value) logViewerRef.value.scrollTop = logViewerRef.value.scrollHeight
   } catch { logContent.value = '' }
   finally { logLoading.value = false }
 }
 
+const toggleLogPoll = (val: boolean) => {
+  if (val) {
+    logPollTimer = setInterval(loadLogs, 3000)
+  } else {
+    stopLogPoll()
+  }
+}
+
+const stopLogPoll = () => {
+  if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null }
+  logAutoRefresh.value = false
+}
+
 onMounted(() => loadServices())
+onUnmounted(() => stopLogPoll())
 </script>
 
 <style lang="scss" scoped>
