@@ -339,3 +339,18 @@ func (a *ContainerAPI) UpdateDockerMirrors(c *gin.Context) {
 	}
 	helper.SuccessWithOutData(c)
 }
+
+func (a *ContainerAPI) ControlDockerService(c *gin.Context) {
+	var req struct {
+		Action string `json:"action" binding:"required"`
+	}
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := containerService.ControlDockerService(req.Action); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}

@@ -645,19 +645,19 @@ const handleUploadCert = async () => {
 
 const handleApply = async (id: number) => {
   try {
-    await applyCertificate(id)
+    await applyCertificate(id)  // 现在立即返回（后端异步执行）
     ElMessage.success('申请已提交，可点击"查看"跟踪日志')
-    setTimeout(loadCerts, 2000)
-    startApplyingPoll()
+    loadCerts()          // 立即刷新一次（status 已变 applying）
+    startApplyingPoll()  // 开始轮询直到完成
   } catch { ElMessage.error('申请失败') }
 }
 
 const handleRenew = async (id: number) => {
   await ElMessageBox.confirm('确定要续签该证书吗？', '提示')
   try {
-    await renewCertificate(id)
+    await renewCertificate(id)  // 现在立即返回
     ElMessage.success('续签已提交，可点击"查看"跟踪日志')
-    setTimeout(loadCerts, 2000)
+    loadCerts()
     startApplyingPoll()
   } catch { ElMessage.error('续签失败') }
 }
@@ -714,11 +714,11 @@ const startLogPoll = (id: number) => {
       const res = await getCertificateLog(id)
       logContent.value = res.data || '暂无日志'
     } catch { /* ignore */ }
-    // 检查是否还在 applying
+    // 刷新证书列表，用最新状态判断是否结束 poll
+    await loadCerts()
     const cert = certs.value.find((c: Certificate) => c.id === id)
     if (!cert || cert.status !== 'applying') {
       stopLogPoll()
-      loadCerts() // 刷新列表以更新状态
     }
   }, 3000)
 }
@@ -727,17 +727,16 @@ const stopLogPoll = () => {
   if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null }
 }
 
-// 启动申请中状态自动检测
+// 启动申请中状态自动检测 —— 先刷新再判断，避免用旧数据误判
 const startApplyingPoll = () => {
   stopApplyingPoll()
-  applyingPollTimer = setInterval(() => {
+  applyingPollTimer = setInterval(async () => {
+    await loadCerts()  // 先更新数据
     const hasApplying = certs.value.some((c: Certificate) => c.status === 'applying')
-    if (hasApplying) {
-      loadCerts()
-    } else {
+    if (!hasApplying) {
       stopApplyingPoll()
     }
-  }, 5000)
+  }, 4000)
 }
 
 const stopApplyingPoll = () => {

@@ -77,6 +77,8 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		Remark:            req.Remark,
 		SiteDir:           req.SiteDir,
 		ProxyPass:         req.ProxyPass,
+		HttpPort:          req.HttpPort,
+		HttpsPort:         req.HttpsPort,
 		IndexFile:         "index.html index.htm",
 		HttpConfig:        "HTTPSRedirect",
 		SSLProtocols:      "TLSv1.2 TLSv1.3",

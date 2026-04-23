@@ -289,6 +289,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/containers/commit", api.CommitContainer)
 		privateGroup.GET("/containers/docker/mirrors", api.LoadDockerMirrors)
 		privateGroup.POST("/containers/docker/mirrors", api.UpdateDockerMirrors)
+		privateGroup.POST("/containers/docker/service", api.ControlDockerService)
 
 		// 流量统计
 		privateGroup.GET("/traffic/configs", api.ListConfigs)

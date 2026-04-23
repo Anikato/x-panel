@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"xpanel/app/dto"
@@ -19,6 +20,7 @@ import (
 	"xpanel/constant"
 	"xpanel/global"
 	sslutil "xpanel/utils/ssl"
+	"github.com/go-acme/lego/v4/certificate"
 )
 
 type ICertificateService interface {
@@ -275,6 +277,15 @@ func (s *CertificateService) Apply(id uint) error {
 	}
 	logger.Printf("[成功] ACME 客户端创建完成")
 
+	// 仅支持 DNS 验证方式
+	// HTTP-01 验证需要配置外部 HTTP 服务器路由，目前未实现；如需使用请先切换为 DNS 验证
+	if cert.Provider != "dns" {
+		errMsg := fmt.Sprintf("自动验证方式“%s”暂不支持，请在证书配置中选择 DNS 验证方式", cert.Provider)
+		logger.Printf("[错误] %s", errMsg)
+		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": errMsg})
+		return fmt.Errorf("%s", errMsg)
+	}
+
 	// 设置 DNS 验证
 	if cert.Provider == "dns" {
 		dns, err := s.dnsRepo.Get(repo.WithByID(cert.DnsAccountID))
@@ -322,30 +333,31 @@ func (s *CertificateService) Apply(id uint) error {
 	// 解析证书信息
 	certInfo, _ := parseCertPEM(string(certRes.Certificate))
 
-	// 更新数据库
-	updates := map[string]interface{}{
-		"pem":         string(certRes.Certificate),
-		"private_key": string(certRes.PrivateKey),
+	cert.Pem = string(certRes.Certificate)
+	cert.PrivateKey = string(certRes.PrivateKey)
+
+	// 先写入文件，再更新 DB 状态，避免文件失败时 DB 显示“已签发”但磁盘无文件
+	if err := s.saveCertFiles(cert); err != nil {
+		logger.Printf("[错误] 证书文件保存失败，回滚状态为 error: %v", err)
+		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": "证书文件写入失败: " + err.Error()})
+		return err
+	}
+	sslDir := s.GetSSLDir()
+	logger.Printf("[成功] 证书文件已保存到: %s", filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain)))
+
+	// File written — now write DB with all cert fields
+	dbUpdates := map[string]interface{}{
+		"pem":         cert.Pem,
+		"private_key": cert.PrivateKey,
 		"cert_url":    certRes.CertURL,
 		"status":      "applied",
 		"message":     "",
 	}
 	if certInfo != nil {
-		updates["expire_date"] = certInfo.expireDate
-		updates["start_date"] = certInfo.startDate
-		logger.Printf("[信息] 证书有效期: %s 至 %s", certInfo.startDate.Format("2006-01-02"), certInfo.expireDate.Format("2006-01-02"))
+		dbUpdates["expire_date"] = certInfo.expireDate
+		dbUpdates["start_date"] = certInfo.startDate
 	}
-	s.certRepo.Update(id, updates)
-
-	// 保存到文件系统
-	cert.Pem = string(certRes.Certificate)
-	cert.PrivateKey = string(certRes.PrivateKey)
-	if err := s.saveCertFiles(cert); err != nil {
-		logger.Printf("[警告] 证书文件保存失败: %v", err)
-	} else {
-		sslDir := s.GetSSLDir()
-		logger.Printf("[成功] 证书文件已保存到: %s", filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain)))
-	}
+	s.certRepo.Update(id, dbUpdates)
 
 	// 如果有网站正在使用此证书，自动 reload nginx
 	if global.CONF.Nginx.IsInstalled() {
@@ -422,36 +434,54 @@ func (s *CertificateService) Renew(id uint) error {
 	if logFile != nil {
 		renewLogWriter = logFile
 	}
-	renewed, err := client.RenewCertificate(renewDomains, cert.KeyType, renewLogWriter)
+
+	// Build existingCert resource to allow lego native Renew API (saves rate-limit quota)
+	var existingCertRes *certificate.Resource
+	if cert.CertURL != "" {
+		existingCertRes = &certificate.Resource{
+			CertURL:     cert.CertURL,
+			Domain:      cert.PrimaryDomain,
+			Certificate: []byte(cert.Pem),
+			PrivateKey:  []byte(cert.PrivateKey),
+		}
+	}
+	renewed, err := client.RenewCertificate(renewDomains, cert.KeyType, existingCertRes, renewLogWriter)
 	if err != nil {
-		logger.Printf("[错误] 续签失败: %v", err)
-		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": "续签失败: " + err.Error()})
+		logger.Printf("[ERROR] Renewal failed: %v", err)
+		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": "renewal failed: " + err.Error()})
 		return err
 	}
-	logger.Printf("[成功] 证书续签成功!")
+	logger.Printf("[OK] Certificate renewed successfully!")
 
 	certInfo, _ := parseCertPEM(string(renewed.Certificate))
-	updates := map[string]interface{}{
-		"pem":         string(renewed.Certificate),
-		"private_key": string(renewed.PrivateKey),
+	if certInfo != nil {
+		logger.Printf("[INFO] New cert validity: %s to %s", certInfo.startDate.Format("2006-01-02"), certInfo.expireDate.Format("2006-01-02"))
+	}
+
+	cert.Pem = string(renewed.Certificate)
+	cert.PrivateKey = string(renewed.PrivateKey)
+
+	// Write files first, then update DB — prevents DB showing "applied" while disk has no cert
+	if err := s.saveCertFiles(cert); err != nil {
+		logger.Printf("[ERROR] Cert file save failed, rolling back status: %v", err)
+		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": "cert file write failed: " + err.Error()})
+		return err
+	}
+	logger.Printf("[OK] Certificate files updated on disk")
+
+	renewUpdates := map[string]interface{}{
+		"pem":         cert.Pem,
+		"private_key": cert.PrivateKey,
 		"cert_url":    renewed.CertURL,
 		"status":      "applied",
 		"message":     "",
 	}
 	if certInfo != nil {
-		updates["expire_date"] = certInfo.expireDate
-		updates["start_date"] = certInfo.startDate
-		logger.Printf("[信息] 新证书有效期: %s 至 %s", certInfo.startDate.Format("2006-01-02"), certInfo.expireDate.Format("2006-01-02"))
+		renewUpdates["expire_date"] = certInfo.expireDate
+		renewUpdates["start_date"] = certInfo.startDate
 	}
-	s.certRepo.Update(id, updates)
+	s.certRepo.Update(id, renewUpdates)
 
-	cert.Pem = string(renewed.Certificate)
-	cert.PrivateKey = string(renewed.PrivateKey)
-	if err := s.saveCertFiles(cert); err != nil {
-		logger.Printf("[警告] 证书文件保存失败: %v", err)
-	} else {
-		logger.Printf("[成功] 证书文件已更新")
-	}
 
 	// 自动 reload nginx 使新证书生效
 	if global.CONF.Nginx.IsInstalled() {
@@ -659,6 +689,9 @@ func execCmd(name string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// autoRenewMu 防止同一证书被并发续签
+var autoRenewMu sync.Map
+
 // AutoRenewCerts 自动续期即将过期的证书（由 cron 调用）
 func AutoRenewCerts() {
 	certService := NewICertificateService().(*CertificateService)
@@ -669,7 +702,10 @@ func AutoRenewCerts() {
 	}
 
 	now := time.Now()
-	renewBefore := 7 * 24 * time.Hour // 过期前 7 天开始续期
+	renewBefore := 15 * 24 * time.Hour // 提前 15 天开始续期，给失败重试留充分余量
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 3) // 最多 3 个并发续签
 
 	for _, cert := range certs {
 		if !cert.AutoRenew || cert.Type == "upload" || cert.Status != "applied" {
@@ -679,13 +715,28 @@ func AutoRenewCerts() {
 			continue
 		}
 
-		global.LOG.Infof("[auto-renew] Certificate %s (ID=%d) expires at %s, renewing...",
-			cert.PrimaryDomain, cert.ID, cert.ExpireDate.Format("2006-01-02"))
-
-		if err := certService.Renew(cert.ID); err != nil {
-			global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", cert.PrimaryDomain, err)
-		} else {
-			global.LOG.Infof("[auto-renew] Successfully renewed %s", cert.PrimaryDomain)
+		// 追加鼠备并发锁：同一证书 ID 同时只运行一个续签
+		if _, loaded := autoRenewMu.LoadOrStore(cert.ID, struct{}{}); loaded {
+			global.LOG.Infof("[auto-renew] Certificate %d (%s) is already being renewed, skipping", cert.ID, cert.PrimaryDomain)
+			continue
 		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(c model.Certificate) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			defer autoRenewMu.Delete(c.ID)
+
+			global.LOG.Infof("[auto-renew] Certificate %s (ID=%d) expires at %s, renewing...",
+				c.PrimaryDomain, c.ID, c.ExpireDate.Format("2006-01-02"))
+			if err := certService.Renew(c.ID); err != nil {
+				global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", c.PrimaryDomain, err)
+			} else {
+				global.LOG.Infof("[auto-renew] Successfully renewed %s", c.PrimaryDomain)
+			}
+		}(cert)
 	}
+
+	wg.Wait()
 }

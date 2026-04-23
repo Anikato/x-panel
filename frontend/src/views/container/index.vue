@@ -34,6 +34,44 @@
     <template v-else>
       <div class="docker-info-bar">
         <span>Docker {{ dockerStatus.version }}</span>
+        <div class="docker-service-btns">
+          <el-button
+            id="btn-docker-start"
+            size="small"
+            type="success"
+            plain
+            :loading="dockerServiceLoading === 'start'"
+            :disabled="!!dockerServiceLoading"
+            @click="handleDockerService('start')"
+          >
+            <el-icon><VideoPlay /></el-icon>
+            {{ t('container.start') }}
+          </el-button>
+          <el-button
+            id="btn-docker-stop"
+            size="small"
+            type="danger"
+            plain
+            :loading="dockerServiceLoading === 'stop'"
+            :disabled="!!dockerServiceLoading"
+            @click="handleDockerService('stop')"
+          >
+            <el-icon><VideoPause /></el-icon>
+            {{ t('container.stop') }}
+          </el-button>
+          <el-button
+            id="btn-docker-restart"
+            size="small"
+            type="warning"
+            plain
+            :loading="dockerServiceLoading === 'restart'"
+            :disabled="!!dockerServiceLoading"
+            @click="handleDockerService('restart')"
+          >
+            <el-icon><RefreshRight /></el-icon>
+            {{ t('container.restart') }}
+          </el-button>
+        </div>
       </div>
       <el-tabs v-model="activeTab">
         <el-tab-pane :label="t('container.containers')" name="containers">
@@ -309,7 +347,7 @@
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import { Box, Download, WarningFilled, ArrowDown } from '@element-plus/icons-vue'
+import { Box, Download, WarningFilled, ArrowDown, VideoPlay, VideoPause, RefreshRight } from '@element-plus/icons-vue'
 import type { Container, ContainerImage, ContainerNetwork, ContainerVolume, DockerStatus } from '@/api/interface'
 import {
   getDockerStatus,
@@ -319,7 +357,7 @@ import {
   listNetworks, createNetwork, removeNetwork,
   listVolumes, createVolume, removeVolume,
   inspectDocker, pruneDocker, renameContainer, cleanContainerLog, commitContainer,
-  loadDockerMirrors, updateDockerMirrors,
+  loadDockerMirrors, updateDockerMirrors, controlDockerService,
 } from '@/api/modules/container'
 
 const { t } = useI18n()
@@ -437,6 +475,32 @@ watch(activeTab, (tab) => {
   else if (tab === 'volumes') loadVolumes()
   else if (tab === 'config') loadMirrors()
 })
+
+const dockerServiceLoading = ref<string>('')
+
+const handleDockerService = async (action: 'start' | 'stop' | 'restart') => {
+  const actionLabel = action === 'start' ? t('container.start') : action === 'stop' ? t('container.stop') : t('container.restart')
+  try {
+    await ElMessageBox.confirm(
+      `${t('commons.confirm')} ${actionLabel} Docker ${t('container.dockerService')}?`,
+      t('commons.tip'),
+      { type: 'warning', confirmButtonText: t('commons.confirm'), cancelButtonText: t('commons.cancel') }
+    )
+  } catch {
+    return
+  }
+  dockerServiceLoading.value = action
+  try {
+    await controlDockerService({ action })
+    ElMessage.success(t('commons.success'))
+    // Re-check docker status after a brief delay (systemd needs time to transition)
+    setTimeout(() => checkDocker(), 2000)
+  } catch {
+    /* handled by http interceptor */
+  } finally {
+    dockerServiceLoading.value = ''
+  }
+}
 
 const operate = async (row: Container, op: string) => {
   await operateContainer({ containerID: row.id, operation: op })
@@ -722,10 +786,16 @@ onUnmounted(() => {
 .docker-info-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
+  padding: 8px 0 12px;
   font-size: 13px;
   color: var(--xp-text-muted);
+}
+.docker-service-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .resource-cell {
   display: flex;

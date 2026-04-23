@@ -99,6 +99,28 @@
         <el-form-item :label="$t('commons.description')">
           <el-input v-model="createForm.remark" />
         </el-form-item>
+        <el-form-item label="HTTP 端口">
+          <el-input-number
+            v-model="createForm.httpPort"
+            :min="0"
+            :max="65535"
+            style="width: 160px"
+            controls-position="right"
+            placeholder="0"
+          />
+          <div class="form-tip">留空或 0 使用默认端口 80</div>
+        </el-form-item>
+        <el-form-item label="HTTPS 端口">
+          <el-input-number
+            v-model="createForm.httpsPort"
+            :min="0"
+            :max="65535"
+            style="width: 160px"
+            controls-position="right"
+            placeholder="0"
+          />
+          <div class="form-tip">0 = 使用默认端口 443，仅启用 SSL 后生效</div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">{{ $t('commons.cancel') }}</el-button>
@@ -170,6 +192,8 @@ const createForm = ref({
   remark: '',
   siteDir: '',
   proxyPass: '',
+  httpPort: 0,
+  httpsPort: 0,
 })
 
 // alias 有效值：优先用填写的，其次由域名推导
@@ -251,7 +275,7 @@ const loadWebsites = async () => {
 }
 
 const openCreateDialog = () => {
-  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', remark: '', siteDir: '', proxyPass: '' }
+  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', remark: '', siteDir: '', proxyPass: '', httpPort: 0, httpsPort: 0 }
   createDialogVisible.value = true
 }
 

@@ -58,11 +58,66 @@ func (s *HostSystemService) GetInfo() (*HostSystemInfo, error) {
 }
 
 func (s *HostSystemService) SetHostname(hostname string) error {
+	// 获取当前主机名，用于后续替换 /etc/hosts
+	oldHostname := ""
+	if out, err := exec.Command("hostname").Output(); err == nil {
+		oldHostname = strings.TrimSpace(string(out))
+	}
+
 	out, err := exec.Command("hostnamectl", "set-hostname", hostname).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("set hostname failed: %s", strings.TrimSpace(string(out)))
 	}
+
+	// 同步更新 /etc/hosts 中的主机名条目，避免 sudo 变慢及本机解析失败
+	if oldHostname != "" && oldHostname != hostname {
+		if err := s.updateHostsFile(oldHostname, hostname); err != nil {
+			// 非致命错误，仅记录，不阻断主流程
+			fmt.Printf("warning: update /etc/hosts failed: %v\n", err)
+		}
+	}
+
 	return nil
+}
+
+// updateHostsFile 将 /etc/hosts 中所有出现旧主机名的行替换为新主机名
+func (s *HostSystemService) updateHostsFile(oldHostname, newHostname string) error {
+	data, err := os.ReadFile("/etc/hosts")
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	changed := false
+	for i, line := range lines {
+		// 跳过注释行
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// 按字段拆分，检查是否含有旧主机名
+		fields := strings.Fields(line)
+		for j, f := range fields {
+			if j == 0 {
+				// 第一列是 IP，跳过
+				continue
+			}
+			if f == oldHostname {
+				fields[j] = newHostname
+				changed = true
+			}
+		}
+		if changed {
+			// 重建行，保留原始 IP 部分格式
+			lines[i] = strings.Join(fields, "\t")
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+
+	return os.WriteFile("/etc/hosts", []byte(strings.Join(lines, "\n")), 0644)
 }
 
 func (s *HostSystemService) SetTimezone(tz string) error {

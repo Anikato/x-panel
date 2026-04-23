@@ -99,10 +99,14 @@ func (a *SSLAPI) ApplyCertificate(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	if err := service.NewICertificateService().Apply(req.ID); err != nil {
-		helper.HandleError(c, err)
-		return
-	}
+	// 异步执行申请（ACME 申请可能耗时数分钟），立即返回让前端轮询状态
+	go func() {
+		svc := service.NewICertificateService()
+		if err := svc.Apply(req.ID); err != nil {
+			// 错误已在 Apply 内部写入 DB，前端轮询可见
+			_ = err
+		}
+	}()
 	helper.SuccessWithOutData(c)
 }
 
@@ -112,10 +116,13 @@ func (a *SSLAPI) RenewCertificate(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	if err := service.NewICertificateService().Renew(req.ID); err != nil {
-		helper.HandleError(c, err)
-		return
-	}
+	// 异步执行续签
+	go func() {
+		svc := service.NewICertificateService()
+		if err := svc.Renew(req.ID); err != nil {
+			_ = err
+		}
+	}()
 	helper.SuccessWithOutData(c)
 }
 

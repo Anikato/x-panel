@@ -63,22 +63,22 @@
           <el-form-item label="HTTP 端口">
             <el-input-number
               v-model="detail.httpPort"
-              :min="1"
+              :min="0"
               :max="65535"
-              :placeholder="'80 (默认)'"
               style="width: 160px"
               controls-position="right"
+              placeholder="0"
             />
             <div class="form-tip">留空或 0 使用默认端口 80</div>
           </el-form-item>
           <el-form-item label="HTTPS 端口">
             <el-input-number
               v-model="detail.httpsPort"
-              :min="1"
+              :min="0"
               :max="65535"
-              :placeholder="'443 (默认)'"
               style="width: 160px"
               controls-position="right"
+              placeholder="0"
             />
             <div class="form-tip">留空或 0 使用默认端口 443，仅在启用 SSL 时生效</div>
           </el-form-item>

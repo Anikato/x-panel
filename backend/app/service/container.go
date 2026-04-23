@@ -54,6 +54,7 @@ type IContainerService interface {
 	CommitContainer(req dto.ContainerCommit) error
 	LoadDockerMirrors() ([]string, error)
 	UpdateDockerMirrors(mirrors []string) error
+	ControlDockerService(action string) error
 }
 
 func NewIContainerService() IContainerService {
@@ -717,4 +718,18 @@ func (s *ContainerService) UpdateDockerMirrors(mirrors []string) error {
 		return fmt.Errorf("restart docker failed: %s", string(output))
 	}
 	return nil
+}
+
+// ControlDockerService controls the Docker systemd service (start / stop / restart)
+func (s *ContainerService) ControlDockerService(action string) error {
+	switch action {
+	case "start", "stop", "restart":
+		out, err := exec.Command("systemctl", action, "docker").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("systemctl %s docker failed: %s", action, string(out))
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported docker service action: %s (use start/stop/restart)", action)
+	}
 }

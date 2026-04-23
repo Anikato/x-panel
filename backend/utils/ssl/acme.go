@@ -19,6 +19,9 @@ import (
 	"github.com/go-acme/lego/v4/registration"
 )
 
+// certRenewMu 防止同一进程内同一域名并发续签（仅粗粒度保护）
+var certRenewMu = make(chan struct{}, 5) // 最多 5 个并发续签
+
 type KeyType = certcrypto.KeyType
 
 const (
@@ -68,6 +71,11 @@ func GetCaDirURL(caType, customURL string) string {
 // NewAcmeClient 创建 ACME 客户端（已注册的账户）
 // accountURL 是注册时 CA 返回的账户 URL，作为 JWS kid 使用
 func NewAcmeClient(email, privateKeyPEM, keyType, caType, caDirURL, accountURL string) (*AcmeClient, error) {
+	// accountURL 不能为空：lego 用它作为 JWS kid，空值会导致 CA 拒绝所有请求
+	if accountURL == "" {
+		return nil, fmt.Errorf("ACME account URL is empty; please re-register the ACME account to obtain a valid account URL")
+	}
+
 	priKey, err := ParsePrivateKey(privateKeyPEM, keyType)
 	if err != nil {
 		return nil, fmt.Errorf("parse private key: %v", err)
@@ -129,7 +137,7 @@ func RegisterAccount(email, keyType, caType, caDirURL string) (privateKeyPEM str
 }
 
 // ObtainCertificate 申请证书，logWriter 可选，用于将 lego 内部日志重定向到调用方
-// 内置自动重试：首次失败后等待 DNS 传播再重试一次
+// 内置自动重试：首次失败后等待 60s 再重试一次（给 DNS 传播留足时间）
 func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWriter ...io.Writer) (*certificate.Resource, error) {
 	if len(logWriter) > 0 && logWriter[0] != nil {
 		origOut := log.Writer()
@@ -158,14 +166,9 @@ func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWrit
 
 	cert, err := c.Client.Certificate.Obtain(request)
 	if err != nil {
-		log.Printf("[lego] first attempt failed: %v, retrying after 30s...", err)
-		time.Sleep(30 * time.Second)
-
-		privKey2, err2 := certcrypto.GeneratePrivateKey(certcrypto.KeyType(keyType))
-		if err2 != nil {
-			return nil, fmt.Errorf("generate cert key (retry): %v", err2)
-		}
-		request.PrivateKey = privKey2
+		// 等待更长时间（60s），给 DNS 记录更多传播时间，复用相同私钥避免消耗配额
+		log.Printf("[lego] first attempt failed: %v, retrying after 60s...", err)
+		time.Sleep(60 * time.Second)
 		cert, err = c.Client.Certificate.Obtain(request)
 		if err != nil {
 			return nil, fmt.Errorf("obtain certificate: %v", err)
@@ -192,9 +195,36 @@ func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 	)
 }
 
-// RenewCertificate 续签证书（重新申请方式）
-func (c *AcmeClient) RenewCertificate(domains []string, keyType string, logWriter ...io.Writer) (*certificate.Resource, error) {
-	return c.ObtainCertificate(domains, keyType, logWriter...)
+// RenewCertificate 续签证书
+// 使用 lego 原生 Renew API（复用旧证书 URL），避免重新申请消耗速率配额
+// 若旧证书 URL 为空则 fallback 到重新申请
+func (c *AcmeClient) RenewCertificate(domains []string, keyType string, existingCert *certificate.Resource, logWriter ...io.Writer) (*certificate.Resource, error) {
+	if len(logWriter) > 0 && logWriter[0] != nil {
+		origOut := log.Writer()
+		origFlags := log.Flags()
+		origPrefix := log.Prefix()
+		log.SetOutput(io.MultiWriter(os.Stderr, logWriter[0]))
+		log.SetFlags(log.LstdFlags)
+		log.SetPrefix("[lego] ")
+		defer func() {
+			log.SetOutput(origOut)
+			log.SetFlags(origFlags)
+			log.SetPrefix(origPrefix)
+		}()
+	}
+
+	// 若有旧证书资源则用原生 Renew API（不重新验证域名所有权，省配额）
+	if existingCert != nil && existingCert.CertURL != "" {
+		log.Printf("[lego] renewing via existing cert URL: %s", existingCert.CertURL)
+		renewed, err := c.Client.Certificate.Renew(*existingCert, true, false, "")
+		if err == nil {
+			return renewed, nil
+		}
+		log.Printf("[lego] renew via cert URL failed: %v, falling back to re-obtain", err)
+	}
+
+	// Fallback：重新申请（首次申请或 CertURL 过期失效）
+	return c.ObtainCertificate(domains, keyType)
 }
 
 // EncodePrivateKey 将私钥编码为 PEM
@@ -221,6 +251,7 @@ func EncodePrivateKey(priKey crypto.PrivateKey, keyType string) ([]byte, error) 
 }
 
 // ParsePrivateKey 从 PEM 解析私钥
+// 支持 EC（SEC1） / RSA PKCS#1 / PKCS#8（lego 注册账户时的默认格式）三种格式
 func ParsePrivateKey(pemStr, keyType string) (crypto.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
@@ -228,8 +259,28 @@ func ParsePrivateKey(pemStr, keyType string) (crypto.PrivateKey, error) {
 	}
 	switch certcrypto.KeyType(keyType) {
 	case KeyEC256, KeyEC384:
-		return x509.ParseECPrivateKey(block.Bytes)
+		// EC 私钥：先尝试 SEC1 格式（x509.ParseECPrivateKey），再尝试 PKCS#8
+		if key, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+			return key, nil
+		}
+		// fallback: PKCS#8 包装的 EC 私钥
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("parse EC private key failed (tried SEC1 and PKCS#8): %v", err)
+		}
+		if ecKey, ok := key.(*ecdsa.PrivateKey); ok {
+			return ecKey, nil
+		}
+		return nil, fmt.Errorf("PKCS#8 key is not an EC key")
 	default:
+		// RSA 私钥：lego 注册时用 PKCS#8，手动生成的可能是 PKCS#1；两种都支持
+		if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+			if rsaKey, ok := key.(*rsa.PrivateKey); ok {
+				return rsaKey, nil
+			}
+			// PKCS#8 里存的是 EC Key，说明 keyType 与实际不符，仍尝试继续
+		}
+		// fallback: PKCS#1 格式
 		return x509.ParsePKCS1PrivateKey(block.Bytes)
 	}
 }

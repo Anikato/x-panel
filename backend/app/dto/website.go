@@ -11,6 +11,10 @@ type WebsiteCreate struct {
 	Type          string `json:"type" binding:"required,oneof=static reverse_proxy"`
 	Remark        string `json:"remark"`
 
+	// Listen ports (0 = use nginx default: 80 / 443)
+	HttpPort  int `json:"httpPort"`
+	HttpsPort int `json:"httpsPort"`
+
 	// Static
 	SiteDir string `json:"siteDir"`
 

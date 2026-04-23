@@ -21,6 +21,9 @@ export const useFileTaskStore = defineStore('fileTask', () => {
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let apiModule: any = null
 
+  // 已被用户清除的已完成任务 ID 集合，防止轮询时被后端数据重新覆盖回来
+  const clearedIds = new Set<string>()
+
   const runningCount = computed(() => tasks.value.filter(t => t.status === 'running').length)
   const finishedTasks = computed(() => tasks.value.filter(t => t.status !== 'running'))
 
@@ -30,11 +33,27 @@ export const useFileTaskStore = defineStore('fileTask', () => {
         apiModule = await import('@/api/modules/file')
       }
       const res: any = await apiModule.listFileTasks()
-      tasks.value = res.data || []
+      const all: FileTask[] = res.data || []
+
+      // 如果某个已清除的任务重新变成 running（说明是新任务），从清除集合中移除
+      for (const task of all) {
+        if (task.status === 'running' && clearedIds.has(task.id)) {
+          clearedIds.delete(task.id)
+        }
+      }
+
+      // 过滤掉已被用户清除的已完成任务
+      tasks.value = all.filter(t => !(clearedIds.has(t.id) && t.status !== 'running'))
     } catch { /* ignore */ }
   }
 
   function clearFinished() {
+    // 记录当前所有已完成任务的 ID，防止下次轮询再拉回来
+    for (const t of tasks.value) {
+      if (t.status !== 'running') {
+        clearedIds.add(t.id)
+      }
+    }
     tasks.value = tasks.value.filter(t => t.status === 'running')
   }
 

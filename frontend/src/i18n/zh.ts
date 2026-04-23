@@ -1143,6 +1143,7 @@ export default {
     installSuccess: 'Docker 安装成功',
     installLog: '安装日志',
     recheck: '重新检测',
+    dockerService: 'Docker 服务',
   },
   database: {
     type: '类型',

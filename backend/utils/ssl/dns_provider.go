@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	propagationTimeout = 3 * time.Minute
+	propagationTimeout = 10 * time.Minute // 增加到 10min，适配 NameSilo 等 DNS 更新较慢的服务商
 	pollingInterval    = 5 * time.Second
 	ttl                = 600
 )
