@@ -255,12 +255,24 @@ func (s *DiskService) MountRemote(req dto.RemoteMountRequest) error {
 func (s *DiskService) UnmountRemote(req dto.RemoteUnmountRequest) error {
 	out, err := exec.Command("umount", req.MountPoint).CombinedOutput()
 	if err != nil {
-		out2, err2 := exec.Command("umount", "-l", req.MountPoint).CombinedOutput()
-		if err2 != nil {
-			return fmt.Errorf("umount failed: %s", strings.TrimSpace(string(out)))
+		outStr := strings.TrimSpace(string(out))
+		// "not mounted" 说明挂载点已经不活跃（失效挂载），直接视为成功，继续清理
+		if strings.Contains(outStr, "not mounted") || strings.Contains(outStr, "no mount point") {
+			// 已经不挂载，当作成功处理
+		} else {
+			// 尝试 lazy umount（等待所有进程释放后再真正卸载）
+			out2, err2 := exec.Command("umount", "-l", req.MountPoint).CombinedOutput()
+			if err2 != nil {
+				out2Str := strings.TrimSpace(string(out2))
+				if strings.Contains(out2Str, "not mounted") || strings.Contains(out2Str, "no mount point") {
+					// 已经不挂载
+				} else {
+					return fmt.Errorf("umount failed: %s", outStr)
+				}
+			}
 		}
-		_ = out2
 	}
+	// 无论挂载状态如何，都清理 fstab（避免开机再次尝试挂载失效的远程）
 	if req.RemoveFstab {
 		_ = removeFstabEntry(req.MountPoint)
 	}

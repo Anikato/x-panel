@@ -592,7 +592,8 @@ const remounting = ref(false)
 
 const handleUnmount = async (row: RemoteMountInfo) => {
   try {
-    await unmountRemote({ mountPoint: row.mountPoint, removeFstab: row.inFstab })
+    // 删除时始终清理 fstab，防止失效挂载开机重试
+    await unmountRemote({ mountPoint: row.mountPoint, removeFstab: true })
     ElMessage.success(t('commons.success'))
     loadAll()
   } catch { /* handled */ }

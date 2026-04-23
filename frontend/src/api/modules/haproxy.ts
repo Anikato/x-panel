@@ -46,6 +46,7 @@ export const deleteHAProxyACL = (id: number) => http.post('/haproxy/acls/del', {
 export const getHAProxyStats = () => http.get('/haproxy/stats')
 export const getHAProxyRuntimeInfo = () => http.get('/haproxy/runtime-info')
 export const clearHAProxyCounters = () => http.post('/haproxy/counters/clear')
+export const saveHAProxyStatsSettings = (params: object) => http.post('/haproxy/stats/settings', params)
 
 // --- Raw Config / 历史 ---
 export const getHAProxyRawConfig = () => http.get('/haproxy/config/raw')

@@ -111,8 +111,12 @@ func (g *NginxConfigGenerator) writeListenHTTP(b *strings.Builder, site model.We
 	if site.DefaultServer {
 		defaultStr = " default_server"
 	}
-	fmt.Fprintf(b, "    listen 80%s;\n", defaultStr)
-	fmt.Fprintf(b, "    listen [::]:80%s;\n", defaultStr)
+	port := site.HttpPort
+	if port <= 0 {
+		port = 80
+	}
+	fmt.Fprintf(b, "    listen %d%s;\n", port, defaultStr)
+	fmt.Fprintf(b, "    listen [::]:%d%s;\n", port, defaultStr)
 }
 
 func (g *NginxConfigGenerator) writeListenHTTPS(b *strings.Builder, site model.Website) {
@@ -120,8 +124,12 @@ func (g *NginxConfigGenerator) writeListenHTTPS(b *strings.Builder, site model.W
 	if site.DefaultServer {
 		defaultStr = " default_server"
 	}
-	fmt.Fprintf(b, "    listen 443 ssl%s;\n", defaultStr)
-	fmt.Fprintf(b, "    listen [::]:443 ssl%s;\n", defaultStr)
+	port := site.HttpsPort
+	if port <= 0 {
+		port = 443
+	}
+	fmt.Fprintf(b, "    listen %d ssl%s;\n", port, defaultStr)
+	fmt.Fprintf(b, "    listen [::]:%d ssl%s;\n", port, defaultStr)
 }
 
 // certHasOCSP 检查证书是否包含 OCSP responder URL
@@ -254,9 +262,8 @@ func (g *NginxConfigGenerator) writeSecurityHeaders(b *strings.Builder, site mod
 	if !customHasDirective(custom, "add_header X-Content-Type-Options") {
 		b.WriteString("    add_header X-Content-Type-Options \"nosniff\" always;\n")
 	}
-	if !customHasDirective(custom, "add_header X-Frame-Options") {
-		b.WriteString("    add_header X-Frame-Options \"SAMEORIGIN\" always;\n")
-	}
+	// X-Frame-Options 不默认添加，避免影响 iframe 嵌入场景（如反向代理的 web 应用）
+	// 用户如需要可在「自定义 Nginx 配置」中添加 add_header X-Frame-Options "SAMEORIGIN" always;
 	if !customHasDirective(custom, "add_header Referrer-Policy") {
 		b.WriteString("    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n")
 	}

@@ -36,6 +36,7 @@ type IHAProxyInstallService interface {
 	Operate(req dto.HAProxyOperateReq) error
 	CheckUpdate() (*dto.HAProxyCheckUpdateResp, error)
 	Upgrade(req dto.HAProxyUpgradeReq) error
+	SaveStatsSettings(req dto.HAProxyStatsSettingsReq, operator string) error
 }
 
 type HAProxyInstallService struct {
@@ -212,6 +213,32 @@ func (s *HAProxyInstallService) Operate(req dto.HAProxyOperateReq) error {
 		return buserr.WithDetail(constant.ErrInternalServer, strings.TrimSpace(out), err)
 	}
 	return nil
+}
+
+// SaveStatsSettings 保存 Stats 面板配置并重建 HAProxy 配置
+func (s *HAProxyInstallService) SaveStatsSettings(req dto.HAProxyStatsSettingsReq, operator string) error {
+	if !isHAProxyInstalled() {
+		return buserr.New(constant.ErrHAProxyNotInstalled)
+	}
+	sr := repo.NewISettingRepo()
+	_ = sr.CreateOrUpdate("HAProxyStatsBind", req.StatsBind)
+	if req.StatsURI != "" {
+		_ = sr.CreateOrUpdate("HAProxyStatsURI", req.StatsURI)
+	}
+	if req.StatsUser != "" {
+		_ = sr.CreateOrUpdate("HAProxyStatsUser", req.StatsUser)
+	}
+	if req.StatsPass != "" {
+		_ = sr.CreateOrUpdate("HAProxyStatsPass", req.StatsPass)
+	}
+	enableVal := "enable"
+	if !req.StatsEnable {
+		enableVal = "disable"
+	}
+	_ = sr.CreateOrUpdate("HAProxyStatsEnable", enableVal)
+
+	// 重建配置并 reload/start
+	return NewIHAProxyService().ApplyChange("更新 Stats 面板配置", operator)
 }
 
 func (s *HAProxyInstallService) CheckUpdate() (*dto.HAProxyCheckUpdateResp, error) {

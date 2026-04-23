@@ -88,7 +88,8 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 	}
 
 	if site.Type == "static" && site.SiteDir == "" {
-		site.SiteDir = fmt.Sprintf("/var/www/%s", req.PrimaryDomain)
+		// 优先用 alias 作为目录名，更短且不含特殊字符
+		site.SiteDir = fmt.Sprintf("/var/www/%s", alias)
 	}
 
 	if err := s.websiteRepo.Create(&site); err != nil {
@@ -146,6 +147,8 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.Domains = req.Domains
 	site.SiteDir = req.SiteDir
 	site.IndexFile = req.IndexFile
+	site.HttpPort = req.HttpPort
+	site.HttpsPort = req.HttpsPort
 	site.ProxyPass = req.ProxyPass
 	site.WebSocket = req.WebSocket
 	site.SSLEnable = req.SSLEnable
@@ -276,6 +279,8 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		Status:        site.Status,
 		SiteDir:       site.SiteDir,
 		IndexFile:     site.IndexFile,
+		HttpPort:      site.HttpPort,
+		HttpsPort:     site.HttpsPort,
 		ProxyPass:     site.ProxyPass,
 		WebSocket:     site.WebSocket,
 		SSLEnable:     site.SSLEnable,

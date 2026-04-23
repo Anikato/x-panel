@@ -601,8 +601,8 @@ func (s *HAProxyService) SaveRawConfig(content, operator string) error {
 	if err := os.WriteFile(haproxyConfigPath, []byte(content), 0640); err != nil {
 		return err
 	}
-	// 4. reload
-	if out, err := cmd.ExecWithOutput("systemctl", "reload", haproxyServiceName); err != nil {
+	// 4. reload 或 start（服务未运行时无法 reload）
+	if out, err := reloadOrStartHAProxy(); err != nil {
 		rollbackHAProxyConfig()
 		return buserr.WithDetail(constant.ErrHAProxyReloadFailed, strings.TrimSpace(out), err)
 	}
@@ -705,8 +705,8 @@ func (s *HAProxyService) ApplyChange(reason, operator string) error {
 	if err := os.WriteFile(haproxyConfigPath, []byte(content), 0640); err != nil {
 		return err
 	}
-	// reload
-	if out, err := cmd.ExecWithOutput("systemctl", "reload", haproxyServiceName); err != nil {
+	// reload 或 start
+	if out, err := reloadOrStartHAProxy(); err != nil {
 		rollbackHAProxyConfig()
 		_ = repo.NewIHAProxyConfigVersionRepo().Create(&model.HAProxyConfigVersion{
 			Content: content, Reason: reason + " (reload失败)",
@@ -825,7 +825,18 @@ func rollbackHAProxyConfig() {
 		return
 	}
 	_ = os.WriteFile(haproxyConfigPath, data, 0640)
-	_, _ = cmd.ExecWithOutput("systemctl", "reload", haproxyServiceName)
+	_, _ = reloadOrStartHAProxy()
+}
+
+// reloadOrStartHAProxy：服务 active 时 reload，inactive 时 start
+func reloadOrStartHAProxy() (string, error) {
+	out, _ := cmd.ExecWithOutput("systemctl", "is-active", haproxyServiceName)
+	if strings.TrimSpace(out) == "active" {
+		return cmd.ExecWithOutput("systemctl", "reload", haproxyServiceName)
+	}
+	// 服务未运行，尝试 start
+	global.LOG.Infof("haproxy is not active, starting instead of reload")
+	return cmd.ExecWithOutput("systemctl", "start", haproxyServiceName)
 }
 
 func readHAProxySetting(key, def string) string {

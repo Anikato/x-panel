@@ -389,6 +389,19 @@ func (a *HAProxyAPI) ClearHAProxyCounters(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *HAProxyAPI) SaveHAProxyStatsSettings(c *gin.Context) {
+	var req dto.HAProxyStatsSettingsReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIHAProxyInstallService().SaveStatsSettings(req, operatorFrom(c)); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 // --- Raw Config / 版本 ---
 
 func (a *HAProxyAPI) GetHAProxyRawConfig(c *gin.Context) {

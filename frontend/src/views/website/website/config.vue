@@ -43,7 +43,11 @@
           </el-form-item>
           <template v-if="detail.type === 'static'">
             <el-form-item :label="$t('website.siteDir')">
-              <el-input v-model="detail.siteDir" />
+              <div style="display:flex; gap:8px; width:100%;">
+                <el-input v-model="detail.siteDir" style="flex:1" />
+                <el-button :icon="FolderOpened" @click="openConfigDirBrowser" title="浏览目录" />
+              </div>
+              <div class="form-tip">修改后保存将自动重载 Nginx 配置</div>
             </el-form-item>
             <el-form-item :label="$t('website.indexFile')">
               <el-input v-model="detail.indexFile" />
@@ -54,6 +58,31 @@
             <el-switch v-model="detail.defaultServer" />
             <div class="form-tip">{{ $t('website.defaultServerHint') }}</div>
           </el-form-item>
+
+          <el-divider content-position="left" style="margin: 8px 0 16px">监听端口</el-divider>
+          <el-form-item label="HTTP 端口">
+            <el-input-number
+              v-model="detail.httpPort"
+              :min="1"
+              :max="65535"
+              :placeholder="'80 (默认)'"
+              style="width: 160px"
+              controls-position="right"
+            />
+            <div class="form-tip">留空或 0 使用默认端口 80</div>
+          </el-form-item>
+          <el-form-item label="HTTPS 端口">
+            <el-input-number
+              v-model="detail.httpsPort"
+              :min="1"
+              :max="65535"
+              :placeholder="'443 (默认)'"
+              style="width: 160px"
+              controls-position="right"
+            />
+            <div class="form-tip">留空或 0 使用默认端口 443，仅在启用 SSL 时生效</div>
+          </el-form-item>
+
           <el-form-item :label="$t('commons.description')">
             <el-input v-model="detail.remark" type="textarea" :rows="2" />
           </el-form-item>
@@ -408,6 +437,36 @@
       </div>
       <div ref="monacoContainerRef" class="source-editor-container" />
     </div>
+
+    <!-- 目录浏览器 Dialog -->
+    <el-dialog v-model="dirBrowserVisible" title="选择目录" width="520px" destroy-on-close>
+      <div class="dir-browser">
+        <div class="dir-browser-bar">
+          <el-input v-model="dirBrowserPath" size="small" style="flex:1" placeholder="输入路径" @keyup.enter="loadDirList" />
+          <el-button size="small" :icon="RefreshRight" title="刷新" @click="loadDirList" />
+          <el-button size="small" :icon="ArrowUp" title="上级目录" @click="goParentDir" />
+        </div>
+        <div class="dir-browser-list" v-loading="dirLoading">
+          <div
+            v-for="item in dirList"
+            :key="item.path"
+            class="dir-item"
+            :class="{ 'dir-item--selected': dirBrowserPath === item.path }"
+            @click="selectDir(item.path)"
+            @dblclick="enterDir(item.path)"
+          >
+            <el-icon color="#f59e0b"><Folder /></el-icon>
+            <span>{{ item.name }}</span>
+          </div>
+          <div v-if="dirList.length === 0 && !dirLoading" class="dir-empty">无子目录（双击目录进入，单击选中）</div>
+        </div>
+        <div class="dir-browser-current">当前选择：<code>{{ dirBrowserPath }}</code></div>
+      </div>
+      <template #footer>
+        <el-button @click="dirBrowserVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmDirSelect">选择此目录</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -416,8 +475,9 @@ import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Delete, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Plus, FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons-vue'
 import { getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog, getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog } from '@/api/modules/website'
+import { listFiles } from '@/api/modules/file'
 import { searchCertificate } from '@/api/modules/ssl'
 import type { Certificate } from '@/api/interface'
 import * as monaco from 'monaco-editor'
@@ -437,8 +497,9 @@ interface WebsiteDetail {
   sslEnable: boolean
   remark: string
   siteDir: string
-  proxyPass: string
   indexFile: string
+  httpPort: number
+  httpsPort: number
   defaultServer: boolean
   webSocket: boolean
   certificateID: number
@@ -462,6 +523,7 @@ interface WebsiteDetail {
   staticCacheEnable: boolean
   upstream: string
   customNginx: string
+  proxyPass: string
   nginxConfig: string
   alias: string
   configMode: string
@@ -543,6 +605,57 @@ add_header X-Frame-Options "DENY" always;
 
 # 如需自定义 SSL 指令（如 ssl_ciphers），
 # 面板会自动跳过已存在的指令，避免冲突`
+
+// --- 目录浏览器 ---
+const dirBrowserVisible = ref(false)
+const dirBrowserPath = ref('/var/www')
+const dirList = ref<{ name: string; path: string }[]>([])
+const dirLoading = ref(false)
+
+const loadDirList = async () => {
+  dirLoading.value = true
+  try {
+    const res = await listFiles({ path: dirBrowserPath.value, showHidden: false })
+    const items = res.data?.items || []
+    dirList.value = items
+      .filter((f: any) => f.isDir)
+      .map((f: any) => ({ name: f.name, path: f.path }))
+  } catch {
+    dirList.value = []
+  } finally {
+    dirLoading.value = false
+  }
+}
+
+const openConfigDirBrowser = () => {
+  dirBrowserPath.value = detail.value.siteDir || '/var/www'
+  dirBrowserVisible.value = true
+  loadDirList()
+}
+
+const enterDir = (path: string) => {
+  dirBrowserPath.value = path
+  loadDirList()
+}
+
+const goParentDir = () => {
+  const parts = dirBrowserPath.value.split('/').filter(Boolean)
+  parts.pop()
+  dirBrowserPath.value = '/' + parts.join('/')
+  loadDirList()
+}
+
+const selectDir = (path: string) => {
+  dirBrowserPath.value = path
+}
+
+const confirmDirSelect = () => {
+  if (detail.value) {
+    detail.value.siteDir = dirBrowserPath.value
+  }
+  dirBrowserVisible.value = false
+}
+// --- /目录浏览器 ---
 
 const loadDetail = async () => {
   loading.value = true
@@ -917,6 +1030,58 @@ onBeforeUnmount(() => {
     font-weight: 500;
     color: var(--xp-accent);
     font-family: 'Fira Code', 'Consolas', monospace;
+  }
+
+  .preset-actions {
+    display: flex; gap: 6px; padding: 0 4px;
+  }
+
+  .dir-browser {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    .dir-browser-bar {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .dir-browser-list {
+      height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--el-border-color);
+      border-radius: 6px;
+      padding: 4px;
+
+      .dir-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        user-select: none;
+        transition: background 0.15s;
+
+        &:hover { background: var(--el-fill-color-light); }
+        &--selected { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+      }
+
+      .dir-empty {
+        text-align: center;
+        color: var(--xp-text-muted);
+        font-size: 13px;
+        padding: 40px 0;
+      }
+    }
+
+    .dir-browser-current {
+      font-size: 12px;
+      color: var(--xp-text-muted);
+      code { font-size: 12px; color: var(--el-color-primary); }
+    }
   }
 
   .source-actions {

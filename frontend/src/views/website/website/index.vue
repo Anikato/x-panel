@@ -86,8 +86,11 @@
           <div class="form-tip">{{ $t('website.otherDomainsHint') }}</div>
         </el-form-item>
         <el-form-item v-if="createForm.type === 'static'" :label="$t('website.siteDir')">
-          <el-input v-model="createForm.siteDir" :placeholder="`/var/www/${createForm.primaryDomain || 'example.com'}`" />
-          <div class="form-tip">{{ $t('website.siteDirHint') }}</div>
+          <div style="display:flex; gap:8px; width:100%;">
+            <el-input v-model="createForm.siteDir" :placeholder="`/var/www/${effectiveAlias || 'example_com'}`" style="flex:1" />
+            <el-button :icon="FolderOpened" @click="openDirBrowser('create')" />
+          </div>
+          <div class="form-tip">{{ $t('website.siteDirHint') }}，留空自动生成 /var/www/{{ effectiveAlias || 'alias名称' }}</div>
         </el-form-item>
         <el-form-item v-if="createForm.type === 'reverse_proxy'" :label="$t('website.proxyPass')">
           <el-input v-model="createForm.proxyPass" placeholder="http://127.0.0.1:8080" />
@@ -102,15 +105,47 @@
         <el-button type="primary" @click="handleCreate" :loading="createLoading">{{ $t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- 目录浏览器 Dialog -->
+    <el-dialog v-model="dirBrowserVisible" title="选择目录" width="520px" destroy-on-close>
+      <div class="dir-browser">
+        <div class="dir-browser-bar">
+          <el-input v-model="dirBrowserPath" size="small" style="flex:1" placeholder="输入路径" @keyup.enter="loadDirList" />
+          <el-button size="small" :icon="RefreshRight" title="刷新" @click="loadDirList" />
+          <el-button size="small" :icon="ArrowUp" title="上级目录" @click="goParentDir" />
+        </div>
+        <div class="dir-browser-list" v-loading="dirLoading">
+          <div
+            v-for="item in dirList"
+            :key="item.path"
+            class="dir-item"
+            :class="{ 'dir-item--selected': dirBrowserPath === item.path }"
+            @click="selectDir(item.path)"
+            @dblclick="enterDir(item.path)"
+          >
+            <el-icon color="#f59e0b"><Folder /></el-icon>
+            <span>{{ item.name }}</span>
+          </div>
+          <div v-if="dirList.length === 0 && !dirLoading" class="dir-empty">无子目录（双击目录进入，单击选中）</div>
+        </div>
+        <div class="dir-browser-current">当前选择：<code>{{ dirBrowserPath }}</code></div>
+      </div>
+      <template #footer>
+        <el-button @click="dirBrowserVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmDirSelect">选择此目录</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons-vue'
 import { searchWebsite, createWebsite, deleteWebsite, enableWebsite, disableWebsite } from '@/api/modules/website'
+import { listFiles } from '@/api/modules/file'
 import type { Website } from '@/api/interface'
 
 const router = useRouter()
@@ -136,6 +171,68 @@ const createForm = ref({
   siteDir: '',
   proxyPass: '',
 })
+
+// alias 有效值：优先用填写的，其次由域名推导
+const effectiveAlias = computed(() => {
+  if (createForm.value.alias.trim()) return createForm.value.alias.trim()
+  if (createForm.value.primaryDomain) return createForm.value.primaryDomain.replace(/[.*]/g, '_')
+  return ''
+})
+
+// --- 目录浏览器 ---
+const dirBrowserVisible = ref(false)
+const dirBrowserPath = ref('/var/www')
+const dirList = ref<{ name: string; path: string }[]>([])
+const dirLoading = ref(false)
+let dirBrowserTarget = '' // 'create' | 'config'
+
+const loadDirList = async () => {
+  dirLoading.value = true
+  try {
+    const res = await listFiles({ path: dirBrowserPath.value, showHidden: false })
+    const items = res.data?.items || []
+    dirList.value = items
+      .filter((f: any) => f.isDir)
+      .map((f: any) => ({ name: f.name, path: f.path }))
+  } catch {
+    dirList.value = []
+  } finally {
+    dirLoading.value = false
+  }
+}
+
+const openDirBrowser = (target: string) => {
+  dirBrowserTarget = target
+  // 用当前输入的路径初始化，若为空则默认 /var/www
+  const cur = target === 'create' ? createForm.value.siteDir : ''
+  dirBrowserPath.value = cur || '/var/www'
+  dirBrowserVisible.value = true
+  loadDirList()
+}
+
+const enterDir = (path: string) => {
+  dirBrowserPath.value = path
+  loadDirList()
+}
+
+const goParentDir = () => {
+  const parts = dirBrowserPath.value.split('/').filter(Boolean)
+  parts.pop()
+  dirBrowserPath.value = '/' + parts.join('/')
+  loadDirList()
+}
+
+const selectDir = (path: string) => {
+  dirBrowserPath.value = path
+}
+
+const confirmDirSelect = () => {
+  if (dirBrowserTarget === 'create') {
+    createForm.value.siteDir = dirBrowserPath.value
+  }
+  dirBrowserVisible.value = false
+}
+// --- /目录浏览器 ---
 
 const loadWebsites = async () => {
   loading.value = true
@@ -250,5 +347,53 @@ onMounted(() => loadWebsites())
   font-size: 12px;
   color: var(--xp-text-muted);
   margin-top: 4px;
+}
+
+.dir-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .dir-browser-bar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .dir-browser-list {
+    height: 260px;
+    overflow-y: auto;
+    border: 1px solid var(--el-border-color);
+    border-radius: 6px;
+    padding: 4px;
+
+    .dir-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      user-select: none;
+      transition: background 0.15s;
+
+      &:hover { background: var(--el-fill-color-light); }
+      &--selected { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+    }
+
+    .dir-empty {
+      text-align: center;
+      color: var(--xp-text-muted);
+      font-size: 13px;
+      padding: 40px 0;
+    }
+  }
+
+  .dir-browser-current {
+    font-size: 12px;
+    color: var(--xp-text-muted);
+    code { font-size: 12px; color: var(--el-color-primary); }
+  }
 }
 </style>

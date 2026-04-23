@@ -309,3 +309,13 @@ type HAProxyConfigVersionInfo struct {
 type HAProxyConfigRollbackReq struct {
 	ID uint `json:"id" binding:"required"`
 }
+
+// --- Stats 面板设置 ---
+
+type HAProxyStatsSettingsReq struct {
+	StatsBind  string `json:"statsBind" binding:"required"`   // e.g. "127.0.0.1:54321"
+	StatsURI   string `json:"statsUri"`                       // e.g. "/stats"
+	StatsUser  string `json:"statsUser"`
+	StatsPass  string `json:"statsPass"`                      // 空则不修改密码
+	StatsEnable bool  `json:"statsEnable"`
+}

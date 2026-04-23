@@ -132,12 +132,37 @@
       </el-row>
 
       <el-card shadow="never" style="margin-top: 16px;">
-        <template #header>{{ $t('haproxy.statsSection') }}</template>
-        <el-descriptions :column="3" border size="small">
-          <el-descriptions-item :label="$t('haproxy.statsBind')"><code>{{ status.statsBind }}</code></el-descriptions-item>
-          <el-descriptions-item :label="$t('haproxy.statsURI')"><code>{{ status.statsURI }}</code></el-descriptions-item>
-          <el-descriptions-item :label="$t('haproxy.statsUser')"><code>{{ status.statsUser }}</code></el-descriptions-item>
-        </el-descriptions>
+        <template #header>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>{{ $t('haproxy.statsSection') }}</span>
+            <el-button
+              type="primary"
+              size="small"
+              @click="handleSaveStatsSettings"
+              :loading="statsSaving"
+            >
+              {{ $t('commons.save') }}（保存并重载）
+            </el-button>
+          </div>
+        </template>
+        <el-form :model="statsForm" label-width="130px" style="max-width: 600px;">
+          <el-form-item label="启用监控面板">
+            <el-switch v-model="statsForm.statsEnable" />
+          </el-form-item>
+          <el-form-item label="监听地址:端口">
+            <el-input v-model="statsForm.statsBind" placeholder="127.0.0.1:54321" style="width: 260px;" />
+            <div class="form-tip-small">格式：IP:端口，修改后将自动重建配置并重启 HAProxy</div>
+          </el-form-item>
+          <el-form-item label="Stats URI">
+            <el-input v-model="statsForm.statsUri" placeholder="/stats" style="width: 200px;" />
+          </el-form-item>
+          <el-form-item label="用户名">
+            <el-input v-model="statsForm.statsUser" style="width: 200px;" />
+          </el-form-item>
+          <el-form-item label="新密码">
+            <el-input v-model="statsForm.statsPass" type="password" show-password placeholder="留空则不修改" style="width: 200px;" />
+          </el-form-item>
+        </el-form>
       </el-card>
     </template>
   </div>
@@ -150,7 +175,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import {
   getHAProxyStatus, installHAProxy, getHAProxyInstallProgress, uninstallHAProxy,
-  operateHAProxy, checkHAProxyUpdate, upgradeHAProxy,
+  operateHAProxy, checkHAProxyUpdate, upgradeHAProxy, saveHAProxyStatsSettings,
 } from '@/api/modules/haproxy'
 
 const { t } = useI18n()
@@ -159,6 +184,7 @@ const installing = ref(false)
 const operateLoading = ref('')
 const checkUpdateLoading = ref(false)
 const upgrading = ref(false)
+const statsSaving = ref(false)
 const updateInfo = ref<any>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -171,6 +197,15 @@ const status = ref<any>({
   statsBind: '',
   statsURI: '',
   statsUser: '',
+  statsEnable: true,
+})
+
+const statsForm = ref({
+  statsBind: '',
+  statsUri: '/stats',
+  statsUser: '',
+  statsPass: '',
+  statsEnable: true,
 })
 
 const installProgress = ref({ phase: 'idle', message: '', percent: 0 })
@@ -179,7 +214,16 @@ const loadStatus = async () => {
   loading.value = true
   try {
     const res = await getHAProxyStatus()
-    if (res.data) status.value = res.data
+    if (res.data) {
+      status.value = res.data
+      // 同步到表单（首次加载时）
+      if (!statsForm.value.statsBind) {
+        statsForm.value.statsBind = res.data.statsBind || '127.0.0.1:54321'
+        statsForm.value.statsUri = res.data.statsURI || '/stats'
+        statsForm.value.statsUser = res.data.statsUser || 'xpanel'
+        statsForm.value.statsEnable = res.data.statsEnable !== false
+      }
+    }
   } finally {
     loading.value = false
   }
@@ -245,6 +289,24 @@ const handleOperate = async (op: string) => {
   }
 }
 
+const handleSaveStatsSettings = async () => {
+  if (!statsForm.value.statsBind) {
+    ElMessage.warning('请填写监听地址:端口')
+    return
+  }
+  statsSaving.value = true
+  try {
+    await saveHAProxyStatsSettings(statsForm.value)
+    ElMessage.success('Stats 配置已保存并重载')
+    statsForm.value.statsPass = ''  // 清空密码框
+    await loadStatus()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '保存失败')
+  } finally {
+    statsSaving.value = false
+  }
+}
+
 const handleCheckUpdate = async () => {
   checkUpdateLoading.value = true
   try {
@@ -288,5 +350,8 @@ onUnmounted(() => stopPollProgress())
 }
 .operate-buttons {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.form-tip-small {
+  font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; line-height: 1.4;
 }
 </style>

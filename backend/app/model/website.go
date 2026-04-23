@@ -8,6 +8,9 @@ type Website struct {
 	Type          string `gorm:"not null;default:static" json:"type"`     // static | reverse_proxy
 	Status        string `gorm:"not null;default:stopped" json:"status"` // running | stopped
 
+	// Listen ports (0 = default: 80 / 443)
+	HttpPort  int `gorm:"default:0" json:"httpPort"`
+	HttpsPort int `gorm:"default:0" json:"httpsPort"`
 	// Static site
 	SiteDir   string `json:"siteDir"`
 	IndexFile string `gorm:"default:'index.html index.htm'" json:"indexFile"`

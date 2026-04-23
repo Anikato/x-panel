@@ -349,6 +349,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/haproxy/stats", api.GetHAProxyStats)
 		privateGroup.GET("/haproxy/runtime-info", api.GetHAProxyRuntimeInfo)
 		privateGroup.POST("/haproxy/counters/clear", api.ClearHAProxyCounters)
+		privateGroup.POST("/haproxy/stats/settings", api.SaveHAProxyStatsSettings)
 		privateGroup.GET("/haproxy/config/raw", api.GetHAProxyRawConfig)
 		privateGroup.POST("/haproxy/config/raw", api.SaveHAProxyRawConfig)
 		privateGroup.POST("/haproxy/config/test", api.TestHAProxyConfig)

@@ -27,6 +27,10 @@ type WebsiteUpdate struct {
 	SiteDir       string `json:"siteDir"`
 	IndexFile     string `json:"indexFile"`
 
+	// Listen ports
+	HttpPort  int `json:"httpPort"`
+	HttpsPort int `json:"httpsPort"`
+
 	// Reverse proxy
 	ProxyPass string `json:"proxyPass"`
 	WebSocket bool   `json:"webSocket"`
@@ -108,6 +112,10 @@ type WebsiteDetail struct {
 
 	SiteDir   string `json:"siteDir"`
 	IndexFile string `json:"indexFile"`
+
+	// Listen ports
+	HttpPort  int `json:"httpPort"`
+	HttpsPort int `json:"httpsPort"`
 
 	ProxyPass string `json:"proxyPass"`
 	WebSocket bool   `json:"webSocket"`
