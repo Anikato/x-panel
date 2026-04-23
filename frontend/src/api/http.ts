@@ -2,17 +2,25 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/routers'
 
+// 使用唯一请求 ID（自增）作为 key，避免同名接口互相覆盖 AbortController
+let _reqIdCounter = 0
 const pendingRequests = new Map<string, AbortController>()
 
-function getRequestKey(config: any): string {
-  return `${config.method}:${config.url}`
-}
+// 不参与路由跳转取消的白名单接口（关键初始化请求）
+const SKIP_CANCEL_URLS = ['/settings']
 
 export function cancelAllPendingRequests() {
-  pendingRequests.forEach((controller) => {
+  pendingRequests.forEach((controller, key) => {
+    // 白名单接口不被批量取消
+    if (SKIP_CANCEL_URLS.some(url => key.includes(url))) return
     controller.abort()
   })
-  pendingRequests.clear()
+  // 只删除非白名单的 key
+  for (const key of pendingRequests.keys()) {
+    if (!SKIP_CANCEL_URLS.some(url => key.includes(url))) {
+      pendingRequests.delete(key)
+    }
+  }
 }
 
 const http = axios.create({
@@ -41,8 +49,10 @@ http.interceptors.request.use(
 
     const controller = new AbortController()
     config.signal = controller.signal
-    const key = getRequestKey(config)
-    pendingRequests.set(key, controller)
+    // 用唯一 ID 作 key，避免同名接口覆盖彼此的 controller
+    const reqId = `${config.method}:${config.url}:${++_reqIdCounter}`
+    ;(config as any).__reqId = reqId
+    pendingRequests.set(reqId, controller)
 
     return config
   },
@@ -51,8 +61,8 @@ http.interceptors.request.use(
 
 http.interceptors.response.use(
   (response) => {
-    const key = getRequestKey(response.config)
-    pendingRequests.delete(key)
+    const reqId = (response.config as any).__reqId
+    if (reqId) pendingRequests.delete(reqId)
 
     const res = response.data
     if (res.code === 0) {
@@ -63,8 +73,8 @@ http.interceptors.response.use(
   },
   (error) => {
     if (error.config) {
-      const key = getRequestKey(error.config)
-      pendingRequests.delete(key)
+      const reqId = (error.config as any).__reqId
+      if (reqId) pendingRequests.delete(reqId)
     }
 
     if (axios.isCancel(error)) {
