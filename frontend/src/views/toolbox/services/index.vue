@@ -86,7 +86,7 @@
         <el-form-item :label="$t('toolbox.services.user')">
           <el-input v-model="editForm.user" :placeholder="$t('toolbox.services.userHint')" />
         </el-form-item>
-        <el-form-item :label="$t('toolbox.services.restart')">
+        <el-form-item :label="$t('toolbox.services.restartPolicy')">
           <el-select v-model="editForm.restart" style="width: 100%">
             <el-option :label="$t('toolbox.services.restartOnFailure')" value="on-failure" />
             <el-option :label="$t('toolbox.services.restartAlways')" value="always" />
@@ -136,7 +136,7 @@
         <el-descriptions-item :label="$t('toolbox.services.execStart')" :span="2">{{ detailData.execStart }}</el-descriptions-item>
         <el-descriptions-item :label="$t('toolbox.services.workingDir')">{{ detailData.workingDir || '-' }}</el-descriptions-item>
         <el-descriptions-item :label="$t('toolbox.services.user')">{{ detailData.user || 'root' }}</el-descriptions-item>
-        <el-descriptions-item :label="$t('toolbox.services.restart')">{{ detailData.restart }}</el-descriptions-item>
+        <el-descriptions-item :label="$t('toolbox.services.restartPolicy')">{{ detailData.restart }}</el-descriptions-item>
         <el-descriptions-item :label="$t('toolbox.services.restartSec')">{{ detailData.restartSec || '-' }}</el-descriptions-item>
         <el-descriptions-item :label="'PID'">{{ detailData.mainPID || '-' }}</el-descriptions-item>
         <el-descriptions-item :label="$t('toolbox.services.memory')">{{ detailData.memoryCurrent || '-' }}</el-descriptions-item>

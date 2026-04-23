@@ -1879,7 +1879,7 @@ export default {
       browseDir: '浏览',
       user: '运行用户',
       userHint: '留空默认 root',
-      restart: '重启策略',
+      restartPolicy: '重启策略',
       restartOnFailure: 'on-failure — 异常退出时自动重启（推荐）',
       restartAlways: 'always — 无论何种原因退出都重启',
       restartOnAbnormal: 'on-abnormal — 信号终止或超时时重启',
