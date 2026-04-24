@@ -29,10 +29,34 @@
     </template>
     <div ref="editorContainer" class="editor-container" />
   </el-drawer>
+
+  <!-- Paste fallback dialog (Chrome over HTTP) -->
+  <el-dialog
+    v-model="pasteDialogVisible"
+    :title="t('file.pasteContent')"
+    width="500px"
+    append-to-body
+  >
+    <p style="margin: 0 0 10px; color: var(--xp-text-secondary); font-size: 13px;">
+      {{ t('file.pasteHint') }}
+    </p>
+    <el-input
+      id="paste-fallback-textarea"
+      v-model="pasteBuffer"
+      type="textarea"
+      :rows="8"
+      autofocus
+      :placeholder="t('file.pasteHere')"
+    />
+    <template #footer>
+      <el-button @click="pasteDialogVisible = false">{{ t('commons.cancel') }}</el-button>
+      <el-button type="primary" @click="confirmPaste">{{ t('commons.confirm') }}</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, onBeforeUnmount, nextTick } from 'vue'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
@@ -175,6 +199,55 @@ function initEditor() {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     saveContent()
   })
+
+  // Ctrl+V paste — robust fallback for Chrome (HTTP or clipboard-read not granted)
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, async () => {
+    if (!editor) return
+
+    // 1. On HTTPS: proactively query/request clipboard-read permission
+    if (location.protocol === 'https:' && navigator.clipboard?.readText) {
+      try {
+        // Check current permission state without prompting
+        const permStatus = await navigator.permissions.query({ name: 'clipboard-read' as PermissionName })
+        if (permStatus.state === 'granted' || permStatus.state === 'prompt') {
+          // 'prompt' will trigger Chrome's permission dialog on readText()
+          const text = await navigator.clipboard.readText()
+          editor.trigger('keyboard', 'type', { text })
+          return
+        }
+        // state === 'denied' — fall through to paste dialog
+      } catch {
+        // permissions API not supported or readText failed — try anyway
+        try {
+          const text = await navigator.clipboard.readText()
+          editor.trigger('keyboard', 'type', { text })
+          return
+        } catch {
+          // fall through
+        }
+      }
+    }
+
+    // 2. HTTP: try legacy execCommand paste via a temporary textarea
+    try {
+      const ta = document.createElement('textarea')
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;'
+      document.body.appendChild(ta)
+      ta.focus()
+      const ok = document.execCommand('paste')
+      const text = ta.value
+      document.body.removeChild(ta)
+      if (ok && text) {
+        editor.trigger('keyboard', 'type', { text })
+        return
+      }
+    } catch {
+      // execCommand not supported
+    }
+
+    // 3. Last resort: paste dialog (always works, user pastes into a real input)
+    showPasteDialog()
+  })
 }
 
 function updateLanguage(lang: string) {
@@ -227,6 +300,21 @@ async function handleClose(done: () => void) {
     cleanup()
     done()
   }
+}
+
+const pasteDialogVisible = ref(false)
+const pasteBuffer = ref('')
+
+function showPasteDialog() {
+  pasteBuffer.value = ''
+  pasteDialogVisible.value = true
+}
+
+function confirmPaste() {
+  if (editor && pasteBuffer.value) {
+    editor.trigger('keyboard', 'type', { text: pasteBuffer.value })
+  }
+  pasteDialogVisible.value = false
 }
 
 function cleanup() {

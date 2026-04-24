@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
@@ -137,7 +138,10 @@ func RegisterAccount(email, keyType, caType, caDirURL string) (privateKeyPEM str
 }
 
 // ObtainCertificate 申请证书，logWriter 可选，用于将 lego 内部日志重定向到调用方
-// 内置自动重试：首次失败后等待 60s 再重试一次（给 DNS 传播留足时间）
+// 内置自动重试：首次失败后等待 120s 再重试一次
+// 注意：lego 在每次 Obtain 失败后会调用 CleanUp 删除 TXT 记录，但 DNS 服务商（如阿里云）的
+// 删除操作是异步的，如果等待时间太短立即重试，新的 Present 会遇到 DomainRecordDuplicate 错误。
+// 等待 120s 足以让绝大多数 DNS 服务商完成删除操作。
 func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWriter ...io.Writer) (*certificate.Resource, error) {
 	if len(logWriter) > 0 && logWriter[0] != nil {
 		origOut := log.Writer()
@@ -166,17 +170,26 @@ func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWrit
 
 	cert, err := c.Client.Certificate.Obtain(request)
 	if err != nil {
-		// 等待更长时间（60s），给 DNS 记录更多传播时间，复用相同私钥避免消耗配额
-		log.Printf("[lego] first attempt failed: %v, retrying after 60s...", err)
-		time.Sleep(60 * time.Second)
+		// 等待 120s：
+		// 1. 给 DNS 记录更多传播时间
+		// 2. 让 lego CleanUp 删除的旧 TXT 记录在阿里云等异步 DNS 上完全生效
+		//    （太短会导致重试时出现 DomainRecordDuplicate 错误）
+		log.Printf("[lego] first attempt failed: %v, waiting 120s before retry (allowing DNS cleanup to propagate)...", err)
+		time.Sleep(120 * time.Second)
 		cert, err = c.Client.Certificate.Obtain(request)
 		if err != nil {
+			// 特别提示 DomainRecordDuplicate：说明 DNS 清理还未完成，可以再等待后手动重试
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "DomainRecordDuplicate") {
+				return nil, fmt.Errorf("obtain certificate: DNS 验证 TXT 记录冲突（旧记录尚未清理完毕），请稍等 1-2 分钟后手动点击重新申请。详情: %v", err)
+			}
 			return nil, fmt.Errorf("obtain certificate: %v", err)
 		}
 	}
 
 	return cert, nil
 }
+
 
 // SetDNSProvider 设置 DNS 验证提供商
 func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
