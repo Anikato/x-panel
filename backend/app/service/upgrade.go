@@ -29,6 +29,9 @@ const (
 
 	// GitHubAPIBase GitHub API 基础地址
 	GitHubAPIBase = "https://api.github.com"
+
+	// DefaultUpdateBaseURL 默认自建更新服务器
+	DefaultUpdateBaseURL = "https://xpanel.qm.mk"
 )
 
 type IUpgradeService interface {
@@ -68,11 +71,14 @@ func (s *UpgradeService) CheckUpdate(req dto.UpgradeCheckReq) (*dto.UpgradeInfo,
 		if val != "" {
 			releaseURL = val
 		}
+		if releaseURL == "" {
+			releaseURL = DefaultUpdateBaseURL
+		}
 	}
 
 	// 根据 URL 类型选择不同的检查方式
 	if releaseURL != "" && !isGitHubURL(releaseURL) {
-		// 自建服务器模式（兼容旧版 version.json）
+		// 自建服务器模式（优先 releases/latest.json，兼容旧版 version.json）
 		return s.checkUpdateFromCustomServer(releaseURL)
 	}
 
@@ -192,43 +198,116 @@ func (s *UpgradeService) checkUpdateFromGitHub(repoURL string) (*dto.UpgradeInfo
 
 // checkUpdateFromCustomServer 从自建服务器检查更新（兼容旧版）
 func (s *UpgradeService) checkUpdateFromCustomServer(releaseURL string) (*dto.UpgradeInfo, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(releaseURL), "/")
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(releaseURL + "/version.json")
+
+	manifest, manifestBaseURL, err := fetchRemoteUpdateManifest(client, baseURL)
 	if err != nil {
 		return nil, buserr.WithDetail(constant.ErrInternalServer, "failed to check update: "+err.Error(), err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, buserr.WithDetail(constant.ErrInternalServer,
-			fmt.Sprintf("update server returned %d", resp.StatusCode), nil)
-	}
-
-	var remoteInfo dto.RemoteVersionInfo
-	if err := json.NewDecoder(resp.Body).Decode(&remoteInfo); err != nil {
-		return nil, buserr.WithDetail(constant.ErrInternalServer, "failed to parse version info", err)
-	}
 
 	currentVer := version.Version
-	hasUpdate := compareVersions(remoteInfo.Version, currentVer) > 0
+	hasUpdate := compareVersions(manifest.Version, currentVer) > 0
 
 	arch := runtime.GOARCH
 	downloadURL := ""
 	checksumURL := ""
 	if hasUpdate {
-		downloadURL = fmt.Sprintf("%s/xpanel-%s-linux-%s.tar.gz", releaseURL, remoteInfo.Version, arch)
-		checksumURL = fmt.Sprintf("%s/xpanel-%s-linux-%s.tar.gz.sha256", releaseURL, remoteInfo.Version, arch)
+		assetKey := "linux-" + arch
+		if asset, ok := manifest.Assets[assetKey]; ok {
+			downloadURL = asset.URL
+			checksumURL = asset.ChecksumURL
+			if checksumURL == "" && downloadURL != "" {
+				checksumURL = downloadURL + ".sha256"
+			}
+		}
+		if downloadURL == "" {
+			downloadURL = fmt.Sprintf("%s/xpanel-%s-linux-%s.tar.gz", manifestBaseURL, manifest.Version, arch)
+			checksumURL = fmt.Sprintf("%s/xpanel-%s-linux-%s.tar.gz.sha256", manifestBaseURL, manifest.Version, arch)
+		}
 	}
 
 	return &dto.UpgradeInfo{
 		CurrentVersion: currentVer,
-		LatestVersion:  remoteInfo.Version,
-		ReleaseNote:    remoteInfo.ReleaseNote,
+		LatestVersion:  manifest.Version,
+		ReleaseNote:    firstNonEmpty(manifest.ReleaseNote, manifest.Notes),
 		HasUpdate:      hasUpdate,
 		DownloadURL:    downloadURL,
 		ChecksumURL:    checksumURL,
-		PublishDate:    remoteInfo.PublishDate,
+		PublishDate:    firstNonEmpty(manifest.PublishDate, manifest.ReleaseDate),
 	}, nil
+}
+
+func fetchRemoteUpdateManifest(client *http.Client, baseURL string) (*dto.RemoteUpdateManifest, string, error) {
+	candidates := []string{}
+	if strings.HasSuffix(baseURL, ".json") {
+		candidates = append(candidates, baseURL)
+	} else {
+		candidates = append(candidates, baseURL+"/releases/latest.json", baseURL+"/version.json")
+	}
+
+	var lastErr error
+	for _, manifestURL := range candidates {
+		resp, err := client.Get(manifestURL)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			continue
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			lastErr = fmt.Errorf("update manifest not found: %s", manifestURL)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("update server returned %d for %s", resp.StatusCode, manifestURL)
+			continue
+		}
+
+		manifest := &dto.RemoteUpdateManifest{}
+		if err := json.Unmarshal(body, manifest); err != nil {
+			lastErr = err
+			continue
+		}
+		if manifest.Version == "" {
+			lastErr = fmt.Errorf("update manifest missing version: %s", manifestURL)
+			continue
+		}
+		if manifest.Assets == nil {
+			manifest.Assets = map[string]dto.RemoteUpdateAsset{}
+		}
+		return manifest, legacyPackageBaseURL(baseURL, manifestURL, manifest.Version), nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no update manifest URL configured")
+	}
+	return nil, "", lastErr
+}
+
+func legacyPackageBaseURL(baseURL, manifestURL, remoteVersion string) string {
+	if strings.HasSuffix(manifestURL, "/releases/latest.json") {
+		return strings.TrimSuffix(manifestURL, "/latest.json") + "/" + remoteVersion
+	}
+	if strings.HasSuffix(baseURL, ".json") {
+		idx := strings.LastIndex(baseURL, "/")
+		if idx > len("https://") {
+			return baseURL[:idx]
+		}
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // DoUpgrade 执行升级

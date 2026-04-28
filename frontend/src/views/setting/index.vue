@@ -609,7 +609,11 @@ const handleCheckUpdate = async () => {
   checking.value = true
   upgradeInfo.value = null
   try {
-    const res = await checkUpdate({ releaseUrl: upgradeUrl.value || undefined })
+    const customURL = upgradeUrl.value.trim()
+    if (customURL) {
+      await updateSetting({ key: 'UpgradeURL', value: customURL })
+    }
+    const res = await checkUpdate({ releaseUrl: customURL || undefined })
     if (res.data) upgradeInfo.value = res.data
   } catch { /* */ } finally { checking.value = false }
 }
@@ -678,6 +682,7 @@ const fetchSettings = async () => {
       form.port = parseInt(res.data.serverPort) || 7777
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
       form.securityEntrance = res.data.securityEntrance || ''
+      upgradeUrl.value = res.data.upgradeUrl || ''
       githubToken.value = res.data.githubToken || ''
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'

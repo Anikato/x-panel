@@ -9,6 +9,7 @@ type SettingInfo struct {
 	Theme            string `json:"theme"`
 	SecurityEntrance string `json:"securityEntrance"`
 	MFAStatus        string `json:"mfaStatus"`
+	UpgradeURL       string `json:"upgradeUrl"`
 	GitHubToken      string `json:"githubToken"`
 	ServerPort       string `json:"serverPort"`
 	AgentToken       string `json:"agentToken"`
@@ -45,11 +46,11 @@ type LoginSetting struct {
 
 // PanelSSLInfo 面板 HTTPS 当前配置（路径来自 config.yaml，证书 ID 来自设置表回显）
 type PanelSSLInfo struct {
-	Enable          bool   `json:"enable"`
-	CertPath        string `json:"certPath"`
-	KeyPath         string `json:"keyPath"`
-	CertificateID   uint   `json:"certificateId"`
-	PrimaryDomain   string `json:"primaryDomain,omitempty"`
+	Enable        bool   `json:"enable"`
+	CertPath      string `json:"certPath"`
+	KeyPath       string `json:"keyPath"`
+	CertificateID uint   `json:"certificateId"`
+	PrimaryDomain string `json:"primaryDomain,omitempty"`
 }
 
 // PanelSSLUpdate 将面板 HTTPS 切换为证书管理中某张证书的落盘文件

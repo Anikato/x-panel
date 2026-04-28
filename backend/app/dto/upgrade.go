@@ -46,7 +46,7 @@ type GitHubRelease struct {
 
 // GitHubAsset GitHub Release 附件
 type GitHubAsset struct {
-	URL                string `json:"url"`                  // API URL (用于私有仓库下载)
+	URL                string `json:"url"` // API URL (用于私有仓库下载)
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"` // 直接下载 URL (仅公开仓库)
 	Size               int64  `json:"size"`
@@ -60,4 +60,22 @@ type RemoteVersionInfo struct {
 	Version     string `json:"version"`
 	ReleaseNote string `json:"releaseNote"`
 	PublishDate string `json:"publishDate"`
+}
+
+// RemoteUpdateManifest 自建更新服务器清单（releases/latest.json 格式）
+type RemoteUpdateManifest struct {
+	Version     string                       `json:"version"`
+	ReleaseNote string                       `json:"releaseNote"`
+	Notes       string                       `json:"notes"`
+	PublishDate string                       `json:"publishDate"`
+	ReleaseDate string                       `json:"releaseDate"`
+	Assets      map[string]RemoteUpdateAsset `json:"assets"`
+}
+
+// RemoteUpdateAsset 自建更新服务器中的架构资产
+type RemoteUpdateAsset struct {
+	URL         string `json:"url"`
+	ChecksumURL string `json:"checksumUrl"`
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
 }

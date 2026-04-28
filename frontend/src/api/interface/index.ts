@@ -46,6 +46,7 @@ export interface SettingInfo {
   panelName: string
   sessionTimeout: string
   securityEntrance: string
+  upgradeUrl: string
   githubToken: string
   serverPort: string
   userName: string

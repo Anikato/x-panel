@@ -3,7 +3,7 @@
 # X-Panel 一键安装脚本
 #
 # 用法:
-#   curl -sSL https://raw.githubusercontent.com/Anikato/x-panel/main/scripts/install-online.sh | bash
+#   curl -sSL https://xpanel.qm.mk/install-online.sh | bash
 #
 # 自定义端口和安全入口:
 #   curl -sSL ... | bash -s -- --port 8443 --entrance mySecret123
@@ -25,6 +25,8 @@ set -e
 
 # ==================== 配置 ====================
 GITHUB_REPO="Anikato/x-panel"
+DEFAULT_UPDATE_URL="https://xpanel.qm.mk"
+UPDATE_URL="$DEFAULT_UPDATE_URL"
 DEFAULT_INSTALL_DIR="/opt/xpanel"
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 SERVICE_NAME="xpanel"
@@ -112,6 +114,10 @@ while [[ $# -gt 0 ]]; do
             LOCAL_FILE="$2"
             shift 2
             ;;
+        --update-url)
+            UPDATE_URL="${2%/}"
+            shift 2
+            ;;
         --ssl)
             ENABLE_SSL=true
             shift
@@ -141,6 +147,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --ssl                 启用 HTTPS 自签证书 (默认)"
             echo "  --no-ssl              禁用 HTTPS，使用 HTTP"
             echo "  --version, -v <版本>  安装指定版本 (如 v1.0.0)"
+            echo "  --update-url <URL>    自定义更新服务器 (默认: $DEFAULT_UPDATE_URL)"
             echo "  --file, -f <路径|URL> 指定本地包路径或任意 URL（跳过 GitHub 下载）"
             echo "                        本地: --file /tmp/xpanel-v1.0.0-linux-amd64.tar.gz"
             echo "                        URL:  --file https://mirror.example.com/xpanel.tar.gz"
@@ -387,6 +394,57 @@ if [ -n "$LOCAL_FILE" ]; then
     log_info "版本: ${BOLD}$VERSION${NC}"
 
 else
+    if [ -z "$GITHUB_TOKEN" ]; then
+        # ==================== 获取版本信息（自建更新服务器模式）====================
+        log_step "获取版本信息..."
+
+        if [ -z "$VERSION" ]; then
+            MANIFEST_URL="$UPDATE_URL/releases/latest.json"
+            HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TMP_DIR/latest.json" "$MANIFEST_URL" 2>/dev/null)
+            if [ "$HTTP_CODE" != "200" ]; then
+                log_error "无法获取更新清单 (HTTP $HTTP_CODE): $MANIFEST_URL"
+                log_info "请确认更新服务器已发布 releases/latest.json"
+                exit 1
+            fi
+            VERSION=$(grep '"version"' "$TMP_DIR/latest.json" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            if [ -z "$VERSION" ]; then
+                log_error "无法从更新清单解析版本号"
+                exit 1
+            fi
+        fi
+
+        log_info "目标版本: ${BOLD}$VERSION${NC}"
+        PKG_NAME="xpanel-${VERSION}-linux-${ARCH}"
+        DOWNLOAD_URL="$UPDATE_URL/releases/$VERSION/${PKG_NAME}.tar.gz"
+        CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
+
+        log_step "下载安装包..."
+        echo "  URL: $DOWNLOAD_URL"
+        HTTP_CODE=$(curl -sL -w "%{http_code}" -o "$TMP_DIR/xpanel.tar.gz" "$DOWNLOAD_URL" 2>/dev/null)
+        if [ "$HTTP_CODE" != "200" ]; then
+            log_error "下载失败 (HTTP $HTTP_CODE)"
+            log_info "请检查更新服务器文件是否存在: $DOWNLOAD_URL"
+            exit 1
+        fi
+
+        log_info "下载完成 ($(du -h "$TMP_DIR/xpanel.tar.gz" | cut -f1))"
+
+        log_step "校验文件完整性..."
+        if curl -sL -o "$TMP_DIR/checksum.sha256" "$CHECKSUM_URL" 2>/dev/null; then
+            EXPECTED_HASH=$(awk '{print $1}' "$TMP_DIR/checksum.sha256")
+            ACTUAL_HASH=$(sha256sum "$TMP_DIR/xpanel.tar.gz" | awk '{print $1}')
+            if [ "$EXPECTED_HASH" = "$ACTUAL_HASH" ]; then
+                log_info "SHA256 校验通过 ✓"
+            else
+                log_error "SHA256 校验失败！"
+                log_error "  期望: $EXPECTED_HASH"
+                log_error "  实际: $ACTUAL_HASH"
+                exit 1
+            fi
+        else
+            log_warn "未找到校验文件，跳过 SHA256 校验"
+        fi
+    else
     # ==================== 获取版本信息（GitHub 模式）====================
     log_step "获取版本信息..."
 
@@ -519,6 +577,7 @@ else
             log_warn "未找到校验文件，跳过 SHA256 校验"
         fi
     fi
+fi
 fi
 
 
@@ -766,7 +825,7 @@ if [ "$IS_UPGRADE" = false ]; then
     echo ""
 fi
 echo -e "  ${BOLD}卸载命令:${NC}"
-UNINSTALL_CMD="curl -sSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install-online.sh | bash -s -- --uninstall --yes"
+UNINSTALL_CMD="curl -sSL $DEFAULT_UPDATE_URL/install-online.sh | bash -s -- --uninstall --yes"
 if [ "$INSTALL_DIR" != "$DEFAULT_INSTALL_DIR" ]; then
     UNINSTALL_CMD="$UNINSTALL_CMD --path $INSTALL_DIR"
 fi

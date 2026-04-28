@@ -240,7 +240,7 @@ func initDefaultSettings() {
 		{Key: "MFAStatus", Value: "Disable"},
 		{Key: "MFASecret", Value: ""},
 		{Key: "SSLDir", Value: ""},
-		{Key: "UpgradeURL", Value: ""},
+		{Key: "UpgradeURL", Value: "https://xpanel.qm.mk"},
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
 		{Key: "AutoUpgrade", Value: "enable"},

@@ -119,6 +119,9 @@ jobs:
     needs: build-backend
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -137,3 +140,93 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.sha256
+
+      - name: Prepare update server files
+        env:
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL || 'https://xpanel.qm.mk' }}
+        run: |
+          python3 <<'PY'
+          import datetime
+          import glob
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          version = os.environ["GITHUB_REF_NAME"]
+          base_url = os.environ.get("UPDATE_BASE_URL", "https://xpanel.qm.mk").rstrip("/")
+          publish_dir = Path("publish")
+          release_dir = publish_dir / "releases" / version
+          release_dir.mkdir(parents=True, exist_ok=True)
+
+          assets = {}
+          for package in sorted(glob.glob("artifacts/xpanel-*-linux-*.tar.gz")):
+              package_path = Path(package)
+              shutil.copy2(package_path, release_dir / package_path.name)
+              shutil.copy2(package_path, publish_dir / package_path.name)
+
+              checksum_path = Path(str(package_path) + ".sha256")
+              if checksum_path.exists():
+                  shutil.copy2(checksum_path, release_dir / checksum_path.name)
+                  shutil.copy2(checksum_path, publish_dir / checksum_path.name)
+                  sha256 = checksum_path.read_text(encoding="utf-8").split()[0]
+              else:
+                  sha256 = ""
+
+              arch = package_path.name.removesuffix(".tar.gz").split("-linux-", 1)[1]
+              url = f"{base_url}/releases/{version}/{package_path.name}"
+              assets[f"linux-{arch}"] = {
+                  "url": url,
+                  "checksumUrl": f"{url}.sha256",
+                  "sha256": sha256,
+                  "size": package_path.stat().st_size,
+              }
+
+          publish_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+          manifest = {
+              "version": version,
+              "releaseNote": "",
+              "publishDate": publish_date,
+              "assets": assets,
+          }
+
+          latest_path = publish_dir / "releases" / "latest.json"
+          latest_path.parent.mkdir(parents=True, exist_ok=True)
+          latest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          legacy = {
+              "version": version,
+              "releaseNote": "",
+              "publishDate": publish_date,
+          }
+          (publish_dir / "version.json").write_text(json.dumps(legacy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          shutil.copy2("scripts/install-online.sh", publish_dir / "install-online.sh")
+          PY
+
+          find publish -type f | sort
+
+      - name: Configure update server SSH
+        if: ${{ vars.UPDATE_SERVER_HOST != '' }}
+        env:
+          UPDATE_SERVER_HOST: ${{ vars.UPDATE_SERVER_HOST }}
+          UPDATE_SERVER_PORT: ${{ vars.UPDATE_SERVER_PORT || '22' }}
+          UPDATE_SERVER_SSH_KEY: ${{ secrets.UPDATE_SERVER_SSH_KEY }}
+        run: |
+          test -n "$UPDATE_SERVER_SSH_KEY"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$UPDATE_SERVER_SSH_KEY" > ~/.ssh/xpanel_update_server
+          chmod 600 ~/.ssh/xpanel_update_server
+          ssh-keyscan -p "$UPDATE_SERVER_PORT" "$UPDATE_SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy to update server
+        if: ${{ vars.UPDATE_SERVER_HOST != '' }}
+        env:
+          UPDATE_SERVER_HOST: ${{ vars.UPDATE_SERVER_HOST }}
+          UPDATE_SERVER_USER: ${{ vars.UPDATE_SERVER_USER || 'root' }}
+          UPDATE_SERVER_PORT: ${{ vars.UPDATE_SERVER_PORT || '22' }}
+          UPDATE_SERVER_PATH: ${{ vars.UPDATE_SERVER_PATH || '/var/www/xpanel' }}
+        run: |
+          ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" "mkdir -p '$UPDATE_SERVER_PATH/releases'"
+          rsync -az --checksum -e "ssh -i ~/.ssh/xpanel_update_server -p $UPDATE_SERVER_PORT" \
+            publish/ "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST:$UPDATE_SERVER_PATH/"

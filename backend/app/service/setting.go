@@ -59,6 +59,7 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		Theme:            settingMap["Theme"],
 		SecurityEntrance: settingMap["SecurityEntrance"],
 		MFAStatus:        settingMap["MFAStatus"],
+		UpgradeURL:       settingMap["UpgradeURL"],
 		GitHubToken:      settingMap["GitHubToken"],
 		ServerPort:       global.CONF.System.Port,
 		AgentToken:       settingMap["AgentToken"],
@@ -75,7 +76,7 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 	allowedKeys := map[string]bool{
 		"Language": true, "SessionTimeout": true,
 		"PanelName": true, "Theme": true,
-		"SecurityEntrance": true, "GitHubToken": true,
+		"SecurityEntrance": true, "UpgradeURL": true, "GitHubToken": true,
 		"UserName": true, "AgentToken": true,
 		"AutoUpgrade": true, "AppearanceConfig": true,
 		"ProxyEnable": true, "ProxyType": true,
@@ -470,4 +471,3 @@ func SyncProxyOnStartup() {
 	setProcessProxy(envURL, noProxy)
 	global.LOG.Infof("Restored panel proxy on startup: type=%s url=%s", proxyType, envURL)
 }
-

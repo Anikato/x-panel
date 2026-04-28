@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-04-28 — Session #78：私有更新服务器发布链路
+
+### 完成内容
+
+- [x] `.github/workflows/release.yml` — tag 构建后生成 `releases/latest.json`、根目录 `version.json`、安装脚本副本，并支持通过 SSH/rsync 同步到自建更新服务器
+- [x] `backend/app/service/upgrade.go` — 默认更新源切换为 `https://xpanel.qm.mk`，优先读取 `releases/latest.json`，兼容旧版 `version.json`
+- [x] `scripts/install-online.sh` — 默认从自建更新服务器安装，支持 `--update-url` 覆盖，保留 GitHub Token 私有仓库下载模式
+- [x] `scripts/gen-version-json.sh` — 改为生成自建更新服务器所需清单和版本文件
+- [x] `README.md` / 设置页文案 — 更新一键安装与更新源说明
+
+### 关键决策
+
+- 客户端不再需要 GitHub PAT，默认通过 `https://xpanel.qm.mk/releases/latest.json` 检查更新并下载对应架构包
+- GitHub Actions 使用仓库变量配置服务器地址/路径，SSH 私钥仅放在 GitHub Secrets，不写入代码仓库
+
+### 验证
+
+- [x] `bash -n scripts/install-online.sh`
+- [x] `bash -n scripts/gen-version-json.sh`
+- [x] `git diff --check`
+- [x] `ReadLints` 检查本次编辑文件无新增诊断
+- [ ] `go test ./...` 因依赖下载长时间无进展被停止，后续在网络稳定环境重跑
+
+### 下一步
+
+- 在 GitHub 仓库配置 `UPDATE_SERVER_HOST`、`UPDATE_SERVER_USER`、`UPDATE_SERVER_PATH=/var/www/xpanel`、`UPDATE_BASE_URL=https://xpanel.qm.mk` 和 `UPDATE_SERVER_SSH_KEY`
+- 推送下一个三段式 `v*` tag 后检查服务器是否生成 `install-online.sh`、`releases/latest.json` 与 `releases/<version>/` 包文件
+
+---
+
 ## 2026-04-28 — Session #77：Chrome 文件编辑器粘贴修复
 
 ### 完成内容
