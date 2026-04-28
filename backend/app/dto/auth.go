@@ -6,6 +6,7 @@ type Login struct {
 	Password  string `json:"password" binding:"required"`
 	CaptchaID string `json:"captchaID"`
 	Captcha   string `json:"captcha"`
+	Remember  bool   `json:"remember"`
 }
 
 // InitUser 初始化用户（首次设置密码）

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { getToken } from '@/utils/auth'
 import { ref, computed } from 'vue'
 
 export interface UploadItem {
@@ -83,7 +84,7 @@ function uploadFileWithProgress(
   onProgress: (loaded: number, total: number) => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const token = sessionStorage.getItem('token') || ''
+    const token = getToken()
     const formData = new FormData()
     formData.append('path', path)
     formData.append('file', file)

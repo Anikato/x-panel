@@ -1,11 +1,12 @@
 import type { Router } from 'vue-router'
 import { cancelAllPendingRequests } from '@/api/http'
+import { getToken } from '@/utils/auth'
 
 export function setupGuard(router: Router) {
   router.beforeEach((_to, _from, next) => {
     cancelAllPendingRequests()
 
-    const token = sessionStorage.getItem('token')
+    const token = getToken()
 
     if (_to.meta.requiresAuth === false) {
       next()

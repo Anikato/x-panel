@@ -16,7 +16,7 @@ export const initUser = (data: { name: string; password: string }) => {
 }
 
 /** 用户登录 */
-export const login = (data: { name: string; password: string; captchaID?: string; captcha?: string }) => {
+export const login = (data: { name: string; password: string; captchaID?: string; captcha?: string; remember?: boolean }) => {
   return http.post('/auth/login', data)
 }
 

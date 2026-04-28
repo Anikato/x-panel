@@ -1,7 +1,15 @@
 <template>
   <div class="header">
     <div class="header-left">
-      <div class="collapse-btn" @click="globalStore.toggleMenuCollapse">
+      <div
+        class="collapse-btn"
+        role="button"
+        tabindex="0"
+        :aria-label="globalStore.menuCollapse ? t('header.expandMenu') : t('header.collapseMenu')"
+        @click="globalStore.toggleMenuCollapse"
+        @keydown.enter.prevent="globalStore.toggleMenuCollapse"
+        @keydown.space.prevent="globalStore.toggleMenuCollapse"
+      >
         <el-icon :size="18">
           <Fold v-if="!globalStore.menuCollapse" />
           <Expand v-else />
@@ -59,7 +67,7 @@
       <!-- 主题色选择 -->
       <el-popover placement="bottom" :width="240" trigger="click" :show-arrow="true">
         <template #reference>
-          <div class="theme-btn">
+          <div class="theme-btn" role="button" tabindex="0" :aria-label="t('header.accentColor')">
             <div class="accent-dot" :style="{ background: currentAccentColor }"></div>
           </div>
         </template>
@@ -93,11 +101,16 @@
       </el-popover>
 
       <!-- 悬浮终端按钮 -->
-      <el-tooltip content="快速终端" placement="bottom">
+      <el-tooltip :content="t('header.quickTerminal')" placement="bottom">
         <div
           class="theme-btn"
           :class="{ 'term-btn-active': globalStore.floatTermVisible }"
+          role="button"
+          tabindex="0"
+          :aria-label="t('header.quickTerminal')"
           @click="toggleFloatTerm"
+          @keydown.enter.prevent="toggleFloatTerm"
+          @keydown.space.prevent="toggleFloatTerm"
         >
           <el-icon :size="16"><Promotion /></el-icon>
         </div>
@@ -105,7 +118,15 @@
 
       <!-- 深浅模式切换 -->
       <el-tooltip :content="themeLabel" placement="bottom">
-        <div class="theme-btn" @click="globalStore.cycleTheme()">
+        <div
+          class="theme-btn"
+          role="button"
+          tabindex="0"
+          :aria-label="themeLabel"
+          @click="globalStore.cycleTheme()"
+          @keydown.enter.prevent="globalStore.cycleTheme()"
+          @keydown.space.prevent="globalStore.cycleTheme()"
+        >
           <el-icon :size="16">
             <Moon v-if="globalStore.theme === 'dark'" />
             <Sunny v-else-if="globalStore.theme === 'light'" />
@@ -566,6 +587,28 @@ const toggleFloatTerm = () => {
 
     &::-webkit-color-swatch-wrapper { padding: 2px; }
     &::-webkit-color-swatch { border-radius: 4px; border: none; }
+  }
+}
+</style>
+
+<style lang="scss">
+@media (max-width: 900px) {
+  .header {
+    padding: 0 12px;
+  }
+
+  .header-left .server-info {
+    .el-tag,
+    .server-uptime,
+    .server-clock,
+    .server-actions {
+      display: none;
+    }
+  }
+
+  .header-right .user-dropdown .username,
+  .header-right .user-dropdown .arrow {
+    display: none;
   }
 }
 </style>

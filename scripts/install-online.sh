@@ -744,7 +744,7 @@ if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ] && [ "$IS_UPGRADE" = false
     fi
     # 再额外等 2 秒让 migration 写入默认记录
     sleep 2
-    SETUP_LOG=$("$INSTALL_DIR/xpanel" setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>&1)
+    SETUP_LOG=$(cd "$INSTALL_DIR" && ./xpanel setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>&1)
     SETUP_EXIT=$?
     if [ "$SETUP_EXIT" -eq 0 ]; then
         log_info "管理员账户已设置: ${INIT_USERNAME}"

@@ -23,6 +23,7 @@ export interface LoginPayload {
   password: string
   captchaID?: string
   captcha?: string
+  remember?: boolean
 }
 
 export interface LoginResult {

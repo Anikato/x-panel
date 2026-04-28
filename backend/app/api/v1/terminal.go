@@ -2,10 +2,12 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -34,7 +36,7 @@ type resizeMsg struct {
 	Cols uint16 `json:"cols"`
 }
 
-// WsTerminal WebSocket 终端（支持本地 PTY 和远程 SSH）
+// WsTerminal WebSocket 终端（支持本地 PTY、远程 SSH 和容器终端）
 func (a *TerminalAPI) WsTerminal(c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -46,8 +48,11 @@ func (a *TerminalAPI) WsTerminal(c *gin.Context) {
 	// 判断是本地终端还是远程 SSH
 	hostIDStr := c.Query("id")
 	hostID, _ := strconv.ParseUint(hostIDStr, 10, 64)
+	containerID := c.Query("containerID")
 
-	if hostID > 0 {
+	if containerID != "" {
+		a.handleContainerTerminal(conn, containerID, c.Query("command"), c.Query("user"))
+	} else if hostID > 0 {
 		a.handleSSHTerminal(conn, uint(hostID))
 	} else {
 		a.handleLocalTerminal(conn)
@@ -235,6 +240,116 @@ func (a *TerminalAPI) handleSSHTerminal(conn *websocket.Conn, hostID uint) {
 	go wsHeartbeat(sc, done, &once)
 	<-done
 	global.LOG.Infof("SSH terminal session closed for host %d", hostID)
+}
+
+// handleContainerTerminal 容器 PTY 终端
+func (a *TerminalAPI) handleContainerTerminal(conn *websocket.Conn, containerID, command, user string) {
+	sc := &safeConn{conn: conn}
+
+	args, err := buildDockerExecArgs(containerID, command, user)
+	if err != nil {
+		sc.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m容器终端参数错误: "+err.Error()+"\x1b[0m\r\n"))
+		return
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		sc.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m未找到 docker 命令，请确认 Docker 已安装\x1b[0m\r\n"))
+		return
+	}
+
+	cmd := exec.Command("docker", args...)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LANG=en_US.UTF-8")
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		global.LOG.Errorf("Container terminal start failed: %v", err)
+		sc.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m容器终端启动失败: "+err.Error()+"\x1b[0m\r\n"))
+		return
+	}
+	defer func() {
+		ptmx.Close()
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+			cmd.Wait()
+		}
+	}()
+
+	global.LOG.Infof("Container terminal session started: %s", containerID)
+	var once sync.Once
+	done := make(chan struct{})
+
+	go pipePTYToWS(ptmx, sc, done, &once)
+	go pipeWSToPTY(conn, ptmx, done, &once)
+	go wsHeartbeat(sc, done, &once)
+
+	<-done
+	global.LOG.Infof("Container terminal session closed: %s", containerID)
+}
+
+func pipePTYToWS(ptmx *os.File, sc *safeConn, done chan struct{}, once *sync.Once) {
+	buf := make([]byte, 4096)
+	for {
+		n, err := ptmx.Read(buf)
+		if err != nil {
+			once.Do(func() { close(done) })
+			return
+		}
+		if n > 0 {
+			if err := sc.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+				once.Do(func() { close(done) })
+				return
+			}
+		}
+	}
+}
+
+func pipeWSToPTY(conn *websocket.Conn, ptmx *os.File, done chan struct{}, once *sync.Once) {
+	for {
+		msgType, msg, err := conn.ReadMessage()
+		if err != nil {
+			once.Do(func() { close(done) })
+			return
+		}
+		if len(msg) == 0 {
+			continue
+		}
+		if msgType == websocket.BinaryMessage && msg[0] == 1 {
+			var resize resizeMsg
+			if err := json.Unmarshal(msg[1:], &resize); err == nil {
+				pty.Setsize(ptmx, &pty.Winsize{Rows: resize.Rows, Cols: resize.Cols})
+			}
+			continue
+		}
+		if _, err := ptmx.Write(msg); err != nil {
+			once.Do(func() { close(done) })
+			return
+		}
+	}
+}
+
+var (
+	containerIDPattern      = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,127}$`)
+	containerUserPattern    = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_.:-]{0,127}$`)
+	containerCommandPattern = regexp.MustCompile(`^/?[a-zA-Z0-9_./-]{1,128}$`)
+)
+
+func buildDockerExecArgs(containerID, command, user string) ([]string, error) {
+	if !containerIDPattern.MatchString(containerID) {
+		return nil, fmt.Errorf("containerID 非法")
+	}
+	if command == "" {
+		command = "/bin/sh"
+	}
+	if !containerCommandPattern.MatchString(command) {
+		return nil, fmt.Errorf("command 非法")
+	}
+	args := []string{"exec", "-it"}
+	if user != "" {
+		if !containerUserPattern.MatchString(user) {
+			return nil, fmt.Errorf("user 非法")
+		}
+		args = append(args, "-u", user)
+	}
+	args = append(args, containerID, command)
+	return args, nil
 }
 
 // safeConn 封装 WebSocket 连接，保证并发写安全

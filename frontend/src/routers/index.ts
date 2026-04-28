@@ -51,11 +51,17 @@ const routes: RouteRecordRaw[] = [
       ...toolboxRoutes,
       ...nodeRoutes,
       ...settingRoutes,
+      {
+        path: '/404',
+        name: 'NotFound',
+        component: () => import('@/views/error/not-found.vue'),
+        meta: { title: 'error.notFoundTitle', requiresAuth: true },
+      },
     ],
   },
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/home',
+    redirect: '/404',
   },
 ]
 

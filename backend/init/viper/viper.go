@@ -2,6 +2,7 @@ package viper
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"xpanel/global"
@@ -17,6 +18,12 @@ func Init() {
 	v.AddConfigPath("./configs")
 	v.AddConfigPath("/opt/xpanel/conf")
 	v.AddConfigPath(".")
+	if execPath, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+			execPath = resolved
+		}
+		v.AddConfigPath(filepath.Dir(execPath))
+	}
 
 	// 设置默认值
 	v.SetDefault("system.port", "7777")

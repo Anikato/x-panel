@@ -4,6 +4,111 @@
 
 ---
 
+## 2026-04-28 — Session #82：前端设置页与全局体验优化
+
+### 完成内容
+
+- [x] `frontend/src/views/setting/index.vue` — 设置页改为顶部说明 + 左侧分组导航 + 右侧分区卡片，展开面板/HTTPS/Agent/代理/账号设置，减少原有长页面折叠造成的混乱
+- [x] `frontend/src/assets/styles/_utilities.scss` — 新增设置页、表单行、色块、空状态、404 等全局工具样式，减少设置页本地样式堆叠
+- [x] `frontend/src/routers/index.ts` / `frontend/src/views/error/not-found.vue` — 未知路由改为独立 404 页面，不再静默跳回首页
+- [x] `frontend/src/layout/index.vue` / `layout/components/{Sidebar,Header,FloatTerminal}.vue` — 补充窄屏侧栏默认收起、Header 窄屏信息降噪和关键按钮可访问性标签
+- [x] `frontend/src/i18n/{index.ts,zh.ts}` — 明确中文单语言策略，新增本轮设置页、404、Header、悬浮终端文案 key
+- [x] `frontend/src/utils/{accent-colors,appearance}.ts` — 主题色/背景预设展示名去掉中英混排，保持中文展示
+
+### 关键决策
+
+- 当前不新增英文语言包；但所有用户可见文本仍统一通过 i18n key 管理，避免页面散落硬编码
+- 设置页优先通过全局工具类完成排版，页面组件只保留业务结构和绑定逻辑
+- 本轮只做低风险前端体验优化，不重写文件管理、终端、容器等重功能页的业务交互
+
+### 验证
+
+- [x] `npm run build`（frontend）通过
+- [x] `ReadLints` 检查本次编辑文件无新增诊断
+
+### 下一步
+
+- 继续按模块清理剩余硬编码中文，优先证书、网站、终端主机/命令管理等高频页面
+- 逐步把重功能页的工具栏、表格操作、空状态和确认弹窗沉淀为全局模式
+
+---
+
+## 2026-04-28 — Session #81：容器终端
+
+### 完成内容
+
+- [x] `backend/app/api/v1/terminal.go` — 在现有 `/api/v1/terminal` WebSocket 上增加 `containerID` 分支，使用 `docker exec -it` + PTY 接入容器命令行
+- [x] `frontend/src/views/container/index.vue` — 容器列表操作列新增“终端”入口，仅运行中容器可用
+- [x] `frontend/src/views/container/components/container-terminal.vue` — 新增容器终端抽屉，支持用户、命令选择/自定义、连接、xterm 输入输出和窗口 resize
+- [x] `frontend/src/i18n/zh.ts` — 补充容器终端相关文案
+
+### 关键决策
+
+- 对齐 1Panel 思路：通过 `docker exec -it` 进入容器，并用 PTY 保留交互式终端体验
+- 复用 X-Panel 现有终端 WebSocket 协议（二进制终端输出 + resize 控制帧），不新增另一套消息格式
+
+### 验证
+
+- [x] `npm run build`（frontend）通过
+- [x] `bash -n scripts/install-online.sh`
+- [x] `git diff --check`
+- [x] `ReadLints` 检查本次编辑文件无新增诊断
+
+### 下一步
+
+- 在有运行中容器的服务器上手测：默认 `/bin/sh`、`/bin/bash`、指定 `root` 用户、resize、断开重连
+
+---
+
+## 2026-04-28 — Session #80：预设管理员账户安装链路修复
+
+### 完成内容
+
+- [x] `backend/init/viper/viper.go` — 配置加载增加“二进制所在目录”，确保 `xpanel setup` 从任意工作目录执行时也能读取安装目录下的 `config.yaml`
+- [x] `scripts/install-online.sh` — 执行预设管理员账户初始化前显式 `cd "$INSTALL_DIR"`，避免 `setup` 子命令写入错误数据库
+
+### 关键决策
+
+- 保留现有 `xpanel setup --username --password` 命令，不改变安装参数；只修正配置定位和执行工作目录
+- 根因是安装脚本与 systemd 服务使用的工作目录不同，导致 `setup` 可能写入 `/opt/xpanel/db/xpanel.db`，而服务读取 `/opt/xpanel/data/db/xpanel.db`
+
+### 验证
+
+- [x] `bash -n scripts/install-online.sh`
+- [x] `git diff --check`
+
+### 下一步
+
+- 使用 `--username admin --password <密码>` 在干净服务器/临时目录实测安装，确认首次访问直接进入登录页而不是初始化页
+
+---
+
+## 2026-04-28 — Session #79：保持登录
+
+### 完成内容
+
+- [x] `backend/app/dto/auth.go` / `backend/app/service/auth.go` / `backend/utils/jwt/jwt.go` — 登录请求支持 `remember`，勾选保持登录时签发 30 天 JWT
+- [x] `frontend/src/views/login/index.vue` — 登录页新增“保持登录”选项，并记住上次选择
+- [x] `frontend/src/utils/auth.ts` — 统一 token 读写：普通登录用 `sessionStorage`，保持登录用 `localStorage`
+- [x] 前端 API、路由守卫、文件下载/上传、Web 终端统一改为通过 token 工具读取登录态
+
+### 关键决策
+
+- 默认登录行为不变，关闭浏览器后仍需要重新登录
+- 仅用户主动勾选“保持登录”时才把 token 持久化到同一浏览器，降低共享设备误保持登录的风险
+
+### 验证
+
+- [x] `npm run build`（frontend）通过
+- [x] `ReadLints` 检查本次编辑文件无新增诊断
+- [ ] `go test ./...` 因依赖下载长时间无进展被停止，后续在网络稳定环境重跑
+
+### 下一步
+
+- 发布后在浏览器中手测：未勾选关闭浏览器需重新登录；勾选后重启浏览器/电脑仍可进入，30 天后或 401 时重新登录
+
+---
+
 ## 2026-04-28 — Session #78：私有更新服务器发布链路
 
 ### 完成内容

@@ -20,13 +20,25 @@ import FileTaskPanel from './components/FileTaskPanel.vue'
 import FloatTerminal from './components/FloatTerminal.vue'
 import { useGlobalStore } from '@/store/modules/global'
 import { useFileTaskStore } from '@/store/modules/fileTask'
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 
 const globalStore = useGlobalStore()
 const fileTaskStore = useFileTaskStore()
 
+const applyMobileMenuDefault = () => {
+  if (window.innerWidth <= 900) {
+    globalStore.menuCollapse = true
+  }
+}
+
 onMounted(() => {
   fileTaskStore.init()
+  applyMobileMenuDefault()
+  window.addEventListener('resize', applyMobileMenuDefault)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', applyMobileMenuDefault)
 })
 </script>
 
@@ -48,6 +60,13 @@ onMounted(() => {
 
   &.is-collapse {
     margin-left: var(--xp-sidebar-collapse-width);
+  }
+}
+
+@media (max-width: 900px) {
+  .layout-main,
+  .layout-main.is-collapse {
+    margin-left: 0;
   }
 }
 </style>

@@ -223,7 +223,7 @@ const quickEntries = computed(() => [
 
 const copyText = async (text: string) => {
   try { await navigator.clipboard.writeText(text); ElMessage.success(t('commons.copy') + ' ✓') }
-  catch { ElMessage.error('Copy failed') }
+  catch { ElMessage.error(t('commons.copyFailed')) }
 }
 
 const accentColor = () => getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#22d3ee'

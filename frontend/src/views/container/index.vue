@@ -112,11 +112,12 @@
               </template>
             </el-table-column>
             <el-table-column prop="status" :label="t('container.runTime')" width="130" show-overflow-tooltip />
-            <el-table-column :label="t('commons.actions')" width="230" fixed="right">
+            <el-table-column :label="t('commons.actions')" width="270" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="operate(row, 'start')" :disabled="row.state === 'running'">{{ t('container.start') }}</el-button>
                 <el-button link type="primary" @click="operate(row, 'stop')" :disabled="row.state !== 'running'">{{ t('container.stop') }}</el-button>
                 <el-button link type="primary" @click="operate(row, 'restart')">{{ t('container.restart') }}</el-button>
+                <el-button link type="primary" :disabled="row.state !== 'running'" @click="openTerminal(row)">{{ t('container.terminal') }}</el-button>
                 <el-dropdown trigger="click">
                   <el-button link type="primary">{{ t('container.more') }}<el-icon class="el-icon--right"><arrow-down /></el-icon></el-button>
                   <template #dropdown>
@@ -340,6 +341,8 @@
     <el-drawer v-model="logsDrawer" :title="t('container.logs')" size="640px" destroy-on-close>
       <pre class="log-content">{{ logContent }}</pre>
     </el-drawer>
+
+    <ContainerTerminal ref="containerTerminalRef" />
   </div>
 </template>
 
@@ -349,6 +352,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { Box, Download, WarningFilled, ArrowDown, VideoPlay, VideoPause, RefreshRight } from '@element-plus/icons-vue'
 import type { Container, ContainerImage, ContainerNetwork, ContainerVolume, DockerStatus } from '@/api/interface'
+import ContainerTerminal from './components/container-terminal.vue'
 import {
   getDockerStatus,
   installDocker, getDockerInstallLog,
@@ -401,6 +405,7 @@ let installLogTimer: ReturnType<typeof setInterval> | null = null
 
 const logsDrawer = ref(false)
 const logContent = ref('')
+const containerTerminalRef = ref<InstanceType<typeof ContainerTerminal>>()
 
 const formatSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -512,6 +517,10 @@ const viewLogs = async (row: Container) => {
   const res = await containerLogs({ containerID: row.id, tail: '200' })
   logContent.value = res.data || ''
   logsDrawer.value = true
+}
+
+const openTerminal = (row: Container) => {
+  containerTerminalRef.value?.open(row)
 }
 
 const handleRemoveContainer = async (row: Container) => {

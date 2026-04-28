@@ -49,6 +49,10 @@
             />
           </div>
         </el-form-item>
+        <div class="login-options">
+          <el-checkbox v-model="form.remember">{{ t('login.remember') }}</el-checkbox>
+          <el-text size="small" type="info">{{ t('login.rememberHint') }}</el-text>
+        </div>
         <el-form-item>
           <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin">
             {{ t('login.login') }}
@@ -69,6 +73,7 @@ import { login, checkIsInit, getLoginSetting, getCaptcha } from '@/api/modules/a
 import { useUserStore } from '@/store/modules/user'
 import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
+import { getRememberLogin } from '@/utils/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -84,7 +89,7 @@ const needCaptcha = ref(false)
 const captchaImage = ref('')
 const captchaID = ref('')
 
-const form = reactive({ name: '', password: '', captcha: '' })
+const form = reactive({ name: '', password: '', captcha: '', remember: getRememberLogin() })
 
 const rules: FormRules = {
   name: [{ required: true, message: () => t('login.nameRequired'), trigger: 'blur' }],
@@ -116,6 +121,7 @@ const handleLogin = async () => {
     const payload = {
       name: form.name,
       password: form.password,
+      remember: form.remember,
       ...(needCaptcha.value ? { captchaID: captchaID.value, captcha: form.captcha } : {}),
     }
     const res = await login(payload)
@@ -134,7 +140,7 @@ const handleLogin = async () => {
       }
       return
     }
-    userStore.setToken(res.data.token)
+    userStore.setToken(res.data.token, form.remember)
     userStore.setName(res.data.name)
     globalStore.setLogin(true)
     await globalStore.loadAppearanceFromBackend()
@@ -245,6 +251,14 @@ const handleLogin = async () => {
     background: var(--xp-btn-primary-gradient-hover);
     box-shadow: var(--xp-accent-glow);
   }
+}
+
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -2px 0 18px;
 }
 
 .captcha-row {

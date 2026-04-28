@@ -1,4 +1,5 @@
 import http from '@/api/http'
+import { getToken } from '@/utils/auth'
 
 export const listFiles = (params: { path: string; showHidden?: boolean; search?: string; containSub?: boolean; sortBy?: string; sortOrder?: string }) => {
   return http.post('/files/search', params)
@@ -64,7 +65,7 @@ export const uploadFile = (path: string, file: File, onProgress?: (percent: numb
 }
 
 export const getDownloadUrl = (path: string) => {
-  const token = sessionStorage.getItem('token')
+  const token = getToken()
   return `/api/v1/files/download?path=${encodeURIComponent(path)}&token=${token}`
 }
 

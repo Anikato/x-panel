@@ -7,7 +7,7 @@
       @click="globalStore.floatTermMinimized = false"
     >
       <el-icon :size="13"><Monitor /></el-icon>
-      <span>终端</span>
+      <span>{{ t('terminal.title') }}</span>
       <span class="term-bar-dot" />
       <el-icon :size="12" class="bar-close" @click.stop="globalStore.floatTermVisible = false"><Close /></el-icon>
     </div>
@@ -22,8 +22,8 @@
       <div class="float-term-header" @mousedown="startDrag">
         <div class="float-term-title">
           <el-icon :size="13"><Monitor /></el-icon>
-          <span>终端</span>
-          <span v-if="tabs.length > 1" class="tab-count">{{ tabs.length }} 个标签</span>
+          <span>{{ t('terminal.title') }}</span>
+          <span v-if="tabs.length > 1" class="tab-count">{{ t('terminal.tabCount', { count: tabs.length }) }}</span>
         </div>
         <div class="float-term-actions" @mousedown.stop>
           <!-- 字体大小 -->
@@ -31,11 +31,11 @@
           <span class="fs-label">{{ globalStore.termFontSize }}</span>
           <el-icon :size="11" class="action-btn" @click="changeFontSize(1)"><Plus /></el-icon>
           <!-- 新建标签 -->
-          <el-icon :size="13" class="action-btn" title="新建终端" @click="addLocalTab"><Plus /></el-icon>
+          <el-icon :size="13" class="action-btn" :title="t('terminal.newTerminal')" @click="addLocalTab"><Plus /></el-icon>
           <!-- 最小化 -->
-          <el-icon :size="13" class="action-btn" title="最小化" @click="globalStore.floatTermMinimized = true"><SemiSelect /></el-icon>
+          <el-icon :size="13" class="action-btn" :title="t('commons.minimize')" @click="globalStore.floatTermMinimized = true"><SemiSelect /></el-icon>
           <!-- 关闭 -->
-          <el-icon :size="13" class="action-btn close-btn" title="关闭" @click="globalStore.floatTermVisible = false"><Close /></el-icon>
+          <el-icon :size="13" class="action-btn close-btn" :title="t('commons.close')" @click="globalStore.floatTermVisible = false"><Close /></el-icon>
         </div>
       </div>
 
@@ -79,6 +79,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useGlobalStore } from '@/store/modules/global'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
+import { getToken } from '@/utils/auth'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -159,7 +160,7 @@ const fitActive = () => {
 
 const getWsUrl = (hostId?: number) => {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = sessionStorage.getItem('token')
+  const token = getToken()
   let url = `${proto}//${location.host}/api/v1/terminal?token=${token}`
   if (hostId) url += `&id=${hostId}`
   return url

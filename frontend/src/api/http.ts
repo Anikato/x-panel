@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/routers'
+import { getToken, removeToken } from '@/utils/auth'
 
 // 使用唯一请求 ID（自增）作为 key，避免同名接口互相覆盖 AbortController
 let _reqIdCounter = 0
@@ -33,7 +34,7 @@ const http = axios.create({
 
 http.interceptors.request.use(
   (config) => {
-    const token = sessionStorage.getItem('token')
+    const token = getToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -84,7 +85,7 @@ http.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response
       if (status === 401) {
-        sessionStorage.removeItem('token')
+        removeToken()
         router.push('/login')
         ElMessage.error('登录已过期，请重新登录')
       } else {

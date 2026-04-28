@@ -1,7 +1,36 @@
 <template>
-  <div class="setting-page">
+  <div class="setting-page xp-settings-page">
+    <div class="xp-page-hero">
+      <div>
+        <div class="xp-page-eyebrow">{{ t('setting.pageEyebrow') }}</div>
+        <h2>{{ t('setting.title') }}</h2>
+        <p>{{ t('setting.pageDesc') }}</p>
+      </div>
+      <div class="xp-page-hero-actions">
+        <el-tag effect="plain">{{ versionInfo.version || t('setting.dev') }}</el-tag>
+        <el-button type="primary" :icon="Refresh" :loading="checking" @click="handleCheckUpdate">
+          {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
+        </el-button>
+      </div>
+    </div>
+
+    <div class="xp-settings-layout">
+      <aside class="xp-settings-nav">
+        <button
+          v-for="section in settingSections"
+          :key="section.id"
+          type="button"
+          class="xp-settings-nav-item"
+          @click="scrollToSection(section.id)"
+        >
+          <el-icon><component :is="section.icon" /></el-icon>
+          <span>{{ section.title }}</span>
+        </button>
+      </aside>
+
+      <main class="xp-settings-content">
     <!-- Card 1: 版本信息 -->
-    <el-card class="setting-card">
+    <el-card id="setting-version" class="setting-card xp-section-card">
       <template #header>
         <div class="card-header">
           <div class="card-header-title">
@@ -27,21 +56,21 @@
           <el-alert :title="t('setting.devTip')" type="info" show-icon :closable="false" />
         </div>
         <template v-else>
-          <div class="update-url-row">
-            <el-input v-model="upgradeUrl" :placeholder="t('setting.upgradeUrlPlaceholder')" clearable style="flex: 1; margin-right: 12px">
+          <div class="xp-inline-form">
+            <el-input v-model="upgradeUrl" :placeholder="t('setting.upgradeUrlPlaceholder')" clearable>
               <template #prepend>{{ t('setting.upgradeUrl') }}</template>
             </el-input>
             <el-button type="primary" :loading="checking" :icon="Refresh" @click="handleCheckUpdate">
               {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
             </el-button>
           </div>
-          <div class="update-url-row" style="margin-top: 8px">
-            <span style="margin-right: 12px; white-space: nowrap; color: var(--xp-text-secondary); font-size: 13px;">{{ t('setting.autoUpgrade') }}</span>
+          <div class="xp-setting-line">
+            <span class="xp-setting-line-label">{{ t('setting.autoUpgrade') }}</span>
             <el-switch v-model="autoUpgradeEnabled" @change="handleAutoUpgradeChange" />
-            <el-text type="info" size="small" style="margin-left: 12px">{{ t('setting.autoUpgradeHint') }}</el-text>
+            <el-text type="info" size="small">{{ t('setting.autoUpgradeHint') }}</el-text>
           </div>
-          <div class="update-url-row" style="margin-top: 8px">
-            <el-input v-model="githubToken" :placeholder="t('setting.githubTokenPlaceholder')" clearable show-password style="flex: 1; margin-right: 12px">
+          <div class="xp-inline-form">
+            <el-input v-model="githubToken" :placeholder="t('setting.githubTokenPlaceholder')" clearable show-password>
               <template #prepend>{{ t('setting.githubToken') }}</template>
             </el-input>
             <el-button :loading="savingToken" @click="handleSaveToken">{{ t('setting.save') }}</el-button>
@@ -57,7 +86,7 @@
                 <el-text type="info" v-if="upgradeInfo.publishDate">{{ t('setting.publishDate') }}: {{ upgradeInfo.publishDate }}</el-text>
               </div>
               <div v-if="upgradeInfo.releaseNote" class="release-note">
-                <el-text tag="p" style="white-space: pre-wrap">{{ upgradeInfo.releaseNote }}</el-text>
+                <el-text tag="p" class="xp-pre-wrap">{{ upgradeInfo.releaseNote }}</el-text>
               </div>
               <el-button type="danger" :loading="upgrading" size="large" @click="handleUpgrade">
                 {{ upgrading ? t('setting.upgrading') : t('setting.doUpgrade') }}
@@ -65,7 +94,7 @@
             </el-card>
           </div>
           <div v-if="upgradeLog" class="upgrade-log-section">
-            <el-text tag="div" type="info" style="margin-bottom: 8px">{{ t('setting.upgradeLog') }}</el-text>
+            <el-text tag="div" type="info" class="xp-mb-8">{{ t('setting.upgradeLog') }}</el-text>
             <el-input type="textarea" :model-value="upgradeLog" :rows="8" readonly class="log-textarea" />
           </div>
         </template>
@@ -73,7 +102,7 @@
     </el-card>
 
     <!-- Card 2: 外观与个性化 -->
-    <el-card class="setting-card">
+    <el-card id="setting-appearance" class="setting-card xp-section-card">
       <template #header>
         <div class="card-header">
           <div class="card-header-title">
@@ -84,7 +113,7 @@
       </template>
       <div class="appearance-section">
         <!-- 主题模式 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.themeMode') }}</span>
           <el-radio-group v-model="globalStore.theme" @change="(val: ThemeMode) => globalStore.setTheme(val)">
             <el-radio-button value="dark"><el-icon><Moon /></el-icon> {{ t('header.themeDark') }}</el-radio-button>
@@ -94,19 +123,21 @@
         </div>
 
         <!-- 强调色 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('header.accentColor') }}</span>
           <div class="accent-grid-large">
-            <div
+              <button
               v-for="preset in ACCENT_PRESETS"
               :key="preset.key"
+                type="button"
               class="accent-swatch-large"
               :class="{ active: globalStore.accentKey === preset.key }"
               :style="{ background: preset.primary }"
+                :aria-label="preset.name"
               @click="selectPreset(preset.key)"
             >
               <el-icon v-if="globalStore.accentKey === preset.key" :size="16"><Check /></el-icon>
-            </div>
+              </button>
             <div class="accent-swatch-large custom-swatch">
               <input type="color" class="swatch-color-input" :value="globalStore.accentCustom || '#22d3ee'" @input="onCustomAccent" />
             </div>
@@ -114,32 +145,34 @@
         </div>
 
         <!-- 背景预设 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.bgPreset') }}</span>
           <div class="accent-grid-large">
-            <el-tooltip v-for="bg in BG_PRESETS" :key="bg.key" :content="bg.name" placement="top">
-              <div
+            <el-tooltip v-for="bg in BG_PRESETS" :key="bg.key" :content="bgPresetLabel(bg.key)" placement="top">
+              <button
+                type="button"
                 class="bg-swatch"
                 :class="{ active: globalStore.bgPreset === bg.key }"
                 :style="{ background: bg.preview }"
+                :aria-label="bgPresetLabel(bg.key)"
                 @click="globalStore.bgPreset = bg.key"
               >
                 <el-icon v-if="globalStore.bgPreset === bg.key" :size="14"><Check /></el-icon>
-              </div>
+              </button>
             </el-tooltip>
           </div>
         </div>
 
         <!-- UI 字体 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.uiFont') }}</span>
-          <el-select v-model="globalStore.uiFont" style="width: 200px">
+          <el-select v-model="globalStore.uiFont" class="xp-select-md">
             <el-option v-for="f in FONT_PRESETS" :key="f.key" :label="f.name" :value="f.key" />
           </el-select>
         </div>
 
         <!-- 密度 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.uiDensity') }}</span>
           <el-radio-group v-model="globalStore.uiDensity">
             <el-radio-button value="compact">{{ t('setting.densityCompact') }}</el-radio-button>
@@ -149,7 +182,7 @@
         </div>
 
         <!-- 圆角 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.borderRadius') }}</span>
           <el-radio-group v-model="globalStore.borderRadiusPreset">
             <el-radio-button value="sharp">{{ t('setting.radiusSharp') }}</el-radio-button>
@@ -159,15 +192,15 @@
         </div>
 
         <!-- 卡片边框 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.cardBorder') }}</span>
           <el-radio-group v-model="globalStore.cardBorderStyle">
-            <el-radio-button v-for="s in CARD_BORDER_STYLES" :key="s.key" :value="s.key">{{ s.name }}</el-radio-button>
+            <el-radio-button v-for="s in cardBorderOptions" :key="s.key" :value="s.key">{{ s.name }}</el-radio-button>
           </el-radio-group>
         </div>
 
         <!-- 侧边栏宽度 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.sidebarWidth') }}</span>
           <el-radio-group v-model="globalStore.sidebarWidth">
             <el-radio-button value="narrow">{{ t('setting.sidebarNarrow') }}</el-radio-button>
@@ -177,15 +210,15 @@
         </div>
 
         <!-- 显示服务器时钟 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.showServerClock') }}</span>
           <el-switch v-model="globalStore.showServerClock" />
         </div>
 
         <!-- 仪表盘刷新间隔 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.dashboardRefresh') }}</span>
-          <el-select v-model="globalStore.dashboardRefreshInterval" style="width: 160px">
+          <el-select v-model="globalStore.dashboardRefreshInterval" class="xp-select-sm">
             <el-option :label="'2 ' + t('setting.seconds')" :value="2000" />
             <el-option :label="'5 ' + t('setting.seconds')" :value="5000" />
             <el-option :label="'10 ' + t('setting.seconds')" :value="10000" />
@@ -195,7 +228,7 @@
         </div>
 
         <!-- 减弱动画 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.reduceMotion') }}</span>
           <el-switch v-model="globalStore.reduceMotion" />
         </div>
@@ -206,14 +239,16 @@
         <div class="appearance-subtitle">{{ t('setting.terminalAppearance') }}</div>
 
         <!-- 终端配色 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.termTheme') }}</span>
           <div class="term-theme-grid">
-            <div
+            <button
               v-for="tt in TERMINAL_THEME_PRESETS"
               :key="tt.key"
+              type="button"
               class="term-theme-swatch"
               :class="{ active: globalStore.termTheme === tt.key }"
+              :aria-label="tt.name"
               @click="globalStore.termTheme = tt.key"
             >
               <div class="term-preview" :style="{ background: tt.theme.background, color: tt.theme.foreground }">
@@ -222,34 +257,34 @@
                 <span :style="{ color: tt.theme.yellow }"> -la</span>
               </div>
               <span class="term-theme-name">{{ tt.name }}</span>
-            </div>
+            </button>
           </div>
         </div>
 
         <!-- 终端字体 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.termFont') }}</span>
-          <el-select v-model="globalStore.termFont" style="width: 200px">
+          <el-select v-model="globalStore.termFont" class="xp-select-md">
             <el-option v-for="f in TERMINAL_FONT_PRESETS" :key="f.key" :label="f.name" :value="f.key" />
           </el-select>
         </div>
 
         <!-- 终端字号 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.termFontSize') }}</span>
-          <el-slider v-model="globalStore.termFontSize" :min="10" :max="24" :step="1" show-input style="flex: 1; max-width: 300px" />
+          <el-slider v-model="globalStore.termFontSize" :min="10" :max="24" :step="1" show-input class="xp-slider-md" />
         </div>
 
         <!-- 终端透明度 -->
-        <div class="appearance-row">
+        <div class="xp-setting-row">
           <span class="appearance-label">{{ t('setting.termBgOpacity') }}</span>
-          <el-slider v-model="globalStore.termBgOpacity" :min="0.3" :max="1" :step="0.05" show-input style="flex: 1; max-width: 300px" />
+          <el-slider v-model="globalStore.termBgOpacity" :min="0.3" :max="1" :step="0.05" show-input class="xp-slider-md" />
         </div>
       </div>
     </el-card>
 
     <!-- Card 3: 面板与安全 -->
-    <el-card class="setting-card" v-loading="loading">
+    <el-card id="setting-security" class="setting-card xp-section-card" v-loading="loading">
       <template #header>
         <div class="card-header">
           <div class="card-header-title">
@@ -260,13 +295,13 @@
       </template>
       <el-collapse v-model="activeCollapse">
         <el-collapse-item :title="t('setting.title')" name="panel">
-          <el-form :model="form" label-width="140px" style="max-width: 600px">
+          <el-form :model="form" label-width="140px" class="xp-form-narrow">
             <el-form-item :label="t('setting.panelName')">
               <el-input v-model="form.panelName" />
             </el-form-item>
             <el-form-item :label="t('setting.serverPort')">
               <el-input-number v-model="form.port" :min="1" :max="65535" :step="1" />
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.portChangeHint') }}</el-text>
               </div>
             </el-form-item>
@@ -277,7 +312,7 @@
               <el-input v-model="form.securityEntrance" :placeholder="t('setting.securityEntrancePlaceholder')" clearable>
                 <template #prepend>/</template>
               </el-input>
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.securityEntranceHint') }}</el-text>
               </div>
             </el-form-item>
@@ -289,10 +324,10 @@
 
         <el-collapse-item :title="t('setting.panelHttpsCert')" name="panelSsl">
           <div v-loading="loadingPanelSSL">
-            <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+            <el-alert type="info" :closable="false" class="xp-mb-12">
               {{ t('setting.panelHttpsCertHint') }}
             </el-alert>
-            <el-descriptions :column="1" border size="small" style="max-width: 720px; margin-bottom: 16px">
+            <el-descriptions :column="1" border size="small" class="xp-desc-panel">
               <el-descriptions-item :label="t('setting.panelHttpsEnabled')">
                 {{ panelSSLInfo.enable ? t('setting.panelHttpsOn') : t('setting.panelHttpsOff') }}
               </el-descriptions-item>
@@ -306,14 +341,14 @@
                 <el-text class="mono-text" size="small">{{ panelSSLInfo.keyPath || '—' }}</el-text>
               </el-descriptions-item>
             </el-descriptions>
-            <el-form label-width="160px" style="max-width: 640px">
+            <el-form label-width="160px" class="xp-form-medium">
               <el-form-item :label="t('setting.panelHttpsSelectCert')">
                 <el-select
                   v-model="panelSSLCertSelect"
                   filterable
                   clearable
                   :placeholder="t('setting.panelHttpsSelectCert')"
-                  style="width: 100%; max-width: 520px"
+                  class="xp-input-wide"
                 >
                   <el-option
                     v-for="c in readyCerts"
@@ -322,7 +357,7 @@
                     :value="c.id"
                   />
                 </el-select>
-                <div v-if="readyCerts.length === 0" style="margin-top: 6px">
+                <div v-if="readyCerts.length === 0" class="xp-form-tip">
                   <el-text type="warning" size="small">{{ t('setting.panelHttpsNoReadyCert') }}</el-text>
                 </div>
               </el-form-item>
@@ -336,13 +371,13 @@
         </el-collapse-item>
 
         <el-collapse-item :title="t('setting.agentSetting')" name="agent">
-          <el-form label-width="140px" style="max-width: 600px">
+          <el-form label-width="140px" class="xp-form-narrow">
             <el-form-item :label="t('setting.agentToken')">
-              <div style="display: flex; gap: 8px; width: 100%">
-                <el-input v-model="agentTokenForm.token" :placeholder="t('setting.agentTokenPlaceholder')" show-password clearable style="flex: 1" />
+              <div class="xp-inline-form">
+                <el-input v-model="agentTokenForm.token" :placeholder="t('setting.agentTokenPlaceholder')" show-password clearable />
                 <el-button @click="generateAgentToken">{{ t('setting.generateToken') }}</el-button>
               </div>
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.agentTokenHint') }}</el-text>
               </div>
             </el-form-item>
@@ -353,7 +388,7 @@
         </el-collapse-item>
 
         <el-collapse-item :title="t('setting.proxy')" name="proxy">
-          <el-form label-width="140px" style="max-width: 640px">
+          <el-form label-width="140px" class="xp-form-medium">
             <el-form-item :label="t('setting.proxyType')">
               <el-radio-group v-model="proxyForm.type">
                 <el-radio-button value="mix">
@@ -366,19 +401,19 @@
                   {{ t('setting.proxyTypeSocks5') }}
                 </el-radio-button>
               </el-radio-group>
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ proxyTypeDesc }}</el-text>
               </div>
             </el-form-item>
             <el-form-item :label="t('setting.proxyAddress')">
               <el-input v-model="proxyForm.address" :placeholder="proxyAddressPlaceholder" clearable />
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ proxyAddressHint }}</el-text>
               </div>
             </el-form-item>
             <el-form-item :label="t('setting.proxyNoProxy')">
               <el-input v-model="proxyForm.noProxy" placeholder="localhost,127.0.0.1,::1" clearable />
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.proxyNoProxyHint') }}</el-text>
               </div>
             </el-form-item>
@@ -388,19 +423,19 @@
               :title="t('setting.proxySocks5Warning')"
               show-icon
               :closable="false"
-              style="margin-bottom: 16px"
+              class="xp-mb-16"
             />
             <el-form-item :label="t('setting.proxyEnable')">
-              <div style="display: flex; align-items: center; gap: 12px; width: 100%">
+              <div class="xp-setting-line">
                 <el-switch v-model="proxyForm.enable" :loading="savingProxy" @change="handleProxyToggle" />
                 <el-button :loading="testingProxy" :disabled="!proxyForm.address" @click="handleTestProxy">
                   {{ testingProxy ? t('setting.proxyTesting') : t('setting.proxyTest') }}
                 </el-button>
               </div>
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.proxyHint') }}</el-text>
               </div>
-              <div style="margin-top: 4px">
+              <div class="xp-form-tip">
                 <el-text type="info" size="small">
                   {{ proxyForm.type === 'socks5' ? t('setting.proxyCoverageSocks5') : t('setting.proxyCoverage') }}
                 </el-text>
@@ -413,7 +448,7 @@
         </el-collapse-item>
 
         <el-collapse-item :title="t('setting.accountSetting')" name="account">
-          <el-form label-width="140px" style="max-width: 600px">
+          <el-form label-width="140px" class="xp-form-narrow">
             <el-form-item :label="t('setting.userName')">
               <el-input v-model="accountForm.userName" />
             </el-form-item>
@@ -437,13 +472,15 @@
         </el-collapse-item>
       </el-collapse>
     </el-card>
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Setting, InfoFilled, User, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
+import { Refresh, Setting, InfoFilled, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
 import { getSettingInfo, updateSetting, updatePort, testProxy, getPanelSSL, updatePanelSSL, restartPanel } from '@/api/modules/setting'
 import { searchCertificate } from '@/api/modules/ssl'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
@@ -458,7 +495,32 @@ import { TERMINAL_THEME_PRESETS, TERMINAL_FONT_PRESETS } from '@/utils/terminal-
 const { t } = useI18n()
 const globalStore = useGlobalStore()
 
-const activeCollapse = ref(['panel'])
+const settingSections = computed(() => [
+  { id: 'setting-version', title: t('setting.versionAndUpgrade'), icon: 'InfoFilled' },
+  { id: 'setting-appearance', title: t('setting.appearance'), icon: 'Brush' },
+  { id: 'setting-security', title: t('setting.panelAndSecurity'), icon: 'Setting' },
+])
+
+const cardBorderLabelKeys: Record<string, string> = {
+  'accent-left': 'setting.cardBorderAccentLeft',
+  full: 'setting.cardBorderFull',
+  'shadow-only': 'setting.cardBorderShadowOnly',
+}
+
+const cardBorderOptions = computed(() =>
+  CARD_BORDER_STYLES.map((item) => ({
+    ...item,
+    name: t(cardBorderLabelKeys[item.key] || 'setting.cardBorderFull'),
+  })),
+)
+
+const bgPresetLabel = (key: string) => t(`setting.bgPresetNames.${key}`)
+
+const scrollToSection = (id: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const activeCollapse = ref(['panel', 'panelSsl', 'agent', 'proxy', 'account'])
 
 const panelSSLInfo = reactive({
   enable: false,
@@ -796,72 +858,3 @@ onMounted(() => {
 })
 onUnmounted(() => { if (logTimer) clearInterval(logTimer) })
 </script>
-
-<style scoped lang="scss">
-.setting-page { padding: 0; }
-.setting-card { margin-bottom: 20px; }
-
-.card-header { display: flex; align-items: center; justify-content: space-between; }
-.card-header-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 500; }
-
-.update-section { margin-top: 20px; }
-.update-url-row { display: flex; align-items: center; margin-bottom: 4px; }
-.update-url-hint { margin-bottom: 16px; font-size: 12px; }
-.update-result { margin-bottom: 16px; }
-.update-card { margin-top: 8px; }
-.update-card-header { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
-.release-note { margin-bottom: 16px; padding: 12px; background: var(--el-fill-color-light); border-radius: 4px; max-height: 300px; overflow-y: auto; }
-.upgrade-log-section { margin-top: 16px; }
-.log-textarea :deep(.el-textarea__inner) { font-family: var(--xp-font-mono); font-size: 12px; background: var(--xp-bg-inset); color: var(--xp-text-primary); }
-.dev-notice { margin-top: 4px; }
-.mono-text { font-family: var(--xp-font-mono); font-size: 13px; }
-
-.appearance-section { display: flex; flex-direction: column; gap: 20px; }
-.appearance-row { display: flex; align-items: flex-start; gap: 16px; }
-.appearance-label { font-size: 14px; color: var(--xp-text-secondary); min-width: 100px; padding-top: 6px; font-weight: 500; flex-shrink: 0; }
-.appearance-subtitle { font-size: 14px; font-weight: 600; color: var(--xp-text-primary); padding-bottom: 4px; }
-
-.accent-grid-large { display: flex; flex-wrap: wrap; gap: 10px; }
-
-.accent-swatch-large {
-  width: 36px; height: 36px; border-radius: 10px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; transition: all 0.2s; border: 2px solid transparent;
-  &:hover { transform: scale(1.1); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); }
-  &.active { border-color: var(--xp-text-primary); box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 4px currentColor; }
-  &.custom-swatch { border: 2px dashed var(--xp-border-hover); background: transparent !important; overflow: hidden; padding: 0; }
-}
-
-.swatch-color-input {
-  width: 100%; height: 100%; border: none; padding: 0; background: transparent; cursor: pointer;
-  &::-webkit-color-swatch-wrapper { padding: 0; }
-  &::-webkit-color-swatch { border: none; border-radius: 8px; }
-}
-
-.bg-swatch {
-  width: 48px; height: 32px; border-radius: 8px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  color: rgba(255,255,255,0.7); transition: all 0.2s; border: 2px solid transparent;
-  &:hover { transform: scale(1.05); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
-  &.active { border-color: var(--xp-accent); box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 3px var(--xp-accent); }
-}
-
-.term-theme-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-
-.term-theme-swatch {
-  cursor: pointer; border-radius: 8px; border: 2px solid transparent;
-  overflow: hidden; transition: all 0.2s; width: 120px;
-  &:hover { border-color: var(--xp-border-hover); }
-  &.active { border-color: var(--xp-accent); box-shadow: 0 0 0 1px var(--xp-accent); }
-}
-
-.term-preview {
-  padding: 6px 10px; font-family: var(--xp-font-mono); font-size: 11px;
-  white-space: nowrap; line-height: 1.4;
-}
-
-.term-theme-name {
-  display: block; text-align: center; font-size: 11px; padding: 4px 0;
-  color: var(--xp-text-secondary); background: var(--xp-bg-inset);
-}
-</style>

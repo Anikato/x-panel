@@ -21,7 +21,14 @@ func GenerateToken(userName string) (string, error) {
 	if timeout <= 0 {
 		timeout = constant.DefaultSessionTimeout
 	}
+	return GenerateTokenWithTimeout(userName, timeout)
+}
 
+// GenerateTokenWithTimeout 按指定秒数生成 JWT Token
+func GenerateTokenWithTimeout(userName string, timeout int) (string, error) {
+	if timeout <= 0 {
+		timeout = constant.DefaultSessionTimeout
+	}
 	claims := Claims{
 		UserName: userName,
 		RegisteredClaims: jwt.RegisteredClaims{

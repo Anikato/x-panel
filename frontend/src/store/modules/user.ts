@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { removeToken, setToken } from '@/utils/auth'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -6,9 +7,9 @@ export const useUserStore = defineStore('user', {
     name: '',
   }),
   actions: {
-    setToken(token: string) {
+    setToken(token: string, remember = false) {
       this.token = token
-      sessionStorage.setItem('token', token)
+      setToken(token, remember)
     },
     setName(name: string) {
       this.name = name
@@ -16,7 +17,7 @@ export const useUserStore = defineStore('user', {
     logout() {
       this.token = ''
       this.name = ''
-      sessionStorage.removeItem('token')
+      removeToken()
     },
   },
   persist: {

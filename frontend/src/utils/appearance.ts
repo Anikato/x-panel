@@ -17,7 +17,7 @@ export interface BgPresetDef {
 export const BG_PRESETS: BgPresetDef[] = [
   {
     key: 'abyss',
-    name: '深渊 Abyss',
+    name: '深渊',
     preview: 'linear-gradient(160deg, #080a10, #0e1420)',
     vars: {
       '--xp-bg-base': '#080a10',
@@ -35,7 +35,7 @@ export const BG_PRESETS: BgPresetDef[] = [
   },
   {
     key: 'void',
-    name: '纯黑 Void',
+    name: '纯黑',
     preview: 'linear-gradient(160deg, #000000, #0a0a0a)',
     vars: {
       '--xp-bg-base': '#050508',
@@ -53,7 +53,7 @@ export const BG_PRESETS: BgPresetDef[] = [
   },
   {
     key: 'tinted',
-    name: '微染 Tinted',
+    name: '微染',
     preview: 'linear-gradient(160deg, #080a10, #0a1510)',
     vars: {
       '--xp-bg-base': '#080a10',
@@ -71,7 +71,7 @@ export const BG_PRESETS: BgPresetDef[] = [
   },
   {
     key: 'cosmos',
-    name: '星空 Cosmos',
+    name: '星空',
     preview: 'linear-gradient(160deg, #0a0818, #14102a)',
     vars: {
       '--xp-bg-base': '#0a0818',
@@ -89,7 +89,7 @@ export const BG_PRESETS: BgPresetDef[] = [
   },
   {
     key: 'warm',
-    name: '暖夜 Warm',
+    name: '暖夜',
     preview: 'linear-gradient(160deg, #100c08, #1a1410)',
     vars: {
       '--xp-bg-base': '#100c08',

@@ -27,6 +27,8 @@ func NewIAuthService() IAuthService {
 
 type AuthService struct{}
 
+const rememberLoginTimeout = 86400 * 30 // 30 天
+
 var settingRepo = repo.NewISettingRepo()
 var logRepo = repo.NewILogRepo()
 
@@ -61,8 +63,14 @@ func (a *AuthService) Login(info dto.Login) (*dto.UserLoginInfo, error) {
 		}, nil
 	}
 
-	// 生成 JWT Token
-	token, err := jwtUtil.GenerateToken(info.Name)
+	// 生成 JWT Token；保持登录用于可信设备，关闭浏览器后仍可恢复登录态。
+	var token string
+	var err error
+	if info.Remember {
+		token, err = jwtUtil.GenerateTokenWithTimeout(info.Name, rememberLoginTimeout)
+	} else {
+		token, err = jwtUtil.GenerateToken(info.Name)
+	}
 	if err != nil {
 		return nil, buserr.WithErr(constant.ErrInternalServer, err)
 	}

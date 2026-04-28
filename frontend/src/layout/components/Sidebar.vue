@@ -355,4 +355,27 @@ const menuList = computed(() => [
 .fade-text-leave-to {
   opacity: 0;
 }
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: min(var(--xp-sidebar-width), 82vw);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    transform: translateX(0);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &.is-collapse {
+      width: min(var(--xp-sidebar-width), 82vw);
+      transform: translateX(-100%);
+      box-shadow: none;
+    }
+  }
+
+  :deep(.el-menu) {
+    .el-menu-item,
+    .el-sub-menu__title {
+      height: 42px;
+      line-height: 42px;
+    }
+  }
+}
 </style>

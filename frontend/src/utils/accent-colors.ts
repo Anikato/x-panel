@@ -15,7 +15,7 @@ export interface AccentPalette {
 
 export const ACCENT_PRESETS: AccentPalette[] = [
   {
-    name: '青蓝 Cyan',
+    name: '青蓝',
     key: 'cyan',
     primary: '#22d3ee',
     hover: '#06b6d4',
@@ -25,7 +25,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#38bdf8', '#0ea5e9', '#0284c7', '#0369a1', '#075985'],
   },
   {
-    name: '靛蓝 Indigo',
+    name: '靛蓝',
     key: 'indigo',
     primary: '#818cf8',
     hover: '#6366f1',
@@ -35,7 +35,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#4338ca'],
   },
   {
-    name: '翡翠 Emerald',
+    name: '翡翠',
     key: 'emerald',
     primary: '#34d399',
     hover: '#10b981',
@@ -45,7 +45,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#6ee7b7', '#34d399', '#10b981', '#059669', '#047857'],
   },
   {
-    name: '琥珀 Amber',
+    name: '琥珀',
     key: 'amber',
     primary: '#fbbf24',
     hover: '#f59e0b',
@@ -55,7 +55,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#fde68a', '#fbbf24', '#f59e0b', '#d97706', '#b45309'],
   },
   {
-    name: '玫红 Rose',
+    name: '玫红',
     key: 'rose',
     primary: '#fb7185',
     hover: '#f43f5e',
@@ -65,7 +65,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#fda4af', '#fb7185', '#f43f5e', '#e11d48', '#be123c'],
   },
   {
-    name: '天蓝 Blue',
+    name: '天蓝',
     key: 'blue',
     primary: '#60a5fa',
     hover: '#3b82f6',
@@ -75,7 +75,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8'],
   },
   {
-    name: '紫罗兰 Violet',
+    name: '紫罗兰',
     key: 'violet',
     primary: '#a78bfa',
     hover: '#8b5cf6',
@@ -85,7 +85,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#c4b5fd', '#a78bfa', '#8b5cf6', '#7c3aed', '#6d28d9'],
   },
   {
-    name: '橙色 Orange',
+    name: '橙色',
     key: 'orange',
     primary: '#fb923c',
     hover: '#f97316',
@@ -95,7 +95,7 @@ export const ACCENT_PRESETS: AccentPalette[] = [
     elPrimaryLevels: ['#fdba74', '#fb923c', '#f97316', '#ea580c', '#c2410c'],
   },
   {
-    name: '荧光绿 Neon',
+    name: '荧光绿',
     key: 'neon',
     primary: '#41FB44',
     hover: '#34C936',

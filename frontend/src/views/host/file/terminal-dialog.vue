@@ -30,12 +30,13 @@ let resizeObserver: ResizeObserver | null = null
 
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { useGlobalStore } from '@/store/modules/global'
+import { getToken } from '@/utils/auth'
 
 const globalStore = useGlobalStore()
 
 function getWsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = sessionStorage.getItem('token')
+  const token = getToken()
   return `${proto}//${location.host}/api/v1/terminal?token=${token}`
 }
 
