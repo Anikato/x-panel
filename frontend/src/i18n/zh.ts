@@ -361,9 +361,6 @@ export default {
     minimap: '缩略图',
     reset: '重置',
     unsavedChanges: '文件有未保存的修改，确定关闭？',
-    pasteContent: '粘贴内容',
-    pasteHint: '当前浏览器（Chrome/HTTP）不支持自动读取剪贴板，请在下方框中按 Ctrl+V 粘贴后点击确认。',
-    pasteHere: '在此粘贴内容...',
     fileTooLarge: '文件超过 10MB，无法编辑',
     // 内嵌终端
     openTerminal: '在此打开终端',

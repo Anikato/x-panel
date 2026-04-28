@@ -1,7 +1,7 @@
 <template>
   <div
     class="file-manager"
-    @contextmenu.prevent
+    @contextmenu="handleRootContextMenu"
     @dragover.prevent="handleDragover"
     @drop.prevent="handleDrop"
     @dragleave.prevent="isDragging = false"
@@ -1024,7 +1024,23 @@ const formatTime = (iso: string): string => {
 
 // ===================== 键盘快捷键 =====================
 
+function isEditorEventTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!(
+    codeEditorRef.value?.isOpen?.()
+    || el?.closest?.('.code-editor-drawer')
+    || el?.closest?.('.monaco-editor')
+  )
+}
+
+function handleRootContextMenu(e: MouseEvent) {
+  if (isEditorEventTarget(e.target)) return
+  e.preventDefault()
+}
+
 function handleKeydown(e: KeyboardEvent) {
+  if (isEditorEventTarget(e.target)) return
+
   // 如果焦点在 input/textarea/contenteditable 里，不触发
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return

@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-04-28 — Session #77：Chrome 文件编辑器粘贴修复
+
+### 完成内容
+
+- [x] `frontend/src/views/host/file/index.vue` — 将文件管理根节点的 `@contextmenu.prevent` 改为按目标判断，放行 Monaco/编辑器抽屉内右键事件
+- [x] `frontend/src/views/host/file/index.vue` — 文件编辑器打开或事件来自 Monaco 时跳过文件管理全局 `Ctrl+C/X/V/A` 快捷键，避免 Chrome 下 `Ctrl+V` 被 `preventDefault()` 吞掉
+- [x] `frontend/src/views/host/file/code-editor.vue` — 暴露 `isOpen()` 给父组件判断编辑器状态
+- [x] `frontend/src/i18n/zh.ts` — 清理遗留重复 `pasteHere` 翻译 key，修复前端构建阻塞
+
+### 关键决策
+
+- 对齐 1Panel 行为：文件编辑器内不接管系统粘贴通道，保留 Monaco/浏览器原生输入处理
+- 文件列表区域仍保留原有右键抑制和文件复制/移动粘贴逻辑，修复范围仅限编辑器场景
+
+### 验证
+
+- [x] `npm run build`（frontend）通过
+
+### 下一步
+
+- 在 Chrome HTTPS 环境手测编辑配置文件：右键粘贴、`Ctrl+V` 粘贴、多行内容粘贴后保存
+
+---
+
 ## 2026-04-28 — Session #76：文件编辑器粘贴链路修复
 
 ### 完成内容

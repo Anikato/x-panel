@@ -238,7 +238,10 @@ function cleanup() {
 
 onBeforeUnmount(() => cleanup())
 
-defineExpose({ open })
+defineExpose({
+  open,
+  isOpen: () => visible.value,
+})
 </script>
 
 <style lang="scss" scoped>
