@@ -8,6 +8,7 @@
 
 ### 完成内容
 
+- [x] `backend/app/service/auth.go` — 修复保持登录分支中 `err` 重复声明导致后端交叉编译失败的问题
 - [x] `frontend/src/views/setting/index.vue` — 设置页改为顶部说明 + 左侧分组导航 + 右侧分区卡片，展开面板/HTTPS/Agent/代理/账号设置，减少原有长页面折叠造成的混乱
 - [x] `frontend/src/assets/styles/_utilities.scss` — 新增设置页、表单行、色块、空状态、404 等全局工具样式，减少设置页本地样式堆叠
 - [x] `frontend/src/routers/index.ts` / `frontend/src/views/error/not-found.vue` — 未知路由改为独立 404 页面，不再静默跳回首页
@@ -25,6 +26,7 @@
 
 - [x] `npm run build`（frontend）通过
 - [x] `ReadLints` 检查本次编辑文件无新增诊断
+- [ ] `go build ./cmd/server/` 本地依赖下载长时间无进展，已停止；以 GitHub Actions 后端构建结果为准
 
 ### 下一步
 

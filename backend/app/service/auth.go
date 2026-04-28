@@ -65,7 +65,6 @@ func (a *AuthService) Login(info dto.Login) (*dto.UserLoginInfo, error) {
 
 	// 生成 JWT Token；保持登录用于可信设备，关闭浏览器后仍可恢复登录态。
 	var token string
-	var err error
 	if info.Remember {
 		token, err = jwtUtil.GenerateTokenWithTimeout(info.Name, rememberLoginTimeout)
 	} else {
