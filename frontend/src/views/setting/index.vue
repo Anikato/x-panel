@@ -609,7 +609,7 @@ const onCustomAccent = (e: Event) => {
 
 const loading = ref(false)
 const saving = ref(false)
-const form = reactive({ panelName: 'X-Panel', port: 7777, sessionTimeout: 86400, securityEntrance: '' })
+const form = reactive({ panelName: globalStore.panelName || 'X-Panel', port: 7777, sessionTimeout: 86400, securityEntrance: '' })
 
 const savingAgentToken = ref(false)
 const agentTokenForm = reactive({ token: '' })
@@ -740,7 +740,7 @@ const fetchSettings = async () => {
   try {
     const res = await getSettingInfo()
     if (res.data) {
-      form.panelName = res.data.panelName || 'X-Panel'
+      if (res.data.panelName) form.panelName = res.data.panelName
       form.port = parseInt(res.data.serverPort) || 7777
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
       form.securityEntrance = res.data.securityEntrance || ''
@@ -758,13 +758,19 @@ const fetchSettings = async () => {
 }
 
 const handleSave = async () => {
+  const panelName = form.panelName.trim()
+  if (!panelName) {
+    ElMessage.warning(t('setting.panelNameRequired'))
+    return
+  }
   saving.value = true
   try {
-    await updateSetting({ key: 'PanelName', value: form.panelName })
+    await updateSetting({ key: 'PanelName', value: panelName })
     await updatePort({ port: String(form.port) })
     await updateSetting({ key: 'SessionTimeout', value: String(form.sessionTimeout) })
     await updateSetting({ key: 'SecurityEntrance', value: form.securityEntrance })
-    globalStore.setPanelName(form.panelName)
+    form.panelName = panelName
+    globalStore.setPanelName(panelName)
     ElMessage.success(t('commons.success'))
   } catch { /* */ } finally { saving.value = false }
 }

@@ -83,7 +83,7 @@ const { t } = useI18n()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
-const panelName = ref('X-Panel')
+const panelName = ref(globalStore.panelName || 'X-Panel')
 
 const needCaptcha = ref(false)
 const captchaImage = ref('')
@@ -101,7 +101,10 @@ onMounted(async () => {
     const initRes = await checkIsInit()
     if (!initRes.data) { router.push('/init'); return }
     const settingRes = await getLoginSetting()
-    if (settingRes.data?.panelName) panelName.value = settingRes.data.panelName
+    if (settingRes.data?.panelName) {
+      panelName.value = settingRes.data.panelName
+      globalStore.setPanelName(settingRes.data.panelName)
+    }
   } catch { /* backend not ready */ }
 })
 

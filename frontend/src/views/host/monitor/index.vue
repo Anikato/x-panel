@@ -1,5 +1,5 @@
 <template>
-  <div class="monitor-page">
+  <div class="monitor-page xp-page-shell">
     <div class="page-header">
       <h3>{{ $t('monitor.title') }}</h3>
       <div class="header-actions">
@@ -15,6 +15,23 @@
 
     <!-- ==================== 实时 Tab ==================== -->
     <template v-if="activeTab === 'realtime'">
+      <div class="xp-hero monitor-hero">
+        <div>
+          <div class="xp-hero-eyebrow">{{ $t('monitor.realtimeOverview') }}</div>
+          <h2>{{ stats.host?.hostname || $t('monitor.title') }}</h2>
+          <p>{{ monitorSummary }}</p>
+        </div>
+        <el-tag effect="plain">{{ $t('monitor.refreshEvery', { seconds: 5 }) }}</el-tag>
+      </div>
+
+      <div class="xp-metric-grid">
+        <div v-for="item in monitorMetricCards" :key="item.label" class="xp-metric-card" :class="item.tone">
+          <span class="xp-metric-label">{{ item.label }}</span>
+          <strong class="xp-metric-value">{{ item.value }}</strong>
+          <small class="xp-metric-sub">{{ item.sub }}</small>
+        </div>
+      </div>
+
       <el-card shadow="never" class="dash-card">
         <div class="tri-grid">
           <div class="tri-col">
@@ -181,7 +198,7 @@
       </el-card>
 
       <!-- CPU + 内存 -->
-      <el-row :gutter="12">
+      <el-row :gutter="14" class="chart-grid-row">
         <el-col :xs="24" :md="12">
           <el-card shadow="never" class="chart-card">
             <template #header><span class="chart-title">CPU</span></template>
@@ -197,7 +214,7 @@
       </el-row>
 
       <!-- IO + 网络 -->
-      <el-row :gutter="12">
+      <el-row :gutter="14" class="chart-grid-row">
         <el-col :xs="24" :md="12">
           <el-card shadow="never" class="chart-card">
             <template #header>
@@ -264,6 +281,44 @@ const ignoreFs = new Set(['squashfs', 'tmpfs', 'devtmpfs', 'overlay'])
 const filteredDisks = computed(() => (stats.value.disks || []).filter(d =>
   !ignoreMounts.has(d.mountPoint) && !ignoreFs.has(d.fsType) && !ignorePfx.some(p => d.mountPoint.startsWith(p)) && d.total >= 100 * 1024 * 1024
 ))
+
+const monitorSummary = computed(() => {
+  const h = stats.value.host
+  return [h?.platform, h?.platformVersion, h?.kernelArch].filter(Boolean).join(' · ') || t('home.waitingForData')
+})
+
+const monitorMetricCards = computed(() => [
+  {
+    label: 'CPU',
+    value: fmtPct(stats.value.cpu?.usagePercent),
+    sub: stats.value.cpu ? `${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-',
+    tone: pctCls(stats.value.cpu?.usagePercent),
+  },
+  {
+    label: t('monitor.memory'),
+    value: fmtPct(stats.value.memory?.usedPercent),
+    sub: `${formatBytes(stats.value.memory?.used)} / ${formatBytes(stats.value.memory?.total)}`,
+    tone: pctCls(stats.value.memory?.usedPercent),
+  },
+  {
+    label: t('monitor.load'),
+    value: `${loadPct.value.toFixed(0)}%`,
+    sub: `1m ${stats.value.load?.load1?.toFixed(2) || '-'}`,
+    tone: pctCls(loadPct.value),
+  },
+  {
+    label: t('monitor.disk'),
+    value: filteredDisks.value.length ? `${filteredDisks.value.length}` : '0',
+    sub: t('monitor.mounts'),
+    tone: 'disk',
+  },
+  {
+    label: t('monitor.network'),
+    value: mainNics.value[0] ? formatSpeed(mainNics.value[0].speedDown) : '0 B/s',
+    sub: mainNics.value[0]?.name || t('home.noNetworkData'),
+    tone: 'network',
+  },
+])
 
 const copyText = async (text: string) => {
   if (!text) return
@@ -520,8 +575,6 @@ onUnmounted(() => { if (timer) clearInterval(timer); disposeCharts(); window.rem
 </script>
 
 <style lang="scss" scoped>
-.monitor-page { height: 100%; }
-
 .page-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px;
@@ -537,7 +590,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); disposeCharts(); window.rem
   .el-icon { color: var(--xp-accent); opacity: 0.8; }
 }
 
-.tri-grid { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 0; }
+.tri-grid { display: grid; grid-template-columns: minmax(320px, 1.05fr) auto minmax(300px, 1fr) auto minmax(360px, 1.2fr); gap: 0; }
 .tri-col { min-width: 0; padding: 0 20px; &:first-child { padding-left: 0; } &:last-child { padding-right: 0; } }
 .tri-sep { width: 1px; align-self: stretch; background: var(--xp-border-light); }
 .col-hd { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--xp-text-primary); margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--xp-border-light); .el-icon { color: var(--xp-accent); opacity: 0.8; } }
@@ -574,10 +627,20 @@ onUnmounted(() => { if (timer) clearInterval(timer); disposeCharts(); window.rem
   .toolbar-right { display: flex; align-items: center; gap: 8px; }
 }
 
-.chart-card { margin-bottom: 12px; border-left-width: 3px; }
-.chart-container { height: 300px; width: 100%; }
+.chart-card { margin-bottom: 14px; border-left-width: 3px; }
+.chart-container { height: clamp(300px, 25vh, 420px); width: 100%; }
 .chart-title { font-weight: 600; font-size: 13px; color: var(--xp-text-primary); }
 .chart-hd-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.chart-grid-row {
+  margin-bottom: 2px;
+}
+
+@media (min-width: 1440px) {
+  .chart-container {
+    height: 360px;
+  }
+}
 
 @media (max-width: 1200px) {
   .tri-grid { grid-template-columns: 1fr; gap: 0; }
@@ -585,4 +648,5 @@ onUnmounted(() => { if (timer) clearInterval(timer); disposeCharts(); window.rem
   .tri-sep { display: none; }
   .tri-col + .tri-col { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--xp-border-light); }
 }
+
 </style>

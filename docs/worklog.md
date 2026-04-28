@@ -4,6 +4,58 @@
 
 ---
 
+## 2026-04-28 — Session #84：全局页面概览模式沉淀
+
+### 完成内容
+
+- [x] `frontend/src/assets/styles/_utilities.scss` — 抽出 `xp-page-shell`、`xp-hero`、`xp-hero-eyebrow`、`xp-hero-meta`、`xp-metric-grid`、`xp-metric-card` 等全局 UI 模式
+- [x] `frontend/src/views/home/index.vue` — 首页改用全局 Hero 和指标卡片样式，删除页面内重复的 Hero/Metric 样式
+- [x] `frontend/src/views/host/monitor/index.vue` — 系统监控页改用同一套全局 Hero 和指标卡片样式，保留页面独有图表/三栏布局样式
+
+### 关键决策
+
+- 本轮只沉淀首页/监控页已经验证过的公共模式，不扩展到容器、数据库、HAProxy、GOST 等业务页，避免一次改造过大
+- 公共模式先以全局 CSS 工具类落地，暂不抽 Vue 组件，保持使用成本低、迁移成本低
+
+### 验证
+
+- [x] `npm run build`（frontend）通过
+- [x] `ReadLints` 检查本次编辑文件无新增诊断
+
+### 下一步
+
+- 后续优化容器、数据库、网络服务等重页面时，可直接套用本次沉淀的全局 Hero 与指标卡片模式
+
+---
+
+## 2026-04-28 — Session #83：首页与监控页体验优化
+
+### 完成内容
+
+- [x] `frontend/src/views/home/index.vue` — 首页新增运行概览 Hero 与关键指标卡片，优化 HD/2K 宽屏下资源、网络、系统信息三栏比例，快捷入口补充键盘可达
+- [x] `frontend/src/views/host/monitor/index.vue` — 系统监控实时页新增监控概览与指标卡片，优化实时三栏、磁盘表和历史图表在 HD 及以上分辨率的展示高度与间距
+- [x] `frontend/src/layout/components/Sidebar.vue` — 网络菜单改为用途导向分组：流量监控、负载均衡 · HAProxy、代理转发 · GOST；补充显式菜单类型，修复分组联合类型构建报错
+- [x] `frontend/src/store/modules/global.ts` / `frontend/src/App.vue` / `frontend/src/views/login/index.vue` / `frontend/src/views/setting/index.vue` — 面板名称加载改为保留本地已知值，网络失败时不再把默认 `X-Panel` 扩散为状态值
+- [x] `frontend/src/i18n/zh.ts` — 补充首页、监控页、菜单和面板名称校验文案
+
+### 关键决策
+
+- 首页和监控页优先照顾 HD 及以上分辨率，不再为过低分辨率做复杂适配；低宽度仅保留基本折行可用
+- 网络菜单不新增页面、不改变路由，只调整信息架构和分组文案，避免为了菜单美观牺牲功能直达
+- 面板名称问题的根因是默认值与真实设置值混用；改为“默认值只用于显示兜底，状态只保存后端或用户明确设置的名称”
+
+### 验证
+
+- [x] `npm run build`（frontend）通过
+- [x] `ReadLints` 检查本次编辑文件无新增诊断
+- [x] `git diff --check`
+
+### 下一步
+
+- 可继续把首页/监控页沉淀出的指标卡片和页面 Hero 抽成全局 UI 模式，用于容器、数据库、网络服务等重页面
+
+---
+
 ## 2026-04-28 — Session #82：前端设置页与全局体验优化
 
 ### 完成内容

@@ -29,9 +29,9 @@
               <el-icon><component :is="item.icon" /></el-icon>
               <span>{{ item.title }}</span>
             </template>
-            <template v-for="child in item.children" :key="child.path || child.group">
+            <template v-for="child in item.children" :key="isMenuGroup(child) ? child.group : child.path">
               <!-- 分组标签 -->
-              <el-menu-item-group v-if="child.group" :title="child.group">
+              <el-menu-item-group v-if="isMenuGroup(child)" :title="child.group">
                 <el-menu-item
                   v-for="sub in child.items"
                   :key="sub.path"
@@ -71,6 +71,25 @@ const { t } = useI18n()
 
 const activeMenu = computed(() => route.path)
 
+interface MenuLeaf {
+  path: string
+  title: string
+  icon?: string
+}
+
+interface MenuGroup {
+  group: string
+  items: MenuLeaf[]
+}
+
+type MenuChild = MenuLeaf | MenuGroup
+
+interface MenuItem extends MenuLeaf {
+  children?: MenuChild[]
+}
+
+const isMenuGroup = (item: MenuChild): item is MenuGroup => 'group' in item
+
 onMounted(async () => {
   try {
     const res = await getCurrentVersion()
@@ -80,7 +99,7 @@ onMounted(async () => {
   } catch { /* ignore */ }
 })
 
-const menuList = computed(() => [
+const menuList = computed<MenuItem[]>(() => [
   { path: '/home', title: t('menu.home'), icon: 'HomeFilled' },
   {
     path: '/website',
@@ -112,8 +131,10 @@ const menuList = computed(() => [
     title: t('menu.network'),
     icon: 'Connection',
     children: [
-      { path: '/traffic', title: t('menu.traffic') },
-      { group: 'HAProxy', items: [
+      { group: t('menu.networkTraffic'), items: [
+        { path: '/traffic', title: t('menu.trafficOverview') },
+      ]},
+      { group: t('menu.networkLoadBalance'), items: [
         { path: '/haproxy/status', title: t('menu.haproxyStatus') },
         { path: '/haproxy/http-lb', title: t('menu.haproxyHTTPLB') },
         { path: '/haproxy/tcp-lb', title: t('menu.haproxyTCPLB') },
@@ -122,7 +143,7 @@ const menuList = computed(() => [
         { path: '/haproxy/config', title: t('menu.haproxyConfig') },
         { path: '/haproxy/history', title: t('menu.haproxyHistory') },
       ]},
-      { group: 'GOST', items: [
+      { group: t('menu.networkProxy'), items: [
         { path: '/gost/status', title: t('menu.gostStatus') },
         { path: '/gost/forward', title: t('menu.gostForward') },
         { path: '/gost/relay', title: t('menu.gostRelay') },
@@ -333,15 +354,13 @@ const menuList = computed(() => [
   // 分组标题样式
   .el-menu-item-group {
     :deep(.el-menu-item-group__title) {
-      padding-left: 48px !important;
+      padding: 6px 10px 4px 48px !important;
       font-size: 11px;
       font-weight: 600;
-      color: var(--xp-text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      opacity: 0.6;
-      height: 28px;
-      line-height: 28px;
+      color: rgba(var(--xp-accent-rgb, 34, 211, 238), 0.72);
+      letter-spacing: 0.04em;
+      height: auto;
+      line-height: 1.2;
       margin-top: 4px;
     }
   }

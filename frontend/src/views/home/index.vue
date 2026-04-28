@@ -1,5 +1,24 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard xp-page-shell">
+    <div class="xp-hero">
+      <div>
+        <div class="xp-hero-eyebrow">{{ t('home.overview') }}</div>
+        <h2>{{ stats.host?.hostname || globalStore.panelName || 'X-Panel' }}</h2>
+        <p>{{ systemSummary }}</p>
+      </div>
+      <div class="xp-hero-meta">
+        {{ t('home.refreshEvery', { seconds: Math.round(refreshInterval / 1000) }) }}
+      </div>
+    </div>
+
+    <div class="xp-metric-grid">
+      <div v-for="item in metricCards" :key="item.label" class="xp-metric-card" :class="item.tone">
+        <div class="xp-metric-label">{{ item.label }}</div>
+        <div class="xp-metric-value">{{ item.value }}</div>
+        <div class="xp-metric-sub">{{ item.sub }}</div>
+      </div>
+    </div>
+
     <!-- 系统概览：三等分卡片 [资源占用 | 网络 | 系统信息] -->
     <el-card shadow="never" class="dash-card">
       <div class="tri-grid">
@@ -99,7 +118,16 @@
             <div class="card-hd"><el-icon><Compass /></el-icon><span>{{ t('home.quickEntry') }}</span></div>
           </template>
           <div class="quick-grid">
-            <div v-for="entry in quickEntries" :key="entry.path" class="quick-item" @click="router.push(entry.path)">
+            <div
+              v-for="entry in quickEntries"
+              :key="entry.path"
+              class="quick-item"
+              role="button"
+              tabindex="0"
+              @click="router.push(entry.path)"
+              @keydown.enter.prevent="router.push(entry.path)"
+              @keydown.space.prevent="router.push(entry.path)"
+            >
               <div class="qi-icon"><el-icon :size="20"><component :is="entry.icon" /></el-icon></div>
               <span class="qi-label">{{ entry.title }}</span>
             </div>
@@ -153,6 +181,12 @@ const loadStats = async () => {
 
 const refreshInterval = computed(() => globalStore.dashboardRefreshInterval ?? 5000)
 
+const systemSummary = computed(() => {
+  const h = stats.value.host ?? ({} as Partial<HostInfo>)
+  const os = `${h.platform || ''} ${h.platformVersion || ''}`.trim()
+  return [os, h.kernelArch, h.virtualization].filter(Boolean).join(' · ') || t('home.waitingForData')
+})
+
 const resetTimer = () => {
   if (timer) { clearInterval(timer); timer = null }
   const ms = refreshInterval.value
@@ -194,6 +228,39 @@ const loadPct = computed(() => {
   const c = stats.value.cpu?.logicalCores || 1
   return Math.min(((stats.value.load?.load1 || 0) / c) * 100, 100)
 })
+
+const metricCards = computed(() => [
+  {
+    label: 'CPU',
+    value: fmtPct(stats.value.cpu?.usagePercent),
+    sub: stats.value.cpu ? `${stats.value.cpu.cores} ${t('home.physical')} / ${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-',
+    tone: pctCls(stats.value.cpu?.usagePercent),
+  },
+  {
+    label: t('home.memory'),
+    value: fmtPct(stats.value.memory?.usedPercent),
+    sub: `${formatBytes(stats.value.memory?.used)} / ${formatBytes(stats.value.memory?.total)}`,
+    tone: pctCls(stats.value.memory?.usedPercent),
+  },
+  {
+    label: t('home.load'),
+    value: `${loadPct.value.toFixed(0)}%`,
+    sub: `1m ${stats.value.load?.load1?.toFixed(2) || '-'}`,
+    tone: pctCls(loadPct.value),
+  },
+  {
+    label: t('home.network'),
+    value: mainNics.value[0] ? formatSpeed(mainNics.value[0].speedDown) : '0 B/s',
+    sub: mainNics.value[0] ? `${mainNics.value[0].name} ${t('home.download')}` : t('home.noNetworkData'),
+    tone: 'network',
+  },
+  {
+    label: t('home.uptime'),
+    value: formatUptime(stats.value.uptime),
+    sub: stats.value.host?.timezone || '-',
+    tone: 'uptime',
+  },
+])
 
 const mainNics = computed(() => (stats.value.netIO || []).filter(n => n.name !== 'lo').slice(0, 6))
 
@@ -263,7 +330,6 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 </script>
 
 <style lang="scss" scoped>
-.dashboard { padding: 0; }
 .dash-card {
   margin-bottom: 16px;
   border-left-width: 3px;
@@ -278,7 +344,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 /* ==================== Tri-column grid ==================== */
 .tri-grid {
   display: grid;
-  grid-template-columns: 1fr auto 1fr auto 1fr;
+  grid-template-columns: minmax(320px, 1.15fr) auto minmax(280px, 0.95fr) auto minmax(300px, 1fr);
   gap: 0;
 }
 

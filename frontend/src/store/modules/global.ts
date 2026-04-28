@@ -24,7 +24,7 @@ export const useGlobalStore = defineStore('global', {
     isLogin: false,
     loading: false,
     menuCollapse: false,
-    panelName: 'X-Panel',
+    panelName: '',
     theme: 'dark' as ThemeMode,
     accentKey: 'neon',
     accentCustom: '',
@@ -59,8 +59,9 @@ export const useGlobalStore = defineStore('global', {
     toggleMenuCollapse() {
       this.menuCollapse = !this.menuCollapse
     },
-    setPanelName(name: string) {
-      this.panelName = name
+    setPanelName(name?: string) {
+      const nextName = (name || '').trim()
+      if (nextName) this.panelName = nextName
     },
     setVersion(ver: string) {
       this.version = ver
@@ -136,6 +137,14 @@ export const useGlobalStore = defineStore('global', {
         if (config.showServerClock !== undefined) this.showServerClock = config.showServerClock
         if (config.dashboardRefreshInterval !== undefined) this.dashboardRefreshInterval = config.dashboardRefreshInterval
       } catch { /* ignore */ }
+    },
+    async loadPanelNameFromBackend() {
+      try {
+        const res = await getSettingInfo()
+        this.setPanelName(res.data?.panelName)
+      } catch {
+        /* 网络不可用时保留本地已知面板名称 */
+      }
     },
   },
   persist: {
