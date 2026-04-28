@@ -4,6 +4,33 @@
 
 ---
 
+## 2026-04-28 — Session #76：文件编辑器粘贴链路修复
+
+### 完成内容
+
+- [x] `frontend/src/views/host/file/code-editor.vue` — 移除自定义 `Ctrl+V` 劫持逻辑，恢复 Monaco 原生粘贴链路（避免权限/协议差异导致粘贴失败）
+- [x] `frontend/src/views/host/file/code-editor.vue` — 删除 HTTP/权限 fallback 粘贴弹窗相关代码，减少“模拟输入”式粘贴副作用
+- [x] `frontend/src/views/host/file/code-editor.vue` — 默认 `wordWrap` 从 `on` 调整为 `off`，避免长行视觉折行造成“格式被改”误解
+- [x] `frontend/src/api/modules/file.ts` — `saveFileContent` 单独增加请求超时到 300s，降低大文本保存超时失败概率
+
+### 关键决策
+
+- 文件编辑器粘贴行为对齐 1Panel：不接管系统 `Ctrl+V`，优先使用编辑器原生输入通道
+- 将“视觉换行”和“文本真实换行”分离，默认关闭自动换行以减少误判
+- 对大文本场景先做前端超时兜底，后续再根据部署环境评估反向代理 body 限制
+
+### 遗留问题
+
+- [ ] 超长内容保存仍可能受反向代理（如 Nginx `client_max_body_size`）限制，需要在部署侧确认
+- [ ] 当前编辑器仍有 10MB 打开限制（后端读取上限），如需编辑更大文件需单独设计分块/流式方案
+
+### 下一步
+
+- 在 HTTP/HTTPS 两种访问方式下手测粘贴：普通文本、多行代码、超长文本（>1MB）
+- 增加编辑器内“自动换行”显式开关，允许用户按需切换显示模式
+
+---
+
 ## 2026-04-17 — Session #75：HAProxy 负载均衡可视化管理（apt 安装版）
 
 ### 完成内容

@@ -29,7 +29,7 @@ export const getFileContent = (params: { path: string }) => {
 }
 
 export const saveFileContent = (params: { path: string; content: string }) => {
-  return http.post('/files/save', params)
+  return http.post('/files/save', params, { timeout: 300000 })
 }
 
 export const changeFileMode = (params: { path: string; mode: string; sub?: boolean }) => {
