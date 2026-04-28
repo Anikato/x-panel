@@ -8,7 +8,8 @@
 
 ### 完成内容
 
-- [x] `.github/workflows/release.yml` — tag 构建后生成 `releases/latest.json`、根目录 `version.json`、安装脚本副本，并支持通过 SSH/rsync 同步到自建更新服务器
+- [x] `.github/workflows/release.yml` — tag 构建后生成 `releases/latest.json`、根目录 `version.json`、安装脚本副本，并支持通过 SSH 同步到自建更新服务器
+- [x] `.github/workflows/release.yml` — 部署步骤改为 `scp` 上传，避免更新服务器缺少 `rsync` 导致发布失败
 - [x] `backend/app/service/upgrade.go` — 默认更新源切换为 `https://xpanel.qm.mk`，优先读取 `releases/latest.json`，兼容旧版 `version.json`
 - [x] `scripts/install-online.sh` — 默认从自建更新服务器安装，支持 `--update-url` 覆盖，保留 GitHub Token 私有仓库下载模式
 - [x] `scripts/gen-version-json.sh` — 改为生成自建更新服务器所需清单和版本文件

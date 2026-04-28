@@ -228,5 +228,5 @@ jobs:
         run: |
           ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
             "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" "mkdir -p '$UPDATE_SERVER_PATH/releases'"
-          rsync -az --checksum -e "ssh -i ~/.ssh/xpanel_update_server -p $UPDATE_SERVER_PORT" \
-            publish/ "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST:$UPDATE_SERVER_PATH/"
+          scp -i ~/.ssh/xpanel_update_server -P "$UPDATE_SERVER_PORT" -r publish/. \
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST:$UPDATE_SERVER_PATH/"
