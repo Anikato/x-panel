@@ -260,6 +260,7 @@ func initDefaultSettings() {
 		{Key: "FleetEndpoint", Value: "https://fcapi.qm.mk"},
 		{Key: "FleetInstanceID", Value: ""},
 		{Key: "FleetInstanceToken", Value: ""},
+		{Key: "FleetHeartbeatIntervalSeconds", Value: "300"},
 	}
 
 	for _, s := range defaults {

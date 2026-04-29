@@ -4,6 +4,94 @@
 
 ---
 
+## 2026-04-29 — Session #90：Fleet Task 通道一期
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/model/task.go` — 新增 FleetTask 模型，记录任务类型、载荷、状态、结果、超时和执行时间
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api` — 新增管理端任务创建/查询/取消接口，以及节点侧任务 poll/report 接口
+- [x] `/Users/kevin/Data/Project/x-panel/backend/app/service/fleet_reporter.go` — Reporter 心跳后拉取任务，支持受限执行 `tail_panel_log` 并回传结果
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 实例详情新增任务通道区，可拉取错误日志、查看状态、展示/复制输出和截断提示
+
+### 关键决策
+
+- 一期只开放 `tail_panel_log`，不支持任意路径读取和任意命令执行；日志行数默认 200、最大 500，输出最大 64KB
+- 节点仍采用主动 poll 和主动 report，Fleet Center 不主动连接节点，为后续批量命令、升级和 SSH 反连通道预留任务模型
+- 任务状态统一为 `pending` / `running` / `success` / `failed` / `timeout` / `cancelled`，过期任务由接口访问时刷新为 `timeout`
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] `go test ./app/service ./init/migration`（X-Panel backend）通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server`（X-Panel backend）通过
+- [x] 临时接口闭环验证：注册实例、创建任务、节点领取、节点回传、管理端查询最终状态均通过
+- [x] `ReadLints` 检查相关文件无新增诊断
+
+### 下一步
+
+- 部署 Fleet Center 与 X-Panel 新版本后，用真实节点验证“拉取错误日志”任务能在下一次 Reporter 心跳后完成
+
+---
+
+## 2026-04-29 — Session #89：Fleet 心跳策略与后台安全增强
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend` — 新增 Fleet 设置表与管理端设置 API，支持配置客户端心跳间隔并随注册/心跳响应下发
+- [x] `/Users/kevin/Data/Project/x-panel/backend/app/service/fleet_reporter.go` — X-Panel Reporter 改为保存并使用 Fleet Center 下发的心跳间隔，默认从 30 分钟调整为 5 分钟
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api/auth.go` — 登录失败 3 次后要求算术验证码，验证码 5 分钟有效且一次性使用
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 新增心跳间隔设置入口、验证码登录交互，实例详情按快速定位/身份/构建/系统/硬件分组展示
+
+### 关键决策
+
+- Fleet Center 心跳间隔限制为 30 秒到 86400 秒，默认 300 秒，避免误设过低导致上报压力过大
+- X-Panel 客户端只在下一次成功注册或心跳后接收新间隔，保持协议简单且无需 Fleet Center 主动连接客户端
+- 验证码使用轻量算术题，优先解决爆破成本问题，后续如需更强安全可叠加 TOTP
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] `go test ./app/service ./init/migration`（X-Panel backend）通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server`（X-Panel backend）通过
+- [x] 临时接口验证：三次登录失败触发验证码、验证码登录成功、心跳间隔设置与注册响应下发通过
+- [x] `ReadLints` 检查相关文件无新增诊断
+
+### 下一步
+
+- 发布 Fleet Center 和 X-Panel 新版本后，验证后台设置的心跳间隔能被真实 X-Panel 实例接收并生效
+
+---
+
+## 2026-04-29 — Session #88：Fleet Center 实例管理增强
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api` — 新增实例删除接口、按版本过滤、动态在线/离线/长期离线判定
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api` — Summary 增加 `latestVersion` 与长期离线计数，用于版本态势展示
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 新增版本筛选胶囊、最新/低版本标记、实例详情弹窗和删除按钮
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 详情弹窗展示实例 ID、来源 IP、首次/最后上报、commit、build time、Go 版本和完整系统画像
+
+### 关键决策
+
+- 离线规则为 1 小时未心跳标记 `offline`，24 小时未心跳标记 `stale`
+- 删除实例只放在管理端 API 下，公网 ingest 域名仍只需要开放注册和心跳
+- 最新版本按版本号数字段比较，避免字符串排序导致 `v0.7.9` 大于 `v0.7.44`
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] 临时后端接口验证：注册、summary、按版本过滤、删除实例均通过
+- [x] `ReadLints` 检查 Fleet Center 后端和前端源码无新增诊断
+
+### 下一步
+
+- 部署新版 Fleet Center 前端与后端后，清理 `cursor-*` 测试实例并观察真实实例离线状态刷新
+
+---
+
 ## 2026-04-29 — Session #87：X-Panel 默认 Fleet Reporter 接入
 
 ### 完成内容

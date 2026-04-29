@@ -20,13 +20,18 @@ import (
 
 const (
 	fleetDefaultEndpoint = "https://fcapi.qm.mk"
-	fleetReportInterval  = 30 * time.Minute
+	fleetDefaultInterval = 5 * time.Minute
+	fleetMinInterval     = 30 * time.Second
+	fleetMaxInterval     = 24 * time.Hour
 	fleetStartupDelay    = 15 * time.Second
+	fleetTaskTimeout     = 10 * time.Second
+	fleetTaskOutputLimit = 64 * 1024
 
 	fleetSettingEnabled       = "FleetEnabled"
 	fleetSettingEndpoint      = "FleetEndpoint"
 	fleetSettingInstanceID    = "FleetInstanceID"
 	fleetSettingInstanceToken = "FleetInstanceToken"
+	fleetSettingInterval      = "FleetHeartbeatIntervalSeconds"
 )
 
 type IFleetReporterService interface {
@@ -88,28 +93,62 @@ type fleetResponse struct {
 }
 
 type fleetRegisterData struct {
-	InstanceID    string    `json:"instanceId"`
-	InstanceToken string    `json:"instanceToken"`
-	ServerTime    time.Time `json:"serverTime"`
+	InstanceID               string    `json:"instanceId"`
+	InstanceToken            string    `json:"instanceToken"`
+	ServerTime               time.Time `json:"serverTime"`
+	HeartbeatIntervalSeconds int       `json:"heartbeatIntervalSeconds"`
+}
+
+type fleetHeartbeatData struct {
+	ServerTime               time.Time `json:"serverTime"`
+	HeartbeatIntervalSeconds int       `json:"heartbeatIntervalSeconds"`
+}
+
+type fleetTaskPollRequest struct {
+	InstanceID string `json:"instanceId"`
+}
+
+type fleetTaskPollData struct {
+	Tasks []fleetTask `json:"tasks"`
+}
+
+type fleetTask struct {
+	ID      uint            `json:"id"`
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+type fleetTailPanelLogPayload struct {
+	Lines   int    `json:"lines"`
+	Level   string `json:"level"`
+	Keyword string `json:"keyword"`
+}
+
+type fleetTaskReportRequest struct {
+	InstanceID string `json:"instanceId"`
+	TaskID     uint   `json:"taskId"`
+	Status     string `json:"status"`
+	Output     string `json:"output"`
+	Error      string `json:"error"`
+	ExitCode   int    `json:"exitCode"`
+	Truncated  bool   `json:"truncated"`
 }
 
 func (s *FleetReporterService) Start() {
 	go func() {
 		time.Sleep(fleetStartupDelay)
-		s.reportOnce()
-
-		ticker := time.NewTicker(fleetReportInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			s.reportOnce()
+		for {
+			interval := s.reportOnce()
+			timer := time.NewTimer(interval)
+			<-timer.C
 		}
 	}()
 }
 
-func (s *FleetReporterService) reportOnce() {
+func (s *FleetReporterService) reportOnce() time.Duration {
 	enabled := s.settingValue(fleetSettingEnabled, "enable")
 	if strings.EqualFold(enabled, "disable") {
-		return
+		return s.reportInterval()
 	}
 
 	endpoint := strings.TrimRight(s.settingValue(fleetSettingEndpoint, fleetDefaultEndpoint), "/")
@@ -122,22 +161,24 @@ func (s *FleetReporterService) reportOnce() {
 		instanceID = newFleetInstanceID()
 		if err := settingRepo.CreateOrUpdate(fleetSettingInstanceID, instanceID); err != nil {
 			global.LOG.Debugf("fleet reporter save instance id failed: %v", err)
-			return
+			return s.reportInterval()
 		}
 	}
 
 	payload, err := buildFleetPayload(instanceID)
 	if err != nil {
 		global.LOG.Debugf("fleet reporter build payload failed: %v", err)
-		return
+		return s.reportInterval()
 	}
 
 	token := s.settingValue(fleetSettingInstanceToken, "")
 	if token == "" {
 		if err := s.register(endpoint, payload); err != nil {
 			global.LOG.Debugf("fleet reporter register failed: %v", err)
+		} else if token = s.settingValue(fleetSettingInstanceToken, ""); token != "" {
+			s.pollTasks(endpoint, payload.InstanceID, token)
 		}
-		return
+		return s.reportInterval()
 	}
 
 	if err := s.heartbeat(endpoint, payload, token); err != nil {
@@ -148,7 +189,10 @@ func (s *FleetReporterService) reportOnce() {
 				global.LOG.Debugf("fleet reporter re-register failed: %v", err)
 			}
 		}
+	} else {
+		s.pollTasks(endpoint, payload.InstanceID, token)
 	}
+	return s.reportInterval()
 }
 
 func (s *FleetReporterService) register(endpoint string, payload fleetPayload) error {
@@ -162,14 +206,23 @@ func (s *FleetReporterService) register(endpoint string, payload fleetPayload) e
 	if data.InstanceID != "" && data.InstanceID != payload.InstanceID {
 		return fmt.Errorf("unexpected instance id: %s", data.InstanceID)
 	}
-	return settingRepo.CreateOrUpdate(fleetSettingInstanceToken, data.InstanceToken)
+	if err := settingRepo.CreateOrUpdate(fleetSettingInstanceToken, data.InstanceToken); err != nil {
+		return err
+	}
+	s.applyServerInterval(data.HeartbeatIntervalSeconds)
+	return nil
 }
 
 func (s *FleetReporterService) heartbeat(endpoint string, payload fleetPayload, token string) error {
-	return s.postJSON(endpoint+"/api/v1/fleet/heartbeat", token, payload, nil)
+	var data fleetHeartbeatData
+	if err := s.postJSON(endpoint+"/api/v1/fleet/heartbeat", token, payload, &data); err != nil {
+		return err
+	}
+	s.applyServerInterval(data.HeartbeatIntervalSeconds)
+	return nil
 }
 
-func (s *FleetReporterService) postJSON(url, token string, payload fleetPayload, out interface{}) error {
+func (s *FleetReporterService) postJSON(url, token string, payload interface{}, out interface{}) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -205,12 +258,130 @@ func (s *FleetReporterService) postJSON(url, token string, payload fleetPayload,
 	return nil
 }
 
+func (s *FleetReporterService) pollTasks(endpoint, instanceID, token string) {
+	var data fleetTaskPollData
+	req := fleetTaskPollRequest{InstanceID: instanceID}
+	if err := s.postJSON(endpoint+"/api/v1/fleet/tasks/poll", token, req, &data); err != nil {
+		global.LOG.Debugf("fleet reporter poll tasks failed: %v", err)
+		return
+	}
+	for _, task := range data.Tasks {
+		report := s.executeTask(instanceID, task)
+		if err := s.postJSON(endpoint+"/api/v1/fleet/tasks/report", token, report, nil); err != nil {
+			global.LOG.Debugf("fleet reporter report task failed: task=%d err=%v", task.ID, err)
+		}
+	}
+}
+
+func (s *FleetReporterService) executeTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+	report := fleetTaskReportRequest{
+		InstanceID: instanceID,
+		TaskID:     task.ID,
+		Status:     "failed",
+		ExitCode:   1,
+	}
+	if task.Type != "tail_panel_log" {
+		report.Error = "unsupported task type"
+		return report
+	}
+
+	done := make(chan fleetTaskReportRequest, 1)
+	go func() {
+		output, err := executeTailPanelLog(task.Payload)
+		result := fleetTaskReportRequest{
+			InstanceID: instanceID,
+			TaskID:     task.ID,
+			Status:     "success",
+			Output:     output,
+			ExitCode:   0,
+		}
+		if err != nil {
+			result.Status = "failed"
+			result.Error = err.Error()
+			result.ExitCode = 1
+		}
+		result.Output, result.Truncated = truncateFleetTaskOutput(result.Output)
+		done <- result
+	}()
+
+	select {
+	case result := <-done:
+		return result
+	case <-time.After(fleetTaskTimeout):
+		report.Error = "task execution timeout"
+		return report
+	}
+}
+
+func executeTailPanelLog(raw json.RawMessage) (string, error) {
+	payload := fleetTailPanelLogPayload{Lines: 200, Level: "ERROR"}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return "", err
+		}
+	}
+	if payload.Lines <= 0 {
+		payload.Lines = 200
+	}
+	if payload.Lines > 500 {
+		payload.Lines = 500
+	}
+	payload.Level = strings.ToUpper(strings.TrimSpace(payload.Level))
+	if payload.Level == "" {
+		payload.Level = "ERROR"
+	}
+	if payload.Level != "INFO" && payload.Level != "WARN" && payload.Level != "ERROR" {
+		return "", fmt.Errorf("invalid log level")
+	}
+	if len(payload.Keyword) > 128 {
+		payload.Keyword = payload.Keyword[:128]
+	}
+	return NewILogService().GetSystemLog(payload.Lines, payload.Level, strings.TrimSpace(payload.Keyword))
+}
+
+func truncateFleetTaskOutput(value string) (string, bool) {
+	if len(value) <= fleetTaskOutputLimit {
+		return value, false
+	}
+	return value[:fleetTaskOutputLimit], true
+}
+
 func (s *FleetReporterService) settingValue(key, fallback string) string {
 	value, err := settingRepo.GetValueByKey(key)
 	if err != nil || strings.TrimSpace(value) == "" {
 		return fallback
 	}
 	return strings.TrimSpace(value)
+}
+
+func (s *FleetReporterService) reportInterval() time.Duration {
+	raw := s.settingValue(fleetSettingInterval, "300")
+	seconds, err := time.ParseDuration(raw + "s")
+	if err != nil {
+		return fleetDefaultInterval
+	}
+	if seconds < fleetMinInterval {
+		return fleetMinInterval
+	}
+	if seconds > fleetMaxInterval {
+		return fleetMaxInterval
+	}
+	return seconds
+}
+
+func (s *FleetReporterService) applyServerInterval(seconds int) {
+	if seconds <= 0 {
+		return
+	}
+	if seconds < int(fleetMinInterval.Seconds()) {
+		seconds = int(fleetMinInterval.Seconds())
+	}
+	if seconds > int(fleetMaxInterval.Seconds()) {
+		seconds = int(fleetMaxInterval.Seconds())
+	}
+	if err := settingRepo.CreateOrUpdate(fleetSettingInterval, fmt.Sprintf("%d", seconds)); err != nil {
+		global.LOG.Debugf("fleet reporter save heartbeat interval failed: %v", err)
+	}
 }
 
 func buildFleetPayload(instanceID string) (fleetPayload, error) {
