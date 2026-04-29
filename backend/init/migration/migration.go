@@ -261,6 +261,7 @@ func initDefaultSettings() {
 		{Key: "FleetInstanceID", Value: ""},
 		{Key: "FleetInstanceToken", Value: ""},
 		{Key: "FleetHeartbeatIntervalSeconds", Value: "300"},
+		{Key: "FleetTaskPollIntervalSeconds", Value: "10"},
 	}
 
 	for _, s := range defaults {

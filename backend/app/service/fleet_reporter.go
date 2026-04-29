@@ -8,14 +8,19 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"xpanel/app/version"
 	"xpanel/global"
 
 	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
 	hostUtil "github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
+	netUtil "github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 const (
@@ -25,6 +30,7 @@ const (
 	fleetMaxInterval     = 24 * time.Hour
 	fleetStartupDelay    = 15 * time.Second
 	fleetTaskTimeout     = 10 * time.Second
+	fleetTaskInterval    = 10 * time.Second
 	fleetTaskOutputLimit = 64 * 1024
 
 	fleetSettingEnabled       = "FleetEnabled"
@@ -32,6 +38,7 @@ const (
 	fleetSettingInstanceID    = "FleetInstanceID"
 	fleetSettingInstanceToken = "FleetInstanceToken"
 	fleetSettingInterval      = "FleetHeartbeatIntervalSeconds"
+	fleetSettingTaskInterval  = "FleetTaskPollIntervalSeconds"
 )
 
 type IFleetReporterService interface {
@@ -39,7 +46,11 @@ type IFleetReporterService interface {
 }
 
 type FleetReporterService struct {
-	client *http.Client
+	client  *http.Client
+	netLock sync.Mutex
+	netIn   uint64
+	netOut  uint64
+	netAt   time.Time
 }
 
 func NewIFleetReporterService() IFleetReporterService {
@@ -54,6 +65,9 @@ type fleetPayload struct {
 	Host       fleetHostPayload   `json:"host"`
 	CPU        fleetCPUPayload    `json:"cpu"`
 	Memory     fleetMemoryPayload `json:"memory"`
+	Swap       fleetSwapPayload   `json:"swap"`
+	Disk       fleetDiskPayload   `json:"disk"`
+	State      fleetStatePayload  `json:"state"`
 }
 
 type fleetPanelPayload struct {
@@ -71,6 +85,7 @@ type fleetHostPayload struct {
 	KernelVersion   string `json:"kernelVersion"`
 	KernelArch      string `json:"kernelArch"`
 	Uptime          uint64 `json:"uptime"`
+	BootTime        uint64 `json:"bootTime"`
 	Timezone        string `json:"timezone"`
 	Virtualization  string `json:"virtualization"`
 	TCPCongestion   string `json:"tcpCongestion"`
@@ -84,6 +99,31 @@ type fleetCPUPayload struct {
 
 type fleetMemoryPayload struct {
 	Total uint64 `json:"total"`
+	Used  uint64 `json:"used"`
+}
+
+type fleetSwapPayload struct {
+	Total uint64 `json:"total"`
+	Used  uint64 `json:"used"`
+}
+
+type fleetDiskPayload struct {
+	Total uint64 `json:"total"`
+	Used  uint64 `json:"used"`
+}
+
+type fleetStatePayload struct {
+	CPUPercent     float64 `json:"cpuPercent"`
+	Load1          float64 `json:"load1"`
+	Load5          float64 `json:"load5"`
+	Load15         float64 `json:"load15"`
+	TCPConnCount   uint64  `json:"tcpConnCount"`
+	UDPConnCount   uint64  `json:"udpConnCount"`
+	ProcessCount   uint64  `json:"processCount"`
+	NetInSpeed     uint64  `json:"netInSpeed"`
+	NetOutSpeed    uint64  `json:"netOutSpeed"`
+	NetInTransfer  uint64  `json:"netInTransfer"`
+	NetOutTransfer uint64  `json:"netOutTransfer"`
 }
 
 type fleetResponse struct {
@@ -97,11 +137,13 @@ type fleetRegisterData struct {
 	InstanceToken            string    `json:"instanceToken"`
 	ServerTime               time.Time `json:"serverTime"`
 	HeartbeatIntervalSeconds int       `json:"heartbeatIntervalSeconds"`
+	TaskPollIntervalSeconds  int       `json:"taskPollIntervalSeconds"`
 }
 
 type fleetHeartbeatData struct {
 	ServerTime               time.Time `json:"serverTime"`
 	HeartbeatIntervalSeconds int       `json:"heartbeatIntervalSeconds"`
+	TaskPollIntervalSeconds  int       `json:"taskPollIntervalSeconds"`
 }
 
 type fleetTaskPollRequest struct {
@@ -143,6 +185,7 @@ func (s *FleetReporterService) Start() {
 			<-timer.C
 		}
 	}()
+	go s.startTaskWorker()
 }
 
 func (s *FleetReporterService) reportOnce() time.Duration {
@@ -165,7 +208,7 @@ func (s *FleetReporterService) reportOnce() time.Duration {
 		}
 	}
 
-	payload, err := buildFleetPayload(instanceID)
+	payload, err := s.buildFleetPayload(instanceID)
 	if err != nil {
 		global.LOG.Debugf("fleet reporter build payload failed: %v", err)
 		return s.reportInterval()
@@ -175,8 +218,6 @@ func (s *FleetReporterService) reportOnce() time.Duration {
 	if token == "" {
 		if err := s.register(endpoint, payload); err != nil {
 			global.LOG.Debugf("fleet reporter register failed: %v", err)
-		} else if token = s.settingValue(fleetSettingInstanceToken, ""); token != "" {
-			s.pollTasks(endpoint, payload.InstanceID, token)
 		}
 		return s.reportInterval()
 	}
@@ -189,8 +230,6 @@ func (s *FleetReporterService) reportOnce() time.Duration {
 				global.LOG.Debugf("fleet reporter re-register failed: %v", err)
 			}
 		}
-	} else {
-		s.pollTasks(endpoint, payload.InstanceID, token)
 	}
 	return s.reportInterval()
 }
@@ -210,6 +249,7 @@ func (s *FleetReporterService) register(endpoint string, payload fleetPayload) e
 		return err
 	}
 	s.applyServerInterval(data.HeartbeatIntervalSeconds)
+	s.applyServerTaskInterval(data.TaskPollIntervalSeconds)
 	return nil
 }
 
@@ -219,6 +259,7 @@ func (s *FleetReporterService) heartbeat(endpoint string, payload fleetPayload, 
 		return err
 	}
 	s.applyServerInterval(data.HeartbeatIntervalSeconds)
+	s.applyServerTaskInterval(data.TaskPollIntervalSeconds)
 	return nil
 }
 
@@ -271,6 +312,32 @@ func (s *FleetReporterService) pollTasks(endpoint, instanceID, token string) {
 			global.LOG.Debugf("fleet reporter report task failed: task=%d err=%v", task.ID, err)
 		}
 	}
+}
+
+func (s *FleetReporterService) startTaskWorker() {
+	time.Sleep(fleetStartupDelay + fleetTaskInterval)
+	for {
+		s.pollTasksOnce()
+		timer := time.NewTimer(s.taskPollInterval())
+		<-timer.C
+	}
+}
+
+func (s *FleetReporterService) pollTasksOnce() {
+	enabled := s.settingValue(fleetSettingEnabled, "enable")
+	if strings.EqualFold(enabled, "disable") {
+		return
+	}
+	endpoint := strings.TrimRight(s.settingValue(fleetSettingEndpoint, fleetDefaultEndpoint), "/")
+	if endpoint == "" {
+		endpoint = fleetDefaultEndpoint
+	}
+	instanceID := s.settingValue(fleetSettingInstanceID, "")
+	token := s.settingValue(fleetSettingInstanceToken, "")
+	if instanceID == "" || token == "" {
+		return
+	}
+	s.pollTasks(endpoint, instanceID, token)
 }
 
 func (s *FleetReporterService) executeTask(instanceID string, task fleetTask) fleetTaskReportRequest {
@@ -369,6 +436,21 @@ func (s *FleetReporterService) reportInterval() time.Duration {
 	return seconds
 }
 
+func (s *FleetReporterService) taskPollInterval() time.Duration {
+	raw := s.settingValue(fleetSettingTaskInterval, "10")
+	seconds, err := time.ParseDuration(raw + "s")
+	if err != nil {
+		return fleetTaskInterval
+	}
+	if seconds < 5*time.Second {
+		return 5 * time.Second
+	}
+	if seconds > 5*time.Minute {
+		return 5 * time.Minute
+	}
+	return seconds
+}
+
 func (s *FleetReporterService) applyServerInterval(seconds int) {
 	if seconds <= 0 {
 		return
@@ -384,7 +466,22 @@ func (s *FleetReporterService) applyServerInterval(seconds int) {
 	}
 }
 
-func buildFleetPayload(instanceID string) (fleetPayload, error) {
+func (s *FleetReporterService) applyServerTaskInterval(seconds int) {
+	if seconds <= 0 {
+		return
+	}
+	if seconds < 5 {
+		seconds = 5
+	}
+	if seconds > 300 {
+		seconds = 300
+	}
+	if err := settingRepo.CreateOrUpdate(fleetSettingTaskInterval, fmt.Sprintf("%d", seconds)); err != nil {
+		global.LOG.Debugf("fleet reporter save task poll interval failed: %v", err)
+	}
+}
+
+func (s *FleetReporterService) buildFleetPayload(instanceID string) (fleetPayload, error) {
 	info := version.Get()
 	payload := fleetPayload{
 		InstanceID: instanceID,
@@ -404,6 +501,7 @@ func buildFleetPayload(instanceID string) (fleetPayload, error) {
 			PlatformVersion: hostInfo.PlatformVersion,
 			KernelVersion:   hostInfo.KernelVersion,
 			KernelArch:      hostInfo.KernelArch,
+			BootTime:        hostInfo.BootTime,
 			Virtualization:  detectVirtualization(hostInfo.VirtualizationSystem),
 		}
 	}
@@ -420,9 +518,76 @@ func buildFleetPayload(instanceID string) (fleetPayload, error) {
 
 	if memStat, err := mem.VirtualMemory(); err == nil {
 		payload.Memory.Total = memStat.Total
+		payload.Memory.Used = memStat.Used
 	}
+	if swapStat, err := mem.SwapMemory(); err == nil {
+		payload.Swap.Total = swapStat.Total
+		payload.Swap.Used = swapStat.Used
+	}
+	if diskStat, err := disk.Usage("/"); err == nil {
+		payload.Disk.Total = diskStat.Total
+		payload.Disk.Used = diskStat.Used
+	}
+	if percents, err := cpu.Percent(0, false); err == nil && len(percents) > 0 {
+		payload.State.CPUPercent = percents[0]
+	}
+	if loadStat, err := load.Avg(); err == nil {
+		payload.State.Load1 = loadStat.Load1
+		payload.State.Load5 = loadStat.Load5
+		payload.State.Load15 = loadStat.Load15
+	}
+	payload.State.TCPConnCount = connectionCount("tcp")
+	payload.State.UDPConnCount = connectionCount("udp")
+	payload.State.ProcessCount = processCount()
+	payload.State.NetInTransfer, payload.State.NetOutTransfer, payload.State.NetInSpeed, payload.State.NetOutSpeed = s.networkState()
 
 	return payload, nil
+}
+
+func connectionCount(kind string) uint64 {
+	connections, err := netUtil.Connections(kind)
+	if err != nil {
+		return 0
+	}
+	return uint64(len(connections))
+}
+
+func processCount() uint64 {
+	pids, err := process.Pids()
+	if err != nil {
+		return 0
+	}
+	return uint64(len(pids))
+}
+
+func (s *FleetReporterService) networkState() (uint64, uint64, uint64, uint64) {
+	counters, err := netUtil.IOCounters(false)
+	if err != nil || len(counters) == 0 {
+		return 0, 0, 0, 0
+	}
+	in := counters[0].BytesRecv
+	out := counters[0].BytesSent
+	now := time.Now()
+
+	s.netLock.Lock()
+	defer s.netLock.Unlock()
+
+	var inSpeed, outSpeed uint64
+	if !s.netAt.IsZero() {
+		elapsed := now.Sub(s.netAt).Seconds()
+		if elapsed > 0 {
+			if in >= s.netIn {
+				inSpeed = uint64(float64(in-s.netIn) / elapsed)
+			}
+			if out >= s.netOut {
+				outSpeed = uint64(float64(out-s.netOut) / elapsed)
+			}
+		}
+	}
+	s.netIn = in
+	s.netOut = out
+	s.netAt = now
+	return in, out, inSpeed, outSpeed
 }
 
 func newFleetInstanceID() string {

@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-04-29 — Session #91：Fleet Nezha 化监控增强
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/model` — 实例快照新增 CPU、内存、交换分区、磁盘、负载、网络、连接数、进程数等状态字段，并新增 `FleetMetricSample` 历史采样表
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api` — 注册/心跳协议扩展为 HostInfo + HostState，新增实例 metrics 查询接口，并向节点下发 10 秒任务轮询策略
+- [x] `/Users/kevin/Data/Project/x-panel/backend/app/service/fleet_reporter.go` — 使用 gopsutil 采集 Nezha 风格硬件/状态指标，并将任务 poll 拆为独立 10 秒 worker
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 实例列表和详情展示 CPU、内存、磁盘、负载、网络、连接数、进程数，并优化任务等待文案
+- [x] `/Users/kevin/Data/Project/fleet-center/docs/fleet-protocol.md` — 更新 Fleet 上报协议、任务短轮询和 metrics 查询说明
+
+### 关键决策
+
+- 心跳/状态上报仍默认 300 秒，避免监控采样写入压力过高；任务拉取独立为 10 秒，解决“等待节点领取”体验问题
+- 磁盘一期采用根分区聚合容量/占用，不上报挂载路径明细，降低隐私暴露和 UI 复杂度
+- Fleet Center 同时保存实例最新快照与 7 天原始采样，为后续趋势图、告警和降采样预留基础
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] `go test ./app/service ./init/migration`（X-Panel backend）通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server`（X-Panel backend）通过
+- [x] 临时接口闭环验证：注册/心跳写入监控字段、metrics 查询、任务 10 秒轮询策略均通过
+- [x] `ReadLints` 检查相关文件无新增诊断
+
+### 下一步
+
+- 部署新版本后观察真实节点磁盘、网络和连接数指标是否稳定；后续可继续增加趋势图和告警策略
+
+---
+
 ## 2026-04-29 — Session #90：Fleet Task 通道一期
 
 ### 完成内容

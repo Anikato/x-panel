@@ -81,7 +81,7 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 		"AutoUpgrade": true, "AppearanceConfig": true,
 		"ProxyEnable": true, "ProxyType": true,
 		"ProxyAddress": true, "ProxyNoProxy": true,
-		"FleetEnabled": true, "FleetEndpoint": true, "FleetHeartbeatIntervalSeconds": true,
+		"FleetEnabled": true, "FleetEndpoint": true, "FleetHeartbeatIntervalSeconds": true, "FleetTaskPollIntervalSeconds": true,
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)
