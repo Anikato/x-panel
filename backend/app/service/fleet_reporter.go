@@ -166,6 +166,10 @@ type fleetTailPanelLogPayload struct {
 	Keyword string `json:"keyword"`
 }
 
+type fleetOpenShellPayload struct {
+	SessionID string `json:"sessionId"`
+}
+
 type fleetTaskReportRequest struct {
 	InstanceID string `json:"instanceId"`
 	TaskID     uint   `json:"taskId"`
@@ -218,6 +222,8 @@ func (s *FleetReporterService) reportOnce() time.Duration {
 	if token == "" {
 		if err := s.register(endpoint, payload); err != nil {
 			global.LOG.Debugf("fleet reporter register failed: %v", err)
+		} else if token = s.settingValue(fleetSettingInstanceToken, ""); token != "" {
+			s.pollTasks(endpoint, payload.InstanceID, token)
 		}
 		return s.reportInterval()
 	}
@@ -230,6 +236,8 @@ func (s *FleetReporterService) reportOnce() time.Duration {
 				global.LOG.Debugf("fleet reporter re-register failed: %v", err)
 			}
 		}
+	} else {
+		s.pollTasks(endpoint, payload.InstanceID, token)
 	}
 	return s.reportInterval()
 }
@@ -303,19 +311,22 @@ func (s *FleetReporterService) pollTasks(endpoint, instanceID, token string) {
 	var data fleetTaskPollData
 	req := fleetTaskPollRequest{InstanceID: instanceID}
 	if err := s.postJSON(endpoint+"/api/v1/fleet/tasks/poll", token, req, &data); err != nil {
-		global.LOG.Debugf("fleet reporter poll tasks failed: %v", err)
+		global.LOG.Warnf("fleet reporter poll tasks failed: %v", err)
 		return
 	}
+	if len(data.Tasks) > 0 {
+		global.LOG.Infof("fleet reporter picked %d task(s)", len(data.Tasks))
+	}
 	for _, task := range data.Tasks {
-		report := s.executeTask(instanceID, task)
+		report := s.executeTask(endpoint, instanceID, token, task)
 		if err := s.postJSON(endpoint+"/api/v1/fleet/tasks/report", token, report, nil); err != nil {
-			global.LOG.Debugf("fleet reporter report task failed: task=%d err=%v", task.ID, err)
+			global.LOG.Warnf("fleet reporter report task failed: task=%d err=%v", task.ID, err)
 		}
 	}
 }
 
 func (s *FleetReporterService) startTaskWorker() {
-	time.Sleep(fleetStartupDelay + fleetTaskInterval)
+	time.Sleep(fleetStartupDelay)
 	for {
 		s.pollTasksOnce()
 		timer := time.NewTimer(s.taskPollInterval())
@@ -340,12 +351,24 @@ func (s *FleetReporterService) pollTasksOnce() {
 	s.pollTasks(endpoint, instanceID, token)
 }
 
-func (s *FleetReporterService) executeTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+func (s *FleetReporterService) executeTask(endpoint, instanceID, token string, task fleetTask) fleetTaskReportRequest {
 	report := fleetTaskReportRequest{
 		InstanceID: instanceID,
 		TaskID:     task.ID,
 		Status:     "failed",
 		ExitCode:   1,
+	}
+	if task.Type == "open_shell" {
+		var payload fleetOpenShellPayload
+		if err := json.Unmarshal(task.Payload, &payload); err != nil || strings.TrimSpace(payload.SessionID) == "" {
+			report.Error = "invalid shell session payload"
+			return report
+		}
+		go s.openFleetShell(endpoint, token, strings.TrimSpace(payload.SessionID))
+		report.Status = "success"
+		report.ExitCode = 0
+		report.Output = "shell session connecting"
+		return report
 	}
 	if task.Type != "tail_panel_log" {
 		report.Error = "unsupported task type"
@@ -373,9 +396,13 @@ func (s *FleetReporterService) executeTask(instanceID string, task fleetTask) fl
 
 	select {
 	case result := <-done:
+		if result.Status == "failed" {
+			global.LOG.Warnf("fleet reporter task failed: task=%d type=%s err=%s", task.ID, task.Type, result.Error)
+		}
 		return result
 	case <-time.After(fleetTaskTimeout):
 		report.Error = "task execution timeout"
+		global.LOG.Warnf("fleet reporter task timeout: task=%d type=%s", task.ID, task.Type)
 		return report
 	}
 }

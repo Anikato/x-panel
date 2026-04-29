@@ -4,6 +4,91 @@
 
 ---
 
+## 2026-04-29 — Session #94：Fleet 远程终端
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api/shell.go` — 新增远程终端会话、管理端 WebSocket、节点 WebSocket 和内存中继
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api/server.go` — 新增 shell 会话创建接口，并通过 `open_shell` 任务唤起节点反连
+- [x] `/Users/kevin/Data/Project/x-panel/backend/app/service/fleet_shell.go` — X-Panel 节点领取 `open_shell` 后启动本地 PTY，并主动连接 Fleet Center 中继
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 接入 xterm，实例详情新增“打开终端”按钮和远程终端弹层
+- [x] `/Users/kevin/Data/Project/fleet-center/docs` — 更新 Fleet 协议与部署文档，说明远程终端 WebSocket 路由和代理要求
+
+### 关键决策
+
+- 远程终端不复用 `FleetTask.output`，改用双向 WebSocket 字节流；Fleet Center 只做中继，不保存终端输出
+- 节点仍不暴露公网 API，由 X-Panel 主动连接 `/api/v1/fleet/shell/connect`
+- 浏览器通过管理端 WebSocket 连接 Fleet Center，节点通过实例 token 连接 Fleet Center，两个连接按 `sessionId` 绑定
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] `go test ./app/service ./init/migration`（X-Panel backend）通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server`（X-Panel backend）通过
+- [x] 临时接口验证：创建 shell session、生成 `open_shell` 任务、节点 poll 领取任务均通过
+
+### 下一步
+
+- 发布后确认 `fc.qm.mk` 管理端代理支持 WebSocket Upgrade，`fcapi.qm.mk` 已完整代理 `/api/v1/fleet/` 前缀
+
+---
+
+## 2026-04-29 — Session #93：Fleet 任务超时诊断增强
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend/internal/api/server.go` — 任务超时时区分“节点未领取”和“节点已领取但未回传”，写入可见错误原因
+- [x] `/Users/kevin/Data/Project/x-panel/backend/app/service/fleet_reporter.go` — 将任务 poll/report 失败提升为 warn 日志，并在领取任务、执行失败、执行超时时写入系统日志
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend/src/App.vue` — 超时任务按 `startedAt` 给出排障提示，帮助判断是 fcapi 路由/节点版本问题，还是节点执行/回传问题
+- [x] `/Users/kevin/Data/Project/fleet-center/docs/deployment.md` — 补充独立 `fcapi` 域名必须代理 `/api/v1/fleet/` 前缀，包含任务 poll/report 接口
+
+### 关键决策
+
+- 任务状态为 `timeout` 时，若 `startedAt` 为空，说明 Fleet Center 没见过节点领取任务；优先排查 X-Panel 是否重启、`FleetEndpoint` 是否正确、Nginx 是否放行 `/api/v1/fleet/tasks/poll`
+- 任务状态为 `timeout` 且 `startedAt` 非空，说明节点领取过但没有回传；优先查看 X-Panel 系统日志中的 `fleet reporter task/report` 记录
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] `go test ./app/service ./init/migration`（X-Panel backend）通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server`（X-Panel backend）通过
+- [x] `ReadLints` 检查相关文件无新增诊断
+
+### 下一步
+
+- 发布后如果仍出现超时，先检查 `fcapi.qm.mk` 的 Nginx 是否完整代理 `/api/v1/fleet/`，再查看节点 X-Panel 系统日志中的 Fleet Reporter warn 记录
+
+---
+
+## 2026-04-29 — Session #92：Fleet Center 任务与列表体验优化
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/x-panel/backend/app/service/fleet_reporter.go` — 任务 worker 启动后立即按 10 秒轮询，同时注册/心跳成功后也顺手 poll，降低日志任务长期 pending 的概率
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend/src/App.vue` — 登录页移除默认 `admin` 用户名；任务 pending 文案补充排障提示
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend/src/App.vue` — 实例列表改为巡检概览，只保留主机、版本、资源、磁盘、在线/心跳、操作，长字段移入详情
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend/src/styles/base.css` — 压缩表格长字段并新增资源占用条，提升多实例列表可读性
+
+### 关键决策
+
+- “等待节点领取”表示任务已创建但节点尚未 poll；新版节点默认 10 秒轮询，超过 1 分钟仍 pending 时应优先检查节点版本、服务是否重启、`fcapi.qm.mk` 访问是否正常
+- 资源占用更新仍跟随心跳策略，默认 300 秒一次；任务拉取独立短轮询，避免为了日志任务提高整体监控写入频率
+
+### 验证
+
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] `go test ./app/service ./init/migration`（X-Panel backend）通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server`（X-Panel backend）通过
+- [x] `ReadLints` 检查相关文件无新增诊断
+
+### 下一步
+
+- 发布后在真实节点上重新创建日志任务，若仍 pending，查看节点调试日志中的 `fleet reporter poll tasks failed` 具体错误
+
+---
+
 ## 2026-04-29 — Session #91：Fleet Nezha 化监控增强
 
 ### 完成内容
