@@ -4,6 +4,89 @@
 
 ---
 
+## 2026-04-29 — Session #87：X-Panel 默认 Fleet Reporter 接入
+
+### 完成内容
+
+- [x] `backend/app/service/fleet_reporter.go` — 新增默认启用的 Fleet Reporter，启动后生成稳定实例 ID，注册到 `https://fcapi.qm.mk` 并周期心跳
+- [x] `backend/init/migration/migration.go` — 新增 `FleetEnabled`、`FleetEndpoint`、`FleetInstanceID`、`FleetInstanceToken` 默认设置项
+- [x] `backend/server/server.go` — 服务启动流程接入 Fleet Reporter，失败只记录调试日志，不影响面板启动
+- [x] `backend/app/service/setting.go` — 允许通过设置接口调整 `FleetEnabled` 和 `FleetEndpoint`
+
+### 关键决策
+
+- 第一版只上报面板版本、主机名、系统、内核、架构、运行时间、时区、虚拟化、TCP 拥塞控制、CPU 型号/核心数和总内存
+- Fleet Reporter 不复用完整监控采集，避免额外采集公网 IP、进程列表、磁盘和网络流量等非必要信息
+- 上报 endpoint 默认使用公网 ingest 域名 `https://fcapi.qm.mk`，管理后台仍通过内网域名访问
+
+### 验证
+
+- [x] `go test ./app/service ./server ./init/migration` 通过
+- [x] `go build -o /tmp/xpanel-server ./cmd/server` 通过
+- [ ] `go test ./...` 未完成：依赖下载阶段长时间无进展，已改用受影响包测试和服务端构建验证
+
+### 下一步
+
+- 发布/部署新版 X-Panel 后，在 Fleet Center 管理后台确认真实实例自动注册与心跳刷新
+
+---
+
+## 2026-04-28 — Session #86：Fleet Center 登录鉴权与部署文档
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center/backend` — 新增管理端登录接口与 HMAC 会话 token，管理 API 改为必须登录后访问
+- [x] `/Users/kevin/Data/Project/fleet-center/frontend` — 新增 Fleet Center 登录页，移除前端构建期内置 admin token 的方式
+- [x] `/Users/kevin/Data/Project/fleet-center/docs/deployment.md` — 补充二进制构建、环境变量、systemd、Nginx HTTPS 反代、验证命令和安全建议
+- [x] `/Users/kevin/Data/Project/fleet-center/docs/fleet-protocol.md` / `README.md` — 同步登录 token 语义和部署入口
+
+### 关键决策
+
+- Fleet Center 管理端使用 `FLEET_ADMIN_USER`、`FLEET_ADMIN_PASSWORD` 登录，使用 `FLEET_SESSION_SECRET` 签发短期会话 token
+- 前端不再暴露固定管理 token，部署时只需配置后端环境变量
+- 生产部署建议后端只监听 `127.0.0.1:8088`，由 Nginx 负责 HTTPS 和静态文件服务
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] 手动验证 `/api/v1/auth/login` 可签发 token，带 token 可访问 `/api/v1/admin/fleet/summary`，无 token 返回 401
+- [x] `ReadLints` 检查 Fleet Center 后端和前端源码无新增诊断
+
+### 下一步
+
+- 部署 Fleet Center 后，将公开访问地址接入 X-Panel 默认 `Fleet Reporter`
+
+---
+
+## 2026-04-28 — Session #85：Fleet Center 独立项目初始化
+
+### 完成内容
+
+- [x] `/Users/kevin/Data/Project/fleet-center` — 新建独立私有 Fleet Center 项目骨架，不合并到 X-Panel 主仓库
+- [x] `backend/` — 实现 Go + Gin + SQLite 的注册、心跳、实例列表、统计摘要 API
+- [x] `frontend/` — 实现 Vue 3 + Vite 的面板实例总览页，展示主机名、版本、系统、内核、架构、CPU、内存、运行时间、虚拟化、TCP 拥塞控制和最后心跳
+- [x] `docs/fleet-protocol.md` — 固化 Fleet Reporter 与 Fleet Center 的第一版上报协议
+
+### 关键决策
+
+- Fleet Center 作为独立私有项目维护，X-Panel 主仓库后续只接入默认启用的 `Fleet Reporter`
+- 第一版只做资产发现与版本态势，不加入远程命令执行或批量升级，降低默认上报带来的安全风险
+- 后端 SQLite 使用纯 Go 驱动，避免 Fleet Center 依赖 CGO 编译环境
+
+### 验证
+
+- [x] `go test ./...`（Fleet Center backend）通过
+- [x] `npm run build`（Fleet Center frontend）通过
+- [x] 手动调用 `/api/v1/fleet/register`、`/api/v1/admin/fleet/summary`、`/api/v1/admin/fleet/instances` 验证链路通过
+- [x] `ReadLints` 检查 Fleet Center 后端和前端源码无新增诊断
+
+### 下一步
+
+- 回到 X-Panel 增加默认启用的 `Fleet Reporter`，生成稳定实例 ID 并周期上报到 Fleet Center
+
+---
+
 ## 2026-04-28 — Session #84：全局页面概览模式沉淀
 
 ### 完成内容

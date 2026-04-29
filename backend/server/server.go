@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
+	"xpanel/app/service"
 	"xpanel/global"
 	"xpanel/i18n"
-	"xpanel/app/service"
 	initAuth "xpanel/init/auth"
 	initCron "xpanel/init/cron"
 	initDB "xpanel/init/db"
@@ -69,7 +69,10 @@ func Start() {
 	nodeService := service.NewINodeService()
 	nodeService.StartHeartbeat()
 
-	// 8.5 GOST 配置同步（如果 GOST 已安装且运行中，全量推送规则）
+	// 8.5 Fleet Center 默认上报（失败不影响面板启动）
+	service.NewIFleetReporterService().Start()
+
+	// 8.6 GOST 配置同步（如果 GOST 已安装且运行中，全量推送规则）
 	go func() {
 		gostSvc := service.NewIGostService()
 		if err := gostSvc.SyncAll(); err != nil {

@@ -256,6 +256,10 @@ func initDefaultSettings() {
 		{Key: "ProxyType", Value: "mix"},
 		{Key: "ProxyAddress", Value: ""},
 		{Key: "ProxyNoProxy", Value: "localhost,127.0.0.1,::1"},
+		{Key: "FleetEnabled", Value: "enable"},
+		{Key: "FleetEndpoint", Value: "https://fcapi.qm.mk"},
+		{Key: "FleetInstanceID", Value: ""},
+		{Key: "FleetInstanceToken", Value: ""},
 	}
 
 	for _, s := range defaults {
