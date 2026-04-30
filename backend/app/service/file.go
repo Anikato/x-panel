@@ -630,14 +630,14 @@ func (s *FileService) GetUsersAndGroups() (*dto.UserGroupResp, error) {
 		return nil, buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
-	// 读取有效用户
-	users, groupSet, err := getValidUsers(groupMap)
+	// 读取用户
+	users, _, err := getValidUsers(groupMap)
 	if err != nil {
 		return nil, buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
 	var groups []string
-	for group := range groupSet {
+	for group := range groupMap {
 		groups = append(groups, group)
 	}
 	sort.Strings(groups)
@@ -648,7 +648,7 @@ func (s *FileService) GetUsersAndGroups() (*dto.UserGroupResp, error) {
 	}, nil
 }
 
-// getValidGroups 读取 /etc/group 获取有效用户组
+// getValidGroups 读取 /etc/group 获取用户组，包含系统组，便于 chown 到 www-data 等服务用户。
 func getValidGroups() (map[string]bool, error) {
 	f, err := os.Open("/etc/group")
 	if err != nil {
@@ -664,16 +664,15 @@ func getValidGroups() (map[string]bool, error) {
 			continue
 		}
 		groupName := parts[0]
-		gid, _ := strconv.Atoi(parts[2])
-		// root 和 GID >= 1000 的用户组
-		if groupName == "root" || gid >= 1000 {
-			groupMap[groupName] = true
+		if groupName == "" {
+			continue
 		}
+		groupMap[groupName] = true
 	}
 	return groupMap, scanner.Err()
 }
 
-// getValidUsers 读取 /etc/passwd 获取有效用户
+// getValidUsers 读取 /etc/passwd 获取用户，包含系统用户，便于文件所有者修复。
 func getValidUsers(validGroups map[string]bool) ([]dto.UserInfo, map[string]struct{}, error) {
 	f, err := os.Open("/etc/passwd")
 	if err != nil {
@@ -692,9 +691,7 @@ func getValidUsers(validGroups map[string]bool) ([]dto.UserInfo, map[string]stru
 		username := parts[0]
 		uid, _ := strconv.Atoi(parts[2])
 		gid := parts[3]
-
-		// 只要 root 和 UID >= 1000 的普通用户
-		if username != "root" && uid < 1000 {
+		if username == "" {
 			continue
 		}
 
@@ -710,6 +707,9 @@ func getValidUsers(validGroups map[string]bool) ([]dto.UserInfo, map[string]stru
 		users = append(users, dto.UserInfo{
 			Username: username,
 			Group:    groupName,
+			Uid:      parts[2],
+			Gid:      gid,
+			System:   username != "root" && uid < 1000,
 		})
 		groupSet[groupName] = struct{}{}
 	}
@@ -957,9 +957,9 @@ func (s *FileService) GetFileTree(req dto.FileTreeReq) ([]dto.FileTreeNode, erro
 		}
 		fullPath := filepath.Join(cleanPath, entry.Name())
 		node := dto.FileTreeNode{
-			ID:   fullPath,
-			Name: entry.Name(),
-			Path: fullPath,
+			ID:    fullPath,
+			Name:  entry.Name(),
+			Path:  fullPath,
 			IsDir: true,
 		}
 		// 浅层：只检查是否有子目录

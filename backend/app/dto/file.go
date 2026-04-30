@@ -59,8 +59,8 @@ type FileMoveReq struct {
 	SrcPaths       []string `json:"srcPaths" binding:"required"`
 	DstPath        string   `json:"dstPath" binding:"required"`
 	IsCopy         bool     `json:"isCopy"`
-	Cover          bool     `json:"cover"`           // 兼容旧字段
-	ConflictPolicy string   `json:"conflictPolicy"`  // overwrite | skip（默认 overwrite）
+	Cover          bool     `json:"cover"`          // 兼容旧字段
+	ConflictPolicy string   `json:"conflictPolicy"` // overwrite | skip（默认 overwrite）
 }
 
 // FileContentReq 获取文件内容
@@ -128,6 +128,9 @@ type FileTreeNode struct {
 type UserInfo struct {
 	Username string `json:"username"`
 	Group    string `json:"group"`
+	Uid      string `json:"uid"`
+	Gid      string `json:"gid"`
+	System   bool   `json:"system"`
 }
 
 // UserGroupResp 用户和组列表响应

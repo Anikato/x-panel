@@ -5,17 +5,17 @@
         <el-input :model-value="form.path" disabled />
       </el-form-item>
       <el-form-item :label="t('file.ownerUser')">
-        <el-select v-model="form.user" filterable style="width: 100%">
+        <el-select v-model="form.user" filterable allow-create default-first-option style="width: 100%">
           <el-option
             v-for="u in users"
-            :key="u.username"
-            :label="`${u.username} (${u.group})`"
+            :key="u.uid"
+            :label="`${u.username} (${u.uid}) · ${u.group}${u.system ? ' · system' : ''}`"
             :value="u.username"
           />
         </el-select>
       </el-form-item>
       <el-form-item :label="t('file.ownerGroup')">
-        <el-select v-model="form.group" filterable style="width: 100%">
+        <el-select v-model="form.group" filterable allow-create default-first-option style="width: 100%">
           <el-option v-for="g in groups" :key="g" :label="g" :value="g" />
         </el-select>
       </el-form-item>
@@ -41,8 +41,8 @@ const emit = defineEmits(['done'])
 const visible = ref(false)
 const loading = ref(false)
 const loadingUsers = ref(false)
-const form = ref({ path: '', user: '', group: '', sub: false })
-const users = ref<{ username: string; group: string }[]>([])
+const form = ref({ path: '', user: '', group: '', sub: true })
+const users = ref<{ username: string; group: string; uid: string; gid: string; system?: boolean }[]>([])
 const groups = ref<string[]>([])
 
 const loadUsersAndGroups = async () => {
@@ -57,7 +57,7 @@ const loadUsersAndGroups = async () => {
 }
 
 const open = (path: string, currentUser: string, currentGroup: string) => {
-  form.value = { path, user: currentUser, group: currentGroup, sub: false }
+  form.value = { path, user: currentUser, group: currentGroup, sub: true }
   visible.value = true
   loadUsersAndGroups()
 }

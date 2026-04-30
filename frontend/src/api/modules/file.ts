@@ -78,7 +78,10 @@ export const getDirSize = (params: { path: string }) => {
 }
 
 export const getUsersAndGroups = () => {
-  return http.post('/files/user/group', {})
+  return http.post<{
+    users: { username: string; group: string; uid: string; gid: string; system?: boolean }[]
+    groups: string[]
+  }>('/files/user/group', {})
 }
 
 // ===================== 异步任务 =====================

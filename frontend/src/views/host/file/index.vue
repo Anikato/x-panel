@@ -248,8 +248,7 @@
                   <el-dropdown-item command="copyPath">{{ t('file.copyPath') }}</el-dropdown-item>
                   <el-dropdown-item command="copy">{{ t('file.copyTo') }}</el-dropdown-item>
                   <el-dropdown-item command="cut">{{ t('file.moveTo') }}</el-dropdown-item>
-                  <el-dropdown-item command="permission">{{ t('file.changePermission') }}</el-dropdown-item>
-                  <el-dropdown-item command="chown">{{ t('file.changeOwner') }}</el-dropdown-item>
+                  <el-dropdown-item command="permission">{{ t('file.changePermission') }} / {{ t('file.changeOwner') }}</el-dropdown-item>
                   <el-dropdown-item v-if="isCompressFile(row)" command="decompress">{{ t('file.decompress') }}</el-dropdown-item>
                   <el-dropdown-item command="compress">{{ t('file.compress') }}</el-dropdown-item>
                   <el-dropdown-item command="delete" divided>
@@ -831,7 +830,7 @@ function openBatchPermission() {
   if (selectedRows.value.length === 0) return
   // 打开第一个文件的权限弹窗（后续可扩展为批量）
   const row = selectedRows.value[0]
-  permissionRef.value?.open(row.path, row.mode)
+  permissionRef.value?.open(row.path, row.mode, row.user, row.group)
 }
 
 // ===================== 拖拽上传 =====================
@@ -961,7 +960,7 @@ function handleDecompress(row: FileInfo | null) {
 
 function openPermission(row: FileInfo | null) {
   if (!row) return
-  permissionRef.value?.open(row.path, row.mode)
+  permissionRef.value?.open(row.path, row.mode, row.user, row.group)
 }
 
 // ===================== 所有者 =====================
@@ -993,7 +992,6 @@ function handleMoreAction(cmd: string, row: FileInfo) {
     case 'copy': setClipboard('copy', [row]); break
     case 'cut': setClipboard('cut', [row]); break
     case 'permission': openPermission(row); break
-    case 'chown': openChown(row); break
     case 'compress': handleCompressSingle(row); break
     case 'decompress': handleDecompress(row); break
     case 'delete': handleDelete(row); break
@@ -1324,4 +1322,3 @@ onBeforeUnmount(() => {
   .footer-hint { display: block; }
 }
 </style>
-

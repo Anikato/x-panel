@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"xpanel/app/dto"
 	"xpanel/app/version"
 	"xpanel/global"
 
@@ -178,6 +179,10 @@ type fleetRunCommandPayload struct {
 	TimeoutSeconds int    `json:"timeoutSeconds"`
 	Cwd            string `json:"cwd"`
 	Shell          string `json:"shell"`
+}
+
+type fleetPanelUpgradePayload struct {
+	ReleaseURL string `json:"releaseUrl"`
 }
 
 type fleetTaskReportRequest struct {
@@ -387,6 +392,12 @@ func (s *FleetReporterService) executeTask(endpoint, instanceID, token string, t
 	if task.Type == "run_command" {
 		return s.executeRunCommandTask(instanceID, task)
 	}
+	if task.Type == "panel_check_update" {
+		return s.executePanelCheckUpdateTask(instanceID, task)
+	}
+	if task.Type == "panel_upgrade" {
+		return s.executePanelUpgradeTask(instanceID, task)
+	}
 	if task.Type != "tail_panel_log" {
 		report.Error = "unsupported task type"
 		return report
@@ -495,6 +506,71 @@ func (s *FleetReporterService) executeRunCommandTask(instanceID string, task fle
 	report.Status = "success"
 	report.ExitCode = 0
 	return report
+}
+
+func (s *FleetReporterService) executePanelCheckUpdateTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+	report := fleetTaskReportRequest{
+		InstanceID: instanceID,
+		TaskID:     task.ID,
+		Status:     "failed",
+		ExitCode:   1,
+	}
+	payload := parseFleetPanelUpgradePayload(task.Payload)
+	info, err := NewIUpgradeService().CheckUpdate(dto.UpgradeCheckReq{ReleaseURL: payload.ReleaseURL})
+	if err != nil {
+		report.Error = err.Error()
+		return report
+	}
+	data, _ := json.MarshalIndent(info, "", "  ")
+	report.Status = "success"
+	report.ExitCode = 0
+	report.Output, report.Truncated = truncateFleetTaskOutput(string(data))
+	return report
+}
+
+func (s *FleetReporterService) executePanelUpgradeTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+	report := fleetTaskReportRequest{
+		InstanceID: instanceID,
+		TaskID:     task.ID,
+		Status:     "failed",
+		ExitCode:   1,
+	}
+	payload := parseFleetPanelUpgradePayload(task.Payload)
+	svc := NewIUpgradeService()
+	info, err := svc.CheckUpdate(dto.UpgradeCheckReq{ReleaseURL: payload.ReleaseURL})
+	if err != nil {
+		report.Error = err.Error()
+		return report
+	}
+	if !info.HasUpdate {
+		report.Status = "success"
+		report.ExitCode = 0
+		report.Output = fmt.Sprintf("already latest: %s", info.CurrentVersion)
+		return report
+	}
+	if err := svc.DoUpgrade(dto.UpgradeReq{
+		Version:     info.LatestVersion,
+		DownloadURL: info.DownloadURL,
+		ChecksumURL: info.ChecksumURL,
+	}); err != nil {
+		report.Error = err.Error()
+		return report
+	}
+	report.Status = "success"
+	report.ExitCode = 0
+	data, _ := json.MarshalIndent(info, "", "  ")
+	report.Output = "upgrade started\n" + string(data)
+	report.Output, report.Truncated = truncateFleetTaskOutput(report.Output)
+	return report
+}
+
+func parseFleetPanelUpgradePayload(raw json.RawMessage) fleetPanelUpgradePayload {
+	var payload fleetPanelUpgradePayload
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &payload)
+	}
+	payload.ReleaseURL = strings.TrimSpace(payload.ReleaseURL)
+	return payload
 }
 
 func executeTailPanelLog(raw json.RawMessage) (string, error) {
