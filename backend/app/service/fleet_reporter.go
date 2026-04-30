@@ -2,11 +2,13 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -168,6 +170,13 @@ type fleetTailPanelLogPayload struct {
 
 type fleetOpenShellPayload struct {
 	SessionID string `json:"sessionId"`
+}
+
+type fleetRunCommandPayload struct {
+	Command        string `json:"command"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
+	Cwd            string `json:"cwd"`
+	Shell          string `json:"shell"`
 }
 
 type fleetTaskReportRequest struct {
@@ -370,6 +379,9 @@ func (s *FleetReporterService) executeTask(endpoint, instanceID, token string, t
 		report.Output = "shell session connecting"
 		return report
 	}
+	if task.Type == "run_command" {
+		return s.executeRunCommandTask(instanceID, task)
+	}
 	if task.Type != "tail_panel_log" {
 		report.Error = "unsupported task type"
 		return report
@@ -405,6 +417,75 @@ func (s *FleetReporterService) executeTask(endpoint, instanceID, token string, t
 		global.LOG.Warnf("fleet reporter task timeout: task=%d type=%s", task.ID, task.Type)
 		return report
 	}
+}
+
+func (s *FleetReporterService) executeRunCommandTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+	report := fleetTaskReportRequest{
+		InstanceID: instanceID,
+		TaskID:     task.ID,
+		Status:     "failed",
+		ExitCode:   1,
+	}
+	var payload fleetRunCommandPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		report.Error = err.Error()
+		return report
+	}
+	payload.Command = strings.TrimSpace(payload.Command)
+	if payload.Command == "" {
+		report.Error = "empty command"
+		return report
+	}
+	if payload.TimeoutSeconds <= 0 {
+		payload.TimeoutSeconds = 30
+	}
+	if payload.TimeoutSeconds > 300 {
+		payload.TimeoutSeconds = 300
+	}
+	payload.Shell = strings.TrimSpace(payload.Shell)
+	if payload.Shell == "" {
+		payload.Shell = "/bin/bash"
+	}
+	if payload.Shell != "/bin/bash" && payload.Shell != "/bin/sh" {
+		report.Error = "unsupported shell"
+		return report
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(payload.TimeoutSeconds)*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, payload.Shell, "-lc", payload.Command)
+	if strings.TrimSpace(payload.Cwd) != "" {
+		cmd.Dir = strings.TrimSpace(payload.Cwd)
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		report.Error = fmt.Sprintf("command timeout after %d seconds", payload.TimeoutSeconds)
+		report.ExitCode = -1
+		report.Output, report.Truncated = truncateFleetTaskOutput(stdout.String())
+		return report
+	}
+	report.Output, report.Truncated = truncateFleetTaskOutput(stdout.String())
+	errorText, errorTruncated := truncateFleetTaskOutput(stderr.String())
+	report.Error = errorText
+	report.Truncated = report.Truncated || errorTruncated
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			report.ExitCode = exitErr.ExitCode()
+		}
+		if report.Error == "" {
+			report.Error = err.Error()
+		}
+		global.LOG.Warnf("fleet reporter command failed: task=%d exit=%d err=%s", task.ID, report.ExitCode, report.Error)
+		return report
+	}
+	report.Status = "success"
+	report.ExitCode = 0
+	return report
 }
 
 func executeTailPanelLog(raw json.RawMessage) (string, error) {
