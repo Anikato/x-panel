@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"xpanel/app/version"
@@ -373,10 +374,14 @@ func (s *FleetReporterService) executeTask(endpoint, instanceID, token string, t
 			report.Error = "invalid shell session payload"
 			return report
 		}
-		go s.openFleetShell(endpoint, token, strings.TrimSpace(payload.SessionID))
+		if err := s.openFleetShell(endpoint, token, strings.TrimSpace(payload.SessionID)); err != nil {
+			report.Error = err.Error()
+			global.LOG.Warnf("fleet shell connect failed: %v", err)
+			return report
+		}
 		report.Status = "success"
 		report.ExitCode = 0
-		report.Output = "shell session connecting"
+		report.Output = "shell session connected"
 		return report
 	}
 	if task.Type == "run_command" {
@@ -455,6 +460,7 @@ func (s *FleetReporterService) executeRunCommandTask(instanceID string, task fle
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, payload.Shell, "-lc", payload.Command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if strings.TrimSpace(payload.Cwd) != "" {
 		cmd.Dir = strings.TrimSpace(payload.Cwd)
 	}
@@ -464,6 +470,9 @@ func (s *FleetReporterService) executeRunCommandTask(instanceID string, task fle
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
 		report.Error = fmt.Sprintf("command timeout after %d seconds", payload.TimeoutSeconds)
 		report.ExitCode = -1
 		report.Output, report.Truncated = truncateFleetTaskOutput(stdout.String())

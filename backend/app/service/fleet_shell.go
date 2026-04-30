@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,25 +23,41 @@ type fleetShellResize struct {
 	Cols uint16 `json:"cols"`
 }
 
-func (s *FleetReporterService) openFleetShell(endpoint, token, sessionID string) {
+func (s *FleetReporterService) openFleetShell(endpoint, token, sessionID string) error {
 	wsURL, err := fleetShellURL(endpoint, sessionID)
 	if err != nil {
-		global.LOG.Warnf("fleet shell build url failed: %v", err)
-		return
+		return fmt.Errorf("build shell url: %w", err)
 	}
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+token)
 	header.Set("User-Agent", "X-Panel Fleet Shell")
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
-		global.LOG.Warnf("fleet shell connect failed: %v", err)
-		return
+		return fmt.Errorf("connect shell websocket: %w%s", err, fleetShellHandshakeDetail(resp))
 	}
-	defer conn.Close()
 
-	if err := runFleetShellPTY(conn); err != nil {
-		global.LOG.Warnf("fleet shell closed: %v", err)
+	go func() {
+		defer conn.Close()
+		if err := runFleetShellPTY(conn); err != nil {
+			global.LOG.Warnf("fleet shell closed: %v", err)
+		}
+	}()
+	return nil
+}
+
+func fleetShellHandshakeDetail(resp *http.Response) string {
+	if resp == nil {
+		return ""
 	}
+	var body []byte
+	if resp.Body != nil {
+		body, _ = io.ReadAll(io.LimitReader(resp.Body, 512))
+		_ = resp.Body.Close()
+	}
+	if len(body) == 0 {
+		return fmt.Sprintf(" (http=%d)", resp.StatusCode)
+	}
+	return fmt.Sprintf(" (http=%d body=%q)", resp.StatusCode, strings.TrimSpace(string(body)))
 }
 
 func fleetShellURL(endpoint, sessionID string) (string, error) {
