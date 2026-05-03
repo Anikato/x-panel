@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -82,17 +83,23 @@ type fleetPanelPayload struct {
 }
 
 type fleetHostPayload struct {
-	Hostname        string `json:"hostname"`
-	OS              string `json:"os"`
-	Platform        string `json:"platform"`
-	PlatformVersion string `json:"platformVersion"`
-	KernelVersion   string `json:"kernelVersion"`
-	KernelArch      string `json:"kernelArch"`
-	Uptime          uint64 `json:"uptime"`
-	BootTime        uint64 `json:"bootTime"`
-	Timezone        string `json:"timezone"`
-	Virtualization  string `json:"virtualization"`
-	TCPCongestion   string `json:"tcpCongestion"`
+	Hostname          string                         `json:"hostname"`
+	OS                string                         `json:"os"`
+	Platform          string                         `json:"platform"`
+	PlatformVersion   string                         `json:"platformVersion"`
+	KernelVersion     string                         `json:"kernelVersion"`
+	KernelArch        string                         `json:"kernelArch"`
+	Uptime            uint64                         `json:"uptime"`
+	BootTime          uint64                         `json:"bootTime"`
+	Timezone          string                         `json:"timezone"`
+	Virtualization    string                         `json:"virtualization"`
+	TCPCongestion     string                         `json:"tcpCongestion"`
+	NetworkInterfaces []fleetNetworkInterfacePayload `json:"networkInterfaces"`
+}
+
+type fleetNetworkInterfacePayload struct {
+	Name string   `json:"name"`
+	IPs  []string `json:"ips"`
 }
 
 type fleetCPUPayload struct {
@@ -700,6 +707,7 @@ func (s *FleetReporterService) buildFleetPayload(instanceID string) (fleetPayloa
 	}
 	payload.Host.Timezone = getTimezone()
 	payload.Host.TCPCongestion = getTCPCongestion()
+	payload.Host.NetworkInterfaces = collectNetworkInterfaces()
 	payload.Host.Uptime, _ = hostUtil.Uptime()
 
 	cpuInfo, _ := cpu.Info()
@@ -735,6 +743,66 @@ func (s *FleetReporterService) buildFleetPayload(instanceID string) (fleetPayloa
 	payload.State.NetInTransfer, payload.State.NetOutTransfer, payload.State.NetInSpeed, payload.State.NetOutSpeed = s.networkState()
 
 	return payload, nil
+}
+
+func collectNetworkInterfaces() []fleetNetworkInterfacePayload {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	result := make([]fleetNetworkInterfacePayload, 0, len(interfaces))
+	for _, item := range interfaces {
+		if shouldSkipNetworkInterface(item) {
+			continue
+		}
+		addrs, err := item.Addrs()
+		if err != nil {
+			continue
+		}
+		ips := make([]string, 0, len(addrs))
+		for _, addr := range addrs {
+			ip := ipFromAddr(addr)
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+				continue
+			}
+			ips = append(ips, ip.String())
+		}
+		if len(ips) > 0 {
+			result = append(result, fleetNetworkInterfacePayload{Name: item.Name, IPs: ips})
+		}
+	}
+	return result
+}
+
+func shouldSkipNetworkInterface(item net.Interface) bool {
+	if item.Flags&net.FlagUp == 0 || item.Flags&net.FlagLoopback != 0 {
+		return true
+	}
+	name := strings.ToLower(item.Name)
+	prefixes := []string{
+		"docker", "br-", "veth", "cni", "flannel", "kube", "tunl", "ipvs", "nerdctl",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(name, "docker")
+}
+
+func ipFromAddr(addr net.Addr) net.IP {
+	switch value := addr.(type) {
+	case *net.IPNet:
+		return value.IP
+	case *net.IPAddr:
+		return value.IP
+	default:
+		ip, _, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			return nil
+		}
+		return ip
+	}
 }
 
 func connectionCount(kind string) uint64 {

@@ -36,6 +36,7 @@ backend/data/
 docs/*
 !docs/worklog.md
 !docs/versioning.md
+!docs/fleet-reporter.md
 
 # SSH keys (never commit!)
 main_id_rsa
