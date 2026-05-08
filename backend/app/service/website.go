@@ -1,11 +1,16 @@
 package service
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
@@ -38,6 +43,14 @@ type IWebsiteService interface {
 	ListConfFiles() ([]dto.NginxConfFileInfo, error)
 	GetConfFile(name string) (string, error)
 	SaveConfFile(req dto.NginxConfUpdate) error
+	ListConfBackups(filePath string) ([]dto.NginxConfBackupInfo, error)
+	RestoreConfBackup(req dto.NginxConfRestoreReq) error
+
+	// Low-cost diagnostics
+	CheckHealth(id uint) (*dto.WebsiteHealthResp, error)
+	InspectSite(id uint) (*dto.WebsiteInspectResp, error)
+	DetectLogPaths(id uint) (*dto.WebsiteLogPathDetectResp, error)
+	GetLogAlerts(req dto.WebsiteLogAlertReq) ([]dto.WebsiteLogAlert, error)
 }
 
 type WebsiteService struct {
@@ -77,6 +90,9 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		Remark:            req.Remark,
 		SiteDir:           req.SiteDir,
 		ProxyPass:         req.ProxyPass,
+		ConfigMode:        req.ConfigMode,
+		AccessLogPath:     strings.TrimSpace(req.AccessLogPath),
+		ErrorLogPath:      strings.TrimSpace(req.ErrorLogPath),
 		HttpPort:          req.HttpPort,
 		HttpsPort:         req.HttpsPort,
 		IndexFile:         "index.html index.htm",
@@ -88,6 +104,12 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		SecurityHeaders:   true,
 		StaticCacheEnable: false,
 	}
+	if site.ConfigMode == "" {
+		site.ConfigMode = "managed"
+	}
+	if site.ConfigMode == "source" {
+		site.Status = "running"
+	}
 
 	if site.Type == "static" && site.SiteDir == "" {
 		// 优先用 alias 作为目录名，更短且不含特殊字符
@@ -98,7 +120,7 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
-	if site.Type == "static" && site.SiteDir != "" {
+	if site.ConfigMode != "source" && site.Type == "static" && site.SiteDir != "" {
 		os.MkdirAll(site.SiteDir, 0755)
 		indexPath := filepath.Join(site.SiteDir, "index.html")
 		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
@@ -110,7 +132,7 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 	global.LOG.Infof("Website created: %s (%s)", site.PrimaryDomain, site.Type)
 
 	// Auto-enable if nginx is installed
-	if global.CONF.Nginx.IsInstalled() {
+	if site.ConfigMode != "source" && global.CONF.Nginx.IsInstalled() {
 		if err := s.autoEnable(&site); err != nil {
 			global.LOG.Warnf("Auto-enable website %s failed: %v", site.PrimaryDomain, err)
 		}
@@ -169,6 +191,8 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.Redirects = req.Redirects
 	site.AccessLog = req.AccessLog
 	site.ErrorLog = req.ErrorLog
+	site.AccessLogPath = strings.TrimSpace(req.AccessLogPath)
+	site.ErrorLogPath = strings.TrimSpace(req.ErrorLogPath)
 	site.GzipEnable = req.GzipEnable
 	site.SecurityHeaders = req.SecurityHeaders
 	site.StaticCacheEnable = req.StaticCacheEnable
@@ -211,14 +235,16 @@ func (s *WebsiteService) Delete(id uint) error {
 	}
 
 	nc := global.CONF.Nginx
-	needReload := site.Status == "running"
+	needReload := site.Status == "running" && site.ConfigMode != "source"
 
 	// 清理所有 nginx 配置文件（无论网站状态）
-	if nc.IsSystemMode() {
-		os.Remove(filepath.Join(nc.GetSitesDir(), site.Alias+".conf"))
-		os.Remove(filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf"))
-	} else {
-		os.Remove(GetSiteConfPath(site.Alias))
+	if site.ConfigMode != "source" {
+		if nc.IsSystemMode() {
+			os.Remove(filepath.Join(nc.GetSitesDir(), site.Alias+".conf"))
+			os.Remove(filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf"))
+		} else {
+			os.Remove(GetSiteConfPath(site.Alias))
+		}
 	}
 
 	// 删除 htpasswd 文件
@@ -259,7 +285,9 @@ func (s *WebsiteService) SearchWithPage(req dto.WebsiteSearch) (int64, []dto.Web
 			Type:          site.Type,
 			Status:        site.Status,
 			SSLEnable:     site.SSLEnable,
+			ConfigMode:    site.ConfigMode,
 			Remark:        site.Remark,
+			SiteDir:       site.SiteDir,
 			CreatedAt:     site.CreatedAt,
 		})
 	}
@@ -273,35 +301,37 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 	}
 
 	detail := &dto.WebsiteDetail{
-		ID:            site.ID,
-		PrimaryDomain: site.PrimaryDomain,
-		Domains:       site.Domains,
-		Alias:         site.Alias,
-		Type:          site.Type,
-		Status:        site.Status,
-		SiteDir:       site.SiteDir,
-		IndexFile:     site.IndexFile,
-		HttpPort:      site.HttpPort,
-		HttpsPort:     site.HttpsPort,
-		ProxyPass:     site.ProxyPass,
-		WebSocket:     site.WebSocket,
-		SSLEnable:     site.SSLEnable,
-		CertificateID: site.CertificateID,
-		HttpConfig:    site.HttpConfig,
-		HSTS:          site.HSTS,
-		Http2Enable:   site.Http2Enable,
-		SSLProtocols:  site.SSLProtocols,
-		BasicAuth:     site.BasicAuth,
-		BasicUser:     site.BasicUser,
-		BasicPassword: site.BasicPassword,
-		AntiLeech:     site.AntiLeech,
-		LeechReferers: site.LeechReferers,
-		LimitRate:     site.LimitRate,
-		LimitConn:     site.LimitConn,
-		Rewrite:       site.Rewrite,
-		Redirects:     site.Redirects,
-		AccessLog:     site.AccessLog,
-		ErrorLog:      site.ErrorLog,
+		ID:                site.ID,
+		PrimaryDomain:     site.PrimaryDomain,
+		Domains:           site.Domains,
+		Alias:             site.Alias,
+		Type:              site.Type,
+		Status:            site.Status,
+		SiteDir:           site.SiteDir,
+		IndexFile:         site.IndexFile,
+		HttpPort:          site.HttpPort,
+		HttpsPort:         site.HttpsPort,
+		ProxyPass:         site.ProxyPass,
+		WebSocket:         site.WebSocket,
+		SSLEnable:         site.SSLEnable,
+		CertificateID:     site.CertificateID,
+		HttpConfig:        site.HttpConfig,
+		HSTS:              site.HSTS,
+		Http2Enable:       site.Http2Enable,
+		SSLProtocols:      site.SSLProtocols,
+		BasicAuth:         site.BasicAuth,
+		BasicUser:         site.BasicUser,
+		BasicPassword:     site.BasicPassword,
+		AntiLeech:         site.AntiLeech,
+		LeechReferers:     site.LeechReferers,
+		LimitRate:         site.LimitRate,
+		LimitConn:         site.LimitConn,
+		Rewrite:           site.Rewrite,
+		Redirects:         site.Redirects,
+		AccessLog:         site.AccessLog,
+		ErrorLog:          site.ErrorLog,
+		AccessLogPath:     site.AccessLogPath,
+		ErrorLogPath:      site.ErrorLogPath,
 		GzipEnable:        site.GzipEnable,
 		SecurityHeaders:   site.SecurityHeaders,
 		StaticCacheEnable: site.StaticCacheEnable,
@@ -384,13 +414,12 @@ func (s *WebsiteService) GetSiteLog(req dto.WebsiteLogReq) (string, error) {
 		return "", buserr.New(constant.ErrRecordNotFound)
 	}
 
-	logDir := filepath.Join(global.CONF.Nginx.GetLogDir(), "sites")
 	var logPath string
 	switch req.Type {
 	case "access":
-		logPath = filepath.Join(logDir, site.PrimaryDomain+".access.log")
+		logPath = s.getWebsiteLogPath(site, "access")
 	case "error":
-		logPath = filepath.Join(logDir, site.PrimaryDomain+".error.log")
+		logPath = s.getWebsiteLogPath(site, "error")
 	default:
 		return "", fmt.Errorf("invalid log type")
 	}
@@ -408,6 +437,20 @@ func (s *WebsiteService) GetSiteLog(req dto.WebsiteLogReq) (string, error) {
 		return "", err
 	}
 	return output, nil
+}
+
+func (s *WebsiteService) getWebsiteLogPath(site model.Website, logType string) string {
+	if logType == "error" && strings.TrimSpace(site.ErrorLogPath) != "" {
+		return strings.TrimSpace(site.ErrorLogPath)
+	}
+	if logType == "access" && strings.TrimSpace(site.AccessLogPath) != "" {
+		return strings.TrimSpace(site.AccessLogPath)
+	}
+	logDir := filepath.Join(global.CONF.Nginx.GetLogDir(), "sites")
+	if logType == "error" {
+		return filepath.Join(logDir, site.PrimaryDomain+".error.log")
+	}
+	return filepath.Join(logDir, site.PrimaryDomain+".access.log")
 }
 
 // --- 源码模式配置编辑 ---
@@ -461,6 +504,7 @@ func (s *WebsiteService) SaveSiteConfContent(id uint, content string) error {
 
 	os.MkdirAll(filepath.Dir(confPath), 0755)
 	backup, _ := os.ReadFile(confPath)
+	_ = s.createConfigBackup(confPath)
 
 	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write config failed: %v", err)
@@ -551,6 +595,7 @@ func (s *WebsiteService) SaveMainConf(content string) error {
 	mainConf := nc.GetMainConf()
 
 	backup, _ := os.ReadFile(mainConf)
+	_ = s.createConfigBackup(mainConf)
 
 	if err := os.WriteFile(mainConf, []byte(content), 0644); err != nil {
 		return err
@@ -629,6 +674,7 @@ func (s *WebsiteService) SaveConfFile(req dto.NginxConfUpdate) error {
 	}
 
 	backup, _ := os.ReadFile(filePath)
+	_ = s.createConfigBackup(filePath)
 
 	if err := os.WriteFile(filePath, []byte(req.Content), 0644); err != nil {
 		return err
@@ -640,6 +686,264 @@ func (s *WebsiteService) SaveConfFile(req dto.NginxConfUpdate) error {
 	}
 
 	return s.reloadNginx()
+}
+
+func (s *WebsiteService) ListConfBackups(filePath string) ([]dto.NginxConfBackupInfo, error) {
+	dir := s.configBackupDir(filepath.Clean(filePath))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []dto.NginxConfBackupInfo{}, nil
+		}
+		return nil, err
+	}
+	var backups []dto.NginxConfBackupInfo
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		backups = append(backups, dto.NginxConfBackupInfo{
+			Name:      entry.Name(),
+			FilePath:  filepath.Join(dir, entry.Name()),
+			Size:      info.Size(),
+			CreatedAt: info.ModTime(),
+		})
+	}
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].CreatedAt.After(backups[j].CreatedAt)
+	})
+	return backups, nil
+}
+
+func (s *WebsiteService) RestoreConfBackup(req dto.NginxConfRestoreReq) error {
+	filePath := filepath.Clean(req.FilePath)
+	if !s.isAllowedNginxConfPath(filePath) {
+		return buserr.New(constant.ErrInvalidParams)
+	}
+	backupPath := filepath.Join(s.configBackupDir(filePath), filepath.Base(req.BackupName))
+	content, err := os.ReadFile(backupPath)
+	if err != nil {
+		return err
+	}
+	current, _ := os.ReadFile(filePath)
+	_ = s.createConfigBackup(filePath)
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		return err
+	}
+	if err := s.testNginxConfig(); err != nil {
+		if current != nil {
+			_ = os.WriteFile(filePath, current, 0644)
+		}
+		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+	}
+	return s.reloadNginx()
+}
+
+func (s *WebsiteService) createConfigBackup(filePath string) error {
+	filePath = filepath.Clean(filePath)
+	if filePath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil || len(data) == 0 {
+		return err
+	}
+	dir := s.configBackupDir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	name := time.Now().Format("20060102_150405") + "_" + filepath.Base(filePath)
+	return os.WriteFile(filepath.Join(dir, name), data, 0644)
+}
+
+func (s *WebsiteService) configBackupDir(filePath string) string {
+	safe := strings.NewReplacer("/", "__", "\\", "__", ":", "_").Replace(filepath.Clean(filePath))
+	return filepath.Join(global.CONF.System.DataDir, "nginx-backups", safe)
+}
+
+func (s *WebsiteService) isAllowedNginxConfPath(filePath string) bool {
+	nc := global.CONF.Nginx
+	confDir := filepath.Clean(nc.GetConfDir())
+	mainConf := filepath.Clean(nc.GetMainConf())
+	return filePath == mainConf || strings.HasPrefix(filePath, confDir+string(os.PathSeparator))
+}
+
+func (s *WebsiteService) CheckHealth(id uint) (*dto.WebsiteHealthResp, error) {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	domain := strings.TrimSpace(site.PrimaryDomain)
+	resp := &dto.WebsiteHealthResp{LastCheckedAt: time.Now()}
+	client := &http.Client{Timeout: 8 * time.Second}
+	for _, scheme := range []string{"http", "https"} {
+		url := scheme + "://" + domain
+		start := time.Now()
+		check := dto.WebsiteHealthCheck{URL: url}
+		r, err := client.Get(url)
+		check.LatencyMS = time.Since(start).Milliseconds()
+		if err != nil {
+			check.Error = err.Error()
+		} else {
+			check.StatusCode = r.StatusCode
+			check.OK = r.StatusCode >= 200 && r.StatusCode < 400
+			_ = r.Body.Close()
+		}
+		resp.Checks = append(resp.Checks, check)
+	}
+	resp.CertNotAfter, resp.CertDaysLeft, resp.CertError = checkCert(domain)
+	return resp, nil
+}
+
+func checkCert(domain string) (string, int, string) {
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	conn, err := tls.DialWithDialer(dialer, "tcp", net.JoinHostPort(domain, "443"), &tls.Config{ServerName: domain})
+	if err != nil {
+		return "", 0, err.Error()
+	}
+	defer conn.Close()
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return "", 0, "no certificate"
+	}
+	notAfter := certs[0].NotAfter
+	return notAfter.Format(time.RFC3339), int(time.Until(notAfter).Hours() / 24), ""
+}
+
+func (s *WebsiteService) InspectSite(id uint) (*dto.WebsiteInspectResp, error) {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	resp := &dto.WebsiteInspectResp{}
+	dir := strings.TrimSpace(site.SiteDir)
+	if dir == "" {
+		resp.Issues = append(resp.Issues, "未配置网站目录")
+		return resp, nil
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		resp.Issues = append(resp.Issues, "网站目录不存在或不是目录")
+		return resp, nil
+	}
+	resp.SiteDirExists = true
+	if entries, err := os.ReadDir(dir); err == nil {
+		resp.Readable = true
+		_ = entries
+	} else {
+		resp.Issues = append(resp.Issues, "当前面板进程无法读取网站目录")
+	}
+	indexFiles := strings.Fields(site.IndexFile)
+	if len(indexFiles) == 0 {
+		indexFiles = []string{"index.html", "index.htm", "index.php"}
+	}
+	for _, name := range indexFiles {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			resp.IndexFiles = append(resp.IndexFiles, name)
+		}
+	}
+	if len(resp.IndexFiles) == 0 && site.Type == "static" {
+		resp.Issues = append(resp.Issues, "未发现常见首页文件")
+	}
+	mode := info.Mode().Perm()
+	if mode&0444 == 0 || mode&0111 == 0 {
+		resp.Issues = append(resp.Issues, "目录权限可能不足，Nginx 可能无法读取或进入")
+	}
+	return resp, nil
+}
+
+func (s *WebsiteService) DetectLogPaths(id uint) (*dto.WebsiteLogPathDetectResp, error) {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	names := []string{site.PrimaryDomain, site.Alias}
+	logDirs := []string{
+		global.CONF.Nginx.GetLogDir(),
+		filepath.Join(global.CONF.Nginx.GetLogDir(), "sites"),
+		"/www/wwwlogs",
+		"/var/log/nginx",
+		"/var/log/nginx/sites",
+	}
+	resp := &dto.WebsiteLogPathDetectResp{}
+	seen := make(map[string]bool)
+	addIfExists := func(kind, p string) {
+		if seen[p] {
+			return
+		}
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			seen[p] = true
+			if kind == "error" {
+				resp.Error = append(resp.Error, p)
+			} else {
+				resp.Access = append(resp.Access, p)
+			}
+		}
+	}
+	for _, dir := range logDirs {
+		for _, name := range names {
+			if strings.TrimSpace(name) == "" {
+				continue
+			}
+			addIfExists("access", filepath.Join(dir, name+".access.log"))
+			addIfExists("access", filepath.Join(dir, name+".log"))
+			addIfExists("error", filepath.Join(dir, name+".error.log"))
+			addIfExists("error", filepath.Join(dir, name+".err.log"))
+		}
+	}
+	return resp, nil
+}
+
+func (s *WebsiteService) GetLogAlerts(req dto.WebsiteLogAlertReq) ([]dto.WebsiteLogAlert, error) {
+	site, err := s.websiteRepo.Get(repo.WithByID(req.ID))
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	logPath := s.getWebsiteLogPath(site, "access")
+	cutoff := parseCutoff(req.TimeRange)
+	entries, err := parseAccessLog(logPath, cutoff, maxLinesForRange(req.TimeRange))
+	if err != nil {
+		return []dto.WebsiteLogAlert{}, nil
+	}
+	if len(entries) == 0 {
+		return []dto.WebsiteLogAlert{}, nil
+	}
+	var alerts []dto.WebsiteLogAlert
+	var errors, notFound, threats int64
+	ipCount := make(map[string]int64)
+	for _, e := range entries {
+		if e.Status >= 500 {
+			errors++
+		}
+		if e.Status == 404 {
+			notFound++
+		}
+		if classifyThreat(e.URL) != "" {
+			threats++
+		}
+		ipCount[e.IP]++
+	}
+	total := int64(len(entries))
+	if float64(errors)/float64(total) > 0.05 {
+		alerts = append(alerts, dto.WebsiteLogAlert{Level: "danger", Type: "5xx", Message: "5xx 错误比例超过 5%", Count: errors})
+	}
+	if notFound > 100 || float64(notFound)/float64(total) > 0.2 {
+		alerts = append(alerts, dto.WebsiteLogAlert{Level: "warning", Type: "404", Message: "404 请求偏多，可能存在资源缺失或扫描", Count: notFound})
+	}
+	if threats > 0 {
+		alerts = append(alerts, dto.WebsiteLogAlert{Level: "warning", Type: "threat", Message: "发现疑似恶意探测请求", Count: threats})
+	}
+	for ip, count := range ipCount {
+		if count > 1000 || float64(count)/float64(total) > 0.35 {
+			alerts = append(alerts, dto.WebsiteLogAlert{Level: "warning", Type: "hot_ip", Message: "单个 IP 请求占比过高: " + ip, Count: count})
+			break
+		}
+	}
+	return alerts, nil
 }
 
 // --- 内部方法 ---
@@ -663,6 +967,7 @@ func (s *WebsiteService) applyConfig(site model.Website) error {
 		availPath := filepath.Join(availDir, site.Alias+".conf")
 		enabledPath := filepath.Join(enabledDir, site.Alias+".conf")
 		backup, _ := os.ReadFile(availPath)
+		_ = s.createConfigBackup(availPath)
 
 		if err := os.WriteFile(availPath, []byte(config), 0644); err != nil {
 			return fmt.Errorf("write config failed: %v", err)
@@ -693,6 +998,7 @@ func (s *WebsiteService) applyConfig(site model.Website) error {
 	// Prefix mode: write to conf.d
 	confPath := GetSiteConfPath(site.Alias)
 	backup, _ := os.ReadFile(confPath)
+	_ = s.createConfigBackup(confPath)
 
 	os.MkdirAll(filepath.Dir(confPath), 0755)
 	if err := os.WriteFile(confPath, []byte(config), 0644); err != nil {

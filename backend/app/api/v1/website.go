@@ -198,6 +198,33 @@ func (a *WebsiteAPI) SaveNginxConfFile(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *WebsiteAPI) ListNginxConfBackups(c *gin.Context) {
+	var req dto.NginxConfBackupReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	backups, err := websiteService.ListConfBackups(req.FilePath)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, backups)
+}
+
+func (a *WebsiteAPI) RestoreNginxConfBackup(c *gin.Context) {
+	var req dto.NginxConfRestoreReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := websiteService.RestoreConfBackup(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 // --- 源码模式配置编辑 ---
 
 func (a *WebsiteAPI) GetSiteConfContent(c *gin.Context) {
@@ -300,6 +327,62 @@ func (a *WebsiteAPI) DrilldownNginxLog(c *gin.Context) {
 		return
 	}
 	data, err := nginxLogService.Drilldown(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *WebsiteAPI) CheckWebsiteHealth(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := websiteService.CheckHealth(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *WebsiteAPI) InspectWebsite(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := websiteService.InspectSite(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *WebsiteAPI) DetectWebsiteLogPaths(c *gin.Context) {
+	var req dto.OperateByID
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := websiteService.DetectLogPaths(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+func (a *WebsiteAPI) GetWebsiteLogAlerts(c *gin.Context) {
+	var req dto.WebsiteLogAlertReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	data, err := websiteService.GetLogAlerts(req)
 	if err != nil {
 		helper.HandleError(c, err)
 		return

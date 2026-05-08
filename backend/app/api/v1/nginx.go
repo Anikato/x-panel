@@ -48,6 +48,24 @@ func (api *NginxAPI) TestNginxConfig(c *gin.Context) {
 	helper.SuccessWithData(c, result)
 }
 
+func (api *NginxAPI) TestNginxConfigDetail(c *gin.Context) {
+	result, err := nginxService.TestConfigDetail()
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+func (api *NginxAPI) GetNginxIncludeTree(c *gin.Context) {
+	tree, err := nginxService.GetIncludeTree()
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, tree)
+}
+
 // InstallNginx 安装 Nginx（apt 或预编译）
 func (api *NginxAPI) InstallNginx(c *gin.Context) {
 	var req dto.NginxInstallReq

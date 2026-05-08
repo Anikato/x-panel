@@ -25,6 +25,7 @@
         <template #default="{ row }">
           <div class="domain-cell">
             <el-link type="primary" @click="goConfig(row.id)">{{ row.primaryDomain }}</el-link>
+            <el-tag v-if="row.configMode === 'source'" type="primary" size="small" effect="plain">{{ $t('website.sourceMode') }}</el-tag>
             <el-tag v-if="row.sslEnable" type="success" size="small" effect="plain" class="ssl-badge">SSL</el-tag>
             <span v-if="row.domains" class="domain-extra">+{{ row.domains.split(',').length }}</span>
           </div>
@@ -50,10 +51,10 @@
           <el-button link type="primary" size="small" @click="goConfig(row.id)">
             {{ $t('commons.edit') }}
           </el-button>
-          <el-button v-if="row.status === 'stopped'" link type="success" size="small" @click="handleEnable(row)">
+          <el-button v-if="row.status === 'stopped' && row.configMode !== 'source'" link type="success" size="small" @click="handleEnable(row)">
             {{ $t('website.enable') }}
           </el-button>
-          <el-button v-else link type="warning" size="small" @click="handleDisable(row)">
+          <el-button v-else-if="row.configMode !== 'source'" link type="warning" size="small" @click="handleDisable(row)">
             {{ $t('website.disable') }}
           </el-button>
           <el-button link type="danger" size="small" @click="handleDelete(row)">
@@ -73,6 +74,13 @@
             <el-radio value="static">{{ $t('website.typeStatic') }}</el-radio>
             <el-radio value="reverse_proxy">{{ $t('website.typeProxy') }}</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="$t('website.configMode')">
+          <el-radio-group v-model="createForm.configMode">
+            <el-radio value="managed">{{ $t('website.managedMode') }}</el-radio>
+            <el-radio value="source">{{ $t('website.sourceMode') }}</el-radio>
+          </el-radio-group>
+          <div class="form-tip">{{ $t('website.createSourceModeHint') }}</div>
         </el-form-item>
         <el-form-item :label="$t('website.domain')">
           <el-input v-model="createForm.primaryDomain" placeholder="example.com" />
@@ -96,6 +104,14 @@
           <el-input v-model="createForm.proxyPass" placeholder="http://127.0.0.1:8080" />
           <div class="form-tip">{{ $t('website.proxyPassHint') }}</div>
         </el-form-item>
+        <template v-if="createForm.configMode === 'source'">
+          <el-form-item :label="$t('website.accessLogPath')">
+            <el-input v-model="createForm.accessLogPath" placeholder="/var/log/nginx/example.com.access.log" />
+          </el-form-item>
+          <el-form-item :label="$t('website.errorLogPath')">
+            <el-input v-model="createForm.errorLogPath" placeholder="/var/log/nginx/example.com.error.log" />
+          </el-form-item>
+        </template>
         <el-form-item :label="$t('commons.description')">
           <el-input v-model="createForm.remark" />
         </el-form-item>
@@ -189,9 +205,12 @@ const createForm = ref({
   alias: '',
   domains: '',
   type: 'static',
+  configMode: 'managed',
   remark: '',
   siteDir: '',
   proxyPass: '',
+  accessLogPath: '',
+  errorLogPath: '',
   httpPort: 0,
   httpsPort: 0,
 })
@@ -275,13 +294,14 @@ const loadWebsites = async () => {
 }
 
 const openCreateDialog = () => {
-  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', remark: '', siteDir: '', proxyPass: '', httpPort: 0, httpsPort: 0 }
+  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', configMode: 'managed', remark: '', siteDir: '', proxyPass: '', accessLogPath: '', errorLogPath: '', httpPort: 0, httpsPort: 0 }
   createDialogVisible.value = true
 }
 
 const handleCreate = async () => {
   if (!createForm.value.primaryDomain) { ElMessage.warning('请输入域名'); return }
-  if (createForm.value.type === 'reverse_proxy' && !createForm.value.proxyPass) { ElMessage.warning('请输入代理地址'); return }
+  if (createForm.value.configMode !== 'source' && createForm.value.type === 'reverse_proxy' && !createForm.value.proxyPass) { ElMessage.warning('请输入代理地址'); return }
+  if (createForm.value.configMode === 'source' && !createForm.value.siteDir) { ElMessage.warning('请输入网站目录'); return }
   createLoading.value = true
   try {
     await createWebsite(createForm.value)

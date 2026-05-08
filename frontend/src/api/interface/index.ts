@@ -408,9 +408,12 @@ export interface Website {
   type: string
   status: string
   sslEnable: boolean
+  configMode: string
   remark: string
   siteDir: string
   proxyPass: string
+  accessLogPath: string
+  errorLogPath: string
 }
 
 export interface ConfFile {

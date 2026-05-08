@@ -31,7 +31,7 @@ type NginxInstallReq struct {
 
 type NginxUninstallReq struct {
 	ForceCleanup bool   `json:"forceCleanup"` // 强制卸载并清理所有网站配置和记录
-	Mode         string `json:"mode"`          // 指定卸载模式: "system"/"prefix"/空(卸载当前活跃模式)
+	Mode         string `json:"mode"`         // 指定卸载模式: "system"/"prefix"/空(卸载当前活跃模式)
 }
 
 type NginxInstallProgress struct {
@@ -70,4 +70,23 @@ type NginxOperateReq struct {
 type NginxConfigTestResult struct {
 	Success bool   `json:"success"` // 测试是否通过
 	Output  string `json:"output"`  // nginx -t 原始输出
+}
+
+type NginxConfigIssue struct {
+	Level   string `json:"level"`
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Message string `json:"message"`
+}
+
+type NginxConfigTestDetail struct {
+	Success bool               `json:"success"`
+	Output  string             `json:"output"`
+	Issues  []NginxConfigIssue `json:"issues"`
+}
+
+type NginxIncludeNode struct {
+	Path     string             `json:"path"`
+	Exists   bool               `json:"exists"`
+	Children []NginxIncludeNode `json:"children"`
 }

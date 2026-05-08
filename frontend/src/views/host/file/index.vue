@@ -381,6 +381,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listFiles, createFile, deleteFile, batchDeleteFile, renameFile,
@@ -406,6 +407,7 @@ import FilePreview from './FilePreview.vue'
 import { useFileTaskStore } from '@/store/modules/fileTask'
 
 const fileTaskStore = useFileTaskStore()
+const route = useRoute()
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -1082,6 +1084,12 @@ function updateTableHeight() {
 // ===================== 生命周期 =====================
 
 onMounted(() => {
+  const initialPath = typeof route.query.path === 'string' ? route.query.path : ''
+  if (initialPath) {
+    tabs.value[0].path = initialPath
+    tabs.value[0].name = getTabName(initialPath)
+    pathInput.value = initialPath
+  }
   refreshFiles()
   updateTableHeight()
   window.addEventListener('resize', updateTableHeight)

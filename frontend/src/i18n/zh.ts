@@ -953,6 +953,7 @@ export default {
     type: '网站类型',
     typeStatic: '静态网站',
     typeProxy: '反向代理',
+    configMode: '管理模式',
     status: '状态',
     running: '运行中',
     stopped: '已停止',
@@ -1019,6 +1020,8 @@ export default {
     logSetting: '日志',
     accessLog: '访问日志',
     errorLog: '错误日志',
+    accessLogPath: '访问日志路径',
+    errorLogPath: '错误日志路径',
     viewLog: '查看日志',
     // 性能优化
     performanceSetting: '性能优化',
@@ -1064,7 +1067,10 @@ export default {
     // 双模式配置
     managedMode: '托管模式',
     sourceMode: '源码模式',
-    sourceModeHint: '源码编辑模式：直接编辑 Nginx 配置文件，保存时自动测试并重载。结构化设置不可用。',
+    sourceModeHint: '源码模式：只登记网站目录和日志路径，可跳转文件管理器编辑源码；Nginx 配置不会被面板自动接管。',
+    createSourceModeHint: '源码模式不会创建默认首页、不会生成或重载 Nginx 配置，只用于源码编辑和日志分析。',
+    sourceOverview: '源码信息',
+    openSourceDir: '打开目录',
     switchToManagedConfirm: '切换回托管模式将根据结构化配置重新生成 Nginx 配置文件，源码修改将被覆盖，确定切换？',
   },
   backup: {

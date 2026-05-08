@@ -3,6 +3,8 @@ package service
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,6 +22,8 @@ type INginxService interface {
 	GetStatus() (*dto.NginxStatus, error)
 	Operate(req dto.NginxOperateReq) error
 	TestConfig() (*dto.NginxConfigTestResult, error)
+	TestConfigDetail() (*dto.NginxConfigTestDetail, error)
+	GetIncludeTree() (*dto.NginxIncludeNode, error)
 	SetAutoStart(enable bool) error
 }
 
@@ -106,6 +110,99 @@ func (s *NginxService) TestConfig() (*dto.NginxConfigTestResult, error) {
 		return &dto.NginxConfigTestResult{Success: false, Output: errMsg}, nil
 	}
 	return &dto.NginxConfigTestResult{Success: true, Output: output}, nil
+}
+
+func (s *NginxService) TestConfigDetail() (*dto.NginxConfigTestDetail, error) {
+	result, err := s.TestConfig()
+	if err != nil {
+		return nil, err
+	}
+	return &dto.NginxConfigTestDetail{
+		Success: result.Success,
+		Output:  result.Output,
+		Issues:  parseNginxConfigIssues(result.Output),
+	}, nil
+}
+
+var nginxIssueRe = regexp.MustCompile(`nginx:\s+\[(\w+)\]\s+(.+?)\s+in\s+(.+?):(\d+)`)
+
+func parseNginxConfigIssues(output string) []dto.NginxConfigIssue {
+	var issues []dto.NginxConfigIssue
+	for _, line := range strings.Split(output, "\n") {
+		m := nginxIssueRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		lineNo, _ := strconv.Atoi(m[4])
+		issues = append(issues, dto.NginxConfigIssue{
+			Level:   m[1],
+			Message: strings.TrimSpace(m[2]),
+			File:    m[3],
+			Line:    lineNo,
+		})
+	}
+	return issues
+}
+
+func (s *NginxService) GetIncludeTree() (*dto.NginxIncludeNode, error) {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return nil, buserr.New(constant.ErrNginxNotInstalled)
+	}
+	visited := make(map[string]bool)
+	node := s.buildIncludeNode(nc.GetMainConf(), visited, 0)
+	return &node, nil
+}
+
+func (s *NginxService) buildIncludeNode(path string, visited map[string]bool, depth int) dto.NginxIncludeNode {
+	path = filepath.Clean(path)
+	node := dto.NginxIncludeNode{Path: path}
+	if depth > 8 || visited[path] {
+		return node
+	}
+	visited[path] = true
+	data, err := os.ReadFile(path)
+	if err != nil {
+		node.Exists = false
+		return node
+	}
+	node.Exists = true
+	baseDir := filepath.Dir(path)
+	for _, inc := range parseIncludeLines(string(data), baseDir) {
+		matches, err := filepath.Glob(inc)
+		if err != nil || len(matches) == 0 {
+			node.Children = append(node.Children, dto.NginxIncludeNode{Path: inc, Exists: false})
+			continue
+		}
+		for _, match := range matches {
+			if info, err := os.Stat(match); err == nil && !info.IsDir() {
+				node.Children = append(node.Children, s.buildIncludeNode(match, visited, depth+1))
+			}
+		}
+	}
+	return node
+}
+
+var nginxIncludeRe = regexp.MustCompile(`(?i)^\s*include\s+([^;]+);`)
+
+func parseIncludeLines(content, baseDir string) []string {
+	var includes []string
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		m := nginxIncludeRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		p := strings.Trim(m[1], `"'`)
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(baseDir, p)
+		}
+		includes = append(includes, filepath.Clean(p))
+	}
+	return includes
 }
 
 func (s *NginxService) start() error {

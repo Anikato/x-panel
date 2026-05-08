@@ -204,6 +204,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nginx/status", api.GetNginxStatus)
 		privateGroup.POST("/nginx/operate", api.OperateNginx)
 		privateGroup.GET("/nginx/config-test", api.TestNginxConfig)
+		privateGroup.GET("/nginx/config-test/detail", api.TestNginxConfigDetail)
+		privateGroup.GET("/nginx/include-tree", api.GetNginxIncludeTree)
 		privateGroup.POST("/nginx/install", api.InstallNginx)
 		privateGroup.GET("/nginx/install/progress", api.GetInstallProgress)
 		privateGroup.POST("/nginx/uninstall", api.UninstallNginx)
@@ -218,6 +220,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nginx/conf-files", api.ListNginxConfFiles)
 		privateGroup.POST("/nginx/conf-file", api.GetNginxConfFile)
 		privateGroup.POST("/nginx/conf-file/save", api.SaveNginxConfFile)
+		privateGroup.POST("/nginx/conf-backups", api.ListNginxConfBackups)
+		privateGroup.POST("/nginx/conf-backups/restore", api.RestoreNginxConfBackup)
 
 		// 计划任务
 		privateGroup.POST("/cronjobs", api.CreateCronjob)
@@ -413,7 +417,6 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/toolbox/services/unit", api.GetServiceUnitContent)
 		privateGroup.POST("/toolbox/services/unit", api.SaveServiceUnitContent)
 
-
 		// 工具箱 - IP 归属地
 		privateGroup.GET("/toolbox/ip/lookup", api.LookupIP)
 		privateGroup.POST("/toolbox/ip/lookup/batch", api.LookupIPBatch)
@@ -461,6 +464,10 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/websites/conf-content/save", api.SaveSiteConfContent)
 		privateGroup.POST("/websites/config-mode", api.SwitchConfigMode)
 		privateGroup.POST("/websites/log-analysis", api.AnalyzeNginxLog)
+		privateGroup.POST("/websites/health", api.CheckWebsiteHealth)
+		privateGroup.POST("/websites/inspect", api.InspectWebsite)
+		privateGroup.POST("/websites/log-paths/detect", api.DetectWebsiteLogPaths)
+		privateGroup.POST("/websites/log-alerts", api.GetWebsiteLogAlerts)
 
 		// Nginx 日志分析（全局）
 		privateGroup.GET("/nginx/log/sites", api.DetectNginxSites)

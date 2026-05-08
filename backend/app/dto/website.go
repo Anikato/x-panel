@@ -10,6 +10,7 @@ type WebsiteCreate struct {
 	Domains       string `json:"domains"`
 	Type          string `json:"type" binding:"required,oneof=static reverse_proxy"`
 	Remark        string `json:"remark"`
+	ConfigMode    string `json:"configMode" binding:"omitempty,oneof=managed source"`
 
 	// Listen ports (0 = use nginx default: 80 / 443)
 	HttpPort  int `json:"httpPort"`
@@ -20,6 +21,10 @@ type WebsiteCreate struct {
 
 	// Reverse proxy
 	ProxyPass string `json:"proxyPass"`
+
+	// Source mode logs
+	AccessLogPath string `json:"accessLogPath"`
+	ErrorLogPath  string `json:"errorLogPath"`
 }
 
 // --- 更新 ---
@@ -65,8 +70,10 @@ type WebsiteUpdate struct {
 	Redirects string `json:"redirects"`
 
 	// Logs
-	AccessLog bool `json:"accessLog"`
-	ErrorLog  bool `json:"errorLog"`
+	AccessLog     bool   `json:"accessLog"`
+	ErrorLog      bool   `json:"errorLog"`
+	AccessLogPath string `json:"accessLogPath"`
+	ErrorLogPath  string `json:"errorLogPath"`
 
 	// Performance & Optimization
 	GzipEnable        bool `json:"gzipEnable"`
@@ -102,7 +109,9 @@ type WebsiteInfo struct {
 	Type          string    `json:"type"`
 	Status        string    `json:"status"`
 	SSLEnable     bool      `json:"sslEnable"`
+	ConfigMode    string    `json:"configMode"`
 	Remark        string    `json:"remark"`
+	SiteDir       string    `json:"siteDir"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
@@ -144,8 +153,10 @@ type WebsiteDetail struct {
 	Rewrite   string `json:"rewrite"`
 	Redirects string `json:"redirects"`
 
-	AccessLog bool `json:"accessLog"`
-	ErrorLog  bool `json:"errorLog"`
+	AccessLog     bool   `json:"accessLog"`
+	ErrorLog      bool   `json:"errorLog"`
+	AccessLogPath string `json:"accessLogPath"`
+	ErrorLogPath  string `json:"errorLogPath"`
 
 	GzipEnable        bool `json:"gzipEnable"`
 	SecurityHeaders   bool `json:"securityHeaders"`
@@ -197,4 +208,60 @@ type NginxConfFileInfo struct {
 type NginxConfUpdate struct {
 	FilePath string `json:"filePath" binding:"required"`
 	Content  string `json:"content" binding:"required"`
+}
+
+type NginxConfBackupInfo struct {
+	Name      string    `json:"name"`
+	FilePath  string    `json:"filePath"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type NginxConfBackupReq struct {
+	FilePath string `json:"filePath" binding:"required"`
+}
+
+type NginxConfRestoreReq struct {
+	FilePath   string `json:"filePath" binding:"required"`
+	BackupName string `json:"backupName" binding:"required"`
+}
+
+type WebsiteHealthCheck struct {
+	URL        string `json:"url"`
+	OK         bool   `json:"ok"`
+	StatusCode int    `json:"statusCode"`
+	LatencyMS  int64  `json:"latencyMs"`
+	Error      string `json:"error"`
+}
+
+type WebsiteHealthResp struct {
+	Checks        []WebsiteHealthCheck `json:"checks"`
+	CertNotAfter  string               `json:"certNotAfter"`
+	CertDaysLeft  int                  `json:"certDaysLeft"`
+	CertError     string               `json:"certError"`
+	LastCheckedAt time.Time            `json:"lastCheckedAt"`
+}
+
+type WebsiteInspectResp struct {
+	SiteDirExists bool     `json:"siteDirExists"`
+	Readable      bool     `json:"readable"`
+	IndexFiles    []string `json:"indexFiles"`
+	Issues        []string `json:"issues"`
+}
+
+type WebsiteLogPathDetectResp struct {
+	Access []string `json:"access"`
+	Error  []string `json:"error"`
+}
+
+type WebsiteLogAlertReq struct {
+	ID        uint   `json:"id" binding:"required"`
+	TimeRange string `json:"timeRange"`
+}
+
+type WebsiteLogAlert struct {
+	Level   string `json:"level"`
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	Count   int64  `json:"count"`
 }

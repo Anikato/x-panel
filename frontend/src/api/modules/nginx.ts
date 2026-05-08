@@ -15,6 +15,14 @@ export const testNginxConfig = () => {
   return http.get('/nginx/config-test')
 }
 
+export const testNginxConfigDetail = () => {
+  return http.get('/nginx/config-test/detail')
+}
+
+export const getNginxIncludeTree = () => {
+  return http.get('/nginx/include-tree')
+}
+
 // --- 安装 Nginx ---
 export const installNginx = (method: string, version?: string) => {
   return http.post('/nginx/install', { method, version })

@@ -5,7 +5,7 @@ type Website struct {
 	PrimaryDomain string `gorm:"not null;uniqueIndex" json:"primaryDomain"`
 	Domains       string `gorm:"type:text" json:"domains"`
 	Alias         string `gorm:"not null;uniqueIndex" json:"alias"`
-	Type          string `gorm:"not null;default:static" json:"type"`     // static | reverse_proxy
+	Type          string `gorm:"not null;default:static" json:"type"`    // static | reverse_proxy
 	Status        string `gorm:"not null;default:stopped" json:"status"` // running | stopped
 
 	// Listen ports (0 = default: 80 / 443)
@@ -47,15 +47,17 @@ type Website struct {
 	Redirects string `gorm:"type:text" json:"redirects"`
 
 	// Logs
-	AccessLog bool `gorm:"default:true" json:"accessLog"`
-	ErrorLog  bool `gorm:"default:true" json:"errorLog"`
+	AccessLog     bool   `gorm:"default:true" json:"accessLog"`
+	ErrorLog      bool   `gorm:"default:true" json:"errorLog"`
+	AccessLogPath string `json:"accessLogPath"`
+	ErrorLogPath  string `json:"errorLogPath"`
 
 	// Upstream block (for reverse proxy load balancing)
 	Upstream string `gorm:"type:text" json:"upstream"`
 
 	// Performance & Optimization
-	GzipEnable       bool `gorm:"default:true" json:"gzipEnable"`
-	SecurityHeaders  bool `gorm:"default:true" json:"securityHeaders"`
+	GzipEnable        bool `gorm:"default:true" json:"gzipEnable"`
+	SecurityHeaders   bool `gorm:"default:true" json:"securityHeaders"`
 	StaticCacheEnable bool `gorm:"default:false" json:"staticCacheEnable"`
 
 	// Custom nginx directives (server-level, inserted after managed directives)

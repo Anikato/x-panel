@@ -65,6 +65,9 @@ func (s *NginxLogService) Analyze(req dto.NginxLogAnalysisReq) (*dto.NginxLogAna
 
 	logDir := fmt.Sprintf("%s/sites", nc.GetLogDir())
 	logPath := fmt.Sprintf("%s/%s.access.log", logDir, site.PrimaryDomain)
+	if strings.TrimSpace(site.AccessLogPath) != "" {
+		logPath = strings.TrimSpace(site.AccessLogPath)
+	}
 	if _, err := os.Stat(logPath); err != nil {
 		return &dto.NginxLogAnalysis{StatusCodes: make(map[string]int64)}, nil
 	}

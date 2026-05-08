@@ -177,6 +177,12 @@
           <span>{{ $t('nginx.testOutput') }}</span>
         </template>
         <el-alert :type="testResult.success ? 'success' : 'error'" :title="testResult.success ? $t('nginx.testSuccess') : $t('nginx.testFail')" :closable="false" show-icon />
+        <el-table v-if="testResult.issues?.length" :data="testResult.issues" size="small" style="margin-top: 12px">
+          <el-table-column label="级别" prop="level" width="90" />
+          <el-table-column label="文件" prop="file" min-width="240" show-overflow-tooltip />
+          <el-table-column label="行号" prop="line" width="80" />
+          <el-table-column label="问题" prop="message" min-width="260" show-overflow-tooltip />
+        </el-table>
         <pre class="config-output" v-if="testResult.output">{{ testResult.output }}</pre>
       </el-card>
 
@@ -207,11 +213,26 @@
               <el-col :span="18">
                 <div class="conf-editor-header">
                   <span class="conf-file-name">{{ activeConfFile === '__main__' ? 'nginx.conf' : activeConfFile || '选择文件' }}</span>
-                  <el-button size="small" type="primary" @click="handleSaveConf" :loading="confSaving" :disabled="!activeConfFile">
-                    {{ $t('website.saveConf') }}
-                  </el-button>
+                  <div class="conf-actions">
+                    <el-button size="small" @click="loadIncludeTree">Include 关系</el-button>
+                    <el-button size="small" @click="loadBackups" :disabled="!activeConfFile">历史版本</el-button>
+                    <el-button size="small" type="primary" @click="handleSaveConf" :loading="confSaving" :disabled="!activeConfFile">
+                      {{ $t('website.saveConf') }}
+                    </el-button>
+                  </div>
                 </div>
                 <el-input v-model="confContent" type="textarea" :rows="24" class="conf-editor-textarea" :placeholder="activeConfFile ? '' : '请从左侧选择配置文件'" />
+                <el-card v-if="includeTree" shadow="never" class="include-card">
+                  <template #header>Include 关系</template>
+                  <el-tree :data="[includeTree]" :props="{ label: 'path', children: 'children' }" default-expand-all>
+                    <template #default="{ data }">
+                      <span>
+                        <el-tag :type="data.exists ? 'success' : 'danger'" size="small" effect="plain">{{ data.exists ? '存在' : '缺失' }}</el-tag>
+                        <span class="ml-8">{{ data.path }}</span>
+                      </span>
+                    </template>
+                  </el-tree>
+                </el-card>
               </el-col>
             </el-row>
           </div>
@@ -223,6 +244,23 @@
         </el-tab-pane>
       </el-tabs>
     </template>
+
+    <el-dialog v-model="backupDialogVisible" title="配置历史版本" width="760px">
+      <el-table :data="backups" size="small" v-loading="backupLoading">
+        <el-table-column label="备份文件" prop="name" min-width="260" show-overflow-tooltip />
+        <el-table-column label="时间" min-width="180">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="大小" width="100">
+          <template #default="{ row }">{{ row.size }} B</template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="handleRestoreBackup(row.name)">回滚</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
 
     <!-- 安装对话框 -->
     <el-dialog v-model="showInstallDialog" :title="$t('nginx.install')" width="520px" :close-on-click-modal="false">
@@ -291,7 +329,8 @@ import {
 import {
   getNginxStatus,
   operateNginx,
-  testNginxConfig,
+  testNginxConfigDetail,
+  getNginxIncludeTree,
   installNginx,
   getInstallProgress,
   uninstallNginx,
@@ -307,6 +346,8 @@ import {
   listNginxConfFiles,
   getNginxConfFile,
   saveNginxConfFile,
+  listNginxConfBackups,
+  restoreNginxConfBackup,
 } from '@/api/modules/website'
 import type { NginxStatus, NginxVersion, NginxTestResult, NginxInstallProgress, ConfFile } from '@/api/interface'
 
@@ -319,7 +360,7 @@ const loading = ref(false)
 const status = ref<Partial<NginxStatus>>({})
 const operateLoading = ref('')
 const testLoading = ref(false)
-const testResult = ref<NginxTestResult | null>(null)
+const testResult = ref<(NginxTestResult & { issues?: { level: string; file: string; line: number; message: string }[] }) | null>(null)
 const autoStartLoading = ref(false)
 
 // 安装相关
@@ -339,6 +380,11 @@ const installForm = reactive({
 const updateCheckLoading = ref(false)
 const upgradeLoading = ref(false)
 const updateInfo = reactive({ hasUpdate: false, availableVersion: '' })
+
+const includeTree = ref<any>(null)
+const backupDialogVisible = ref(false)
+const backupLoading = ref(false)
+const backups = ref<{ name: string; size: number; createdAt: string }[]>([])
 
 // 可用版本列表
 const availableVersions = ref<NginxVersion[]>([])
@@ -395,7 +441,7 @@ const handleAutoStart = async (val: boolean) => {
 const handleTestConfig = async () => {
   testLoading.value = true
   try {
-    const res = await testNginxConfig()
+    const res = await testNginxConfigDetail()
     testResult.value = res.data
     if (res.data?.success) {
       ElMessage.success(t('nginx.testSuccess'))
@@ -404,6 +450,42 @@ const handleTestConfig = async () => {
     }
   } catch { /* handled */ }
   finally { testLoading.value = false }
+}
+
+const activeConfPath = computed(() => {
+  if (!activeConfFile.value) return ''
+  if (activeConfFile.value === '__main__') return status.value.systemMode ? '/etc/nginx/nginx.conf' : `${status.value.installDir}/conf/nginx.conf`
+  const confDir = status.value.systemMode ? '/etc/nginx/sites-available' : (status.value.installDir ? `${status.value.installDir}/conf/conf.d` : '')
+  return `${confDir}/${activeConfFile.value}`
+})
+
+const loadIncludeTree = async () => {
+  try {
+    const res = await getNginxIncludeTree()
+    includeTree.value = res.data || null
+  } catch { includeTree.value = null }
+}
+
+const loadBackups = async () => {
+  if (!activeConfPath.value) return
+  backupDialogVisible.value = true
+  backupLoading.value = true
+  try {
+    const res = await listNginxConfBackups(activeConfPath.value)
+    backups.value = res.data || []
+  } catch { backups.value = [] }
+  finally { backupLoading.value = false }
+}
+
+const handleRestoreBackup = async (name: string) => {
+  try {
+    await ElMessageBox.confirm('回滚前会自动备份当前配置并执行 nginx -t，确定继续？', t('commons.tip'), { type: 'warning' })
+    await restoreNginxConfBackup(activeConfPath.value, name)
+    ElMessage.success('已回滚配置')
+    backupDialogVisible.value = false
+    if (activeConfFile.value === '__main__') await loadMainConf()
+    else await loadConfFile(activeConfFile.value)
+  } catch {}
 }
 
 // 显示安装对话框
@@ -846,6 +928,15 @@ onUnmounted(() => stopProgressPolling())
     font-weight: 500;
     color: var(--xp-text-primary);
   }
+
+  .conf-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+.include-card {
+  margin-top: 12px;
 }
 
 .conf-editor-textarea {

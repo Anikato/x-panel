@@ -10,14 +10,15 @@
         <el-tag :type="detail.type === 'static' ? 'info' : 'warning'" size="small">
           {{ detail.type === 'static' ? $t('website.typeStatic') : $t('website.typeProxy') }}
         </el-tag>
+        <el-tag v-if="configMode === 'source'" type="primary" size="small" effect="plain">{{ $t('website.sourceMode') }}</el-tag>
       </div>
       <div class="header-right">
         <el-radio-group v-model="configMode" size="small" class="mode-switcher" @change="handleModeSwitch">
           <el-radio-button value="managed">{{ $t('website.managedMode') }}</el-radio-button>
           <el-radio-button value="source">{{ $t('website.sourceMode') }}</el-radio-button>
         </el-radio-group>
-        <el-button v-if="detail.status === 'stopped'" type="success" size="small" @click="handleEnable">{{ $t('website.enable') }}</el-button>
-        <el-button v-else type="warning" size="small" @click="handleDisable">{{ $t('website.disable') }}</el-button>
+        <el-button v-if="detail.status === 'stopped' && configMode !== 'source'" type="success" size="small" @click="handleEnable">{{ $t('website.enable') }}</el-button>
+        <el-button v-else-if="configMode !== 'source'" type="warning" size="small" @click="handleDisable">{{ $t('website.disable') }}</el-button>
       </div>
     </div>
 
@@ -376,6 +377,30 @@
         </div>
       </el-tab-pane>
 
+      <el-tab-pane label="诊断" name="diagnostics">
+        <div class="diagnostics-section">
+          <div class="diagnostics-actions">
+            <el-button size="small" type="primary" @click="loadDiagnostics" :loading="diagnosticsLoading">运行诊断</el-button>
+            <el-button size="small" @click="handleDetectLogPaths">探测日志路径</el-button>
+          </div>
+          <el-alert v-for="item in logAlerts" :key="item.type + item.message" :type="item.level === 'danger' ? 'error' : 'warning'" :title="item.message" :description="`数量：${item.count}`" show-icon :closable="false" class="diag-alert" />
+          <el-descriptions v-if="healthData" :column="2" border size="small" class="diag-block">
+            <el-descriptions-item v-for="check in healthData.checks" :key="check.url" :label="check.url">
+              <el-tag :type="check.ok ? 'success' : 'danger'" size="small">{{ check.ok ? check.statusCode : (check.error || '失败') }}</el-tag>
+              <span class="ml-8">{{ check.latencyMs }}ms</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="证书剩余天数">{{ healthData.certError || `${healthData.certDaysLeft} 天` }}</el-descriptions-item>
+          </el-descriptions>
+          <el-card v-if="inspectData" shadow="never" class="diag-block">
+            <template #header>目录检查</template>
+            <el-tag :type="inspectData.siteDirExists ? 'success' : 'danger'" size="small">目录{{ inspectData.siteDirExists ? '存在' : '异常' }}</el-tag>
+            <el-tag :type="inspectData.readable ? 'success' : 'warning'" size="small" class="ml-8">可读{{ inspectData.readable ? '正常' : '异常' }}</el-tag>
+            <div v-if="inspectData.indexFiles?.length" class="diag-line">首页文件：{{ inspectData.indexFiles.join(', ') }}</div>
+            <el-alert v-for="issue in inspectData.issues || []" :key="issue" type="warning" :title="issue" show-icon :closable="false" class="diag-alert" />
+          </el-card>
+        </div>
+      </el-tab-pane>
+
       <!-- 性能优化 -->
       <el-tab-pane :label="$t('website.performanceSetting')" name="performance">
         <el-form :model="detail" label-width="140px" class="config-form">
@@ -428,6 +453,49 @@
 
     <!-- 源码编辑模式 -->
     <div v-if="configMode === 'source'" class="source-editor-section">
+      <el-tabs v-model="sourceActiveTab" class="source-tabs">
+        <el-tab-pane :label="$t('website.sourceOverview')" name="overview">
+          <el-form :model="detail" label-width="120px" class="config-form">
+            <el-form-item :label="$t('website.domain')">
+              <el-input v-model="detail.primaryDomain" />
+            </el-form-item>
+            <el-form-item :label="$t('website.otherDomains')">
+              <el-input v-model="detail.domains" :placeholder="$t('website.otherDomainsHint')" />
+            </el-form-item>
+            <el-form-item :label="$t('website.siteDir')">
+              <div style="display:flex; gap:8px; width:100%;">
+                <el-input v-model="detail.siteDir" style="flex:1" />
+                <el-button :icon="FolderOpened" @click="openConfigDirBrowser" title="浏览目录" />
+                <el-button type="primary" plain @click="openSourceDir">{{ $t('website.openSourceDir') }}</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item :label="$t('website.accessLogPath')">
+              <el-input v-model="detail.accessLogPath" placeholder="/var/log/nginx/example.com.access.log" />
+            </el-form-item>
+            <el-form-item :label="$t('website.errorLogPath')">
+              <el-input v-model="detail.errorLogPath" placeholder="/var/log/nginx/example.com.error.log" />
+            </el-form-item>
+            <el-form-item :label="$t('commons.description')">
+              <el-input v-model="detail.remark" type="textarea" :rows="2" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
+              <el-button @click="loadDiagnostics" :loading="diagnosticsLoading">运行诊断</el-button>
+              <el-button @click="handleDetectLogPaths">探测日志路径</el-button>
+            </el-form-item>
+          </el-form>
+          <div class="diagnostics-section">
+            <el-alert v-for="item in logAlerts" :key="item.type + item.message" :type="item.level === 'danger' ? 'error' : 'warning'" :title="item.message" :description="`数量：${item.count}`" show-icon :closable="false" class="diag-alert" />
+            <el-card v-if="inspectData" shadow="never" class="diag-block">
+              <template #header>目录检查</template>
+              <el-tag :type="inspectData.siteDirExists ? 'success' : 'danger'" size="small">目录{{ inspectData.siteDirExists ? '存在' : '异常' }}</el-tag>
+              <el-tag :type="inspectData.readable ? 'success' : 'warning'" size="small" class="ml-8">可读{{ inspectData.readable ? '正常' : '异常' }}</el-tag>
+              <div v-if="inspectData.indexFiles?.length" class="diag-line">首页文件：{{ inspectData.indexFiles.join(', ') }}</div>
+              <el-alert v-for="issue in inspectData.issues || []" :key="issue" type="warning" :title="issue" show-icon :closable="false" class="diag-alert" />
+            </el-card>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane :label="$t('website.nginxConfig')" name="nginx">
       <div class="source-editor-toolbar">
         <span class="source-file-label">{{ detail.alias }}.conf</span>
         <div class="source-actions">
@@ -436,6 +504,41 @@
         </div>
       </div>
       <div ref="monacoContainerRef" class="source-editor-container" />
+        </el-tab-pane>
+        <el-tab-pane :label="$t('website.logSetting')" name="log">
+          <div class="log-viewer-section">
+            <div class="log-toolbar">
+              <el-radio-group v-model="logType" size="small">
+                <el-radio-button value="access">{{ $t('website.accessLog') }}</el-radio-button>
+                <el-radio-button value="error">{{ $t('website.errorLog') }}</el-radio-button>
+              </el-radio-group>
+              <el-button size="small" @click="loadLog">{{ $t('website.viewLog') }}</el-button>
+            </div>
+            <div class="log-container" v-if="logContent !== null">
+              <pre class="log-content">{{ logContent || '暂无日志' }}</pre>
+            </div>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane :label="$t('website.logAnalysis')" name="logAnalysis">
+          <div class="analysis-toolbar">
+            <el-radio-group v-model="analysisDays" size="small" @change="loadLogAnalysis">
+              <el-radio-button :value="1">{{ $t('website.today') }}</el-radio-button>
+              <el-radio-button :value="7">{{ $t('website.last7days') }}</el-radio-button>
+              <el-radio-button :value="30">{{ $t('website.last30days') }}</el-radio-button>
+            </el-radio-group>
+            <el-button size="small" @click="loadLogAnalysis" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
+          </div>
+          <div v-if="logAnalysisData" class="analysis-overview">
+            <el-row :gutter="16">
+              <el-col :span="6"><el-card shadow="never" class="stat-card"><div class="stat-value">{{ formatNumber(logAnalysisData.totalRequests) }}</div><div class="stat-label">{{ $t('website.totalRequests') }}</div></el-card></el-col>
+              <el-col :span="6"><el-card shadow="never" class="stat-card"><div class="stat-value">{{ formatNumber(logAnalysisData.uniqueIPs) }}</div><div class="stat-label">{{ $t('website.uniqueVisitors') }}</div></el-card></el-col>
+              <el-col :span="6"><el-card shadow="never" class="stat-card"><div class="stat-value">{{ formatBytes(logAnalysisData.totalBytes) }}</div><div class="stat-label">{{ $t('website.totalTraffic') }}</div></el-card></el-col>
+              <el-col :span="6"><el-card shadow="never" class="stat-card"><div class="stat-value">{{ logAnalysisData.errorRate.toFixed(1) }}%</div><div class="stat-label">{{ $t('website.errorRate') }}</div></el-card></el-col>
+            </el-row>
+          </div>
+          <el-empty v-if="logAnalysisData && logAnalysisData.totalRequests === 0" :description="$t('website.noLogData')" />
+        </el-tab-pane>
+      </el-tabs>
     </div>
 
     <!-- 目录浏览器 Dialog -->
@@ -476,7 +579,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Plus, FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons-vue'
-import { getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog, getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog } from '@/api/modules/website'
+import {
+  getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog,
+  getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog,
+  checkWebsiteHealth, inspectWebsite, detectWebsiteLogPaths, getWebsiteLogAlerts,
+} from '@/api/modules/website'
 import { listFiles } from '@/api/modules/file'
 import { searchCertificate } from '@/api/modules/ssl'
 import type { Certificate } from '@/api/interface'
@@ -518,6 +625,8 @@ interface WebsiteDetail {
   leechReferers: string
   accessLog: boolean
   errorLog: boolean
+  accessLogPath: string
+  errorLogPath: string
   gzipEnable: boolean
   securityHeaders: boolean
   staticCacheEnable: boolean
@@ -553,6 +662,26 @@ interface LogAnalysisData {
   topIps: { name: string; count: number }[]
 }
 
+interface WebsiteHealthData {
+  checks: { url: string; ok: boolean; statusCode: number; latencyMs: number; error: string }[]
+  certDaysLeft: number
+  certError: string
+}
+
+interface WebsiteInspectData {
+  siteDirExists: boolean
+  readable: boolean
+  indexFiles: string[]
+  issues: string[]
+}
+
+interface WebsiteLogAlert {
+  level: string
+  type: string
+  message: string
+  count: number
+}
+
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
@@ -566,6 +695,7 @@ const redirects = ref<RedirectItem[]>([])
 
 // Config mode
 const configMode = ref<'managed' | 'source'>('managed')
+const sourceActiveTab = ref('overview')
 const sourceSaving = ref(false)
 const monacoContainerRef = ref<HTMLElement>()
 let monacoEditor: monaco.editor.IStandaloneCodeEditor | null = null
@@ -582,6 +712,11 @@ const trendChartRef = ref<HTMLElement>()
 const statusChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
 let statusChart: echarts.ECharts | null = null
+
+const diagnosticsLoading = ref(false)
+const healthData = ref<WebsiteHealthData | null>(null)
+const inspectData = ref<WebsiteInspectData | null>(null)
+const logAlerts = ref<WebsiteLogAlert[]>([])
 
 const siteId = Number(route.params.id)
 
@@ -672,6 +807,14 @@ const loadDetail = async () => {
   }
 }
 
+const openSourceDir = () => {
+  if (!detail.value.siteDir) {
+    ElMessage.warning('请先填写网站目录')
+    return
+  }
+  router.push({ path: '/host/files', query: { path: detail.value.siteDir } })
+}
+
 const loadCerts = async () => {
   try {
     const res = await searchCertificate({ page: 1, pageSize: 100 })
@@ -735,6 +878,36 @@ const loadLogAnalysis = async () => {
     renderStatusChart()
   } catch { /* ignore */ }
   finally { analysisLoading.value = false }
+}
+
+const loadDiagnostics = async () => {
+  diagnosticsLoading.value = true
+  try {
+    const [health, inspect, alerts] = await Promise.all([
+      checkWebsiteHealth(siteId),
+      inspectWebsite(siteId),
+      getWebsiteLogAlerts(siteId, '24h'),
+    ])
+    healthData.value = health.data || null
+    inspectData.value = inspect.data || null
+    logAlerts.value = alerts.data || []
+  } catch {}
+  finally { diagnosticsLoading.value = false }
+}
+
+const handleDetectLogPaths = async () => {
+  try {
+    const res = await detectWebsiteLogPaths(siteId)
+    const access = res.data?.access || []
+    const error = res.data?.error || []
+    if (access[0]) detail.value.accessLogPath = access[0]
+    if (error[0]) detail.value.errorLogPath = error[0]
+    if (!access.length && !error.length) {
+      ElMessage.info('未探测到匹配日志文件')
+      return
+    }
+    ElMessage.success('已填入探测到的日志路径，请保存')
+  } catch {}
 }
 
 const renderTrendChart = () => {
@@ -885,9 +1058,21 @@ watch(configMode, (val) => {
   }
 })
 
+watch(sourceActiveTab, (val) => {
+  if (val === 'nginx') {
+    nextTick(() => loadSourceConf())
+  }
+  if (val === 'logAnalysis' && !logAnalysisData.value) {
+    loadLogAnalysis()
+  }
+})
+
 watch(activeTab, (val) => {
   if (val === 'logAnalysis' && !logAnalysisData.value) {
     loadLogAnalysis()
+  }
+  if (val === 'diagnostics' && !healthData.value && !inspectData.value) {
+    loadDiagnostics()
   }
 })
 
@@ -979,6 +1164,29 @@ onBeforeUnmount(() => {
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
+  }
+}
+
+.diagnostics-section {
+  max-width: 900px;
+
+  .diagnostics-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .diag-block {
+    margin-top: 12px;
+  }
+
+  .diag-alert {
+    margin-top: 8px;
+  }
+
+  .diag-line {
+    margin-top: 10px;
+    color: var(--xp-text-secondary);
   }
 }
 

@@ -5,7 +5,7 @@ export const searchWebsite = (params: { page: number; pageSize: number; info?: s
   return http.post('/websites/search', params)
 }
 
-export const createWebsite = (params: { primaryDomain: string; domains?: string; type: string; remark?: string; siteDir?: string; proxyPass?: string }) => {
+export const createWebsite = (params: { primaryDomain: string; alias?: string; domains?: string; type: string; remark?: string; siteDir?: string; proxyPass?: string; configMode?: string; accessLogPath?: string; errorLogPath?: string; httpPort?: number; httpsPort?: number }) => {
   return http.post('/websites', params)
 }
 
@@ -55,6 +55,22 @@ export const analyzeNginxLog = (siteId: number, days: number) => {
   return http.post('/websites/log-analysis', { siteId, days })
 }
 
+export const checkWebsiteHealth = (id: number) => {
+  return http.post('/websites/health', { id })
+}
+
+export const inspectWebsite = (id: number) => {
+  return http.post('/websites/inspect', { id })
+}
+
+export const detectWebsiteLogPaths = (id: number) => {
+  return http.post('/websites/log-paths/detect', { id })
+}
+
+export const getWebsiteLogAlerts = (id: number, timeRange = '24h') => {
+  return http.post('/websites/log-alerts', { id, timeRange })
+}
+
 // --- Nginx 日志分析（全局） ---
 export const detectNginxSites = () => {
   return http.get('/nginx/log/sites')
@@ -91,4 +107,12 @@ export const getNginxConfFile = (name: string) => {
 
 export const saveNginxConfFile = (filePath: string, content: string) => {
   return http.post('/nginx/conf-file/save', { filePath, content })
+}
+
+export const listNginxConfBackups = (filePath: string) => {
+  return http.post('/nginx/conf-backups', { filePath })
+}
+
+export const restoreNginxConfBackup = (filePath: string, backupName: string) => {
+  return http.post('/nginx/conf-backups/restore', { filePath, backupName })
 }
