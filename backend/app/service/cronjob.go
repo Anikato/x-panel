@@ -221,6 +221,7 @@ func (s *CronjobService) executeJob(job *model.Cronjob) {
 	start := time.Now()
 	var msg string
 	var status string
+	var file string
 
 	switch job.Type {
 	case "shell":
@@ -228,11 +229,11 @@ func (s *CronjobService) executeJob(job *model.Cronjob) {
 	case "curl":
 		msg, status = s.execCurl(job)
 	case "database":
-		msg, status = s.execDatabaseBackup(job)
+		msg, status, file = s.execDatabaseBackup(job)
 	case "website":
-		msg, status = s.execWebsiteBackup(job)
+		msg, status, file = s.execWebsiteBackup(job)
 	case "directory":
-		msg, status = s.execDirectoryBackup(job)
+		msg, status, file = s.execDirectoryBackup(job)
 	default:
 		msg = fmt.Sprintf("unsupported job type: %s", job.Type)
 		status = constant.StatusFailed
@@ -245,12 +246,14 @@ func (s *CronjobService) executeJob(job *model.Cronjob) {
 		Duration:  duration,
 		Status:    status,
 		Message:   msg,
+		File:      file,
 	}
 	if err := s.cronjobRepo.CreateRecord(record); err != nil {
 		global.LOG.Errorf("save cronjob record failed: %v", err)
 	}
 	if job.RetainCopies > 0 {
 		_ = s.cronjobRepo.CleanRecords(job.ID, int(job.RetainCopies))
+		_ = NewIBackupService().CleanSuccessfulRecords(job.ID, job.RetainCopies)
 	}
 }
 
@@ -276,67 +279,107 @@ func (s *CronjobService) execCurl(job *model.Cronjob) (string, string) {
 	return fmt.Sprintf("HTTP %d", resp.StatusCode), constant.StatusSuccess
 }
 
-func (s *CronjobService) execDatabaseBackup(job *model.Cronjob) (string, string) {
+func (s *CronjobService) execDatabaseBackup(job *model.Cronjob) (string, string, string) {
 	if job.DBName == "" || job.DBType == "" {
-		return "database name or type is empty", constant.StatusFailed
+		return "database name or type is empty", constant.StatusFailed, ""
 	}
 	backupService := NewIBackupService()
-	if job.TargetAccountID > 0 {
-		outPath, err := backupService.PerformBackup("database", job.DBName, job.DBType, "", job.TargetAccountID)
-		if err != nil {
-			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed
-		}
-		return fmt.Sprintf("backup uploaded: %s", outPath), constant.StatusSuccess
-	}
-	dbService := NewIDatabaseService()
 	dbRepo := repo.NewIDatabaseRepo()
 	servers, _ := dbRepo.ListServers(repo.WithServerType(job.DBType))
 	if len(servers) == 0 {
-		return fmt.Sprintf("no %s server found", job.DBType), constant.StatusFailed
+		return fmt.Sprintf("no %s server found", job.DBType), constant.StatusFailed, ""
+	}
+	if isAllDatabases(job.DBName) {
+		successCount := 0
+		var lastFile string
+		var messages []string
+		for _, server := range servers {
+			instances, _ := dbRepo.ListInstancesByServerID(server.ID)
+			for _, inst := range instances {
+				msg, status, file := s.backupOneDatabase(job, backupService, inst.ID, inst.Name)
+				messages = append(messages, fmt.Sprintf("%s: %s", inst.Name, msg))
+				if status == constant.StatusSuccess {
+					successCount++
+					lastFile = file
+				}
+			}
+		}
+		if successCount == 0 {
+			return strings.Join(messages, "\n"), constant.StatusFailed, ""
+		}
+		return fmt.Sprintf("backup %d database(s)\n%s", successCount, strings.Join(messages, "\n")), constant.StatusSuccess, lastFile
 	}
 	for _, server := range servers {
 		instances, _ := dbRepo.ListInstancesByServerID(server.ID)
 		for _, inst := range instances {
 			if inst.Name == job.DBName {
-				outFile, err := dbService.BackupInstance(inst.ID)
-				if err != nil {
-					return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed
-				}
-				return fmt.Sprintf("backup saved: %s", outFile), constant.StatusSuccess
+				return s.backupOneDatabase(job, backupService, inst.ID, inst.Name)
 			}
 		}
 	}
-	return fmt.Sprintf("database instance [%s] not found", job.DBName), constant.StatusFailed
+	return fmt.Sprintf("database instance [%s] not found", job.DBName), constant.StatusFailed, ""
 }
 
-func (s *CronjobService) execWebsiteBackup(job *model.Cronjob) (string, string) {
+func (s *CronjobService) backupOneDatabase(job *model.Cronjob, backupService IBackupService, instanceID uint, dbName string) (string, string, string) {
+	if job.TargetAccountID > 0 {
+		output, err := backupService.PerformBackupWithInfo("database", dbName, job.DBType, "", job.TargetAccountID)
+		if err != nil {
+			_ = backupService.CreateRecordForFile("database", dbName, job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
+			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
+		}
+		_ = backupService.CreateRecordForFile("database", dbName, job.TargetAccountID, job.ID, output.Path, output.Size, constant.StatusSuccess, output.Path)
+		return fmt.Sprintf("backup uploaded: %s", output.Path), constant.StatusSuccess, output.Path
+	}
+	dbService := NewIDatabaseService()
+	outFile, err := dbService.BackupInstance(instanceID)
+	if err != nil {
+		_ = backupService.CreateRecordForFile("database", dbName, 0, job.ID, "", 0, constant.StatusFailed, err.Error())
+		return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
+	}
+	_ = backupService.CreateRecordForFile("database", dbName, 0, job.ID, outFile, 0, constant.StatusSuccess, outFile)
+	return fmt.Sprintf("backup saved: %s", outFile), constant.StatusSuccess, outFile
+}
+
+func (s *CronjobService) execWebsiteBackup(job *model.Cronjob) (string, string, string) {
 	if job.Website == "" {
-		return "website name is empty", constant.StatusFailed
+		return "website name is empty", constant.StatusFailed, ""
 	}
+	backupService := NewIBackupService()
 	if job.TargetAccountID > 0 {
-		backupService := NewIBackupService()
-		outPath, err := backupService.PerformBackup("website", job.Website, "", "", job.TargetAccountID)
+		output, err := backupService.PerformBackupWithInfo("website", job.Website, "", "", job.TargetAccountID)
 		if err != nil {
-			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed
+			_ = backupService.CreateRecordForFile("website", job.Website, job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
+			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
 		}
-		return fmt.Sprintf("backup uploaded: %s", outPath), constant.StatusSuccess
+		_ = backupService.CreateRecordForFile("website", job.Website, job.TargetAccountID, job.ID, output.Path, output.Size, constant.StatusSuccess, output.Path)
+		return fmt.Sprintf("backup uploaded: %s", output.Path), constant.StatusSuccess, output.Path
 	}
-	return s.localBackupTar(job, "website", job.Website, "")
+	msg, status := s.localBackupTar(job, "website", job.Website, "")
+	file := extractBackupFile(msg)
+	_ = backupService.CreateRecordForFile("website", job.Website, 0, job.ID, file, 0, status, msg)
+	return msg, status, file
 }
 
-func (s *CronjobService) execDirectoryBackup(job *model.Cronjob) (string, string) {
+func (s *CronjobService) execDirectoryBackup(job *model.Cronjob) (string, string, string) {
 	if job.SourceDir == "" {
-		return "source directory is empty", constant.StatusFailed
+		return "source directory is empty", constant.StatusFailed, ""
 	}
+	backupService := NewIBackupService()
 	if job.TargetAccountID > 0 {
-		backupService := NewIBackupService()
-		outPath, err := backupService.PerformBackup("directory", "", "", job.SourceDir, job.TargetAccountID)
+		output, err := backupService.PerformBackupWithInfo("directory", "", "", job.SourceDir, job.TargetAccountID)
 		if err != nil {
-			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed
+			_ = backupService.CreateRecordForFile("directory", filepath.Base(job.SourceDir), job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
+			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
 		}
-		return fmt.Sprintf("backup uploaded: %s", outPath), constant.StatusSuccess
+		name := filepath.Base(job.SourceDir)
+		_ = backupService.CreateRecordForFile("directory", name, job.TargetAccountID, job.ID, output.Path, output.Size, constant.StatusSuccess, output.Path)
+		return fmt.Sprintf("backup uploaded: %s", output.Path), constant.StatusSuccess, output.Path
 	}
-	return s.localBackupTar(job, "directory", job.SourceDir, job.SourceDir)
+	name := filepath.Base(job.SourceDir)
+	msg, status := s.localBackupTar(job, "directory", job.SourceDir, job.SourceDir)
+	file := extractBackupFile(msg)
+	_ = backupService.CreateRecordForFile("directory", name, 0, job.ID, file, 0, status, msg)
+	return msg, status, file
 }
 
 func (s *CronjobService) localBackupTar(job *model.Cronjob, backupType, name, sourceDir string) (string, string) {
@@ -373,6 +416,19 @@ func (s *CronjobService) localBackupTar(job *model.Cronjob, backupType, name, so
 		return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed
 	}
 	return fmt.Sprintf("backup saved: %s", outFile), constant.StatusSuccess
+}
+
+func isAllDatabases(name string) bool {
+	name = strings.TrimSpace(strings.ToLower(name))
+	return name == "all" || name == "*" || name == "__all__" || name == "全部"
+}
+
+func extractBackupFile(message string) string {
+	const prefix = "backup saved: "
+	if strings.HasPrefix(message, prefix) {
+		return strings.TrimSpace(strings.TrimPrefix(message, prefix))
+	}
+	return ""
 }
 
 func toCronjobInfo(j *model.Cronjob) *dto.CronjobInfo {

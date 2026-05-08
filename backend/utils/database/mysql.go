@@ -130,7 +130,13 @@ func (c *MysqlClient) Backup(database, outFile string) error {
 }
 
 func (c *MysqlClient) Restore(database, inFile string) error {
-	f, err := os.Open(inFile)
+	sqlFile, err := PrepareSQLRestoreFile(inFile)
+	if err != nil {
+		return err
+	}
+	defer sqlFile.Cleanup()
+
+	f, err := os.Open(sqlFile.Path)
 	if err != nil {
 		return fmt.Errorf("open sql file: %v", err)
 	}

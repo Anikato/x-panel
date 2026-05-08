@@ -37,7 +37,21 @@ func (c *LocalClient) Upload(src, target string) error {
 }
 
 func (c *LocalClient) Download(src, target string) error {
-	return c.Upload(filepath.Join(c.basePath, src), target)
+	srcFile, err := os.Open(filepath.Join(c.basePath, src))
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return err
+	}
+	dstFile, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
 
 func (c *LocalClient) Delete(path string) error {

@@ -43,6 +43,12 @@
           </el-table-column>
           <el-table-column prop="name" :label="t('commons.name')" min-width="140" />
           <el-table-column prop="fileName" :label="t('backup.fileName')" min-width="280" show-overflow-tooltip />
+          <el-table-column :label="t('backup.size')" width="120">
+            <template #default="{ row }">{{ formatSize(row.size) }}</template>
+          </el-table-column>
+          <el-table-column :label="t('backup.path')" min-width="260" show-overflow-tooltip>
+            <template #default="{ row }">{{ fullRecordPath(row) || '-' }}</template>
+          </el-table-column>
           <el-table-column prop="status" :label="t('backup.status')" width="100">
             <template #default="{ row }">
               <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status === 'Success' ? t('backup.success') : t('backup.failed') }}</el-tag>
@@ -51,8 +57,9 @@
           <el-table-column prop="createdAt" :label="t('backup.time')" width="180">
             <template #default="{ row }">{{ new Date(row.createdAt).toLocaleString() }}</template>
           </el-table-column>
-          <el-table-column :label="t('commons.actions')" width="100">
+          <el-table-column :label="t('commons.actions')" width="150">
             <template #default="{ row }">
+              <el-button link type="primary" :disabled="!fullRecordPath(row)" @click="copyRecordPath(row)">{{ t('backup.copyPath') }}</el-button>
               <el-button link type="danger" @click="handleDeleteRecord(row)">{{ t('commons.delete') }}</el-button>
             </template>
           </el-table-column>
@@ -244,6 +251,22 @@ const typeLabel = (type: string) => {
 const getVarField = (vars: string, field: string) => {
   try { return JSON.parse(vars || '{}')[field] || '' } catch { return '' }
 }
+const formatSize = (size: number) => {
+  if (!size) return '-'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = size
+  let idx = 0
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024
+    idx++
+  }
+  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`
+}
+const fullRecordPath = (row: BackupRecord) => {
+  if (!row.fileName) return ''
+  if (!row.fileDir || row.fileDir === '.') return row.fileName
+  return `${row.fileDir.replace(/\/$/, '')}/${row.fileName}`
+}
 
 const accountLoading = ref(false)
 const accounts = ref<BackupAccount[]>([])
@@ -375,6 +398,13 @@ const handleDeleteRecord = async (row: BackupRecord) => {
   await deleteBackupRecord({ id: row.id })
   ElMessage.success(t('commons.success'))
   await loadRecords()
+}
+
+const copyRecordPath = async (row: BackupRecord) => {
+  const path = fullRecordPath(row)
+  if (!path) return
+  await navigator.clipboard.writeText(path)
+  ElMessage.success(t('backup.pathCopied'))
 }
 
 watch(activeTab, (tab) => {

@@ -138,6 +138,22 @@
         <el-form-item :label="t('database.backupFile')">
           <el-input v-model="restoreForm.file" :placeholder="t('database.restoreFileHint')" />
         </el-form-item>
+        <el-form-item :label="t('database.backupRecord')">
+          <el-select
+            v-model="restoreForm.backupRecordID"
+            clearable
+            filterable
+            :placeholder="t('database.backupRecordHint')"
+            style="width:100%"
+          >
+            <el-option
+              v-for="record in backupRecords"
+              :key="record.id"
+              :label="formatBackupRecord(record)"
+              :value="record.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="restoreDialog = false">{{ t('commons.cancel') }}</el-button>
@@ -154,11 +170,13 @@ import { Refresh } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { DatabaseServer, DatabaseInstance } from '@/api/interface'
+import type { BackupRecord } from '@/api/interface'
 import {
   searchDatabaseServer, createDatabaseServer, updateDatabaseServer, deleteDatabaseServer,
   testDatabaseConnection, searchDatabaseInstance, createDatabaseInstance, deleteDatabaseInstance,
   syncDatabaseInstances, changeInstancePassword, backupDatabaseInstance, restoreDatabaseInstance,
 } from '@/api/modules/database'
+import { searchBackupRecords } from '@/api/modules/backup'
 
 const props = defineProps<{ dbType: string }>()
 const { t } = useI18n()
@@ -340,19 +358,34 @@ const submitChangePassword = async () => {
 // Restore
 const restoreDialog = ref(false)
 const restoring = ref(false)
-const restoreForm = reactive({ id: 0, dbName: '', file: '' })
+const restoreForm = reactive({ id: 0, dbName: '', file: '', backupRecordID: undefined as number | undefined })
+const backupRecords = ref<BackupRecord[]>([])
 let restoreServer: DatabaseServer | null = null
 
-const openRestore = (server: DatabaseServer, inst: DatabaseInstance) => {
+const openRestore = async (server: DatabaseServer, inst: DatabaseInstance) => {
   restoreServer = server
   restoreForm.id = inst.id
   restoreForm.dbName = inst.name
   restoreForm.file = ''
+  restoreForm.backupRecordID = undefined
+  backupRecords.value = []
   restoreDialog.value = true
+  try {
+    const res = await searchBackupRecords({
+      page: 1,
+      pageSize: 50,
+      type: 'database',
+      name: inst.name,
+      status: 'Success',
+    })
+    backupRecords.value = res.data.items || []
+  } catch {
+    backupRecords.value = []
+  }
 }
 
 const submitRestore = async () => {
-  if (!restoreForm.file.trim()) {
+  if (!restoreForm.file.trim() && !restoreForm.backupRecordID) {
     ElMessage.warning(t('database.restoreFileRequired'))
     return
   }
@@ -361,10 +394,19 @@ const submitRestore = async () => {
   } catch { return }
   restoring.value = true
   try {
-    await restoreDatabaseInstance({ id: restoreForm.id, file: restoreForm.file })
+    await restoreDatabaseInstance({
+      id: restoreForm.id,
+      file: restoreForm.file.trim() || undefined,
+      backupRecordID: restoreForm.backupRecordID,
+    })
     ElMessage.success(t('commons.success'))
     restoreDialog.value = false
   } finally { restoring.value = false }
+}
+
+const formatBackupRecord = (record: BackupRecord) => {
+  const time = record.createdAt ? new Date(record.createdAt).toLocaleString() : '-'
+  return `${record.fileName} (${time})`
 }
 
 // Backup

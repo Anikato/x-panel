@@ -339,6 +339,21 @@ func (s *DatabaseService) BackupInstance(id uint) (string, error) {
 }
 
 func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error {
+	inFile := req.File
+	cleanup := func() {}
+	if req.BackupRecordID > 0 {
+		prepared, release, err := NewIBackupService().PrepareRecordFile(req.BackupRecordID)
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		inFile = prepared
+		cleanup = release
+	}
+	defer cleanup()
+	if inFile == "" {
+		return buserr.WithDetail(constant.ErrInternalServer, "backup file is required", fmt.Errorf("backup file is required"))
+	}
+
 	instance, err := s.repo.GetInstance(req.ID)
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
@@ -355,7 +370,7 @@ func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		if err := client.Restore(instance.Name, req.File); err != nil {
+		if err := client.Restore(instance.Name, inFile); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 	case "postgresql":
@@ -364,7 +379,7 @@ func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		if err := client.Restore(instance.Name, req.File); err != nil {
+		if err := client.Restore(instance.Name, inFile); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 	}
@@ -388,4 +403,3 @@ func testDBConnection(server *model.DatabaseServer) error {
 	}
 	return nil
 }
-

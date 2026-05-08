@@ -262,6 +262,7 @@ export interface CronjobRecord {
   duration: number
   status: string
   message: string
+  file: string
 }
 
 // ======================== Node ========================
@@ -315,8 +316,13 @@ export interface BackupRecord {
   id: number
   type: string
   name: string
+  accountID: number
+  cronjobID: number
   fileName: string
+  fileDir: string
+  size: number
   status: string
+  message: string
   createdAt: string
 }
 

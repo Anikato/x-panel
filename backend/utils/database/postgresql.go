@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -108,6 +109,10 @@ func (c *PostgresClient) Backup(database, outFile string) error {
 }
 
 func (c *PostgresClient) Restore(database, inFile string) error {
+	if IsSQLRestoreFile(inFile) {
+		return c.restoreSQL(database, inFile)
+	}
+
 	cmd := exec.Command("pg_restore",
 		"-h", c.Address,
 		"-p", fmt.Sprintf("%d", c.Port),
@@ -119,6 +124,28 @@ func (c *PostgresClient) Restore(database, inFile string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %s", err, string(output))
+	}
+	return nil
+}
+
+func (c *PostgresClient) restoreSQL(database, inFile string) error {
+	sqlFile, err := PrepareSQLRestoreFile(inFile)
+	if err != nil {
+		return err
+	}
+	defer sqlFile.Cleanup()
+
+	cmd := exec.Command("psql",
+		"-h", c.Address,
+		"-p", fmt.Sprintf("%d", c.Port),
+		"-U", c.Username,
+		"-d", database,
+		"-f", sqlFile.Path,
+	)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", c.Password))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

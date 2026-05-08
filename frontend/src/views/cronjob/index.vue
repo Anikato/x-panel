@@ -140,7 +140,11 @@
             </el-select>
           </el-form-item>
           <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbName')">
-            <el-input v-model="form.dbName" placeholder="my_database" />
+            <el-input v-model="form.dbName" placeholder="my_database">
+              <template #append>
+                <el-button @click="form.dbName = '__all__'">{{ t('cronjob.allDatabases') }}</el-button>
+              </template>
+            </el-input>
           </el-form-item>
           <el-form-item v-if="form.type === 'directory'" :label="t('cronjob.sourceDir')">
             <el-input v-model="form.sourceDir" placeholder="/data/myapp" />
@@ -151,6 +155,12 @@
           <div class="drawer-section-title">{{ t('cronjob.advancedConfig') }}</div>
           <el-form-item :label="t('cronjob.retainCopies')">
             <el-input-number v-model="form.retainCopies" :min="1" :max="999" />
+          </el-form-item>
+          <el-form-item :label="t('backup.account')">
+            <el-select v-model="form.targetAccountID" style="width:100%" :placeholder="t('cronjob.localBackup')">
+              <el-option :label="t('cronjob.localBackup')" :value="0" />
+              <el-option v-for="a in backupAccounts" :key="a.id" :label="a.name" :value="a.id" />
+            </el-select>
           </el-form-item>
           <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.compressFormat')">
             <el-select v-model="form.compressFormat" style="width:100%">
@@ -188,6 +198,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="message" :label="t('cronjob.message')" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="file" :label="t('backup.path')" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-button v-if="row.file" link type="primary" @click="copyFile(row.file)">{{ row.file }}</el-button>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
       </el-table>
       <div class="app-pagination">
         <el-pagination
@@ -205,17 +221,19 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import type { Cronjob, CronjobRecord } from '@/api/interface'
+import type { BackupAccount, Cronjob, CronjobRecord } from '@/api/interface'
 import {
   searchCronjob, createCronjob, updateCronjob, deleteCronjob,
   updateCronjobStatus, handleOnceCronjob, searchCronjobRecords
 } from '@/api/modules/cronjob'
+import { listBackupAccounts } from '@/api/modules/backup'
 
 const { t } = useI18n()
 const typeOptions = ['shell', 'curl', 'website', 'database', 'directory']
 const typeTagMap: Record<string, string> = {
   shell: '', curl: 'warning', website: 'success', database: 'danger', directory: 'info',
 }
+const backupAccounts = ref<BackupAccount[]>([])
 
 const loading = ref(false)
 const data = ref<Cronjob[]>([])
@@ -353,6 +371,7 @@ const openCreate = () => {
   cronTime.value = initCronTime(2, 0)
   parseCronToBuilder(form.spec)
   drawerVisible.value = true
+  loadBackupAccounts()
 }
 
 const openEdit = (row: Cronjob) => {
@@ -360,6 +379,7 @@ const openEdit = (row: Cronjob) => {
   editMode.value = true
   parseCronToBuilder(row.spec)
   drawerVisible.value = true
+  loadBackupAccounts()
 }
 
 const submit = async () => {
@@ -420,7 +440,24 @@ const loadRecords = async () => {
   } finally { recordsLoading.value = false }
 }
 
-onMounted(() => search())
+const loadBackupAccounts = async () => {
+  try {
+    const res = await listBackupAccounts()
+    backupAccounts.value = res.data || []
+  } catch {
+    backupAccounts.value = []
+  }
+}
+
+const copyFile = async (file: string) => {
+  await navigator.clipboard.writeText(file)
+  ElMessage.success(t('backup.pathCopied'))
+}
+
+onMounted(() => {
+  search()
+  loadBackupAccounts()
+})
 </script>
 
 <style lang="scss" scoped>

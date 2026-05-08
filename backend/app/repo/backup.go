@@ -16,6 +16,7 @@ type IBackupRepo interface {
 
 	CreateRecord(r *model.BackupRecord) error
 	PageRecord(page, pageSize int, opts ...DBOption) (int64, []model.BackupRecord, error)
+	ListRecords(opts ...DBOption) ([]model.BackupRecord, error)
 	DeleteRecord(id uint) error
 	GetRecord(id uint) (*model.BackupRecord, error)
 }
@@ -65,10 +66,19 @@ func (r *BackupRepo) PageRecord(page, pageSize int, opts ...DBOption) (int64, []
 	if err := db.Count(&total).Error; err != nil {
 		return 0, nil, err
 	}
-	if err := db.Offset((page-1)*pageSize).Limit(pageSize).Order("created_at desc").Find(&items).Error; err != nil {
+	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at desc").Find(&items).Error; err != nil {
 		return 0, nil, err
 	}
 	return total, items, nil
+}
+
+func (r *BackupRepo) ListRecords(opts ...DBOption) ([]model.BackupRecord, error) {
+	var items []model.BackupRecord
+	db := global.DB.Model(&model.BackupRecord{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	return items, db.Order("created_at desc").Find(&items).Error
 }
 
 func (r *BackupRepo) DeleteRecord(id uint) error {
@@ -96,6 +106,33 @@ func WithAccountID(id uint) DBOption {
 	return func(db *gorm.DB) *gorm.DB {
 		if id > 0 {
 			return db.Where("account_id = ?", id)
+		}
+		return db
+	}
+}
+
+func WithBackupName(name string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if name != "" {
+			return db.Where("name = ?", name)
+		}
+		return db
+	}
+}
+
+func WithBackupStatus(status string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if status != "" {
+			return db.Where("status = ?", status)
+		}
+		return db
+	}
+}
+
+func WithBackupCronjobID(id uint) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if id > 0 {
+			return db.Where("cronjob_id = ?", id)
 		}
 		return db
 	}

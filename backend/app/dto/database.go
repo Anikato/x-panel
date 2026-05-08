@@ -74,6 +74,7 @@ type DatabaseInstanceBackup struct {
 }
 
 type DatabaseInstanceRestore struct {
-	ID   uint   `json:"id" binding:"required"`
-	File string `json:"file" binding:"required"`
+	ID             uint   `json:"id" binding:"required"`
+	File           string `json:"file"`
+	BackupRecordID uint   `json:"backupRecordID"`
 }

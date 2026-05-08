@@ -7,6 +7,6 @@ export const updateBackupAccount = (data: BackupAccount) => http.post('/backup/a
 export const deleteBackupAccount = (data: { id: number }) => http.post('/backup/accounts/del', data)
 
 export const createBackup = (data: BackupForm) => http.post('/backup', data)
-export const searchBackupRecords = (data: SearchReq & { type?: string }) =>
+export const searchBackupRecords = (data: SearchReq & { type?: string; name?: string; status?: string; accountID?: number }) =>
   http.post('/backup/records/search', data)
 export const deleteBackupRecord = (data: { id: number }) => http.post('/backup/records/del', data)

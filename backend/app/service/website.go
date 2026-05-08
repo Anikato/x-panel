@@ -837,10 +837,7 @@ func (s *WebsiteService) InspectSite(id uint) (*dto.WebsiteInspectResp, error) {
 	} else {
 		resp.Issues = append(resp.Issues, "当前面板进程无法读取网站目录")
 	}
-	indexFiles := strings.Fields(site.IndexFile)
-	if len(indexFiles) == 0 {
-		indexFiles = []string{"index.html", "index.htm", "index.php"}
-	}
+	indexFiles := mergeIndexCandidates(strings.Fields(site.IndexFile), []string{"index.html", "index.htm", "index.php"})
 	for _, name := range indexFiles {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			resp.IndexFiles = append(resp.IndexFiles, name)
@@ -854,6 +851,22 @@ func (s *WebsiteService) InspectSite(id uint) (*dto.WebsiteInspectResp, error) {
 		resp.Issues = append(resp.Issues, "目录权限可能不足，Nginx 可能无法读取或进入")
 	}
 	return resp, nil
+}
+
+func mergeIndexCandidates(primary, fallback []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, group := range [][]string{primary, fallback} {
+		for _, item := range group {
+			item = strings.TrimSpace(item)
+			if item == "" || seen[item] {
+				continue
+			}
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func (s *WebsiteService) DetectLogPaths(id uint) (*dto.WebsiteLogPathDetectResp, error) {

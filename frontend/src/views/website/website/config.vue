@@ -1222,8 +1222,32 @@ onBeforeUnmount(() => {
 .source-editor-section {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 250px);
-  min-height: 400px;
+  height: calc(100vh - 220px);
+  min-height: 640px;
+}
+
+.source-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  :deep(.el-tabs__content) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.el-tab-pane) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  :deep(.el-tab-pane[aria-hidden='false']) {
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .source-editor-toolbar {
@@ -1300,6 +1324,7 @@ onBeforeUnmount(() => {
 
 .source-editor-container {
   flex: 1;
+  min-height: 560px;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--xp-border-light);

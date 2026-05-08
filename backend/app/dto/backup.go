@@ -36,6 +36,8 @@ type BackupRecordSearch struct {
 	PageInfo
 	Type      string `json:"type"`
 	AccountID uint   `json:"accountID"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
 }
 
 type BackupRecordInfo struct {
@@ -44,6 +46,7 @@ type BackupRecordInfo struct {
 	Type      string    `json:"type"`
 	Name      string    `json:"name"`
 	AccountID uint      `json:"accountID"`
+	CronjobID uint      `json:"cronjobID"`
 	FileName  string    `json:"fileName"`
 	FileDir   string    `json:"fileDir"`
 	Size      int64     `json:"size"`

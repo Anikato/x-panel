@@ -419,6 +419,29 @@ const pathInput = ref('/')
 const searchKeyword = ref('')
 const containSub = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+const LAST_FILE_PATH_KEY = 'xpanel:file-manager:last-path'
+
+function getStoredLastPath(): string {
+  try {
+    return localStorage.getItem(LAST_FILE_PATH_KEY) || '/'
+  } catch {
+    return '/'
+  }
+}
+
+function saveStoredLastPath(path: string) {
+  if (!path) return
+  try {
+    localStorage.setItem(LAST_FILE_PATH_KEY, path)
+  } catch {
+    // localStorage may be unavailable in private mode; navigation should still work.
+  }
+}
+
+function getInitialPath(): string {
+  const queryPath = typeof route.query.path === 'string' ? route.query.path : ''
+  return queryPath || getStoredLastPath()
+}
 
 // 目录大小计算
 const dirSizeMap = ref<Record<string, { loading: boolean; size: number | null }>>({})
@@ -593,6 +616,7 @@ const refreshFiles = async () => {
     })
     fileList.value = res.data?.items || []
     pathInput.value = tab.path
+    saveStoredLastPath(tab.path)
   } catch {
     fileList.value = []
   } finally {
@@ -1084,12 +1108,10 @@ function updateTableHeight() {
 // ===================== 生命周期 =====================
 
 onMounted(() => {
-  const initialPath = typeof route.query.path === 'string' ? route.query.path : ''
-  if (initialPath) {
-    tabs.value[0].path = initialPath
-    tabs.value[0].name = getTabName(initialPath)
-    pathInput.value = initialPath
-  }
+  const initialPath = getInitialPath()
+  tabs.value[0].path = initialPath
+  tabs.value[0].name = getTabName(initialPath)
+  pathInput.value = initialPath
   refreshFiles()
   updateTableHeight()
   window.addEventListener('resize', updateTableHeight)

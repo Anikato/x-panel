@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"xpanel/app/dto"
@@ -27,8 +28,17 @@ type IBackupService interface {
 	Backup(req dto.BackupCreate) error
 	SearchRecords(req dto.BackupRecordSearch) (int64, []dto.BackupRecordInfo, error)
 	DeleteRecord(id uint) error
+	PrepareRecordFile(id uint) (string, func(), error)
+	CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error
+	CleanSuccessfulRecords(cronjobID uint, retainCopies uint) error
 
 	PerformBackup(backupType, name, dbType, sourceDir string, accountID uint) (string, error)
+	PerformBackupWithInfo(backupType, name, dbType, sourceDir string, accountID uint) (*BackupOutput, error)
+}
+
+type BackupOutput struct {
+	Path string
+	Size int64
 }
 
 func NewIBackupService() IBackupService {
@@ -87,7 +97,7 @@ func (s *BackupService) GetAccount(id uint) (*model.BackupAccount, error) {
 
 func (s *BackupService) Backup(req dto.BackupCreate) error {
 	go func() {
-		msg, err := s.PerformBackup(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID)
+		output, err := s.PerformBackupWithInfo(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID)
 		record := &model.BackupRecord{
 			Type: req.Type, Name: req.Name, AccountID: req.AccountID,
 		}
@@ -96,9 +106,10 @@ func (s *BackupService) Backup(req dto.BackupCreate) error {
 			record.Message = err.Error()
 		} else {
 			record.Status = constant.StatusSuccess
-			record.FileName = filepath.Base(msg)
-			record.FileDir = filepath.Dir(msg)
-			record.Message = msg
+			record.FileName = filepath.Base(output.Path)
+			record.FileDir = filepath.Dir(output.Path)
+			record.Message = output.Path
+			record.Size = output.Size
 		}
 		if err := s.repo.CreateRecord(record); err != nil {
 			global.LOG.Errorf("save backup record failed: %v", err)
@@ -108,14 +119,22 @@ func (s *BackupService) Backup(req dto.BackupCreate) error {
 }
 
 func (s *BackupService) PerformBackup(backupType, name, dbType, sourceDir string, accountID uint) (string, error) {
+	output, err := s.PerformBackupWithInfo(backupType, name, dbType, sourceDir, accountID)
+	if err != nil {
+		return "", err
+	}
+	return output.Path, nil
+}
+
+func (s *BackupService) PerformBackupWithInfo(backupType, name, dbType, sourceDir string, accountID uint) (*BackupOutput, error) {
 	account, err := s.repo.GetAccount(accountID)
 	if err != nil {
-		return "", buserr.New(constant.ErrRecordNotFound)
+		return nil, buserr.New(constant.ErrRecordNotFound)
 	}
 
 	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
 	if err != nil {
-		return "", fmt.Errorf("create storage client failed: %v", err)
+		return nil, fmt.Errorf("create storage client failed: %v", err)
 	}
 
 	timestamp := time.Now().Format("20060102150405")
@@ -133,18 +152,19 @@ func (s *BackupService) PerformBackup(backupType, name, dbType, sourceDir string
 	case "directory":
 		localFile, targetPath, err = s.backupDirectory(sourceDir, name, tmpDir, timestamp)
 	default:
-		return "", fmt.Errorf("unsupported backup type: %s", backupType)
+		return nil, fmt.Errorf("unsupported backup type: %s", backupType)
 	}
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer os.Remove(localFile)
+	size := fileSize(localFile)
 
 	if err := client.Upload(localFile, targetPath); err != nil {
-		return "", fmt.Errorf("upload failed: %v", err)
+		return nil, fmt.Errorf("upload failed: %v", err)
 	}
 
-	return targetPath, nil
+	return &BackupOutput{Path: targetPath, Size: size}, nil
 }
 
 func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, string, error) {
@@ -240,6 +260,8 @@ func (s *BackupService) SearchRecords(req dto.BackupRecordSearch) (int64, []dto.
 	opts := []repo.DBOption{
 		repo.WithBackupType(req.Type),
 		repo.WithAccountID(req.AccountID),
+		repo.WithBackupName(req.Name),
+		repo.WithBackupStatus(req.Status),
 	}
 	total, records, err := s.repo.PageRecord(req.Page, req.PageSize, opts...)
 	if err != nil {
@@ -249,7 +271,7 @@ func (s *BackupService) SearchRecords(req dto.BackupRecordSearch) (int64, []dto.
 	for _, r := range records {
 		items = append(items, dto.BackupRecordInfo{
 			ID: r.ID, CreatedAt: r.CreatedAt, Type: r.Type,
-			Name: r.Name, AccountID: r.AccountID, FileName: r.FileName,
+			Name: r.Name, AccountID: r.AccountID, CronjobID: r.CronjobID, FileName: r.FileName,
 			FileDir: r.FileDir, Size: r.Size, Status: r.Status, Message: r.Message,
 		})
 	}
@@ -257,5 +279,146 @@ func (s *BackupService) SearchRecords(req dto.BackupRecordSearch) (int64, []dto.
 }
 
 func (s *BackupService) DeleteRecord(id uint) error {
+	record, err := s.repo.GetRecord(id)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	if record.Status == constant.StatusSuccess {
+		if err := s.deleteRecordFile(record); err != nil {
+			return fmt.Errorf("delete backup file failed: %v", err)
+		}
+	}
 	return s.repo.DeleteRecord(id)
+}
+
+func (s *BackupService) CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error {
+	record := &model.BackupRecord{
+		CronjobID: cronjobID,
+		Type:      backupType,
+		Name:      name,
+		AccountID: accountID,
+		Status:    status,
+		Message:   message,
+	}
+	if filePath != "" {
+		record.FileName = filepath.Base(filePath)
+		record.FileDir = filepath.Dir(filePath)
+		record.Size = size
+		if record.Size == 0 {
+			record.Size = s.recordFileSize(accountID, record.FileDir, record.FileName)
+		}
+	}
+	return s.repo.CreateRecord(record)
+}
+
+func (s *BackupService) CleanSuccessfulRecords(cronjobID uint, retainCopies uint) error {
+	if cronjobID == 0 || retainCopies == 0 {
+		return nil
+	}
+	records, err := s.repo.ListRecords(
+		repo.WithBackupCronjobID(cronjobID),
+		repo.WithBackupStatus(constant.StatusSuccess),
+	)
+	if err != nil {
+		return err
+	}
+	for i := int(retainCopies); i < len(records); i++ {
+		record := records[i]
+		if err := s.deleteRecordFile(&record); err != nil {
+			global.LOG.Warnf("delete retained backup file failed: %v", err)
+		}
+		_ = s.repo.DeleteRecord(record.ID)
+	}
+	return nil
+}
+
+func (s *BackupService) PrepareRecordFile(id uint) (string, func(), error) {
+	record, err := s.repo.GetRecord(id)
+	if err != nil {
+		return "", nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	if record.Status != constant.StatusSuccess {
+		return "", nil, fmt.Errorf("backup record is not successful")
+	}
+	relPath := recordPath(record)
+	if relPath == "" {
+		return "", nil, fmt.Errorf("backup record file is empty")
+	}
+	if record.AccountID == 0 {
+		return relPath, func() {}, nil
+	}
+	account, err := s.repo.GetAccount(record.AccountID)
+	if err != nil {
+		return "", nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
+	if err != nil {
+		return "", nil, err
+	}
+	tmp, err := os.CreateTemp("", "xpanel-backup-record-*"+filepath.Ext(record.FileName))
+	if err != nil {
+		return "", nil, err
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	if err := client.Download(relPath, tmpPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", nil, err
+	}
+	return tmpPath, func() { _ = os.Remove(tmpPath) }, nil
+}
+
+func (s *BackupService) deleteRecordFile(record *model.BackupRecord) error {
+	filePath := recordPath(record)
+	if filePath == "" {
+		return nil
+	}
+	if record.AccountID == 0 {
+		err := os.Remove(filePath)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	account, err := s.repo.GetAccount(record.AccountID)
+	if err != nil {
+		return err
+	}
+	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
+	if err != nil {
+		return err
+	}
+	err = client.Delete(filePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func (s *BackupService) recordFileSize(accountID uint, fileDir, fileName string) int64 {
+	if accountID != 0 {
+		return 0
+	}
+	return fileSize(filepath.Join(fileDir, fileName))
+}
+
+func fileSize(filePath string) int64 {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func recordPath(record *model.BackupRecord) string {
+	if record == nil || record.FileName == "" {
+		return ""
+	}
+	if record.FileDir == "" || record.FileDir == "." {
+		return record.FileName
+	}
+	if filepath.IsAbs(record.FileDir) {
+		return filepath.Join(record.FileDir, record.FileName)
+	}
+	return strings.TrimPrefix(filepath.ToSlash(filepath.Join(record.FileDir, record.FileName)), "/")
 }
