@@ -16,6 +16,7 @@ import (
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/dns01"
+	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
 )
@@ -42,7 +43,7 @@ type AcmeUser struct {
 
 func (u *AcmeUser) GetEmail() string                        { return u.Email }
 func (u *AcmeUser) GetRegistration() *registration.Resource { return u.Registration }
-func (u *AcmeUser) GetPrivateKey() crypto.PrivateKey         { return u.Key }
+func (u *AcmeUser) GetPrivateKey() crypto.PrivateKey        { return u.Key }
 
 // AcmeClient ACME 客户端封装
 type AcmeClient struct {
@@ -190,7 +191,6 @@ func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWrit
 	return cert, nil
 }
 
-
 // SetDNSProvider 设置 DNS 验证提供商
 func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 	provider, err := GetDNSProvider(dnsType, authJSON)
@@ -206,6 +206,11 @@ func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 			"8.8.4.4:53",
 		}),
 	)
+}
+
+// SetHTTPProvider 设置 HTTP-01 验证提供商。
+func (c *AcmeClient) SetHTTPProvider() error {
+	return c.Client.Challenge.SetHTTP01Provider(NewHTTP01Provider(), http01.SetDelay(2*time.Second))
 }
 
 // RenewCertificate 续签证书

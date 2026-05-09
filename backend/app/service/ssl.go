@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-acme/lego/v4/certificate"
 	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/repo"
@@ -20,7 +21,6 @@ import (
 	"xpanel/constant"
 	"xpanel/global"
 	sslutil "xpanel/utils/ssl"
-	"github.com/go-acme/lego/v4/certificate"
 )
 
 type ICertificateService interface {
@@ -63,6 +63,7 @@ func (s *CertificateService) Create(req dto.CertificateCreate) error {
 		Type:          "autoApply",
 		AcmeAccountID: req.AcmeAccountID,
 		DnsAccountID:  req.DnsAccountID,
+		WebsiteID:     req.WebsiteID,
 		KeyType:       req.KeyType,
 		AutoRenew:     req.AutoRenew,
 		Description:   req.Description,
@@ -179,6 +180,7 @@ func (s *CertificateService) SearchWithPage(req dto.SearchCertReq) (int64, []dto
 			Type:             c.Type,
 			AcmeAccountID:    c.AcmeAccountID,
 			DnsAccountID:     c.DnsAccountID,
+			WebsiteID:        c.WebsiteID,
 			KeyType:          c.KeyType,
 			AutoRenew:        c.AutoRenew,
 			ExpireDate:       c.ExpireDate,
@@ -225,6 +227,7 @@ func (s *CertificateService) GetDetail(id uint) (*dto.CertificateDetail, error) 
 			Type:             cert.Type,
 			AcmeAccountID:    cert.AcmeAccountID,
 			DnsAccountID:     cert.DnsAccountID,
+			WebsiteID:        cert.WebsiteID,
 			KeyType:          cert.KeyType,
 			AutoRenew:        cert.AutoRenew,
 			ExpireDate:       cert.ExpireDate,
@@ -277,17 +280,16 @@ func (s *CertificateService) Apply(id uint) error {
 	}
 	logger.Printf("[成功] ACME 客户端创建完成")
 
-	// 仅支持 DNS 验证方式
-	// HTTP-01 验证需要配置外部 HTTP 服务器路由，目前未实现；如需使用请先切换为 DNS 验证
-	if cert.Provider != "dns" {
-		errMsg := fmt.Sprintf("自动验证方式“%s”暂不支持，请在证书配置中选择 DNS 验证方式", cert.Provider)
-		logger.Printf("[错误] %s", errMsg)
-		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": errMsg})
-		return fmt.Errorf("%s", errMsg)
+	// 收集域名
+	domains := collectCertificateDomains(cert)
+	if err := validateCertificateProvider(cert.Provider, domains); err != nil {
+		logger.Printf("[错误] %s", err.Error())
+		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+		return err
 	}
 
-	// 设置 DNS 验证
-	if cert.Provider == "dns" {
+	switch cert.Provider {
+	case "dns":
 		dns, err := s.dnsRepo.Get(repo.WithByID(cert.DnsAccountID))
 		if err != nil {
 			errMsg := "DNS 账户不存在"
@@ -303,12 +305,19 @@ func (s *CertificateService) Apply(id uint) error {
 			return err
 		}
 		logger.Printf("[成功] DNS 提供商配置完成")
-	}
-
-	// 收集域名
-	domains := []string{cert.PrimaryDomain}
-	if cert.Domains != "" {
-		domains = append(domains, strings.Split(cert.Domains, ",")...)
+	case "http":
+		logger.Printf("[信息] 正在配置 HTTP-01 验证提供商...")
+		if err := s.prepareHTTP01Website(cert); err != nil {
+			logger.Printf("[错误] HTTP-01 关联网站准备失败: %v", err)
+			s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+			return err
+		}
+		if err := client.SetHTTPProvider(); err != nil {
+			logger.Printf("[错误] HTTP-01 验证提供商配置失败: %v", err)
+			s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+			return err
+		}
+		logger.Printf("[成功] HTTP-01 验证提供商配置完成")
 	}
 	logger.Printf("[信息] 申请域名: %s", strings.Join(domains, ", "))
 	logger.Printf("[信息] 密钥类型: %s", cert.KeyType)
@@ -317,7 +326,11 @@ func (s *CertificateService) Apply(id uint) error {
 
 	// 申请证书
 	logger.Printf("[信息] 正在向 CA 发起证书申请（此步骤可能耗时数分钟）...")
-	logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
+	if cert.Provider == "dns" {
+		logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
+	} else if cert.Provider == "http" {
+		logger.Printf("[信息] HTTP 验证中：请确保域名 80 端口可访问面板的 /.well-known/acme-challenge/ 路径...")
+	}
 	var logWriter *os.File
 	if logFile != nil {
 		logWriter = logFile
@@ -358,6 +371,17 @@ func (s *CertificateService) Apply(id uint) error {
 		dbUpdates["start_date"] = certInfo.startDate
 	}
 	s.certRepo.Update(id, dbUpdates)
+	cert.ID = id
+
+	if cert.WebsiteID > 0 {
+		logger.Printf("[信息] 正在绑定证书到关联网站 (ID=%d)...", cert.WebsiteID)
+		if err := s.bindCertificateToWebsite(cert); err != nil {
+			logger.Printf("[警告] 证书已签发，但自动绑定网站失败: %v", err)
+			s.certRepo.Update(id, map[string]interface{}{"message": "证书已签发，但自动绑定网站失败: " + err.Error()})
+		} else {
+			logger.Printf("[成功] 证书已绑定到关联网站")
+		}
+	}
 
 	// 如果有网站正在使用此证书，自动 reload nginx
 	if global.CONF.Nginx.IsInstalled() {
@@ -406,7 +430,15 @@ func (s *CertificateService) Renew(id uint) error {
 		return err
 	}
 
-	if cert.Provider == "dns" {
+	renewDomains := collectCertificateDomains(cert)
+	if err := validateCertificateProvider(cert.Provider, renewDomains); err != nil {
+		logger.Printf("[错误] %s", err.Error())
+		s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+		return err
+	}
+
+	switch cert.Provider {
+	case "dns":
 		dns, err := s.dnsRepo.Get(repo.WithByID(cert.DnsAccountID))
 		if err != nil {
 			logger.Printf("[错误] DNS 账户不存在")
@@ -419,16 +451,28 @@ func (s *CertificateService) Renew(id uint) error {
 			s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
 			return err
 		}
+	case "http":
+		logger.Printf("[信息] 正在配置 HTTP-01 验证提供商...")
+		if err := s.prepareHTTP01Website(cert); err != nil {
+			logger.Printf("[错误] HTTP-01 关联网站准备失败: %v", err)
+			s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+			return err
+		}
+		if err := client.SetHTTPProvider(); err != nil {
+			logger.Printf("[错误] HTTP-01 验证提供商配置失败: %v", err)
+			s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+			return err
+		}
 	}
 
 	// 收集域名
-	renewDomains := []string{cert.PrimaryDomain}
-	if cert.Domains != "" {
-		renewDomains = append(renewDomains, strings.Split(cert.Domains, ",")...)
-	}
 	logger.Printf("[信息] 续签域名: %s", strings.Join(renewDomains, ", "))
 	logger.Printf("[信息] 正在向 CA 发起续签请求...")
-	logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
+	if cert.Provider == "dns" {
+		logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
+	} else if cert.Provider == "http" {
+		logger.Printf("[信息] HTTP 验证中：请确保域名 80 端口可访问 /.well-known/acme-challenge/ 路径...")
+	}
 
 	var renewLogWriter *os.File
 	if logFile != nil {
@@ -482,7 +526,6 @@ func (s *CertificateService) Renew(id uint) error {
 	}
 	s.certRepo.Update(id, renewUpdates)
 
-
 	// 自动 reload nginx 使新证书生效
 	if global.CONF.Nginx.IsInstalled() {
 		logger.Printf("[信息] 正在重载 Nginx 配置...")
@@ -496,6 +539,125 @@ func (s *CertificateService) Renew(id uint) error {
 	logger.Printf("[完成] 证书续签流程结束")
 	global.LOG.Infof("Certificate renewed for: %s", cert.PrimaryDomain)
 	return nil
+}
+
+func collectCertificateDomains(cert model.Certificate) []string {
+	domains := []string{strings.TrimSpace(cert.PrimaryDomain)}
+	if cert.Domains != "" {
+		for _, domain := range strings.Split(cert.Domains, ",") {
+			domain = strings.TrimSpace(domain)
+			if domain != "" {
+				domains = append(domains, domain)
+			}
+		}
+	}
+	return domains
+}
+
+func validateCertificateProvider(provider string, domains []string) error {
+	switch provider {
+	case "dns", "http":
+	default:
+		return fmt.Errorf("自动验证方式“%s”暂不支持", provider)
+	}
+	if provider == "http" {
+		for _, domain := range domains {
+			if strings.HasPrefix(strings.TrimSpace(domain), "*.") {
+				return fmt.Errorf("HTTP 验证不支持通配符域名，请改用 DNS 验证")
+			}
+		}
+	}
+	return nil
+}
+
+func (s *CertificateService) bindCertificateToWebsite(cert model.Certificate) error {
+	if cert.WebsiteID == 0 {
+		return nil
+	}
+	websiteRepo := repo.NewIWebsiteRepo()
+	site, err := websiteRepo.Get(repo.WithByID(cert.WebsiteID))
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	site.SSLEnable = true
+	site.CertificateID = cert.ID
+	if site.HttpConfig == "" || site.HttpConfig == "httpOnly" {
+		site.HttpConfig = "HTTPSRedirect"
+	}
+	if site.SSLProtocols == "" {
+		site.SSLProtocols = "TLSv1.2 TLSv1.3"
+	}
+	if err := websiteRepo.Save(&site); err != nil {
+		return err
+	}
+	if site.Status == "running" && site.ConfigMode != "source" {
+		websiteSvc := &WebsiteService{
+			websiteRepo: websiteRepo,
+			certRepo:    s.certRepo,
+		}
+		return websiteSvc.applyConfig(site)
+	}
+	return nil
+}
+
+func (s *CertificateService) prepareHTTP01Website(cert model.Certificate) error {
+	if cert.WebsiteID == 0 {
+		return fmt.Errorf("HTTP 验证需要选择关联网站")
+	}
+	if !global.CONF.Nginx.IsInstalled() {
+		return buserr.New(constant.ErrNginxNotInstalled)
+	}
+	websiteRepo := repo.NewIWebsiteRepo()
+	site, err := websiteRepo.Get(repo.WithByID(cert.WebsiteID))
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	if site.ConfigMode == "source" {
+		return fmt.Errorf("HTTP 验证暂不支持源码模式网站，请改用托管模式或 DNS 验证")
+	}
+	if err := validateHTTP01WebsiteDomains(cert, site); err != nil {
+		return err
+	}
+	websiteSvc := &WebsiteService{
+		websiteRepo: websiteRepo,
+		certRepo:    s.certRepo,
+	}
+	if site.Status != "running" {
+		if err := websiteSvc.autoEnable(&site); err != nil {
+			return err
+		}
+		return nil
+	}
+	return websiteSvc.applyConfig(site)
+}
+
+func validateHTTP01WebsiteDomains(cert model.Certificate, site model.Website) error {
+	siteDomains := make(map[string]struct{})
+	addDomain := func(domain string) {
+		domain = normalizeCertDomain(domain)
+		if domain != "" {
+			siteDomains[domain] = struct{}{}
+		}
+	}
+	addDomain(site.PrimaryDomain)
+	for _, domain := range strings.Split(site.Domains, ",") {
+		addDomain(domain)
+	}
+
+	for _, domain := range collectCertificateDomains(cert) {
+		normalized := normalizeCertDomain(domain)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := siteDomains[normalized]; !ok {
+			return fmt.Errorf("HTTP 验证域名 %s 不在关联网站域名中，请先把域名加入网站或选择对应网站", domain)
+		}
+	}
+	return nil
+}
+
+func normalizeCertDomain(domain string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
 }
 
 func (s *CertificateService) GetSSLDir() string {

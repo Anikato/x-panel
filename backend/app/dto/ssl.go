@@ -50,6 +50,7 @@ type CertificateCreate struct {
 	Provider      string `json:"provider" binding:"required,oneof=dns http manual"`
 	AcmeAccountID uint   `json:"acmeAccountID"`
 	DnsAccountID  uint   `json:"dnsAccountID"`
+	WebsiteID     uint   `json:"websiteID"`
 	KeyType       string `json:"keyType"`
 	AutoRenew     bool   `json:"autoRenew"`
 	Description   string `json:"description"`
@@ -78,6 +79,7 @@ type CertificateInfo struct {
 	Type          string    `json:"type"`
 	AcmeAccountID uint      `json:"acmeAccountID"`
 	DnsAccountID  uint      `json:"dnsAccountID"`
+	WebsiteID     uint      `json:"websiteID"`
 	KeyType       string    `json:"keyType"`
 	AutoRenew     bool      `json:"autoRenew"`
 	ExpireDate    time.Time `json:"expireDate"`

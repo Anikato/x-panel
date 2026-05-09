@@ -11,6 +11,7 @@ export const createCertificate = (params: {
   provider: string
   acmeAccountID?: number
   dnsAccountID?: number
+  websiteID?: number
   keyType?: string
   autoRenew?: boolean
   description?: string

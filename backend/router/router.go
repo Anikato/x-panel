@@ -8,6 +8,7 @@ import (
 	"xpanel/app/version"
 	"xpanel/cmd/server/web"
 	"xpanel/middleware"
+	sslutil "xpanel/utils/ssl"
 
 	"github.com/gin-gonic/gin"
 )
@@ -38,6 +39,17 @@ func Setup(mode string) *gin.Engine {
 			c.JSON(http.StatusOK, gin.H{"code": 200, "data": version.Get()})
 		})
 	}
+
+	r.GET(sslutil.HTTP01ChallengePrefix+":token", func(c *gin.Context) {
+		token := c.Param("token")
+		keyAuth, ok := sslutil.GetHTTP01KeyAuth(token)
+		if !ok {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
+		c.Header("Content-Type", "text/plain")
+		c.String(http.StatusOK, keyAuth)
+	})
 
 	// 嵌入的前端静态文件（生产模式）
 	setupFrontend(r)

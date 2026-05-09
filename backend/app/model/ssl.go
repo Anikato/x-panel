@@ -28,10 +28,11 @@ type Certificate struct {
 	BaseModel
 	PrimaryDomain string    `gorm:"not null" json:"primaryDomain"`
 	Domains       string    `json:"domains"`
-	Provider      string    `gorm:"not null" json:"provider"` // dns | http | manual
+	Provider      string    `gorm:"not null" json:"provider"`               // dns | http | manual
 	Type          string    `gorm:"not null;default:autoApply" json:"type"` // autoApply | upload
 	AcmeAccountID uint      `json:"acmeAccountID"`
 	DnsAccountID  uint      `json:"dnsAccountID"`
+	WebsiteID     uint      `gorm:"default:0" json:"websiteID"`
 	KeyType       string    `gorm:"not null;default:2048" json:"keyType"`
 	Pem           string    `gorm:"type:text" json:"-"`
 	PrivateKey    string    `gorm:"type:text" json:"-"`

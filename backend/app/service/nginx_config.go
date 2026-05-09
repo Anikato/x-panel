@@ -12,6 +12,7 @@ import (
 	"xpanel/app/model"
 	"xpanel/app/repo"
 	"xpanel/global"
+	sslutil "xpanel/utils/ssl"
 )
 
 type NginxConfigGenerator struct {
@@ -62,6 +63,8 @@ func (g *NginxConfigGenerator) Generate(site model.Website) (string, error) {
 		b.WriteString("server {\n")
 		g.writeListenHTTP(&b, site)
 		fmt.Fprintf(&b, "    server_name %s;\n", serverName)
+		b.WriteString("\n")
+		g.writeACMEChallengeBlock(&b)
 		b.WriteString("    return 301 https://$host$request_uri;\n")
 		b.WriteString("}\n\n")
 	}
@@ -323,6 +326,8 @@ func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.We
 	}
 	b.WriteString("\n")
 
+	g.writeACMEChallengeBlock(b)
+
 	// Basic auth
 	if site.BasicAuth && site.BasicUser != "" {
 		htpasswdPath := g.getHtpasswdPath(site)
@@ -402,6 +407,15 @@ func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.We
 		}
 		b.WriteString("\n")
 	}
+}
+
+func (g *NginxConfigGenerator) writeACMEChallengeBlock(b *strings.Builder) {
+	b.WriteString("    # ACME HTTP-01 challenge\n")
+	fmt.Fprintf(b, "    location ^~ %s {\n", sslutil.HTTP01ChallengePrefix)
+	fmt.Fprintf(b, "        root %s;\n", sslutil.HTTP01WebRoot())
+	b.WriteString("        default_type text/plain;\n")
+	b.WriteString("        try_files $uri =404;\n")
+	b.WriteString("    }\n\n")
 }
 
 func (g *NginxConfigGenerator) writeStaticSite(b *strings.Builder, site model.Website) {

@@ -368,6 +368,7 @@ export interface Certificate {
   status: string
   provider: string
   type: string
+  websiteID: number
   expireDate: string
   startDate: string
   autoRenew: boolean

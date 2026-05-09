@@ -259,12 +259,21 @@
         </el-form-item>
         <el-form-item :label="$t('ssl.verifyMethod')">
           <el-radio-group v-model="certForm.provider">
-            <el-radio value="dns">DNS 验证</el-radio>
+            <el-radio value="dns">{{ $t('ssl.dnsVerify') }}</el-radio>
+            <el-radio value="http">{{ $t('ssl.httpVerify') }}</el-radio>
           </el-radio-group>
+          <div v-if="certForm.provider === 'http'" class="form-tip">
+            {{ $t('ssl.httpVerifyHint') }}
+          </div>
         </el-form-item>
         <el-form-item v-if="certForm.provider === 'dns'" :label="$t('ssl.dnsAccount')">
           <el-select v-model="certForm.dnsAccountID" style="width: 100%">
             <el-option v-for="d in dnsAccounts" :key="d.id" :label="`${d.name} (${d.type})`" :value="d.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="certForm.provider === 'http'" :label="$t('ssl.bindWebsite')">
+          <el-select v-model="certForm.websiteID" clearable filterable style="width: 100%" :placeholder="$t('ssl.bindWebsiteHint')">
+            <el-option v-for="site in websites" :key="site.id" :label="site.primaryDomain" :value="site.id" />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('ssl.keyType')">
@@ -503,6 +512,7 @@ import {
   listCertSources, createCertSource, updateCertSource, deleteCertSource,
   syncCertSource, getCertServerSetting, updateCertServerSetting, searchSyncLogs,
 } from '@/api/modules/cert-sync'
+import { searchWebsite } from '@/api/modules/website'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Certificate, AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting } from '@/api/interface'
 
@@ -527,6 +537,7 @@ const defaultCertForm = () => ({
   provider: 'dns',
   acmeAccountID: undefined as number | undefined,
   dnsAccountID: undefined as number | undefined,
+  websiteID: undefined as number | undefined,
   keyType: 'P256',
   autoRenew: true,
   apply: true,
@@ -548,6 +559,7 @@ const dnsSubmitting = ref(false)
 const dnsEditMode = ref(false)
 const dnsProviders = ref<DnsProvider[]>([])
 const dnsForm = ref({ id: 0, name: '', type: '', authorization: {} as Record<string, string> })
+const websites = ref<{ id: number; primaryDomain: string }[]>([])
 
 // --- SSL 路径 ---
 const sslDirVisible = ref(false)
@@ -601,6 +613,13 @@ const loadDnsProviders = async () => {
   } catch { dnsProviders.value = [] }
 }
 
+const loadWebsites = async () => {
+  try {
+    const res = await searchWebsite({ page: 1, pageSize: 100 })
+    websites.value = res.data?.items || []
+  } catch { websites.value = [] }
+}
+
 const loadSSLDir = async () => {
   try {
     const res = await getSSLDir()
@@ -619,6 +638,12 @@ const openCertDialog = () => {
 const handleCreateCert = async () => {
   if (!certForm.value.primaryDomain) { ElMessage.warning('请输入主域名'); return }
   if (!certForm.value.acmeAccountID) { ElMessage.warning('请选择 ACME 账户'); return }
+  if (certForm.value.provider === 'dns' && !certForm.value.dnsAccountID) { ElMessage.warning('请选择 DNS 账户'); return }
+  if (certForm.value.provider === 'http' && !certForm.value.websiteID) { ElMessage.warning('请选择关联网站'); return }
+  if (certForm.value.provider === 'http' && hasWildcardDomain(certForm.value.primaryDomain, certForm.value.otherDomains)) {
+    ElMessage.warning('HTTP 验证不支持通配符域名，请改用 DNS 验证')
+    return
+  }
   certSubmitting.value = true
   try {
     await createCertificate(certForm.value)
@@ -627,6 +652,12 @@ const handleCreateCert = async () => {
     loadCerts()
   } catch { ElMessage.error('创建失败') }
   finally { certSubmitting.value = false }
+}
+
+const hasWildcardDomain = (primaryDomain: string, otherDomains: string) => {
+  return [primaryDomain, ...otherDomains.split(',')]
+    .map((domain) => domain.trim())
+    .some((domain) => domain.startsWith('*.'))
 }
 
 const handleUploadCert = async () => {
@@ -1055,6 +1086,7 @@ onMounted(() => {
   loadAcmeAccounts()
   loadDnsAccounts()
   loadDnsProviders()
+  loadWebsites()
   loadSSLDir()
   loadCertSources()
   loadCertServerSetting()

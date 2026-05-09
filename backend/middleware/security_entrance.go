@@ -25,7 +25,7 @@ func SecurityEntrance() gin.HandlerFunc {
 		path := c.Request.URL.Path
 
 		// API 和 WebSocket 请求不受安全入口限制
-		if strings.HasPrefix(path, "/api/") {
+		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/.well-known/acme-challenge/") {
 			c.Next()
 			return
 		}
