@@ -457,7 +457,12 @@ const handleBackup = async (server: DatabaseServer, inst: DatabaseInstance) => {
   } catch { return }
   try {
     const res = await backupDatabaseInstance({ id: inst.id })
-    ElMessage.success(t('database.backupSuccess', { file: res.data.file }))
+    if (res.data?.taskID) {
+      ElMessage.info(t('database.backupTaskStarted'))
+      fileTaskStore.fetchTasks()
+    } else {
+      ElMessage.success(t('database.backupSuccess', { file: res.data.file }))
+    }
   } catch { /* handled by interceptor */ }
 }
 

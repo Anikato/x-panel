@@ -28,6 +28,7 @@ type IDatabaseService interface {
 	SyncInstances(serverID uint) error
 	ChangeInstancePassword(req dto.DatabaseInstanceChangePassword) error
 	BackupInstance(id uint) (string, error)
+	BackupInstanceAsync(id uint) (*FileTaskStatus, error)
 	RestoreInstance(req dto.DatabaseInstanceRestore) error
 	RestoreInstanceAsync(req dto.DatabaseInstanceRestore) (*FileTaskStatus, error)
 }
@@ -337,6 +338,37 @@ func (s *DatabaseService) BackupInstance(id uint) (string, error) {
 		}
 	}
 	return outFile, nil
+}
+
+func (s *DatabaseService) BackupInstanceAsync(id uint) (*FileTaskStatus, error) {
+	instance, err := s.repo.GetInstance(id)
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	taskName := fmt.Sprintf("备份数据库 %s", instance.Name)
+	var outFile string
+	task := StartFileTaskWithNotification("database_backup", taskName, FileTaskNotification{
+		Source:       "database",
+		TargetURL:    "/database",
+		SuccessTitle: fmt.Sprintf("数据库「%s」备份完成", instance.Name),
+		SuccessContentFunc: func() string {
+			if outFile == "" {
+				return "数据库备份任务已完成"
+			}
+			return fmt.Sprintf("备份文件已保存到：%s", outFile)
+		},
+		FailedTitle: fmt.Sprintf("数据库「%s」备份失败", instance.Name),
+	}, func() error {
+		file, err := s.BackupInstance(id)
+		if err != nil {
+			_ = NewIBackupService().CreateRecordForFile("database", instance.Name, 0, 0, "", 0, constant.StatusFailed, err.Error())
+			return err
+		}
+		outFile = file
+		_ = NewIBackupService().CreateRecordForFile("database", instance.Name, 0, 0, file, 0, constant.StatusSuccess, file)
+		return nil
+	})
+	return task, nil
 }
 
 func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error {

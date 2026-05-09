@@ -36,11 +36,12 @@ type ProgressTracker struct {
 }
 
 type FileTaskNotification struct {
-	Source         string
-	TargetURL      string
-	SuccessTitle   string
-	SuccessContent string
-	FailedTitle    string
+	Source             string
+	TargetURL          string
+	SuccessTitle       string
+	SuccessContent     string
+	SuccessContentFunc func() string
+	FailedTitle        string
 }
 
 func newProgressTracker(task *FileTaskStatus) *ProgressTracker {
@@ -124,6 +125,11 @@ func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotificati
 	} else {
 		task.Status = "success"
 		task.Progress = 100
+		if notify.SuccessContentFunc != nil {
+			if content := notify.SuccessContentFunc(); content != "" {
+				notificationContent = content
+			}
+		}
 	}
 	fileTasksMu.Unlock()
 

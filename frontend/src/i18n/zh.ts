@@ -1256,6 +1256,7 @@ export default {
     instanceCount: '共 {n} 个数据库',
     backupConfirm: '确定要备份数据库 {name} 吗？',
     backupSuccess: '备份成功，文件保存在: {file}',
+    backupTaskStarted: '数据库备份已转入后台执行，完成后会通过通知中心提醒',
     deleteServerConfirm: '确定要删除该数据库连接吗？关联的数据库记录也会被删除。',
     deleteDBConfirm: '确定要删除该数据库吗？对应的数据库和用户都将被删除。',
     dbUserPasswordHint: '留空不创建同名用户，填写则自动创建同名用户并授权',

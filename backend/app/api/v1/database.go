@@ -146,12 +146,12 @@ func (a *DatabaseAPI) BackupDatabaseInstance(c *gin.Context) {
 		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	file, err := databaseService.BackupInstance(req.ID)
+	task, err := databaseService.BackupInstanceAsync(req.ID)
 	if err != nil {
 		helper.HandleError(c, err)
 		return
 	}
-	helper.SuccessWithData(c, map[string]string{"file": file})
+	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }
 
 func (a *DatabaseAPI) RestoreDatabaseInstance(c *gin.Context) {

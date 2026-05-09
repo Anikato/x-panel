@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"xpanel/app/dto"
+	"xpanel/app/model"
 	"xpanel/app/version"
 	"xpanel/global"
 
@@ -202,6 +203,17 @@ type fleetTaskReportRequest struct {
 	Truncated  bool   `json:"truncated"`
 }
 
+type fleetNotificationReportRequest struct {
+	InstanceID     string    `json:"instanceId"`
+	NotificationID uint      `json:"notificationId"`
+	Type           string    `json:"type"`
+	Title          string    `json:"title"`
+	Content        string    `json:"content"`
+	Source         string    `json:"source"`
+	TargetURL      string    `json:"targetUrl"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
 func (s *FleetReporterService) Start() {
 	go func() {
 		time.Sleep(fleetStartupDelay)
@@ -212,6 +224,42 @@ func (s *FleetReporterService) Start() {
 		}
 	}()
 	go s.startTaskWorker()
+}
+
+func ReportFleetNotification(notification model.Notification) {
+	go func() {
+		reporter := &FleetReporterService{client: &http.Client{Timeout: 10 * time.Second}}
+		reporter.reportNotification(notification)
+	}()
+}
+
+func (s *FleetReporterService) reportNotification(notification model.Notification) {
+	enabled := s.settingValue(fleetSettingEnabled, "enable")
+	if strings.EqualFold(enabled, "disable") {
+		return
+	}
+	endpoint := strings.TrimRight(s.settingValue(fleetSettingEndpoint, fleetDefaultEndpoint), "/")
+	if endpoint == "" {
+		endpoint = fleetDefaultEndpoint
+	}
+	instanceID := s.settingValue(fleetSettingInstanceID, "")
+	token := s.settingValue(fleetSettingInstanceToken, "")
+	if instanceID == "" || token == "" {
+		return
+	}
+	req := fleetNotificationReportRequest{
+		InstanceID:     instanceID,
+		NotificationID: notification.ID,
+		Type:           notification.Type,
+		Title:          notification.Title,
+		Content:        notification.Content,
+		Source:         notification.Source,
+		TargetURL:      notification.TargetURL,
+		CreatedAt:      notification.CreatedAt,
+	}
+	if err := s.postJSON(endpoint+"/api/v1/fleet/notifications/report", token, req, nil); err != nil {
+		global.LOG.Debugf("fleet reporter notification report failed: notification=%d err=%v", notification.ID, err)
+	}
 }
 
 func (s *FleetReporterService) reportOnce() time.Duration {

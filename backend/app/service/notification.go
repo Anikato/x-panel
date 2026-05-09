@@ -39,7 +39,11 @@ func (s *NotificationService) Create(req dto.NotificationCreate) error {
 	if notification.Title == "" {
 		notification.Title = "系统通知"
 	}
-	return s.notificationRepo.Create(notification)
+	if err := s.notificationRepo.Create(notification); err != nil {
+		return err
+	}
+	ReportFleetNotification(*notification)
+	return nil
 }
 
 func (s *NotificationService) SearchWithPage(req dto.NotificationSearch) (int64, []dto.NotificationInfo, error) {

@@ -104,6 +104,32 @@ X-Panel -> POST /api/v1/fleet/tasks/report
 
 节点不需要暴露公网 API，只需要能主动访问 `FleetEndpoint`。
 
+## 通知上报
+
+X-Panel 本地消息中心创建通知后，会异步向 Fleet Center 上报一份节点通知：
+
+```text
+X-Panel -> POST /api/v1/fleet/notifications/report
+Authorization: Bearer <FleetInstanceToken>
+```
+
+请求体：
+
+```json
+{
+  "instanceId": "xp_...",
+  "notificationId": 123,
+  "type": "success",
+  "title": "数据库「app」备份完成",
+  "content": "备份文件已保存到：/opt/xpanel/data/backup/database/app_20260509120000.sql",
+  "source": "database",
+  "targetUrl": "/database",
+  "createdAt": "2026-05-09T12:00:00+08:00"
+}
+```
+
+上报是尽力而为：Fleet Center 不可达或暂未支持该接口时，不影响本地通知创建和业务流程。
+
 ## 常见排查
 
 确认 Fleet Center 基础入口可达：
