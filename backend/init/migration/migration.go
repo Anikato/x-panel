@@ -44,6 +44,7 @@ func Init() {
 		&model.HAProxyServer{},
 		&model.HAProxyACLRule{},
 		&model.HAProxyConfigVersion{},
+		&model.Notification{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

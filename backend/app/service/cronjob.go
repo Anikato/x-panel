@@ -251,10 +251,31 @@ func (s *CronjobService) executeJob(job *model.Cronjob) {
 	if err := s.cronjobRepo.CreateRecord(record); err != nil {
 		global.LOG.Errorf("save cronjob record failed: %v", err)
 	}
+	s.notifyJobResult(job, status, msg)
 	if job.RetainCopies > 0 {
 		_ = s.cronjobRepo.CleanRecords(job.ID, int(job.RetainCopies))
 		_ = NewIBackupService().CleanSuccessfulRecords(job.ID, job.RetainCopies)
 	}
+}
+
+func (s *CronjobService) notifyJobResult(job *model.Cronjob, status, message string) {
+	notificationType := "success"
+	title := fmt.Sprintf("计划任务「%s」执行成功", job.Name)
+	if status != constant.StatusSuccess {
+		notificationType = "error"
+		title = fmt.Sprintf("计划任务「%s」执行失败", job.Name)
+	}
+	content := strings.TrimSpace(message)
+	if len(content) > 500 {
+		content = content[:500] + "\n...(truncated)"
+	}
+	CreateNotification(dto.NotificationCreate{
+		Type:      notificationType,
+		Title:     title,
+		Content:   content,
+		Source:    "cronjob",
+		TargetURL: "/cronjob",
+	})
 }
 
 func (s *CronjobService) execShell(job *model.Cronjob) (string, string) {

@@ -6,31 +6,41 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"xpanel/app/dto"
 )
 
 // FileTaskStatus 文件操作任务状态
 type FileTaskStatus struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`              // 任务描述
-	Type        string `json:"type"`              // move, compress, decompress
-	Status      string `json:"status"`            // running, success, failed
-	Message     string `json:"message,omitempty"` // 错误信息
-	StartTime   int64  `json:"startTime"`
-	EndTime     int64  `json:"endTime,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`              // 任务描述
+	Type      string `json:"type"`              // move, compress, decompress
+	Status    string `json:"status"`            // running, success, failed
+	Message   string `json:"message,omitempty"` // 错误信息
+	StartTime int64  `json:"startTime"`
+	EndTime   int64  `json:"endTime,omitempty"`
 	// 进度信息
-	Progress    int    `json:"progress"`          // 0-100
+	Progress    int    `json:"progress"` // 0-100
 	BytesDone   int64  `json:"bytesDone"`
 	BytesTotal  int64  `json:"bytesTotal"`
-	Speed       int64  `json:"speed"`             // bytes/s 滑动平均
-	CurrentFile string `json:"currentFile"`       // 正在处理的文件名
+	Speed       int64  `json:"speed"`       // bytes/s 滑动平均
+	CurrentFile string `json:"currentFile"` // 正在处理的文件名
 }
 
 // ProgressTracker 内部速度计算器（导出，供 API 层传递）
 type ProgressTracker struct {
-	task         *FileTaskStatus
-	mu           sync.Mutex
-	lastTime     time.Time
-	lastBytes    int64
+	task      *FileTaskStatus
+	mu        sync.Mutex
+	lastTime  time.Time
+	lastBytes int64
+}
+
+type FileTaskNotification struct {
+	Source         string
+	TargetURL      string
+	SuccessTitle   string
+	SuccessContent string
+	FailedTitle    string
 }
 
 func newProgressTracker(task *FileTaskStatus) *ProgressTracker {
@@ -43,7 +53,9 @@ func (pt *ProgressTracker) AddBytes(n int64) {
 	total := atomic.LoadInt64(&pt.task.BytesTotal)
 	if total > 0 {
 		pct := int(done * 100 / total)
-		if pct > 99 { pct = 99 }
+		if pct > 99 {
+			pct = 99
+		}
 		pt.task.Progress = pct
 	}
 
@@ -88,17 +100,46 @@ func newFileTask(taskType, name string) *FileTaskStatus {
 }
 
 // completeFileTask 标记任务完成
-func completeFileTask(task *FileTaskStatus, err error) {
+func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotification) {
 	fileTasksMu.Lock()
-	defer fileTasksMu.Unlock()
 	task.EndTime = time.Now().Unix()
+	notificationType := "success"
+	notificationTitle := notify.SuccessTitle
+	notificationContent := notify.SuccessContent
+	if notificationTitle == "" {
+		notificationTitle = task.Name + "完成"
+	}
+	if notificationContent == "" {
+		notificationContent = "后台任务已完成"
+	}
 	if err != nil {
 		task.Status = "failed"
 		task.Message = err.Error()
+		notificationType = "error"
+		notificationTitle = notify.FailedTitle
+		if notificationTitle == "" {
+			notificationTitle = task.Name + "失败"
+		}
+		notificationContent = err.Error()
 	} else {
 		task.Status = "success"
 		task.Progress = 100
 	}
+	fileTasksMu.Unlock()
+
+	if notify.Source == "" {
+		notify.Source = "file"
+	}
+	if notify.TargetURL == "" {
+		notify.TargetURL = "/host/files"
+	}
+	CreateNotification(dto.NotificationCreate{
+		Type:      notificationType,
+		Title:     notificationTitle,
+		Content:   notificationContent,
+		Source:    notify.Source,
+		TargetURL: notify.TargetURL,
+	})
 }
 
 // GetFileTask 获取单个任务状态
@@ -130,10 +171,17 @@ func ListFileTasks() []*FileTaskStatus {
 
 // StartFileTask 启动异步文件任务（不带进度）
 func StartFileTask(taskType, name string, fn func() error) *FileTaskStatus {
+	return StartFileTaskWithNotification(taskType, name, FileTaskNotification{
+		SuccessContent: "文件后台任务已完成",
+	}, fn)
+}
+
+// StartFileTaskWithNotification 启动异步任务并按指定来源写入通知
+func StartFileTaskWithNotification(taskType, name string, notify FileTaskNotification, fn func() error) *FileTaskStatus {
 	task := newFileTask(taskType, name)
 	go func() {
 		err := fn()
-		completeFileTask(task, err)
+		completeFileTask(task, err, notify)
 	}()
 	return task
 }
@@ -145,7 +193,9 @@ func StartFileTaskWithProgress(taskType, name string, totalBytes int64, fn func(
 	tracker := newProgressTracker(task)
 	go func() {
 		err := fn(tracker)
-		completeFileTask(task, err)
+		completeFileTask(task, err, FileTaskNotification{
+			SuccessContent: "文件后台任务已完成",
+		})
 	}()
 	return task
 }

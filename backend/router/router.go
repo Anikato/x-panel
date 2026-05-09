@@ -52,6 +52,14 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/auth/logout", api.Logout)
 		privateGroup.POST("/auth/password", api.UpdatePassword)
 
+		// 通知中心
+		privateGroup.GET("/notifications/summary", api.GetNotificationSummary)
+		privateGroup.POST("/notifications/search", api.SearchNotifications)
+		privateGroup.POST("/notifications/read", api.MarkNotificationsRead)
+		privateGroup.POST("/notifications/read-all", api.MarkAllNotificationsRead)
+		privateGroup.POST("/notifications/read/clear", api.DeleteReadNotifications)
+		privateGroup.POST("/notifications/del", api.DeleteNotification)
+
 		// 设置
 		privateGroup.GET("/settings", api.GetSettingInfo)
 		privateGroup.POST("/settings/update", api.Update)
@@ -245,6 +253,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/databases/instances/sync", api.SyncDatabaseInstances)
 		privateGroup.POST("/databases/instances/password", api.ChangeInstancePassword)
 		privateGroup.POST("/databases/instances/backup", api.BackupDatabaseInstance)
+		privateGroup.POST("/databases/instances/restore/upload", api.UploadRestoreFile)
 		privateGroup.POST("/databases/instances/restore", api.RestoreDatabaseInstance)
 
 		// 节点管理

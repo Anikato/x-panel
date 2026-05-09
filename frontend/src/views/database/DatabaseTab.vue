@@ -136,7 +136,19 @@
           <el-input :model-value="restoreForm.dbName" disabled />
         </el-form-item>
         <el-form-item :label="t('database.backupFile')">
-          <el-input v-model="restoreForm.file" :placeholder="t('database.restoreFileHint')" />
+          <div class="restore-file-row">
+            <el-input v-model="restoreForm.file" :placeholder="t('database.restoreFileHint')" />
+            <el-upload
+              :auto-upload="false"
+              :show-file-list="false"
+              accept=".sql,.gz,.zip,.tar,.dump"
+              :on-change="handleRestoreFileChange"
+            >
+              <el-button :icon="Upload" :loading="restoreUploading">
+                {{ restoreUploading ? `${restoreUploadProgress}%` : t('database.uploadRestoreFile') }}
+              </el-button>
+            </el-upload>
+          </div>
         </el-form-item>
         <el-form-item :label="t('database.backupRecord')">
           <el-select
@@ -166,20 +178,24 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, defineExpose } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Upload } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { DatabaseServer, DatabaseInstance } from '@/api/interface'
 import type { BackupRecord } from '@/api/interface'
+import { useFileTaskStore } from '@/store/modules/fileTask'
 import {
   searchDatabaseServer, createDatabaseServer, updateDatabaseServer, deleteDatabaseServer,
   testDatabaseConnection, searchDatabaseInstance, createDatabaseInstance, deleteDatabaseInstance,
   syncDatabaseInstances, changeInstancePassword, backupDatabaseInstance, restoreDatabaseInstance,
+  uploadDatabaseRestoreFile,
 } from '@/api/modules/database'
 import { searchBackupRecords } from '@/api/modules/backup'
 
 const props = defineProps<{ dbType: string }>()
 const { t } = useI18n()
+const fileTaskStore = useFileTaskStore()
 
 const loading = ref(false)
 const servers = ref<DatabaseServer[]>([])
@@ -358,6 +374,8 @@ const submitChangePassword = async () => {
 // Restore
 const restoreDialog = ref(false)
 const restoring = ref(false)
+const restoreUploading = ref(false)
+const restoreUploadProgress = ref(0)
 const restoreForm = reactive({ id: 0, dbName: '', file: '', backupRecordID: undefined as number | undefined })
 const backupRecords = ref<BackupRecord[]>([])
 let restoreServer: DatabaseServer | null = null
@@ -368,6 +386,7 @@ const openRestore = async (server: DatabaseServer, inst: DatabaseInstance) => {
   restoreForm.dbName = inst.name
   restoreForm.file = ''
   restoreForm.backupRecordID = undefined
+  restoreUploadProgress.value = 0
   backupRecords.value = []
   restoreDialog.value = true
   try {
@@ -384,6 +403,23 @@ const openRestore = async (server: DatabaseServer, inst: DatabaseInstance) => {
   }
 }
 
+const handleRestoreFileChange = async (uploadFile: UploadFile) => {
+  const raw = uploadFile.raw
+  if (!raw) return
+  restoreUploading.value = true
+  restoreUploadProgress.value = 0
+  try {
+    const res = await uploadDatabaseRestoreFile(raw, (percent) => {
+      restoreUploadProgress.value = percent
+    })
+    restoreForm.file = res.data.file
+    restoreForm.backupRecordID = undefined
+    ElMessage.success(t('database.uploadRestoreSuccess'))
+  } finally {
+    restoreUploading.value = false
+  }
+}
+
 const submitRestore = async () => {
   if (!restoreForm.file.trim() && !restoreForm.backupRecordID) {
     ElMessage.warning(t('database.restoreFileRequired'))
@@ -394,12 +430,17 @@ const submitRestore = async () => {
   } catch { return }
   restoring.value = true
   try {
-    await restoreDatabaseInstance({
+    const res = await restoreDatabaseInstance({
       id: restoreForm.id,
       file: restoreForm.file.trim() || undefined,
       backupRecordID: restoreForm.backupRecordID,
     })
-    ElMessage.success(t('commons.success'))
+    if (res.data?.taskID) {
+      ElMessage.info(t('database.restoreTaskStarted'))
+      fileTaskStore.fetchTasks()
+    } else {
+      ElMessage.success(t('commons.success'))
+    }
     restoreDialog.value = false
   } finally { restoring.value = false }
 }
@@ -435,5 +476,13 @@ onMounted(() => loadServers())
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+.restore-file-row {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+}
+.restore-file-row .el-input {
+  flex: 1;
 }
 </style>

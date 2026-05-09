@@ -16,6 +16,31 @@ export interface SearchReq {
   pageSize: number
 }
 
+// ======================== Notification ========================
+
+export interface NotificationItem {
+  id: number
+  type: 'info' | 'success' | 'warning' | 'error'
+  title: string
+  content: string
+  source: string
+  targetUrl: string
+  readAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationSummary {
+  unread: number
+}
+
+export interface NotificationSearchReq extends SearchReq {
+  status?: 'unread' | 'read' | 'all'
+  type?: string
+  source?: string
+  info?: string
+}
+
 // ======================== Auth ========================
 
 export interface LoginPayload {

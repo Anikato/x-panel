@@ -100,6 +100,23 @@
         </div>
       </el-popover>
 
+      <!-- 通知中心 -->
+      <el-tooltip :content="t('notification.title')" placement="bottom">
+        <div
+          class="theme-btn notification-btn"
+          role="button"
+          tabindex="0"
+          :aria-label="t('notification.title')"
+          @click="openNotifications"
+          @keydown.enter.prevent="openNotifications"
+          @keydown.space.prevent="openNotifications"
+        >
+          <el-badge :value="unreadNotifications" :hidden="unreadNotifications <= 0" :max="99">
+            <el-icon :size="16"><Bell /></el-icon>
+          </el-badge>
+        </div>
+      </el-tooltip>
+
       <!-- 悬浮终端按钮 -->
       <el-tooltip :content="t('header.quickTerminal')" placement="bottom">
         <div
@@ -169,9 +186,10 @@ import { listNodes } from '@/api/modules/node'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
+import { getNotificationSummary } from '@/api/modules/notification'
 import { useI18n } from 'vue-i18n'
 import type { NodeItem } from '@/api/interface'
-import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Promotion } from '@element-plus/icons-vue'
+import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Promotion, Bell } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
@@ -220,7 +238,9 @@ const onNodeChange = (val: number) => {
 
 let serverInfoTimer: ReturnType<typeof setInterval> | null = null
 let clockTimer: ReturnType<typeof setInterval> | null = null
+let notificationTimer: ReturnType<typeof setInterval> | null = null
 const serverClock = ref('')
+const unreadNotifications = ref(0)
 
 const extractIANA = (tz: string): string => {
   const match = tz.match(/^([A-Za-z_/]+)/)
@@ -272,6 +292,13 @@ const fetchVersion = async () => {
   } catch { /* ignore */ }
 }
 
+const fetchNotificationSummary = async () => {
+  try {
+    const res: any = await getNotificationSummary()
+    unreadNotifications.value = res.data?.unread || 0
+  } catch { /* ignore */ }
+}
+
 const formatUptime = (seconds: number) => {
   if (!seconds) return '-'
   const d = Math.floor(seconds / 86400)
@@ -300,13 +327,16 @@ onMounted(() => {
   loadNodes()
   fetchServerInfo()
   fetchVersion()
+  fetchNotificationSummary()
   serverInfoTimer = setInterval(fetchServerInfo, 30000)
   clockTimer = setInterval(updateClock, 1000)
+  notificationTimer = setInterval(fetchNotificationSummary, 30000)
 })
 
 onUnmounted(() => {
   if (serverInfoTimer) clearInterval(serverInfoTimer)
   if (clockTimer) clearInterval(clockTimer)
+  if (notificationTimer) clearInterval(notificationTimer)
 })
 
 const breadcrumbs = computed(() => {
@@ -345,6 +375,10 @@ const toggleFloatTerm = () => {
     globalStore.floatTermVisible = !globalStore.floatTermVisible
     if (globalStore.floatTermVisible) globalStore.floatTermMinimized = false
   }
+}
+
+const openNotifications = () => {
+  router.push('/notifications')
 }
 </script>
 
@@ -477,6 +511,11 @@ const toggleFloatTerm = () => {
       border: 2px solid rgba(255, 255, 255, 0.2);
       transition: all 0.2s;
     }
+  }
+
+  .notification-btn :deep(.el-badge__content) {
+    border: none;
+    box-shadow: 0 0 0 1px var(--xp-bg-header);
   }
 
   .user-dropdown {

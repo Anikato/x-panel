@@ -16,4 +16,18 @@ export const syncDatabaseInstances = (data: { id: number }) => http.post('/datab
 export const changeInstancePassword = (data: { id: number; password: string }) =>
   http.post('/databases/instances/password', data)
 export const backupDatabaseInstance = (data: { id: number }) => http.post('/databases/instances/backup', data)
-export const restoreDatabaseInstance = (data: { id: number; file?: string; backupRecordID?: number }) => http.post('/databases/instances/restore', data)
+export const uploadDatabaseRestoreFile = (file: File, onProgress?: (percent: number) => void) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return http.post('/databases/instances/restore/upload', formData, {
+    headers: { 'Content-Type': undefined },
+    timeout: 0,
+    onUploadProgress: onProgress
+      ? (e: { loaded: number; total?: number }) => {
+          if (e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      : undefined,
+  })
+}
+export const restoreDatabaseInstance = (data: { id: number; file?: string; backupRecordID?: number }) =>
+  http.post('/databases/instances/restore', data, { timeout: 0 })

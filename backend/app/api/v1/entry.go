@@ -31,6 +31,7 @@ type ApiGroup struct {
 	HostSystemAPI
 	SSHKeyAPI
 	CertSyncAPI
+	NotificationAPI
 }
 
 // ApiGroupApp 全局 API 实例

@@ -400,6 +400,13 @@ func (a *FileAPI) UploadFile(c *gin.Context) {
 		return
 	}
 
+	service.CreateNotification(dto.NotificationCreate{
+		Type:      "success",
+		Title:     fmt.Sprintf("文件「%s」上传完成", fileName),
+		Content:   filepath.Join(filepath.Clean(dstPath), fileName),
+		Source:    "file",
+		TargetURL: "/host/files",
+	})
 	helper.SuccessWithOutData(c)
 }
 

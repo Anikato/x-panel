@@ -29,6 +29,7 @@ type IDatabaseService interface {
 	ChangeInstancePassword(req dto.DatabaseInstanceChangePassword) error
 	BackupInstance(id uint) (string, error)
 	RestoreInstance(req dto.DatabaseInstanceRestore) error
+	RestoreInstanceAsync(req dto.DatabaseInstanceRestore) (*FileTaskStatus, error)
 }
 
 func NewIDatabaseService() IDatabaseService {
@@ -384,6 +385,24 @@ func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error
 		}
 	}
 	return nil
+}
+
+func (s *DatabaseService) RestoreInstanceAsync(req dto.DatabaseInstanceRestore) (*FileTaskStatus, error) {
+	instance, err := s.repo.GetInstance(req.ID)
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	taskName := fmt.Sprintf("恢复数据库 %s", instance.Name)
+	task := StartFileTaskWithNotification("database_restore", taskName, FileTaskNotification{
+		Source:         "database",
+		TargetURL:      "/database",
+		SuccessTitle:   fmt.Sprintf("数据库「%s」恢复完成", instance.Name),
+		SuccessContent: "数据库恢复任务已完成",
+		FailedTitle:    fmt.Sprintf("数据库「%s」恢复失败", instance.Name),
+	}, func() error {
+		return s.RestoreInstance(req)
+	})
+	return task, nil
 }
 
 func testDBConnection(server *model.DatabaseServer) error {
