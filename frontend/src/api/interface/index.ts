@@ -139,6 +139,9 @@ export interface DatabaseInstance {
   charset: string
   owner: string
   createdAt: string
+  _backupLoading?: boolean
+  _backupTotal?: number
+  _latestBackup?: BackupRecord
 }
 
 export interface DatabaseServerForm {

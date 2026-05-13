@@ -21,12 +21,24 @@
               <el-table-column prop="name" :label="t('database.dbName')" min-width="160" />
               <el-table-column prop="charset" label="Charset" width="120" />
               <el-table-column v-if="dbType === 'postgresql'" prop="owner" label="Owner" width="120" />
+              <el-table-column :label="t('database.backupOverview')" min-width="260">
+                <template #default="{ row: inst }">
+                  <div v-if="inst._backupLoading" class="backup-overview muted">{{ t('database.loadingBackups') }}</div>
+                  <div v-else-if="inst._backupTotal" class="backup-overview">
+                    <el-tag size="small" effect="plain">{{ t('database.backupCount', { n: inst._backupTotal }) }}</el-tag>
+                    <span>{{ formatSize(inst._latestBackup?.size || 0) }}</span>
+                    <span>{{ formatTime(inst._latestBackup?.createdAt) }}</span>
+                  </div>
+                  <el-text v-else type="info" size="small">{{ t('database.noBackups') }}</el-text>
+                </template>
+              </el-table-column>
               <el-table-column :label="t('commons.createdAt')" width="180">
                 <template #default="{ row: inst }">{{ inst.createdAt ? new Date(inst.createdAt).toLocaleString() : '-' }}</template>
               </el-table-column>
-              <el-table-column :label="t('commons.actions')" width="320" fixed="right">
+              <el-table-column :label="t('commons.actions')" width="380" fixed="right">
                 <template #default="{ row: inst }">
                   <el-button link type="primary" size="small" @click="handleBackup(row, inst)">{{ t('database.backup') }}</el-button>
+                  <el-button link type="primary" size="small" @click="openBackupHistory(row, inst)">{{ t('database.backupHistory') }}</el-button>
                   <el-button link type="success" size="small" @click="openRestore(row, inst)">{{ t('database.restore') }}</el-button>
                   <el-button link type="primary" size="small" @click="openChangePassword(row, inst)">{{ t('database.changePassword') }}</el-button>
                   <el-button link type="danger" size="small" @click="handleDeleteInstance(row, inst)">{{ t('commons.delete') }}</el-button>
@@ -172,6 +184,51 @@
         <el-button type="primary" :loading="restoring" @click="submitRestore">{{ t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- Backup History Dialog -->
+    <el-dialog v-model="backupHistoryDialog" :title="t('database.backupHistoryTitle', { name: backupHistoryForm.dbName || '-' })" width="920px" destroy-on-close>
+      <el-table :data="historyRecords" v-loading="historyLoading" size="small">
+        <el-table-column prop="fileName" :label="t('backup.fileName')" min-width="240" show-overflow-tooltip />
+        <el-table-column :label="t('backup.size')" width="110">
+          <template #default="{ row }">{{ formatSize(row.size) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('database.backupSource')" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">{{ backupRecordSource(row) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('backup.path')" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">{{ fullRecordPath(row) || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="status" :label="t('backup.status')" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">
+              {{ row.status === 'Success' ? t('backup.success') : t('backup.failed') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('backup.time')" width="170">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('commons.actions')" width="190" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="success" size="small" :disabled="row.status !== 'Success'" @click="restoreFromHistory(row)">{{ t('database.restore') }}</el-button>
+            <el-button link type="primary" size="small" :disabled="!fullRecordPath(row)" @click="copyRecordPath(row)">{{ t('backup.copyPath') }}</el-button>
+            <el-button link type="danger" size="small" @click="deleteHistoryRecord(row)">{{ t('commons.delete') }}</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="app-pagination">
+        <el-pagination
+          v-model:current-page="historyPager.page"
+          v-model:page-size="historyPager.pageSize"
+          :total="historyPager.total"
+          layout="total, prev, pager, next"
+          @current-change="loadBackupHistory"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="backupHistoryDialog = false">{{ t('commons.close') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -182,7 +239,7 @@ import { Refresh, Upload } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import type { DatabaseServer, DatabaseInstance } from '@/api/interface'
+import type { DatabaseServer, DatabaseInstance, BackupAccount } from '@/api/interface'
 import type { BackupRecord } from '@/api/interface'
 import { useFileTaskStore } from '@/store/modules/fileTask'
 import {
@@ -191,7 +248,7 @@ import {
   syncDatabaseInstances, changeInstancePassword, backupDatabaseInstance, restoreDatabaseInstance,
   uploadDatabaseRestoreFile,
 } from '@/api/modules/database'
-import { searchBackupRecords } from '@/api/modules/backup'
+import { deleteBackupRecord, listBackupAccounts, searchBackupRecords } from '@/api/modules/backup'
 
 const props = defineProps<{ dbType: string }>()
 const { t } = useI18n()
@@ -201,10 +258,12 @@ const loading = ref(false)
 const servers = ref<DatabaseServer[]>([])
 const submitting = ref(false)
 const testing = ref(false)
+const backupAccounts = ref<BackupAccount[]>([])
 
 const loadServers = async () => {
   loading.value = true
   try {
+    loadBackupAccounts()
     const res = await searchDatabaseServer({ page: 1, pageSize: 100, type: props.dbType })
     const items = res.data.items || []
     for (const s of items) {
@@ -222,8 +281,70 @@ const loadInstancesForServer = async (server: DatabaseServer) => {
   server._loading = true
   try {
     const res = await searchDatabaseInstance({ page: 1, pageSize: 100, serverID: server.id })
-    server._instances = res.data.items || []
+    const instances = res.data.items || []
+    server._instances = instances
+    for (const inst of instances) {
+      loadBackupSummary(inst)
+    }
   } finally { server._loading = false }
+}
+
+const loadBackupAccounts = async () => {
+  try {
+    const res = await listBackupAccounts()
+    backupAccounts.value = res.data || []
+  } catch {
+    backupAccounts.value = []
+  }
+}
+
+const loadBackupSummary = async (inst: DatabaseInstance) => {
+  inst._backupLoading = true
+  try {
+    const res = await searchBackupRecords({
+      page: 1,
+      pageSize: 1,
+      type: 'database',
+      name: inst.name,
+      status: 'Success',
+    })
+    inst._backupTotal = res.data.total || 0
+    inst._latestBackup = res.data.items?.[0]
+  } catch {
+    inst._backupTotal = 0
+    inst._latestBackup = undefined
+  } finally {
+    inst._backupLoading = false
+  }
+}
+
+const formatSize = (size: number) => {
+  if (!size) return '-'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = size
+  let idx = 0
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024
+    idx++
+  }
+  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`
+}
+
+const formatTime = (time?: string) => {
+  if (!time) return '-'
+  return new Date(time).toLocaleString()
+}
+
+const fullRecordPath = (row: BackupRecord) => {
+  if (!row.fileName) return ''
+  if (!row.fileDir || row.fileDir === '.') return row.fileName
+  return `${row.fileDir.replace(/\/$/, '')}/${row.fileName}`
+}
+
+const backupRecordSource = (row: BackupRecord) => {
+  if (!row.accountID) return t('database.serverDisk')
+  const account = backupAccounts.value.find(item => item.id === row.accountID)
+  return account ? `${account.name} (${account.type})` : `#${row.accountID}`
 }
 
 // Server CRUD
@@ -423,11 +544,11 @@ const handleRestoreFileChange = async (uploadFile: UploadFile) => {
 const submitRestore = async () => {
   if (!restoreForm.file.trim() && !restoreForm.backupRecordID) {
     ElMessage.warning(t('database.restoreFileRequired'))
-    return
+    return false
   }
   try {
     await ElMessageBox.confirm(t('database.restoreConfirm', { name: restoreForm.dbName }), t('commons.tip'), { type: 'warning' })
-  } catch { return }
+  } catch { return false }
   restoring.value = true
   try {
     const res = await restoreDatabaseInstance({
@@ -442,6 +563,7 @@ const submitRestore = async () => {
       ElMessage.success(t('commons.success'))
     }
     restoreDialog.value = false
+    return true
   } finally { restoring.value = false }
 }
 
@@ -460,10 +582,71 @@ const handleBackup = async (server: DatabaseServer, inst: DatabaseInstance) => {
     if (res.data?.taskID) {
       ElMessage.info(t('database.backupTaskStarted'))
       fileTaskStore.fetchTasks()
+      setTimeout(() => loadBackupSummary(inst), 3000)
     } else {
       ElMessage.success(t('database.backupSuccess', { file: res.data.file }))
+      await loadBackupSummary(inst)
     }
   } catch { /* handled by interceptor */ }
+}
+
+// Backup history
+const backupHistoryDialog = ref(false)
+const historyLoading = ref(false)
+const historyRecords = ref<BackupRecord[]>([])
+const historyPager = reactive({ page: 1, pageSize: 10, total: 0 })
+const backupHistoryForm = reactive({ id: 0, dbName: '' })
+let backupHistoryInstance: DatabaseInstance | null = null
+
+const openBackupHistory = async (server: DatabaseServer, inst: DatabaseInstance) => {
+  restoreServer = server
+  backupHistoryInstance = inst
+  backupHistoryForm.id = inst.id
+  backupHistoryForm.dbName = inst.name
+  historyPager.page = 1
+  backupHistoryDialog.value = true
+  await loadBackupHistory()
+}
+
+const loadBackupHistory = async () => {
+  if (!backupHistoryForm.dbName) return
+  historyLoading.value = true
+  try {
+    const res = await searchBackupRecords({
+      page: historyPager.page,
+      pageSize: historyPager.pageSize,
+      type: 'database',
+      name: backupHistoryForm.dbName,
+    })
+    historyRecords.value = res.data.items || []
+    historyPager.total = res.data.total || 0
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const restoreFromHistory = async (record: BackupRecord) => {
+  restoreForm.id = backupHistoryForm.id
+  restoreForm.dbName = backupHistoryForm.dbName
+  restoreForm.file = ''
+  restoreForm.backupRecordID = record.id
+  const ok = await submitRestore()
+  if (ok) backupHistoryDialog.value = false
+}
+
+const deleteHistoryRecord = async (row: BackupRecord) => {
+  await ElMessageBox.confirm(t('backup.deleteRecordConfirm'), t('commons.tip'), { type: 'warning' })
+  await deleteBackupRecord({ id: row.id })
+  ElMessage.success(t('commons.success'))
+  await loadBackupHistory()
+  if (backupHistoryInstance) await loadBackupSummary(backupHistoryInstance)
+}
+
+const copyRecordPath = async (row: BackupRecord) => {
+  const path = fullRecordPath(row)
+  if (!path) return
+  await navigator.clipboard.writeText(path)
+  ElMessage.success(t('backup.pathCopied'))
 }
 
 const refresh = () => loadServers()

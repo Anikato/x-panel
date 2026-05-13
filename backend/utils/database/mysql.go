@@ -5,19 +5,42 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 type MysqlClient struct {
-	db       *sql.DB
-	Address  string
-	Port     uint
-	Username string
-	Password string
+	db         *sql.DB
+	Address    string
+	Port       uint
+	Username   string
+	Password   string
+	SocketPath string
 }
 
 func NewMysqlClient(address string, port uint, username, password string) (*MysqlClient, error) {
+	client, err := newMysqlTCPClient(address, port, username, password)
+	if err == nil {
+		return client, nil
+	}
+	tcpErr := err
+	if !isLocalMysqlAddress(address) {
+		return nil, tcpErr
+	}
+	for _, socketPath := range mysqlSocketCandidates() {
+		if _, statErr := os.Stat(socketPath); statErr != nil {
+			continue
+		}
+		client, err = newMysqlSocketClient(address, port, username, password, socketPath)
+		if err == nil {
+			return client, nil
+		}
+	}
+	return nil, tcpErr
+}
+
+func newMysqlTCPClient(address string, port uint, username, password string) (*MysqlClient, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/", username, password, address, port)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -28,6 +51,33 @@ func NewMysqlClient(address string, port uint, username, password string) (*Mysq
 		return nil, err
 	}
 	return &MysqlClient{db: db, Address: address, Port: port, Username: username, Password: password}, nil
+}
+
+func newMysqlSocketClient(address string, port uint, username, password, socketPath string) (*MysqlClient, error) {
+	dsn := fmt.Sprintf("%s:%s@unix(%s)/", username, password, socketPath)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &MysqlClient{db: db, Address: address, Port: port, Username: username, Password: password, SocketPath: socketPath}, nil
+}
+
+func isLocalMysqlAddress(address string) bool {
+	addr := strings.TrimSpace(strings.ToLower(address))
+	return addr == "" || addr == "127.0.0.1" || addr == "localhost" || addr == "::1"
+}
+
+func mysqlSocketCandidates() []string {
+	return []string{
+		"/run/mysqld/mysqld.sock",
+		"/var/run/mysqld/mysqld.sock",
+		"/var/lib/mysql/mysql.sock",
+		"/tmp/mysql.sock",
+	}
 }
 
 func (c *MysqlClient) Close() { c.db.Close() }
@@ -112,15 +162,7 @@ func (c *MysqlClient) DeleteUser(username string) error {
 }
 
 func (c *MysqlClient) Backup(database, outFile string) error {
-	args := []string{
-		fmt.Sprintf("-h%s", c.Address),
-		fmt.Sprintf("-P%d", c.Port),
-		fmt.Sprintf("-u%s", c.Username),
-		fmt.Sprintf("-p%s", c.Password),
-		"--single-transaction",
-		database,
-		fmt.Sprintf("--result-file=%s", outFile),
-	}
+	args := append(c.commandConnectionArgs(), "--single-transaction", database, fmt.Sprintf("--result-file=%s", outFile))
 	cmd := exec.Command("mysqldump", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -142,17 +184,28 @@ func (c *MysqlClient) Restore(database, inFile string) error {
 	}
 	defer f.Close()
 
-	cmd := exec.Command("mysql",
-		"-h", c.Address,
-		"-P", fmt.Sprintf("%d", c.Port),
-		"-u", c.Username,
-		database,
-	)
+	args := append(c.commandConnectionArgs(), database)
+	cmd := exec.Command("mysql", args...)
 	cmd.Stdin = f
-	cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", c.Password))
+	if c.Password != "" {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", c.Password))
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %s", err, string(output))
 	}
 	return nil
+}
+
+func (c *MysqlClient) commandConnectionArgs() []string {
+	args := []string{fmt.Sprintf("-u%s", c.Username)}
+	if c.SocketPath != "" {
+		args = append(args, "--protocol=SOCKET", fmt.Sprintf("--socket=%s", c.SocketPath))
+	} else {
+		args = append(args, fmt.Sprintf("-h%s", c.Address), fmt.Sprintf("-P%d", c.Port))
+	}
+	if c.Password != "" {
+		args = append(args, fmt.Sprintf("-p%s", c.Password))
+	}
+	return args
 }
