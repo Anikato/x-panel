@@ -37,6 +37,14 @@ type Certificate struct {
 	Pem           string    `gorm:"type:text" json:"-"`
 	PrivateKey    string    `gorm:"type:text" json:"-"`
 	CertURL       string    `json:"certURL"`
+	Issuer        string    `gorm:"type:text" json:"issuer"`
+	Subject       string    `gorm:"type:text" json:"subject"`
+	SerialNumber  string    `json:"serialNumber"`
+	Fingerprint   string    `gorm:"index" json:"fingerprintSHA256"`
+	DNSNames      string    `gorm:"type:text" json:"dnsNames"`
+	SourceType    string    `json:"sourceType"` // acme | upload | synced
+	SourceID      uint      `json:"sourceID"`
+	SourceName    string    `json:"sourceName"`
 	AutoRenew     bool      `gorm:"default:true" json:"autoRenew"`
 	ExpireDate    time.Time `json:"expireDate"`
 	StartDate     time.Time `json:"startDate"`

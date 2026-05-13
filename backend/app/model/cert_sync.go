@@ -10,6 +10,7 @@ type CertSource struct {
 	ServerAddr      string     `gorm:"not null" json:"serverAddr"`
 	Token           string     `gorm:"not null" json:"-"`
 	SyncInterval    int        `gorm:"not null;default:360" json:"syncInterval"` // minutes, 0=manual only
+	SyncStrategy    string     `gorm:"not null;default:fingerprint" json:"syncStrategy"`
 	PostSyncCommand string     `json:"postSyncCommand"`
 	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
 	LastSyncAt      *time.Time `json:"lastSyncAt"`

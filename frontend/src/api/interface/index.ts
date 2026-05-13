@@ -377,6 +377,18 @@ export interface Certificate {
   privateKey: string
   filePath: string
   description: string
+  issuer: string
+  subject: string
+  serialNumber: string
+  fingerprintSHA256: string
+  dnsNames: string
+  sourceType: string
+  sourceID: number
+  sourceName: string
+  notBefore: string
+  notAfter: string
+  acmeAccountEmail?: string
+  dnsAccountName?: string
 }
 
 export interface AcmeAccount {
@@ -407,6 +419,7 @@ export interface CertSource {
   name: string
   serverAddr: string
   syncInterval: number
+  syncStrategy: string
   postSyncCommand: string
   enabled: boolean
   lastSyncAt: string | null

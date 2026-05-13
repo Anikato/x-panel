@@ -54,6 +54,18 @@ func WithBySourceID(sourceID uint) DBOption {
 	}
 }
 
+func WithByFingerprint(fingerprint string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("fingerprint = ?", fingerprint)
+	}
+}
+
+func WithByPrimaryIssuerKey(primaryDomain, issuer, keyType string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("primary_domain = ? AND issuer = ? AND key_type = ?", primaryDomain, issuer, keyType)
+	}
+}
+
 // WithOrderByDesc 按字段降序
 func WithOrderByDesc(field string) DBOption {
 	return func(db *gorm.DB) *gorm.DB {

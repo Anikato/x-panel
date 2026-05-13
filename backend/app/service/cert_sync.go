@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -60,6 +59,7 @@ func (s *CertSourceService) GetList() ([]dto.CertSourceInfo, error) {
 			Name:            src.Name,
 			ServerAddr:      src.ServerAddr,
 			SyncInterval:    src.SyncInterval,
+			SyncStrategy:    normalizeSyncStrategy(src.SyncStrategy),
 			PostSyncCommand: src.PostSyncCommand,
 			Enabled:         src.Enabled,
 			LastSyncAt:      src.LastSyncAt,
@@ -77,6 +77,7 @@ func (s *CertSourceService) Create(req dto.CertSourceCreate) error {
 		ServerAddr:      strings.TrimRight(req.ServerAddr, "/"),
 		Token:           req.Token,
 		SyncInterval:    req.SyncInterval,
+		SyncStrategy:    normalizeSyncStrategy(req.SyncStrategy),
 		PostSyncCommand: req.PostSyncCommand,
 		Enabled:         req.Enabled,
 	}
@@ -94,6 +95,7 @@ func (s *CertSourceService) Update(req dto.CertSourceUpdate) error {
 		source.Token = req.Token
 	}
 	source.SyncInterval = req.SyncInterval
+	source.SyncStrategy = normalizeSyncStrategy(req.SyncStrategy)
 	source.PostSyncCommand = req.PostSyncCommand
 	source.Enabled = req.Enabled
 	return s.sourceRepo.Save(&source)
@@ -172,6 +174,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 	var needReload bool
 
 	for _, remote := range remoteCerts {
+		remote = normalizeRemoteCertItem(remote)
 		if remote.Pem == "" || remote.PrivateKey == "" {
 			continue
 		}
@@ -182,7 +185,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 			Domain:     remote.PrimaryDomain,
 		}
 
-		localCert, localErr := s.findLocalCertByDomain(remote.PrimaryDomain)
+		localCert, localErr := s.findLocalCert(remote, normalizeSyncStrategy(source.SyncStrategy))
 
 		if localErr == nil && localCert.ID > 0 {
 			// 本地已存在该域名的证书 — 逐证书对比
@@ -207,9 +210,18 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 			// 远程到期更晚，或到期相同但内容不同（如换了密钥）→ 更新
 			localCert.Pem = remote.Pem
 			localCert.PrivateKey = remote.PrivateKey
+			localCert.PrimaryDomain = remote.PrimaryDomain
 			localCert.ExpireDate = remote.ExpireDate
 			localCert.StartDate = remote.StartDate
 			localCert.Domains = remote.Domains
+			localCert.Issuer = remote.Issuer
+			localCert.Subject = remote.Subject
+			localCert.SerialNumber = remote.SerialNumber
+			localCert.Fingerprint = remote.Fingerprint
+			localCert.DNSNames = remote.DNSNames
+			localCert.SourceType = "synced"
+			localCert.SourceID = source.ID
+			localCert.SourceName = source.Name
 			localCert.Status = "applied"
 			localCert.Message = fmt.Sprintf("从 %s 同步 (%s)", source.Name, remote.ExpireDate.Format("2006-01-02"))
 			if err := s.certRepo.Save(&localCert); err != nil {
@@ -240,6 +252,14 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				PrivateKey:    remote.PrivateKey,
 				ExpireDate:    remote.ExpireDate,
 				StartDate:     remote.StartDate,
+				Issuer:        remote.Issuer,
+				Subject:       remote.Subject,
+				SerialNumber:  remote.SerialNumber,
+				Fingerprint:   remote.Fingerprint,
+				DNSNames:      remote.DNSNames,
+				SourceType:    "synced",
+				SourceID:      source.ID,
+				SourceName:    source.Name,
 				AutoRenew:     false,
 				Status:        "applied",
 				Description:   fmt.Sprintf("从 %s 同步", source.Name),
@@ -349,8 +369,18 @@ func (s *CertSourceService) fetchRemoteCerts(source model.CertSource) ([]dto.Cer
 	return result.Data, nil
 }
 
-func (s *CertSourceService) findLocalCertByDomain(domain string) (model.Certificate, error) {
-	return s.certRepo.Get(repo.WithByPrimaryDomain(domain))
+func (s *CertSourceService) findLocalCert(remote dto.CertServerItem, strategy string) (model.Certificate, error) {
+	switch strategy {
+	case "domainLatest":
+		return s.certRepo.Get(repo.WithByPrimaryDomain(remote.PrimaryDomain))
+	case "domainIssuerKey":
+		return s.certRepo.Get(repo.WithByPrimaryIssuerKey(remote.PrimaryDomain, remote.Issuer, remote.KeyType))
+	default:
+		if remote.Fingerprint != "" {
+			return s.certRepo.Get(repo.WithByFingerprint(remote.Fingerprint))
+		}
+		return model.Certificate{}, fmt.Errorf("remote certificate fingerprint is empty")
+	}
 }
 
 func (s *CertSourceService) getSSLDir() string {
@@ -362,15 +392,14 @@ func (s *CertSourceService) getSSLDir() string {
 }
 
 func (s *CertSourceService) saveSyncedCertFiles(sslDir string, cert model.Certificate) error {
-	certDir := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain))
+	certDir := certDirPath(sslDir, cert)
 	if err := os.MkdirAll(certDir, 0755); err != nil {
 		return fmt.Errorf("create cert dir: %w", err)
 	}
-	certPath := filepath.Join(certDir, "fullchain.pem")
+	certPath, keyPath := certFilePaths(sslDir, cert)
 	if err := os.WriteFile(certPath, []byte(cert.Pem), 0644); err != nil {
 		return fmt.Errorf("write fullchain.pem: %w", err)
 	}
-	keyPath := filepath.Join(certDir, "privkey.pem")
 	if err := os.WriteFile(keyPath, []byte(cert.PrivateKey), 0600); err != nil {
 		return fmt.Errorf("write privkey.pem: %w", err)
 	}
@@ -408,7 +437,7 @@ func (s *CertServerService) ListCerts() ([]dto.CertServerItem, error) {
 		if c.Status != "applied" || c.Pem == "" {
 			continue
 		}
-		items = append(items, dto.CertServerItem{
+		item := dto.CertServerItem{
 			PrimaryDomain: c.PrimaryDomain,
 			Domains:       c.Domains,
 			Pem:           c.Pem,
@@ -416,7 +445,15 @@ func (s *CertServerService) ListCerts() ([]dto.CertServerItem, error) {
 			ExpireDate:    c.ExpireDate,
 			StartDate:     c.StartDate,
 			KeyType:       c.KeyType,
-		})
+			Issuer:        c.Issuer,
+			Subject:       c.Subject,
+			SerialNumber:  c.SerialNumber,
+			Fingerprint:   c.Fingerprint,
+			DNSNames:      c.DNSNames,
+			SourceType:    c.SourceType,
+			SourceName:    c.SourceName,
+		}
+		items = append(items, normalizeRemoteCertItem(item))
 	}
 	return items, nil
 }
@@ -444,6 +481,50 @@ func (s *CertServerService) UpdateSetting(req dto.CertServerSetting) error {
 		}
 	}
 	return nil
+}
+
+func normalizeSyncStrategy(strategy string) string {
+	switch strategy {
+	case "domainIssuerKey", "domainLatest":
+		return strategy
+	default:
+		return "fingerprint"
+	}
+}
+
+func normalizeRemoteCertItem(item dto.CertServerItem) dto.CertServerItem {
+	parsed, err := parseCertPEM(item.Pem)
+	if err != nil || parsed == nil {
+		return item
+	}
+	if item.PrimaryDomain == "" {
+		item.PrimaryDomain = parsed.primaryDomain
+	}
+	if item.Domains == "" {
+		item.Domains = strings.Join(otherDomains(item.PrimaryDomain, parsed.domains), ",")
+	}
+	if item.ExpireDate.IsZero() {
+		item.ExpireDate = parsed.expireDate
+	}
+	if item.StartDate.IsZero() {
+		item.StartDate = parsed.startDate
+	}
+	if item.Issuer == "" {
+		item.Issuer = parsed.issuer
+	}
+	if item.Subject == "" {
+		item.Subject = parsed.subject
+	}
+	if item.SerialNumber == "" {
+		item.SerialNumber = parsed.serialNumber
+	}
+	if item.Fingerprint == "" {
+		item.Fingerprint = parsed.fingerprint
+	}
+	if item.DNSNames == "" {
+		item.DNSNames = encodeStringList(parsed.dnsNames)
+	}
+	return item
 }
 
 // ======================= 同步日志查询 =======================

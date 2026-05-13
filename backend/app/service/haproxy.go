@@ -158,7 +158,7 @@ func (s *HAProxyService) CreateLB(req dto.HAProxyLBCreate, operator string) erro
 	item := model.HAProxyLB{
 		Name: req.Name, Mode: req.Mode, Enabled: true,
 		BindAddr: defaultBindAddr(req.BindAddr), BindPort: req.BindPort,
-		EnableSSL: req.EnableSSL && req.Mode == "http",
+		EnableSSL:        req.EnableSSL && req.Mode == "http",
 		CertificateID:    req.CertificateID,
 		SSLRedirect:      req.SSLRedirect,
 		DefaultBackendID: req.DefaultBackendID,
@@ -650,10 +650,10 @@ func (s *HAProxyService) ListConfigVersions(limit int) ([]dto.HAProxyConfigVersi
 	infos := make([]dto.HAProxyConfigVersionInfo, 0, len(items))
 	for _, it := range items {
 		infos = append(infos, dto.HAProxyConfigVersionInfo{
-			ID: it.ID,
+			ID:      it.ID,
 			Version: it.CreatedAt.Format("20060102-150405"),
-			Reason: it.Reason, Operator: it.Operator,
-			Success: it.Success,
+			Reason:  it.Reason, Operator: it.Operator,
+			Success:   it.Success,
 			CreatedAt: it.CreatedAt.Format(time.RFC3339),
 		})
 	}
@@ -774,9 +774,7 @@ func ensureCombinedPEM(certID uint) string {
 		return ""
 	}
 	sslDir := NewICertificateService().GetSSLDir()
-	domainDir := safeDomainDir(cert.PrimaryDomain)
-	fullchain := filepath.Join(sslDir, "certs", domainDir, "fullchain.pem")
-	privkey := filepath.Join(sslDir, "certs", domainDir, "privkey.pem")
+	fullchain, privkey := existingCertFilePaths(sslDir, cert)
 
 	chainData, err := os.ReadFile(fullchain)
 	if err != nil {

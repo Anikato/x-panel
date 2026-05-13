@@ -9,6 +9,7 @@ type CertSourceCreate struct {
 	ServerAddr      string `json:"serverAddr" binding:"required"`
 	Token           string `json:"token" binding:"required"`
 	SyncInterval    int    `json:"syncInterval"`
+	SyncStrategy    string `json:"syncStrategy"`
 	PostSyncCommand string `json:"postSyncCommand"`
 	Enabled         bool   `json:"enabled"`
 }
@@ -19,6 +20,7 @@ type CertSourceUpdate struct {
 	ServerAddr      string `json:"serverAddr" binding:"required"`
 	Token           string `json:"token"`
 	SyncInterval    int    `json:"syncInterval"`
+	SyncStrategy    string `json:"syncStrategy"`
 	PostSyncCommand string `json:"postSyncCommand"`
 	Enabled         bool   `json:"enabled"`
 }
@@ -28,6 +30,7 @@ type CertSourceInfo struct {
 	Name            string     `json:"name"`
 	ServerAddr      string     `json:"serverAddr"`
 	SyncInterval    int        `json:"syncInterval"`
+	SyncStrategy    string     `json:"syncStrategy"`
 	PostSyncCommand string     `json:"postSyncCommand"`
 	Enabled         bool       `json:"enabled"`
 	LastSyncAt      *time.Time `json:"lastSyncAt"`
@@ -46,6 +49,13 @@ type CertServerItem struct {
 	ExpireDate    time.Time `json:"expireDate"`
 	StartDate     time.Time `json:"startDate"`
 	KeyType       string    `json:"keyType"`
+	Issuer        string    `json:"issuer"`
+	Subject       string    `json:"subject"`
+	SerialNumber  string    `json:"serialNumber"`
+	Fingerprint   string    `json:"fingerprintSHA256"`
+	DNSNames      string    `json:"dnsNames"`
+	SourceType    string    `json:"sourceType"`
+	SourceName    string    `json:"sourceName"`
 }
 
 // --- 同步日志 ---

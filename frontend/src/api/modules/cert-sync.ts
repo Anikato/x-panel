@@ -10,6 +10,7 @@ export const createCertSource = (params: {
   serverAddr: string
   token: string
   syncInterval: number
+  syncStrategy: string
   postSyncCommand: string
   enabled: boolean
 }) => {
@@ -22,6 +23,7 @@ export const updateCertSource = (params: {
   serverAddr: string
   token?: string
   syncInterval: number
+  syncStrategy: string
   postSyncCommand: string
   enabled: boolean
 }) => {

@@ -1,8 +1,11 @@
 package service
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -102,6 +105,10 @@ func (s *CertificateService) Update(req dto.CertificateUpdate) error {
 }
 
 func (s *CertificateService) Upload(req dto.CertificateUpload) error {
+	if _, err := tls.X509KeyPair([]byte(req.Certificate), []byte(req.PrivateKey)); err != nil {
+		return buserr.WithDetail(constant.ErrInvalidParams, "证书和私钥不匹配: "+err.Error(), err)
+	}
+
 	// 解析证书获取域名和过期时间
 	certInfo, err := parseCertPEM(req.Certificate)
 	if err != nil {
@@ -110,7 +117,7 @@ func (s *CertificateService) Upload(req dto.CertificateUpload) error {
 
 	cert := model.Certificate{
 		PrimaryDomain: certInfo.primaryDomain,
-		Domains:       strings.Join(certInfo.domains, ","),
+		Domains:       strings.Join(otherDomains(certInfo.primaryDomain, certInfo.domains), ","),
 		Provider:      "manual",
 		Type:          "upload",
 		Pem:           req.Certificate,
@@ -120,7 +127,9 @@ func (s *CertificateService) Upload(req dto.CertificateUpload) error {
 		Status:        "applied",
 		Description:   req.Description,
 		KeyType:       "upload",
+		SourceType:    "upload",
 	}
+	applyParsedMetadata(&cert, certInfo)
 	if err := s.certRepo.Create(&cert); err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
@@ -139,11 +148,11 @@ func (s *CertificateService) Delete(id uint) error {
 	}
 	// 删除证书文件（兼容旧路径含 * 和新路径 _wildcard）
 	sslDir := s.GetSSLDir()
-	certDir := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain))
-	os.RemoveAll(certDir)
+	os.RemoveAll(certDirPath(sslDir, cert))
 	if safeDomainDir(cert.PrimaryDomain) != cert.PrimaryDomain {
 		os.RemoveAll(filepath.Join(sslDir, "certs", cert.PrimaryDomain))
 	}
+	os.RemoveAll(filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain)))
 
 	return s.certRepo.Delete(repo.WithByID(id))
 }
@@ -172,26 +181,10 @@ func (s *CertificateService) SearchWithPage(req dto.SearchCertReq) (int64, []dto
 
 	var items []dto.CertificateInfo
 	for _, c := range certs {
-		items = append(items, dto.CertificateInfo{
-			ID:               c.ID,
-			PrimaryDomain:    c.PrimaryDomain,
-			Domains:          c.Domains,
-			Provider:         c.Provider,
-			Type:             c.Type,
-			AcmeAccountID:    c.AcmeAccountID,
-			DnsAccountID:     c.DnsAccountID,
-			WebsiteID:        c.WebsiteID,
-			KeyType:          c.KeyType,
-			AutoRenew:        c.AutoRenew,
-			ExpireDate:       c.ExpireDate,
-			StartDate:        c.StartDate,
-			Status:           c.Status,
-			Message:          c.Message,
-			Description:      c.Description,
-			CertURL:          c.CertURL,
-			AcmeAccountEmail: acmeMap[c.AcmeAccountID],
-			DnsAccountName:   dnsMap[c.DnsAccountID],
-		})
+		info := certificateToInfo(c)
+		info.AcmeAccountEmail = acmeMap[c.AcmeAccountID]
+		info.DnsAccountName = dnsMap[c.DnsAccountID]
+		items = append(items, info)
 	}
 	return total, items, nil
 }
@@ -203,7 +196,8 @@ func (s *CertificateService) GetDetail(id uint) (*dto.CertificateDetail, error) 
 	}
 
 	sslDir := s.GetSSLDir()
-	certPath := filepath.Join(sslDir, "certs", cert.PrimaryDomain)
+	certPath, _ := existingCertFilePaths(sslDir, cert)
+	certPath = filepath.Dir(certPath)
 
 	acmeEmail := ""
 	dnsName := ""
@@ -219,26 +213,12 @@ func (s *CertificateService) GetDetail(id uint) (*dto.CertificateDetail, error) 
 	}
 
 	return &dto.CertificateDetail{
-		CertificateInfo: dto.CertificateInfo{
-			ID:               cert.ID,
-			PrimaryDomain:    cert.PrimaryDomain,
-			Domains:          cert.Domains,
-			Provider:         cert.Provider,
-			Type:             cert.Type,
-			AcmeAccountID:    cert.AcmeAccountID,
-			DnsAccountID:     cert.DnsAccountID,
-			WebsiteID:        cert.WebsiteID,
-			KeyType:          cert.KeyType,
-			AutoRenew:        cert.AutoRenew,
-			ExpireDate:       cert.ExpireDate,
-			StartDate:        cert.StartDate,
-			Status:           cert.Status,
-			Message:          cert.Message,
-			Description:      cert.Description,
-			CertURL:          cert.CertURL,
-			AcmeAccountEmail: acmeEmail,
-			DnsAccountName:   dnsName,
-		},
+		CertificateInfo: func() dto.CertificateInfo {
+			info := certificateToInfo(cert)
+			info.AcmeAccountEmail = acmeEmail
+			info.DnsAccountName = dnsName
+			return info
+		}(),
 		Pem:        cert.Pem,
 		PrivateKey: cert.PrivateKey,
 		FilePath:   certPath,
@@ -356,7 +336,7 @@ func (s *CertificateService) Apply(id uint) error {
 		return err
 	}
 	sslDir := s.GetSSLDir()
-	logger.Printf("[成功] 证书文件已保存到: %s", filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain)))
+	logger.Printf("[成功] 证书文件已保存到: %s", certDirPath(sslDir, cert))
 
 	// File written — now write DB with all cert fields
 	dbUpdates := map[string]interface{}{
@@ -365,10 +345,12 @@ func (s *CertificateService) Apply(id uint) error {
 		"cert_url":    certRes.CertURL,
 		"status":      "applied",
 		"message":     "",
+		"source_type": "acme",
 	}
 	if certInfo != nil {
 		dbUpdates["expire_date"] = certInfo.expireDate
 		dbUpdates["start_date"] = certInfo.startDate
+		addParsedMetadataUpdates(dbUpdates, certInfo)
 	}
 	s.certRepo.Update(id, dbUpdates)
 	cert.ID = id
@@ -523,6 +505,7 @@ func (s *CertificateService) Renew(id uint) error {
 	if certInfo != nil {
 		renewUpdates["expire_date"] = certInfo.expireDate
 		renewUpdates["start_date"] = certInfo.startDate
+		addParsedMetadataUpdates(renewUpdates, certInfo)
 	}
 	s.certRepo.Update(id, renewUpdates)
 
@@ -690,8 +673,7 @@ func (s *CertificateService) ResolveCertFilePaths(certID uint) (string, string, 
 		return "", "", buserr.New(constant.ErrPanelSSLCertNotReady)
 	}
 	sslDir := s.GetSSLDir()
-	certPath := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "fullchain.pem")
-	keyPath := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "privkey.pem")
+	certPath, keyPath := existingCertFilePaths(sslDir, cert)
 	if _, err := os.Stat(certPath); err != nil {
 		return "", "", buserr.WithDetail(constant.ErrPanelSSLCertFiles, certPath, err)
 	}
@@ -710,19 +692,46 @@ func safeDomainDir(domain string) string {
 	return strings.ReplaceAll(domain, "*", "_wildcard")
 }
 
+func certDirName(cert model.Certificate) string {
+	if cert.ID > 0 {
+		return fmt.Sprintf("cert-%d", cert.ID)
+	}
+	if cert.Fingerprint != "" && len(cert.Fingerprint) >= 8 {
+		return fmt.Sprintf("%s-%s", safeDomainDir(cert.PrimaryDomain), strings.ToLower(cert.Fingerprint[:8]))
+	}
+	return safeDomainDir(cert.PrimaryDomain)
+}
+
+func certDirPath(sslDir string, cert model.Certificate) string {
+	return filepath.Join(sslDir, "certs", certDirName(cert))
+}
+
+func certFilePaths(sslDir string, cert model.Certificate) (string, string) {
+	certDir := certDirPath(sslDir, cert)
+	return filepath.Join(certDir, "fullchain.pem"), filepath.Join(certDir, "privkey.pem")
+}
+
+func existingCertFilePaths(sslDir string, cert model.Certificate) (string, string) {
+	certPath, keyPath := certFilePaths(sslDir, cert)
+	if _, err := os.Stat(certPath); err == nil {
+		return certPath, keyPath
+	}
+	legacyDir := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain))
+	return filepath.Join(legacyDir, "fullchain.pem"), filepath.Join(legacyDir, "privkey.pem")
+}
+
 func (s *CertificateService) saveCertFiles(cert model.Certificate) error {
 	sslDir := s.GetSSLDir()
-	certDir := filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain))
+	certDir := certDirPath(sslDir, cert)
 	if err := os.MkdirAll(certDir, 0755); err != nil {
 		return fmt.Errorf("create cert dir %s: %w", certDir, err)
 	}
 
-	certPath := filepath.Join(certDir, "fullchain.pem")
+	certPath, keyPath := certFilePaths(sslDir, cert)
 	if err := os.WriteFile(certPath, []byte(cert.Pem), 0644); err != nil {
 		return fmt.Errorf("write fullchain.pem: %w", err)
 	}
 
-	keyPath := filepath.Join(certDir, "privkey.pem")
 	if err := os.WriteFile(keyPath, []byte(cert.PrivateKey), 0600); err != nil {
 		return fmt.Errorf("write privkey.pem: %w", err)
 	}
@@ -791,6 +800,11 @@ func (s *CertificateService) GetLog(id uint) (string, error) {
 type certParsed struct {
 	primaryDomain string
 	domains       []string
+	issuer        string
+	subject       string
+	serialNumber  string
+	fingerprint   string
+	dnsNames      []string
 	expireDate    time.Time
 	startDate     time.Time
 }
@@ -805,27 +819,116 @@ func parseCertPEM(pemStr string) (*certParsed, error) {
 		return nil, err
 	}
 
+	dnsNames := append([]string(nil), cert.DNSNames...)
 	var domains []string
-	if cert.Subject.CommonName != "" {
+	domains = append(domains, dnsNames...)
+	if len(domains) == 0 && cert.Subject.CommonName != "" {
 		domains = append(domains, cert.Subject.CommonName)
 	}
-	for _, name := range cert.DNSNames {
-		if name != cert.Subject.CommonName {
-			domains = append(domains, name)
-		}
-	}
 
-	primaryDomain := cert.Subject.CommonName
-	if primaryDomain == "" && len(cert.DNSNames) > 0 {
-		primaryDomain = cert.DNSNames[0]
+	primaryDomain := ""
+	if len(dnsNames) > 0 {
+		primaryDomain = dnsNames[0]
+	} else {
+		primaryDomain = cert.Subject.CommonName
 	}
+	sum := sha256.Sum256(cert.Raw)
 
 	return &certParsed{
 		primaryDomain: primaryDomain,
 		domains:       domains,
+		issuer:        cert.Issuer.String(),
+		subject:       cert.Subject.String(),
+		serialNumber:  cert.SerialNumber.String(),
+		fingerprint:   strings.ToUpper(hex.EncodeToString(sum[:])),
+		dnsNames:      dnsNames,
 		expireDate:    cert.NotAfter,
 		startDate:     cert.NotBefore,
 	}, nil
+}
+
+func applyParsedMetadata(cert *model.Certificate, parsed *certParsed) {
+	if parsed == nil {
+		return
+	}
+	cert.Issuer = parsed.issuer
+	cert.Subject = parsed.subject
+	cert.SerialNumber = parsed.serialNumber
+	cert.Fingerprint = parsed.fingerprint
+	cert.DNSNames = encodeStringList(parsed.dnsNames)
+	cert.ExpireDate = parsed.expireDate
+	cert.StartDate = parsed.startDate
+	if cert.PrimaryDomain == "" {
+		cert.PrimaryDomain = parsed.primaryDomain
+	}
+}
+
+func addParsedMetadataUpdates(updates map[string]interface{}, parsed *certParsed) {
+	updates["issuer"] = parsed.issuer
+	updates["subject"] = parsed.subject
+	updates["serial_number"] = parsed.serialNumber
+	updates["fingerprint"] = parsed.fingerprint
+	updates["dns_names"] = encodeStringList(parsed.dnsNames)
+	if parsed.primaryDomain != "" {
+		updates["primary_domain"] = parsed.primaryDomain
+		updates["domains"] = strings.Join(otherDomains(parsed.primaryDomain, parsed.domains), ",")
+	}
+}
+
+func encodeStringList(items []string) string {
+	data, err := json.Marshal(items)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func otherDomains(primary string, domains []string) []string {
+	seen := map[string]struct{}{normalizeCertDomain(primary): {}}
+	var result []string
+	for _, domain := range domains {
+		normalized := normalizeCertDomain(domain)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, strings.TrimSpace(domain))
+	}
+	return result
+}
+
+func certificateToInfo(c model.Certificate) dto.CertificateInfo {
+	return dto.CertificateInfo{
+		ID:            c.ID,
+		PrimaryDomain: c.PrimaryDomain,
+		Domains:       c.Domains,
+		Provider:      c.Provider,
+		Type:          c.Type,
+		AcmeAccountID: c.AcmeAccountID,
+		DnsAccountID:  c.DnsAccountID,
+		WebsiteID:     c.WebsiteID,
+		KeyType:       c.KeyType,
+		AutoRenew:     c.AutoRenew,
+		ExpireDate:    c.ExpireDate,
+		StartDate:     c.StartDate,
+		Status:        c.Status,
+		Message:       c.Message,
+		Description:   c.Description,
+		CertURL:       c.CertURL,
+		Issuer:        c.Issuer,
+		Subject:       c.Subject,
+		SerialNumber:  c.SerialNumber,
+		Fingerprint:   c.Fingerprint,
+		DNSNames:      c.DNSNames,
+		SourceType:    c.SourceType,
+		SourceID:      c.SourceID,
+		SourceName:    c.SourceName,
+		NotBefore:     c.StartDate,
+		NotAfter:      c.ExpireDate,
+	}
 }
 
 // reloadNginxGlobal 全局 reload nginx（供证书申请/续期后调用）

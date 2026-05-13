@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -559,8 +558,7 @@ func (s *GostService) resolveServiceCert(svc model.GostService) (certFile, keyFi
 		}
 		sslSvc := NewICertificateService()
 		sslDir := sslSvc.GetSSLDir()
-		return filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "fullchain.pem"),
-			filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain), "privkey.pem")
+		return existingCertFilePaths(sslDir, cert)
 	}
 	return "", ""
 }

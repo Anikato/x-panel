@@ -89,6 +89,16 @@ type CertificateInfo struct {
 	Description   string    `json:"description"`
 	CertURL       string    `json:"certURL"`
 	Organization  string    `json:"organization"`
+	Issuer        string    `json:"issuer"`
+	Subject       string    `json:"subject"`
+	SerialNumber  string    `json:"serialNumber"`
+	Fingerprint   string    `json:"fingerprintSHA256"`
+	DNSNames      string    `json:"dnsNames"`
+	SourceType    string    `json:"sourceType"`
+	SourceID      uint      `json:"sourceID"`
+	SourceName    string    `json:"sourceName"`
+	NotBefore     time.Time `json:"notBefore"`
+	NotAfter      time.Time `json:"notAfter"`
 	// 关联
 	AcmeAccountEmail string `json:"acmeAccountEmail"`
 	DnsAccountName   string `json:"dnsAccountName"`

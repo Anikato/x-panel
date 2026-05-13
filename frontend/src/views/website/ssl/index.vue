@@ -41,7 +41,16 @@
             <template #default="{ row }">
               <div class="domain-cell">
                 <span class="primary-domain">{{ row.primaryDomain }}</span>
-                <span v-if="row.domains" class="other-domains">+{{ row.domains.split(',').length }}</span>
+                <el-popover v-if="allCertDomains(row).length > 1" placement="bottom-start" :width="320" trigger="hover">
+                  <template #reference>
+                    <span class="other-domains">+{{ allCertDomains(row).length - 1 }}</span>
+                  </template>
+                  <div class="domain-popover">
+                    <el-tag v-for="domain in allCertDomains(row)" :key="domain" size="small" effect="plain">
+                      {{ domain }}
+                    </el-tag>
+                  </div>
+                </el-popover>
               </div>
             </template>
           </el-table-column>
@@ -396,6 +405,21 @@
           </el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.expireDate')">{{ certDetail.expireDate ? formatDate(certDetail.expireDate) : '-' }}</el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.startDate')">{{ certDetail.startDate ? formatDate(certDetail.startDate) : '-' }}</el-descriptions-item>
+          <el-descriptions-item label="证书来源">{{ sourceLabel(certDetail) }}</el-descriptions-item>
+          <el-descriptions-item label="签发机构">{{ certDetail.issuer || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="证书主体" :span="2">{{ certDetail.subject || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="序列号" :span="2">{{ certDetail.serialNumber || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="SHA256 指纹" :span="2">
+            <code class="fingerprint-text">{{ certDetail.fingerprintSHA256 || '-' }}</code>
+          </el-descriptions-item>
+          <el-descriptions-item label="包含域名" :span="2">
+            <div class="domain-popover">
+              <el-tag v-for="domain in allCertDomains(certDetail)" :key="domain" size="small" effect="plain">
+                {{ domain }}
+              </el-tag>
+              <span v-if="allCertDomains(certDetail).length === 0">-</span>
+            </div>
+          </el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.certDir')" :span="2">{{ certDetail.filePath || '-' }}</el-descriptions-item>
         </el-descriptions>
         <el-divider />
@@ -458,6 +482,14 @@
             <el-option :label="$t('ssl.intervalDaily')" :value="1440" />
             <el-option :label="$t('ssl.intervalWeekly')" :value="10080" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="同步策略">
+          <el-select v-model="sourceForm.syncStrategy" style="width: 100%">
+            <el-option label="指纹去重（推荐）" value="fingerprint" />
+            <el-option label="主域名 + 签发机构 + 密钥类型" value="domainIssuerKey" />
+            <el-option label="同主域名保留最新" value="domainLatest" />
+          </el-select>
+          <div class="form-tip">默认不会用同域名证书互相覆盖；只有“同主域名保留最新”会沿用覆盖式同步。</div>
         </el-form-item>
         <el-form-item :label="$t('ssl.postSyncCommand')">
           <el-input v-model="sourceForm.postSyncCommand" placeholder="systemctl reload nginx" />
@@ -894,6 +926,7 @@ const defaultSourceForm = () => ({
   serverAddr: '',
   token: '',
   syncInterval: 360,
+  syncStrategy: 'fingerprint',
   postSyncCommand: '',
   enabled: true,
 })
@@ -915,6 +948,7 @@ const openSourceDialog = (row?: CertSource) => {
       serverAddr: row.serverAddr,
       token: '',
       syncInterval: row.syncInterval,
+      syncStrategy: row.syncStrategy || 'fingerprint',
       postSyncCommand: row.postSyncCommand,
       enabled: row.enabled,
     }
@@ -1034,6 +1068,33 @@ const intervalLabel = (min: number) => {
 }
 
 // --- 工具函数 ---
+const parseDNSNames = (value?: string) => {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item).trim()).filter(Boolean)
+    }
+  } catch {}
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+const allCertDomains = (cert?: Certificate | null) => {
+  if (!cert) return []
+  const domains = [cert.primaryDomain, ...parseDNSNames(cert.dnsNames), ...(cert.domains || '').split(',')]
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return Array.from(new Set(domains))
+}
+
+const sourceLabel = (cert?: Certificate | null) => {
+  if (!cert) return '-'
+  if (cert.sourceType === 'synced') return cert.sourceName ? `同步：${cert.sourceName}` : '同步'
+  if (cert.sourceType === 'upload' || cert.type === 'upload') return '手动上传'
+  if (cert.sourceType === 'acme' || cert.type === 'autoApply') return cert.acmeAccountEmail ? `ACME：${cert.acmeAccountEmail}` : 'ACME'
+  return cert.sourceType || cert.type || '-'
+}
+
 const statusType = (s: string) => {
   const map: Record<string, string> = { applied: 'success', applying: 'warning', error: 'danger', ready: 'info' }
   return (map[s] || 'info') as '' | 'success' | 'warning' | 'danger' | 'info'
@@ -1163,7 +1224,20 @@ onUnmounted(() => {
     border-radius: 3px;
     background: var(--xp-accent-muted);
     color: var(--xp-accent);
+    cursor: default;
   }
+}
+
+.domain-popover {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fingerprint-text {
+  font-family: var(--xp-font-mono);
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .text-danger {
