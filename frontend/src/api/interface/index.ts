@@ -93,6 +93,7 @@ export interface SettingInfo {
   userName: string
   agentToken: string
   autoUpgrade: string
+  fleetAutoUpgrade: string
 }
 
 export interface VersionInfo {

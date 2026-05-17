@@ -477,10 +477,10 @@ const loadDatabaseOptions = async () => {
   if (form.type !== 'database') return
   databaseLoading.value = true
   try {
-    const serverRes = await searchDatabaseServer({ page: 1, pageSize: 200, type: form.dbType })
+    const serverRes = await searchDatabaseServer({ page: 1, pageSize: 100, type: form.dbType })
     const servers = (serverRes.data.items || []) as DatabaseServer[]
     const result = await Promise.all(servers.map(async (server) => {
-      const instRes = await searchDatabaseInstance({ page: 1, pageSize: 1000, serverID: server.id })
+      const instRes = await searchDatabaseInstance({ page: 1, pageSize: 100, serverID: server.id })
       return ((instRes.data.items || []) as DatabaseInstance[]).map(item => ({
         ...item,
         serverName: server.name,

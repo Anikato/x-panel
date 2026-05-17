@@ -64,6 +64,7 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		ServerPort:       global.CONF.System.Port,
 		AgentToken:       settingMap["AgentToken"],
 		AutoUpgrade:      settingMap["AutoUpgrade"],
+		FleetAutoUpgrade: settingMap["FleetAutoUpgrade"],
 		AppearanceConfig: settingMap["AppearanceConfig"],
 		ProxyEnable:      settingMap["ProxyEnable"],
 		ProxyType:        settingMap["ProxyType"],

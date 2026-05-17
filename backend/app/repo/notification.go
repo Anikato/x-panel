@@ -18,6 +18,7 @@ type INotificationRepo interface {
 	MarkRead(ids []uint) error
 	MarkAllRead() error
 	DeleteRead() error
+	DeleteAll() error
 	Delete(id uint) error
 }
 
@@ -79,6 +80,10 @@ func (r *NotificationRepo) MarkAllRead() error {
 
 func (r *NotificationRepo) DeleteRead() error {
 	return global.DB.Where("read_at IS NOT NULL").Delete(&model.Notification{}).Error
+}
+
+func (r *NotificationRepo) DeleteAll() error {
+	return global.DB.Where("1 = 1").Delete(&model.Notification{}).Error
 }
 
 func (r *NotificationRepo) Delete(id uint) error {

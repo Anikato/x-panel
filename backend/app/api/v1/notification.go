@@ -99,6 +99,14 @@ func (a *NotificationAPI) DeleteReadNotifications(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *NotificationAPI) DeleteAllNotifications(c *gin.Context) {
+	if err := notificationService.DeleteAll(); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *NotificationAPI) DeleteNotification(c *gin.Context) {
 	var req dto.OperateByID
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

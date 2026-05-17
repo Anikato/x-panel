@@ -14,6 +14,9 @@ type SettingInfo struct {
 	ServerPort       string `json:"serverPort"`
 	AgentToken       string `json:"agentToken"`
 	AutoUpgrade      string `json:"autoUpgrade"`
+	// FleetAutoUpgrade 是 Fleet Center 远程下发的自动升级开关（"enable" / "disable" / ""）。
+	// 本地 AutoUpgrade 与 FleetAutoUpgrade 任一为 enable 即视为开启。
+	FleetAutoUpgrade string `json:"fleetAutoUpgrade"`
 	AppearanceConfig string `json:"appearanceConfig"`
 	ProxyEnable      string `json:"proxyEnable"`
 	ProxyType        string `json:"proxyType"`

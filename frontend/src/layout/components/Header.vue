@@ -101,7 +101,14 @@
       </el-popover>
 
       <!-- 通知中心 -->
-      <el-popover placement="bottom-end" :width="360" trigger="click" :teleported="false" @show="fetchRecentNotifications">
+      <el-popover
+        placement="bottom-end"
+        :width="380"
+        trigger="click"
+        popper-class="xp-notification-popper"
+        :offset="10"
+        @show="fetchRecentNotifications"
+      >
         <template #reference>
           <div
             class="theme-btn notification-btn"
@@ -119,7 +126,31 @@
         <div class="notification-panel">
           <div class="notification-panel-head">
             <strong>{{ t('notification.title') }}</strong>
-            <el-button link type="primary" @click="openNotifications">{{ t('notification.viewAll') }}</el-button>
+            <div class="notification-panel-actions">
+              <el-tooltip :content="t('notification.markAllRead')" placement="top">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="unreadNotifications === 0"
+                  @click="handleMarkAllRead"
+                >
+                  <el-icon :size="14"><CircleCheck /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip :content="t('notification.clearAll')" placement="top">
+                <el-button
+                  link
+                  type="danger"
+                  :disabled="recentNotifications.length === 0"
+                  @click="handleClearAll"
+                >
+                  <el-icon :size="14"><Delete /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-button link type="primary" @click="openNotifications">
+                {{ t('notification.viewAll') }}
+              </el-button>
+            </div>
           </div>
           <div v-if="recentNotifications.length === 0" class="notification-empty">{{ t('commons.noData') }}</div>
           <div v-else class="notification-recent-list">
@@ -210,10 +241,16 @@ import { listNodes } from '@/api/modules/node'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
-import { getNotificationSummary, getRecentNotifications, markNotificationsRead } from '@/api/modules/notification'
+import {
+  getNotificationSummary,
+  getRecentNotifications,
+  markNotificationsRead,
+  markAllNotificationsRead,
+  clearAllNotifications,
+} from '@/api/modules/notification'
 import { useI18n } from 'vue-i18n'
 import type { NodeItem, NotificationItem } from '@/api/interface'
-import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Monitor, Bell } from '@element-plus/icons-vue'
+import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Monitor, Bell, CircleCheck, Delete } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
@@ -340,9 +377,40 @@ const fetchRecentNotifications = async () => {
           message: item.content || '',
           type: item.type === 'error' ? 'error' : item.type,
           duration: item.type === 'error' ? 8000 : 4500,
+          position: 'bottom-right',
           onClick: () => openNotificationItem(item),
         })
       })
+  } catch { /* ignore */ }
+}
+
+const handleMarkAllRead = async (e?: Event) => {
+  e?.stopPropagation()
+  try {
+    await markAllNotificationsRead()
+    await fetchNotificationSummary()
+    await fetchRecentNotifications()
+    ElMessage.success(t('notification.markAllReadSuccess'))
+  } catch { /* ignore */ }
+}
+
+const handleClearAll = async (e?: Event) => {
+  e?.stopPropagation()
+  try {
+    await ElMessageBox.confirm(t('notification.clearAllConfirm'), t('commons.tip'), {
+      type: 'warning',
+      confirmButtonText: t('commons.confirm'),
+      cancelButtonText: t('commons.cancel'),
+    })
+  } catch {
+    return
+  }
+  try {
+    await clearAllNotifications()
+    popupShown.clear()
+    await fetchNotificationSummary()
+    await fetchRecentNotifications()
+    ElMessage.success(t('notification.clearAllSuccess'))
   } catch { /* ignore */ }
 }
 
@@ -591,6 +659,18 @@ const openNotifications = () => {
     justify-content: space-between;
     margin-bottom: 8px;
     color: var(--xp-text-primary);
+    gap: 8px;
+  }
+
+  .notification-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+
+    .el-button {
+      padding: 4px 6px;
+      min-height: auto;
+    }
   }
 
   .notification-empty {

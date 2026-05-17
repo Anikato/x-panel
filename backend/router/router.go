@@ -73,6 +73,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/notifications/read", api.MarkNotificationsRead)
 		privateGroup.POST("/notifications/read-all", api.MarkAllNotificationsRead)
 		privateGroup.POST("/notifications/read/clear", api.DeleteReadNotifications)
+		privateGroup.POST("/notifications/clear-all", api.DeleteAllNotifications)
 		privateGroup.POST("/notifications/del", api.DeleteNotification)
 
 		// 设置

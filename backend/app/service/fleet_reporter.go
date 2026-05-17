@@ -40,12 +40,14 @@ const (
 	fleetTaskInterval    = 10 * time.Second
 	fleetTaskOutputLimit = 64 * 1024
 
-	fleetSettingEnabled       = "FleetEnabled"
-	fleetSettingEndpoint      = "FleetEndpoint"
-	fleetSettingInstanceID    = "FleetInstanceID"
-	fleetSettingInstanceToken = "FleetInstanceToken"
-	fleetSettingInterval      = "FleetHeartbeatIntervalSeconds"
-	fleetSettingTaskInterval  = "FleetTaskPollIntervalSeconds"
+	fleetSettingEnabled            = "FleetEnabled"
+	fleetSettingEndpoint           = "FleetEndpoint"
+	fleetSettingInstanceID         = "FleetInstanceID"
+	fleetSettingInstanceToken      = "FleetInstanceToken"
+	fleetSettingInterval           = "FleetHeartbeatIntervalSeconds"
+	fleetSettingTaskInterval       = "FleetTaskPollIntervalSeconds"
+	fleetSettingAutoUpgrade        = "FleetAutoUpgrade"
+	fleetSettingAutoUpgradeRelease = "FleetAutoUpgradeReleaseURL"
 )
 
 type IFleetReporterService interface {
@@ -160,17 +162,26 @@ type fleetResponse struct {
 }
 
 type fleetRegisterData struct {
-	InstanceID               string    `json:"instanceId"`
-	InstanceToken            string    `json:"instanceToken"`
-	ServerTime               time.Time `json:"serverTime"`
-	HeartbeatIntervalSeconds int       `json:"heartbeatIntervalSeconds"`
-	TaskPollIntervalSeconds  int       `json:"taskPollIntervalSeconds"`
+	InstanceID               string             `json:"instanceId"`
+	InstanceToken            string             `json:"instanceToken"`
+	ServerTime               time.Time          `json:"serverTime"`
+	HeartbeatIntervalSeconds int                `json:"heartbeatIntervalSeconds"`
+	TaskPollIntervalSeconds  int                `json:"taskPollIntervalSeconds"`
+	PanelAutoUpgrade         *fleetAutoUpgrade  `json:"panelAutoUpgrade,omitempty"`
 }
 
 type fleetHeartbeatData struct {
-	ServerTime               time.Time `json:"serverTime"`
-	HeartbeatIntervalSeconds int       `json:"heartbeatIntervalSeconds"`
-	TaskPollIntervalSeconds  int       `json:"taskPollIntervalSeconds"`
+	ServerTime               time.Time         `json:"serverTime"`
+	HeartbeatIntervalSeconds int               `json:"heartbeatIntervalSeconds"`
+	TaskPollIntervalSeconds  int               `json:"taskPollIntervalSeconds"`
+	PanelAutoUpgrade         *fleetAutoUpgrade `json:"panelAutoUpgrade,omitempty"`
+}
+
+// fleetAutoUpgrade 是 Fleet Center 下发的面板自动升级开关；
+// 字段全部可选：当某次 heartbeat 没有该结构时维持本地原值不动。
+type fleetAutoUpgrade struct {
+	Enabled    bool   `json:"enabled"`
+	ReleaseURL string `json:"releaseUrl"`
 }
 
 type fleetTaskPollRequest struct {
@@ -374,6 +385,7 @@ func (s *FleetReporterService) register(endpoint string, payload fleetPayload) e
 	}
 	s.applyServerInterval(data.HeartbeatIntervalSeconds)
 	s.applyServerTaskInterval(data.TaskPollIntervalSeconds)
+	s.applyServerAutoUpgrade(data.PanelAutoUpgrade)
 	return nil
 }
 
@@ -384,6 +396,7 @@ func (s *FleetReporterService) heartbeat(endpoint string, payload fleetPayload, 
 	}
 	s.applyServerInterval(data.HeartbeatIntervalSeconds)
 	s.applyServerTaskInterval(data.TaskPollIntervalSeconds)
+	s.applyServerAutoUpgrade(data.PanelAutoUpgrade)
 	return nil
 }
 
@@ -904,6 +917,24 @@ func (s *FleetReporterService) applyServerTaskInterval(seconds int) {
 	}
 	if err := settingRepo.CreateOrUpdate(fleetSettingTaskInterval, fmt.Sprintf("%d", seconds)); err != nil {
 		global.LOG.Debugf("fleet reporter save task poll interval failed: %v", err)
+	}
+}
+
+// applyServerAutoUpgrade 把 Fleet Center 通过 heartbeat 下发的「面板自动升级」
+// 配置写入本地 settings；当响应中不携带该结构（nil）时保留原值，避免重置用户手动配置。
+func (s *FleetReporterService) applyServerAutoUpgrade(au *fleetAutoUpgrade) {
+	if au == nil {
+		return
+	}
+	value := "disable"
+	if au.Enabled {
+		value = "enable"
+	}
+	if err := settingRepo.CreateOrUpdate(fleetSettingAutoUpgrade, value); err != nil {
+		global.LOG.Debugf("fleet reporter save fleet auto upgrade failed: %v", err)
+	}
+	if err := settingRepo.CreateOrUpdate(fleetSettingAutoUpgradeRelease, strings.TrimSpace(au.ReleaseURL)); err != nil {
+		global.LOG.Debugf("fleet reporter save fleet auto upgrade release url failed: %v", err)
 	}
 }
 

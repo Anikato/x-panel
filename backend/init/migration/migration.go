@@ -83,6 +83,15 @@ func runOnceDataMigrations() {
 		global.DB.Exec("UPDATE notifications SET popup = 0 WHERE popup != 0")
 		markDone("_mig_notification_delivery_defaults")
 	}
+
+	// 一次性把历史装机的 AutoUpgrade=enable 改为 disable，避免发布失败连带把
+	// 全部面板搞挂；用户后续如需自动升级请显式在 设置 中重新开启或通过 Fleet
+	// Center 下发 FleetAutoUpgrade。
+	if !migrated("_mig_auto_upgrade_default_off") {
+		global.DB.Exec("UPDATE settings SET value = 'disable' WHERE `key` = 'AutoUpgrade' AND value = 'enable'")
+		markDone("_mig_auto_upgrade_default_off")
+		global.LOG.Info("Migration: forced AutoUpgrade=disable for safety; re-enable manually if desired")
+	}
 }
 
 // migrateSSLCertsToIndependentDir 将旧 Nginx 目录下的证书迁移到独立 SSL 目录
@@ -250,7 +259,11 @@ func initDefaultSettings() {
 		{Key: "UpgradeURL", Value: "https://xpanel.qm.mk"},
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
-		{Key: "AutoUpgrade", Value: "enable"},
+		// 默认关闭面板侧自动升级，避免发布失败导致大规模实例不可用；
+		// 需要时由用户在本机设置中开启，或由 Fleet Center 统一下发 FleetAutoUpgrade。
+		{Key: "AutoUpgrade", Value: "disable"},
+		{Key: "FleetAutoUpgrade", Value: ""},
+		{Key: "FleetAutoUpgradeReleaseURL", Value: ""},
 		{Key: "AppearanceConfig", Value: "{}"},
 		{Key: "CertServerEnabled", Value: "disable"},
 		{Key: "CertServerToken", Value: ""},

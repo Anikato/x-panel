@@ -27,6 +27,10 @@ export const clearReadNotifications = () => {
   return http.post('/notifications/read/clear')
 }
 
+export const clearAllNotifications = () => {
+  return http.post('/notifications/clear-all')
+}
+
 export const deleteNotification = (data: { id: number }) => {
   return http.post('/notifications/del', data)
 }

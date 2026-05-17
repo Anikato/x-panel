@@ -67,6 +67,9 @@
           <div class="xp-setting-line">
             <span class="xp-setting-line-label">{{ t('setting.autoUpgrade') }}</span>
             <el-switch v-model="autoUpgradeEnabled" @change="handleAutoUpgradeChange" />
+            <el-tag v-if="fleetAutoUpgrade === 'enable'" type="warning" size="small">
+              {{ t('setting.autoUpgradeFleetEnabled') }}
+            </el-tag>
             <el-text type="info" size="small">{{ t('setting.autoUpgradeHint') }}</el-text>
           </div>
           <div class="xp-inline-form">
@@ -655,6 +658,7 @@ const upgradeUrl = ref('')
 const githubToken = ref('')
 const savingToken = ref(false)
 const autoUpgradeEnabled = ref(false)
+const fleetAutoUpgrade = ref('')
 const checking = ref(false)
 const upgrading = ref(false)
 const upgradeInfo = ref<UpgradeInfo | null>(null)
@@ -748,6 +752,7 @@ const fetchSettings = async () => {
       githubToken.value = res.data.githubToken || ''
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
+      fleetAutoUpgrade.value = res.data.fleetAutoUpgrade || ''
       agentTokenForm.token = res.data.agentToken || ''
       proxyForm.type = res.data.proxyType || 'mix'
       proxyForm.address = res.data.proxyAddress || ''

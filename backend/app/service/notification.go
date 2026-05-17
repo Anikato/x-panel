@@ -21,6 +21,7 @@ type INotificationService interface {
 	MarkRead(ids []uint) error
 	MarkAllRead() error
 	DeleteRead() error
+	DeleteAll() error
 	Delete(id uint) error
 }
 
@@ -133,6 +134,10 @@ func (s *NotificationService) MarkAllRead() error {
 
 func (s *NotificationService) DeleteRead() error {
 	return s.notificationRepo.DeleteRead()
+}
+
+func (s *NotificationService) DeleteAll() error {
+	return s.notificationRepo.DeleteAll()
 }
 
 func (s *NotificationService) Delete(id uint) error {

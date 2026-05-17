@@ -50,18 +50,27 @@ func Init() {
 
 func autoUpgrade() {
 	settingService := service.NewISettingService()
-	val, err := settingService.GetValueByKey("AutoUpgrade")
-	if err != nil || val != "enable" {
+
+	local, _ := settingService.GetValueByKey("AutoUpgrade")
+	fleet, _ := settingService.GetValueByKey("FleetAutoUpgrade")
+	releaseURL, _ := settingService.GetValueByKey("FleetAutoUpgradeReleaseURL")
+
+	enabled := local == "enable" || fleet == "enable"
+	if !enabled {
 		return
 	}
 
 	upgradeService := service.NewIUpgradeService()
-	info, err := upgradeService.CheckUpdate(dto.UpgradeCheckReq{})
+	info, err := upgradeService.CheckUpdate(dto.UpgradeCheckReq{ReleaseURL: releaseURL})
 	if err != nil || info == nil || !info.HasUpdate {
 		return
 	}
 
-	global.LOG.Infof("Auto-upgrade: new version %s found, starting upgrade...", info.LatestVersion)
+	source := "local"
+	if fleet == "enable" {
+		source = "fleet"
+	}
+	global.LOG.Infof("Auto-upgrade (%s): new version %s found, starting upgrade...", source, info.LatestVersion)
 	if err := upgradeService.DoUpgrade(dto.UpgradeReq{
 		Version:     info.LatestVersion,
 		DownloadURL: info.DownloadURL,
