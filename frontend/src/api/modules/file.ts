@@ -41,12 +41,16 @@ export const changeFileOwner = (params: { path: string; user: string; group: str
   return http.post('/files/owner', params)
 }
 
-export const compressFile = (params: { paths: string[]; dst: string; name: string; type?: string }) => {
+export const compressFile = (params: { paths: string[]; dst: string; name: string; type?: string; excludes?: string[] }) => {
   return http.post('/files/compress', params)
 }
 
-export const decompressFile = (params: { path: string; dst: string }) => {
+export const decompressFile = (params: { path: string; dst: string; extractToSameDir?: boolean; conflictPolicy?: string }) => {
   return http.post('/files/decompress', params)
+}
+
+export const listArchive = (params: { path: string }) => {
+  return http.post<{ entries: string[]; total: number; unsafeEntries: string[] }>('/files/archive/list', params)
 }
 
 export const uploadFile = (path: string, file: File, onProgress?: (percent: number) => void) => {

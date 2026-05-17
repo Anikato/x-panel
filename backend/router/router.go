@@ -104,6 +104,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/files/owner", api.ChangeOwner)
 		privateGroup.POST("/files/compress", api.CompressFile)
 		privateGroup.POST("/files/decompress", api.DecompressFile)
+		privateGroup.POST("/files/archive/list", api.ListArchive)
 		privateGroup.POST("/files/upload", api.UploadFile)
 		privateGroup.GET("/files/download", api.DownloadFile)
 		privateGroup.POST("/files/wget", api.WgetFile)

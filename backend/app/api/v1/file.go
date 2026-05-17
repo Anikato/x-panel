@@ -275,6 +275,22 @@ func (a *FileAPI) DecompressFile(c *gin.Context) {
 	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }
 
+// ListArchive 压缩包内容预览
+func (a *FileAPI) ListArchive(c *gin.Context) {
+	var req dto.FileArchiveListReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	svc := service.NewIFileService()
+	data, err := svc.ListArchive(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
 // GetFileTaskStatus 查询单个文件操作任务状态
 func (a *FileAPI) GetFileTaskStatus(c *gin.Context) {
 	taskID := c.Query("id")

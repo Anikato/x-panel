@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -35,6 +36,7 @@ type IFileService interface {
 	ChangeOwner(req dto.FileChownReq) error
 	Compress(req dto.FileCompressReq) error
 	Decompress(req dto.FileDecompressReq) error
+	ListArchive(req dto.FileArchiveListReq) (*dto.FileArchiveListResp, error)
 	Wget(req dto.FileWgetReq) error
 	GetFileTree(req dto.FileTreeReq) ([]dto.FileTreeNode, error)
 	GetUsersAndGroups() (*dto.UserGroupResp, error)
@@ -744,6 +746,7 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 	if compressType == "" {
 		compressType = "tar.gz"
 	}
+	excludes := normalizeCompressExcludes(req.Excludes)
 
 	var cmd *exec.Cmd
 	switch compressType {
@@ -769,6 +772,7 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 			}
 			args := []string{"-r", absDst}
 			args = append(args, relPaths...)
+			args = appendZipExcludeArgs(args, excludes)
 			cmd = exec.Command("zip", args...)
 			cmd.Dir = workDir
 		} else {
@@ -790,11 +794,15 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 			}
 			args := []string{"-r", "--symlinks", absDst}
 			args = append(args, relPaths...)
+			args = appendZipExcludeArgs(args, excludes)
 			cmd = exec.Command("zip", args...)
 			cmd.Dir = tmpDir
 		}
 	default: // tar.gz
 		args := []string{"-czf", absDst}
+		for _, rule := range excludes {
+			args = append(args, "--exclude", rule)
+		}
 		for _, p := range req.Paths {
 			cleanP := filepath.Clean(p)
 			args = append(args, "-C", filepath.Dir(cleanP), filepath.Base(cleanP))
@@ -813,10 +821,47 @@ func (s *FileService) Compress(req dto.FileCompressReq) error {
 	return nil
 }
 
+func normalizeCompressExcludes(excludes []string) []string {
+	if len(excludes) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(excludes))
+	result := make([]string, 0, len(excludes))
+	for _, exclude := range excludes {
+		rule := strings.TrimSpace(exclude)
+		if rule == "" {
+			continue
+		}
+		if _, ok := seen[rule]; ok {
+			continue
+		}
+		seen[rule] = struct{}{}
+		result = append(result, rule)
+	}
+	return result
+}
+
+func appendZipExcludeArgs(args []string, excludes []string) []string {
+	if len(excludes) == 0 {
+		return args
+	}
+
+	args = append(args, "-x")
+	for _, rule := range excludes {
+		args = append(args, rule)
+	}
+	return args
+}
+
 // Decompress 解压
 func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 	src := filepath.Clean(req.Path)
 	dst := filepath.Clean(req.Dst)
+	if req.ExtractToSameDir {
+		dst = filepath.Join(dst, archiveBaseName(src))
+	}
+	conflictPolicy := normalizeConflictPolicy(req.ConflictPolicy)
 
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
@@ -826,38 +871,38 @@ func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 	archiveType := detectArchiveType(src)
 
 	switch archiveType {
+	case "gz", "bz2", "xz":
+		return s.decompressSingleFile(src, dst, archiveType, conflictPolicy)
+	}
+
+	if err := validateArchiveEntries(src, archiveType); err != nil {
+		return buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
+	}
+
+	tmpDir, err := os.MkdirTemp(filepath.Dir(dst), ".xpanel-decompress-*")
+	if err != nil {
+		return buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	switch archiveType {
 	case "zip":
 		if _, err := exec.LookPath("unzip"); err != nil {
 			return buserr.WithDetail(constant.ErrCmdNotFound, "unzip (apt install unzip)", nil)
 		}
-		cmd = exec.Command("unzip", "-o", src, "-d", dst)
+		cmd = exec.Command("unzip", "-o", src, "-d", tmpDir)
 	case "7z":
 		if _, err := exec.LookPath("7z"); err != nil {
 			return buserr.WithDetail(constant.ErrCmdNotFound, "7z (apt install p7zip-full)", nil)
 		}
-		cmd = exec.Command("7z", "x", "-y", "-o"+dst, src)
+		cmd = exec.Command("7z", "x", "-y", "-o"+tmpDir, src)
 	case "rar":
 		if _, err := exec.LookPath("unrar"); err != nil {
 			return buserr.WithDetail(constant.ErrCmdNotFound, "unrar (apt install unrar)", nil)
 		}
-		cmd = exec.Command("unrar", "x", "-y", "-o+", src, dst+"/")
-	case "gz":
-		baseName := strings.TrimSuffix(filepath.Base(src), ".gz")
-		dstFile := filepath.Join(dst, baseName)
-		cmd = exec.Command("sh", "-c", fmt.Sprintf("gunzip -c %s > %s",
-			shellQuote(src), shellQuote(dstFile)))
-	case "bz2":
-		baseName := strings.TrimSuffix(filepath.Base(src), ".bz2")
-		dstFile := filepath.Join(dst, baseName)
-		cmd = exec.Command("sh", "-c", fmt.Sprintf("bunzip2 -c %s > %s",
-			shellQuote(src), shellQuote(dstFile)))
-	case "xz":
-		baseName := strings.TrimSuffix(filepath.Base(src), ".xz")
-		dstFile := filepath.Join(dst, baseName)
-		cmd = exec.Command("sh", "-c", fmt.Sprintf("xz -dc %s > %s",
-			shellQuote(src), shellQuote(dstFile)))
+		cmd = exec.Command("unrar", "x", "-y", "-o+", src, tmpDir+"/")
 	default: // tar, tar.gz, tar.bz2, tar.xz, tgz
-		cmd = exec.Command("tar", "-xf", src, "-C", dst)
+		cmd = exec.Command("tar", "-xf", src, "-C", tmpDir)
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -867,8 +912,263 @@ func (s *FileService) Decompress(req dto.FileDecompressReq) error {
 		}
 		return buserr.WithDetail(constant.ErrFileDecompress, errMsg, err)
 	}
+
+	if err := mergeExtractedFiles(tmpDir, dst, conflictPolicy); err != nil {
+		return buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
+	}
 	global.LOG.Infof("File decompressed: %s → %s", src, dst)
 	return nil
+}
+
+func (s *FileService) decompressSingleFile(src, dst, archiveType, conflictPolicy string) error {
+	baseName := strings.TrimSuffix(filepath.Base(src), "."+archiveType)
+	dstFile := resolveConflictPath(filepath.Join(dst, baseName), conflictPolicy)
+	if dstFile == "" {
+		return nil
+	}
+
+	var cmd *exec.Cmd
+	switch archiveType {
+	case "gz":
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("gunzip -c %s > %s", shellQuote(src), shellQuote(dstFile)))
+	case "bz2":
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("bunzip2 -c %s > %s", shellQuote(src), shellQuote(dstFile)))
+	case "xz":
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("xz -dc %s > %s", shellQuote(src), shellQuote(dstFile)))
+	}
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return buserr.WithDetail(constant.ErrFileDecompress, errMsg, err)
+	}
+	global.LOG.Infof("File decompressed: %s → %s", src, dstFile)
+	return nil
+}
+
+func (s *FileService) ListArchive(req dto.FileArchiveListReq) (*dto.FileArchiveListResp, error) {
+	src := filepath.Clean(req.Path)
+	archiveType := detectArchiveType(src)
+	if archiveType == "gz" || archiveType == "bz2" || archiveType == "xz" {
+		name := strings.TrimSuffix(filepath.Base(src), "."+archiveType)
+		return &dto.FileArchiveListResp{
+			Entries: []string{name},
+			Total:   1,
+		}, nil
+	}
+
+	entries, err := listArchiveEntries(src, archiveType)
+	if err != nil {
+		return nil, buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
+	}
+
+	unsafeEntries := make([]string, 0)
+	for _, entry := range entries {
+		if !isSafeArchiveEntry(entry) {
+			unsafeEntries = append(unsafeEntries, entry)
+		}
+	}
+
+	const maxPreviewEntries = 300
+	previewEntries := entries
+	if len(previewEntries) > maxPreviewEntries {
+		previewEntries = previewEntries[:maxPreviewEntries]
+	}
+
+	return &dto.FileArchiveListResp{
+		Entries:       previewEntries,
+		Total:         len(entries),
+		UnsafeEntries: unsafeEntries,
+	}, nil
+}
+
+func normalizeConflictPolicy(policy string) string {
+	normalized := strings.ToLower(strings.TrimSpace(policy))
+	switch normalized {
+	case "skip", "rename":
+		return normalized
+	default:
+		return "overwrite"
+	}
+}
+
+func archiveBaseName(src string) string {
+	name := filepath.Base(src)
+	lower := strings.ToLower(name)
+	for _, suffix := range []string{".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz2", ".txz", ".zip", ".7z", ".rar", ".tar", ".gz", ".bz2", ".xz"} {
+		if strings.HasSuffix(lower, suffix) {
+			return strings.TrimSuffix(name, name[len(name)-len(suffix):])
+		}
+	}
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+func validateArchiveEntries(src, archiveType string) error {
+	entries, err := listArchiveEntries(src, archiveType)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !isSafeArchiveEntry(entry) {
+			return fmt.Errorf("unsafe archive path: %s", entry)
+		}
+	}
+	return nil
+}
+
+func listArchiveEntries(src, archiveType string) ([]string, error) {
+	var cmd *exec.Cmd
+	switch archiveType {
+	case "zip":
+		if _, err := exec.LookPath("unzip"); err != nil {
+			return nil, buserr.WithDetail(constant.ErrCmdNotFound, "unzip (apt install unzip)", nil)
+		}
+		cmd = exec.Command("unzip", "-Z1", src)
+	case "7z":
+		if _, err := exec.LookPath("7z"); err != nil {
+			return nil, buserr.WithDetail(constant.ErrCmdNotFound, "7z (apt install p7zip-full)", nil)
+		}
+		cmd = exec.Command("7z", "l", "-slt", src)
+	case "rar":
+		if _, err := exec.LookPath("unrar"); err != nil {
+			return nil, buserr.WithDetail(constant.ErrCmdNotFound, "unrar (apt install unrar)", nil)
+		}
+		cmd = exec.Command("unrar", "lb", src)
+	default:
+		cmd = exec.Command("tar", "-tf", src)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	entries := make([]string, 0, len(lines))
+	for _, line := range lines {
+		item := strings.TrimSpace(line)
+		if item == "" {
+			continue
+		}
+		if archiveType == "7z" {
+			if !strings.HasPrefix(item, "Path = ") {
+				continue
+			}
+			item = strings.TrimSpace(strings.TrimPrefix(item, "Path = "))
+			if item == filepath.Base(src) {
+				continue
+			}
+		}
+		entries = append(entries, item)
+	}
+	return entries, nil
+}
+
+func isSafeArchiveEntry(entry string) bool {
+	entry = strings.ReplaceAll(entry, "\\", "/")
+	if entry == "" || strings.Contains(entry, "\x00") || path.IsAbs(entry) {
+		return false
+	}
+	clean := path.Clean(entry)
+	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+func mergeExtractedFiles(srcDir, dstDir, conflictPolicy string) error {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := mergeExtractedPath(filepath.Join(srcDir, entry.Name()), filepath.Join(dstDir, entry.Name()), conflictPolicy); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mergeExtractedPath(src, dst, conflictPolicy string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		if _, err := os.Stat(dst); os.IsNotExist(err) {
+			if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+				return err
+			}
+			if err := os.Rename(src, dst); err == nil {
+				return nil
+			}
+		}
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(dst, info.Mode()); err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := mergeExtractedPath(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), conflictPolicy); err != nil {
+				return err
+			}
+		}
+		return os.Remove(src)
+	}
+
+	target := resolveConflictPath(dst, conflictPolicy)
+	if target == "" {
+		return nil
+	}
+	if conflictPolicy == "overwrite" {
+		if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, target); err == nil {
+		return nil
+	}
+	if err := copyPathStreaming(src, target, nil); err != nil {
+		return err
+	}
+	return os.RemoveAll(src)
+}
+
+func resolveConflictPath(dst, conflictPolicy string) string {
+	if _, err := os.Stat(dst); os.IsNotExist(err) {
+		return dst
+	}
+
+	switch conflictPolicy {
+	case "skip":
+		return ""
+	case "rename":
+		return nextAvailablePath(dst)
+	default:
+		return dst
+	}
+}
+
+func nextAvailablePath(dst string) string {
+	dir := filepath.Dir(dst)
+	base := filepath.Base(dst)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	for i := 1; ; i++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s(%d)%s", name, i, ext))
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
 }
 
 // shellQuote 对路径进行安全引用

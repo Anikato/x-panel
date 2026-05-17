@@ -98,16 +98,31 @@ type FileChownReq struct {
 
 // FileCompressReq 压缩请求
 type FileCompressReq struct {
-	Paths []string `json:"paths" binding:"required"`
-	Dst   string   `json:"dst" binding:"required"`
-	Name  string   `json:"name" binding:"required"`
-	Type  string   `json:"type"`
+	Paths    []string `json:"paths" binding:"required"`
+	Dst      string   `json:"dst" binding:"required"`
+	Name     string   `json:"name" binding:"required"`
+	Type     string   `json:"type"`
+	Excludes []string `json:"excludes"`
 }
 
 // FileDecompressReq 解压请求
 type FileDecompressReq struct {
+	Path             string `json:"path" binding:"required"`
+	Dst              string `json:"dst" binding:"required"`
+	ExtractToSameDir bool   `json:"extractToSameDir"`
+	ConflictPolicy   string `json:"conflictPolicy"`
+}
+
+// FileArchiveListReq 压缩包内容预览请求
+type FileArchiveListReq struct {
 	Path string `json:"path" binding:"required"`
-	Dst  string `json:"dst" binding:"required"`
+}
+
+// FileArchiveListResp 压缩包内容预览响应
+type FileArchiveListResp struct {
+	Entries       []string `json:"entries"`
+	Total         int      `json:"total"`
+	UnsafeEntries []string `json:"unsafeEntries"`
 }
 
 // FileTreeReq 文件树请求
