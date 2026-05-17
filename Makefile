@@ -96,6 +96,10 @@ package: build
 	@if [ -f $(BASE_PATH)/scripts/xpanel.service ]; then \
 		cp $(BASE_PATH)/scripts/xpanel.service $(BUILD_PATH)/release/; \
 	fi
+	@if [ -f $(BASE_PATH)/scripts/xpctl ]; then \
+		cp $(BASE_PATH)/scripts/xpctl $(BUILD_PATH)/release/; \
+		chmod +x $(BUILD_PATH)/release/xpctl; \
+	fi
 	# 打包
 	cd $(BUILD_PATH) && tar -czf xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz -C release .
 	# 生成 SHA256 校验和

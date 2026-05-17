@@ -32,6 +32,13 @@ else
     exit 1
 fi
 
+# 安装控制/救援命令
+if [ -f "./xpctl" ]; then
+    echo ">>> 安装 xpctl 控制工具..."
+    cp -f ./xpctl /usr/local/bin/xpctl
+    chmod +x /usr/local/bin/xpctl
+fi
+
 # 复制配置文件（不覆盖已有配置）
 if [ ! -f "$CONFIG_FILE" ]; then
     if [ -f "./config.yaml.example" ]; then
@@ -70,6 +77,10 @@ echo "  systemctl start xpanel"
 echo ""
 echo "查看状态:"
 echo "  systemctl status xpanel"
+echo ""
+echo "控制工具:"
+echo "  xpctl doctor"
+echo "  xpctl fix-migrations"
 echo ""
 echo "访问面板:"
 echo "  http://<服务器IP>:7777"

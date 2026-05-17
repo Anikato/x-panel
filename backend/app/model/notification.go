@@ -10,7 +10,7 @@ type Notification struct {
 	Content   string     `json:"content"`
 	Source    string     `gorm:"index" json:"source"` // file / cronjob / system / security
 	TargetURL string     `json:"targetUrl"`
-	ShowBadge bool       `gorm:"not null" json:"showBadge"`
-	Popup     bool       `gorm:"not null" json:"popup"`
+	ShowBadge bool       `gorm:"not null;default:true" json:"showBadge"`
+	Popup     bool       `gorm:"not null;default:false" json:"popup"`
 	ReadAt    *time.Time `gorm:"index" json:"readAt,omitempty"`
 }

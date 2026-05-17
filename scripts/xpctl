@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_DIR="${XPANEL_HOME:-/opt/xpanel}"
+SERVICE_NAME="${XPANEL_SERVICE:-xpanel}"
+CONFIG_FILE="${XPANEL_CONFIG:-$INSTALL_DIR/config.yaml}"
+DB_PATH="${XPANEL_DB:-$INSTALL_DIR/data/db/xpanel.db}"
+
+log() { printf '[xpctl] %s\n' "$*"; }
+warn() { printf '[xpctl][WARN] %s\n' "$*" >&2; }
+die() { printf '[xpctl][ERROR] %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<EOF
+X-Panel 控制与救援工具
+
+用法:
+  xpctl <command>
+
+命令:
+  status            查看 systemd 服务状态
+  start             启动服务
+  stop              停止服务
+  restart           重启服务
+  logs              跟踪服务日志
+  doctor            输出安装、配置、数据库、服务诊断信息
+  fix-migrations    修复已知 SQLite 迁移兼容问题
+
+环境变量:
+  XPANEL_HOME       安装目录，默认 /opt/xpanel
+  XPANEL_SERVICE    服务名，默认 xpanel
+  XPANEL_CONFIG     配置文件路径，默认 /opt/xpanel/config.yaml
+  XPANEL_DB         数据库路径，默认 /opt/xpanel/data/db/xpanel.db
+EOF
+}
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1"
+}
+
+run_systemctl() {
+  need_cmd systemctl
+  systemctl "$1" "$SERVICE_NAME"
+}
+
+sqlite_table_exists() {
+  sqlite3 "$DB_PATH" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='$1';"
+}
+
+sqlite_column_exists() {
+  sqlite3 "$DB_PATH" "SELECT count(*) FROM pragma_table_info('$1') WHERE name='$2';"
+}
+
+add_column_if_missing() {
+  local table="$1"
+  local column="$2"
+  local ddl="$3"
+
+  if [ "$(sqlite_table_exists "$table")" != "1" ]; then
+    warn "表不存在，跳过: $table"
+    return 0
+  fi
+  if [ "$(sqlite_column_exists "$table" "$column")" = "1" ]; then
+    log "列已存在，跳过: $table.$column"
+    return 0
+  fi
+  log "添加列: $table.$column"
+  sqlite3 "$DB_PATH" "ALTER TABLE $table ADD COLUMN $ddl;"
+}
+
+doctor() {
+  log "安装目录: $INSTALL_DIR"
+  log "配置文件: $CONFIG_FILE"
+  log "数据库: $DB_PATH"
+
+  if [ -x "$INSTALL_DIR/xpanel" ]; then
+    log "主程序: $INSTALL_DIR/xpanel"
+    "$INSTALL_DIR/xpanel" --version 2>/dev/null || true
+  else
+    warn "主程序不存在或不可执行: $INSTALL_DIR/xpanel"
+  fi
+
+  if [ -f "$CONFIG_FILE" ]; then
+    log "配置文件存在"
+  else
+    warn "配置文件不存在"
+  fi
+
+  if [ -f "$DB_PATH" ]; then
+    log "数据库存在: $(du -h "$DB_PATH" | awk '{print $1}')"
+  else
+    warn "数据库不存在"
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl status "$SERVICE_NAME" --no-pager || true
+  else
+    warn "systemctl 不可用"
+  fi
+}
+
+fix_migrations() {
+  need_cmd sqlite3
+  [ -f "$DB_PATH" ] || die "数据库不存在: $DB_PATH"
+
+  log "开始修复已知迁移兼容问题..."
+  add_column_if_missing "notifications" "event" "event text"
+  add_column_if_missing "notifications" "show_badge" "show_badge numeric NOT NULL DEFAULT 1"
+  add_column_if_missing "notifications" "popup" "popup numeric NOT NULL DEFAULT 0"
+  add_column_if_missing "cronjobs" "db_instance_id" "db_instance_id integer DEFAULT 0"
+  log "迁移兼容修复完成"
+}
+
+case "${1:-}" in
+  status) run_systemctl status ;;
+  start) run_systemctl start ;;
+  stop) run_systemctl stop ;;
+  restart) run_systemctl restart ;;
+  logs)
+    need_cmd journalctl
+    journalctl -u "$SERVICE_NAME" -f
+    ;;
+  doctor) doctor ;;
+  fix-migrations) fix_migrations ;;
+  help|-h|--help|"") usage ;;
+  *) die "未知命令: $1" ;;
+esac

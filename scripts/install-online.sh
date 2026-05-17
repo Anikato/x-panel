@@ -610,6 +610,12 @@ log_step "安装主程序..."
 cp -f "$TMP_DIR/extract/xpanel" "$INSTALL_DIR/xpanel"
 chmod +x "$INSTALL_DIR/xpanel"
 
+if [ -f "$TMP_DIR/extract/xpctl" ]; then
+    log_step "安装 xpctl 控制工具..."
+    cp -f "$TMP_DIR/extract/xpctl" /usr/local/bin/xpctl
+    chmod +x /usr/local/bin/xpctl
+fi
+
 # 保存安装脚本副本（方便后续卸载/升级）
 if [ -f "$0" ] && [ "$0" != "bash" ] && [ "$0" != "/dev/stdin" ]; then
     cp -f "$0" "$INSTALL_DIR/install.sh" 2>/dev/null || true
@@ -813,6 +819,8 @@ echo "    systemctl stop $SERVICE_NAME      # 停止"
 echo "    systemctl restart $SERVICE_NAME   # 重启"
 echo "    systemctl status $SERVICE_NAME    # 查看状态"
 echo "    journalctl -u $SERVICE_NAME -f    # 查看日志"
+echo "    xpctl doctor                      # 诊断"
+echo "    xpctl fix-migrations              # 修复已知迁移问题"
 echo ""
 if [ "$IS_UPGRADE" = false ]; then
     if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ]; then
