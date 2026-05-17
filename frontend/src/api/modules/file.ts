@@ -98,6 +98,10 @@ export const listFileTasks = () => {
   return http.get('/files/tasks')
 }
 
+export const cancelFileTask = (taskID: string) => {
+  return http.post('/files/task/cancel', null, { params: { id: taskID } })
+}
+
 /**
  * 轮询文件操作任务直到完成
  */

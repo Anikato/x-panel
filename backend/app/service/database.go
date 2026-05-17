@@ -2,7 +2,7 @@ package service
 
 import (
 	"fmt"
-	"os/exec"
+	"os"
 	"time"
 
 	"xpanel/app/dto"
@@ -311,7 +311,9 @@ func (s *DatabaseService) BackupInstance(id uint) (string, error) {
 	}
 
 	backupDir := global.CONF.System.DataDir + "/backup/database"
-	_ = exec.Command("mkdir", "-p", backupDir).Run()
+	if err := os.MkdirAll(backupDir, 0750); err != nil {
+		return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
 	timestamp := time.Now().Format("20060102150405")
 	var outFile string
 

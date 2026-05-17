@@ -66,6 +66,9 @@ func Setup(mode string) *gin.Engine {
 
 		// 通知中心
 		privateGroup.GET("/notifications/summary", api.GetNotificationSummary)
+		privateGroup.GET("/notifications/recent", api.GetRecentNotifications)
+		privateGroup.GET("/notifications/preference", api.GetNotificationPreference)
+		privateGroup.POST("/notifications/preference", api.UpdateNotificationPreference)
 		privateGroup.POST("/notifications/search", api.SearchNotifications)
 		privateGroup.POST("/notifications/read", api.MarkNotificationsRead)
 		privateGroup.POST("/notifications/read-all", api.MarkAllNotificationsRead)
@@ -112,6 +115,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/files/size", api.GetDirSize)
 		privateGroup.POST("/files/user/group", api.GetUsersAndGroups)
 		privateGroup.GET("/files/task", api.GetFileTaskStatus)
+		privateGroup.POST("/files/task/cancel", api.CancelFileTask)
 		privateGroup.GET("/files/tasks", api.ListFileTasks)
 		privateGroup.POST("/files/check-conflict", api.CheckConflict)
 

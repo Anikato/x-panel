@@ -134,17 +134,31 @@
             <el-input v-model="form.website" :placeholder="t('cronjob.websitePlaceholder')" />
           </el-form-item>
           <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbType')">
-            <el-select v-model="form.dbType" style="width:100%">
+            <el-select v-model="form.dbType" style="width:100%" @change="handleDBTypeChange">
               <el-option label="MySQL" value="mysql" />
               <el-option label="PostgreSQL" value="postgresql" />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbName')">
-            <el-input v-model="form.dbName" placeholder="my_database">
-              <template #append>
-                <el-button @click="form.dbName = '__all__'">{{ t('cronjob.allDatabases') }}</el-button>
-              </template>
-            </el-input>
+          <el-form-item v-if="form.type === 'database'" :label="t('cronjob.dbInstance')">
+            <el-select
+              v-model="form.dbInstanceID"
+              style="width:100%"
+              filterable
+              :loading="databaseLoading"
+              :placeholder="t('cronjob.dbInstancePlaceholder')"
+              @change="handleDBInstanceChange"
+            >
+              <el-option :label="t('cronjob.allDatabases')" :value="0" />
+              <el-option
+                v-for="item in databaseOptions"
+                :key="item.id"
+                :label="formatDatabaseOption(item)"
+                :value="item.id"
+              />
+            </el-select>
+            <div v-if="!databaseLoading && databaseOptions.length === 0" class="form-tip">
+              {{ t('cronjob.dbInstanceEmpty') }}
+            </div>
           </el-form-item>
           <el-form-item v-if="form.type === 'directory'" :label="t('cronjob.sourceDir')">
             <el-input v-model="form.sourceDir" placeholder="/data/myapp" />
@@ -217,16 +231,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import type { BackupAccount, Cronjob, CronjobRecord } from '@/api/interface'
+import type { BackupAccount, Cronjob, CronjobRecord, DatabaseInstance, DatabaseServer } from '@/api/interface'
 import {
   searchCronjob, createCronjob, updateCronjob, deleteCronjob,
   updateCronjobStatus, handleOnceCronjob, searchCronjobRecords
 } from '@/api/modules/cronjob'
 import { listBackupAccounts } from '@/api/modules/backup'
+import { searchDatabaseServer, searchDatabaseInstance } from '@/api/modules/database'
 
 const { t } = useI18n()
 const typeOptions = ['shell', 'curl', 'website', 'database', 'directory']
@@ -234,6 +249,9 @@ const typeTagMap: Record<string, string> = {
   shell: '', curl: 'warning', website: 'success', database: 'danger', directory: 'info',
 }
 const backupAccounts = ref<BackupAccount[]>([])
+type DatabaseOption = DatabaseInstance & { serverName: string; serverAddress: string }
+const databaseOptions = ref<DatabaseOption[]>([])
+const databaseLoading = ref(false)
 
 const loading = ref(false)
 const data = ref<Cronjob[]>([])
@@ -248,7 +266,7 @@ const formRef = ref<FormInstance>()
 
 const defaultForm = () => ({
   id: 0, name: '', type: 'shell', spec: '0 2 * * *', script: '', url: '',
-  website: '', dbType: 'mysql', dbName: '', sourceDir: '',
+  website: '', dbType: 'mysql', dbName: '', dbInstanceID: 0, sourceDir: '',
   targetAccountID: 0, retainCopies: 7, exclusionRules: '',
   compressFormat: 'gzip', encryptPassword: '',
 })
@@ -372,14 +390,17 @@ const openCreate = () => {
   parseCronToBuilder(form.spec)
   drawerVisible.value = true
   loadBackupAccounts()
+  databaseOptions.value = []
 }
 
 const openEdit = (row: Cronjob) => {
   Object.assign(form, { ...row })
+  form.dbInstanceID = row.dbInstanceID || 0
   editMode.value = true
   parseCronToBuilder(row.spec)
   drawerVisible.value = true
   loadBackupAccounts()
+  if (form.type === 'database') loadDatabaseOptions()
 }
 
 const submit = async () => {
@@ -388,6 +409,9 @@ const submit = async () => {
   if (!form.spec || !form.spec.trim()) {
     ElMessage.warning(t('cronjob.specRequired'))
     return
+  }
+  if (form.type === 'database' && form.dbInstanceID === 0 && !form.dbName) {
+    form.dbName = '__all__'
   }
   submitting.value = true
   try {
@@ -449,6 +473,60 @@ const loadBackupAccounts = async () => {
   }
 }
 
+const loadDatabaseOptions = async () => {
+  if (form.type !== 'database') return
+  databaseLoading.value = true
+  try {
+    const serverRes = await searchDatabaseServer({ page: 1, pageSize: 200, type: form.dbType })
+    const servers = (serverRes.data.items || []) as DatabaseServer[]
+    const result = await Promise.all(servers.map(async (server) => {
+      const instRes = await searchDatabaseInstance({ page: 1, pageSize: 1000, serverID: server.id })
+      return ((instRes.data.items || []) as DatabaseInstance[]).map(item => ({
+        ...item,
+        serverName: server.name,
+        serverAddress: `${server.address}:${server.port}`,
+      }))
+    }))
+    databaseOptions.value = result.flat()
+    if (form.dbInstanceID > 0) {
+      const selected = databaseOptions.value.find(item => item.id === form.dbInstanceID)
+      if (selected) form.dbName = selected.name
+    } else if (form.dbName && !isAllDatabaseName(form.dbName)) {
+      const matched = databaseOptions.value.filter(item => item.name === form.dbName)
+      if (matched.length === 1) {
+        form.dbInstanceID = matched[0].id
+      }
+    }
+  } catch {
+    databaseOptions.value = []
+  } finally {
+    databaseLoading.value = false
+  }
+}
+
+const handleDBTypeChange = async () => {
+  form.dbInstanceID = 0
+  form.dbName = '__all__'
+  await loadDatabaseOptions()
+}
+
+const handleDBInstanceChange = (id: number) => {
+  if (!id) {
+    form.dbName = '__all__'
+    return
+  }
+  const selected = databaseOptions.value.find(item => item.id === id)
+  form.dbName = selected?.name || ''
+}
+
+const formatDatabaseOption = (item: DatabaseOption) => {
+  return `${item.name} (${item.serverName} / ${item.serverAddress})`
+}
+
+const isAllDatabaseName = (name: string) => {
+  return ['all', '*', '__all__', '全部'].includes(name.trim().toLowerCase())
+}
+
 const copyFile = async (file: string) => {
   await navigator.clipboard.writeText(file)
   ElMessage.success(t('backup.pathCopied'))
@@ -457,6 +535,13 @@ const copyFile = async (file: string) => {
 onMounted(() => {
   search()
   loadBackupAccounts()
+})
+
+watch(() => form.type, (type) => {
+  if (type === 'database') {
+    if (!form.dbName) form.dbName = '__all__'
+    loadDatabaseOptions()
+  }
 })
 </script>
 
@@ -511,5 +596,11 @@ onMounted(() => {
   color: var(--xp-text-secondary);
   font-size: 13px;
   font-family: var(--xp-font-mono);
+}
+.form-tip {
+  margin-top: 6px;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

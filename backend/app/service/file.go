@@ -2,9 +2,13 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -38,6 +42,7 @@ type IFileService interface {
 	Decompress(req dto.FileDecompressReq) error
 	ListArchive(req dto.FileArchiveListReq) (*dto.FileArchiveListResp, error)
 	Wget(req dto.FileWgetReq) error
+	WgetWithTracker(ctx context.Context, req dto.FileWgetReq, tracker *ProgressTracker) error
 	GetFileTree(req dto.FileTreeReq) ([]dto.FileTreeNode, error)
 	GetUsersAndGroups() (*dto.UserGroupResp, error)
 	GetDirSize(req dto.DirSizeReq) (*dto.DirSizeResp, error)
@@ -1214,19 +1219,152 @@ func detectArchiveType(path string) string {
 
 // ===================== 远程下载 =====================
 
-// Wget 使用 wget 下载远程文件
+type progressReader struct {
+	reader  io.Reader
+	tracker *ProgressTracker
+}
+
+func (r *progressReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 && r.tracker != nil {
+		r.tracker.AddBytes(int64(n))
+	}
+	return n, err
+}
+
+// Wget 下载远程文件。
 func (s *FileService) Wget(req dto.FileWgetReq) error {
+	return s.WgetWithTracker(context.Background(), req, nil)
+}
+
+// WgetWithTracker 流式下载远程文件并更新任务进度。
+func (s *FileService) WgetWithTracker(ctx context.Context, req dto.FileWgetReq, tracker *ProgressTracker) error {
 	dst := filepath.Clean(req.Path)
-	if _, err := os.Stat(dst); os.IsNotExist(err) {
+	info, err := os.Stat(dst)
+	if os.IsNotExist(err) {
 		return buserr.New(constant.ErrFileNotExist)
 	}
-
-	cmd := exec.Command("wget", "-q", "-P", dst, req.URL)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, string(output), err)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
-	global.LOG.Infof("File downloaded via wget: %s → %s", req.URL, dst)
+	if !info.IsDir() {
+		return buserr.New(constant.ErrFileNotDir)
+	}
+
+	parsedURL, err := url.ParseRequestURI(req.URL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		return buserr.WithDetail(constant.ErrInvalidParams, "仅支持 http/https 下载地址", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.URL, nil)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInvalidParams, "下载地址无效", err)
+	}
+
+	client := &http.Client{Timeout: 0}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return buserr.WithDetail(constant.ErrInternalServer, "下载请求失败: "+err.Error(), err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return buserr.WithDetail(constant.ErrInternalServer, fmt.Sprintf("下载失败，HTTP 状态码: %d", resp.StatusCode), nil)
+	}
+
+	fileName := downloadFileName(resp, parsedURL)
+	if tracker != nil {
+		tracker.SetCurrentFile(fileName)
+		if resp.ContentLength > 0 {
+			tracker.SetTotal(resp.ContentLength)
+		}
+	}
+
+	targetPath := uniqueDownloadPath(dst, fileName)
+	tmpPath := filepath.Join(dst, fmt.Sprintf(".%s.xpanel-download-%d", filepath.Base(targetPath), time.Now().UnixNano()))
+	out, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, "创建下载临时文件失败: "+err.Error(), err)
+	}
+
+	copyErr := func() error {
+		defer out.Close()
+		reader := io.Reader(resp.Body)
+		if tracker != nil {
+			reader = &progressReader{reader: resp.Body, tracker: tracker}
+		}
+		buf := make([]byte, 32*1024)
+		_, err := io.CopyBuffer(out, reader, buf)
+		return err
+	}()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return buserr.WithDetail(constant.ErrInternalServer, "写入下载文件失败: "+copyErr.Error(), copyErr)
+	}
+
+	if err := os.Rename(tmpPath, targetPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return buserr.WithDetail(constant.ErrInternalServer, "保存下载文件失败: "+err.Error(), err)
+	}
+	global.LOG.Infof("File downloaded: %s → %s", req.URL, targetPath)
 	return nil
+}
+
+func downloadFileName(resp *http.Response, fallbackURL *url.URL) string {
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil {
+			if name := strings.TrimSpace(params["filename"]); name != "" {
+				return safeDownloadFileName(name)
+			}
+			if name := strings.TrimSpace(params["filename*"]); name != "" {
+				return safeDownloadFileName(name)
+			}
+		}
+	}
+	if resp.Request != nil && resp.Request.URL != nil {
+		if name := path.Base(resp.Request.URL.Path); name != "." && name != "/" {
+			return safeDownloadFileName(name)
+		}
+	}
+	if fallbackURL != nil {
+		if name := path.Base(fallbackURL.Path); name != "." && name != "/" {
+			return safeDownloadFileName(name)
+		}
+	}
+	return fmt.Sprintf("download-%d", time.Now().Unix())
+}
+
+func safeDownloadFileName(name string) string {
+	name = filepath.Base(strings.TrimSpace(name))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return fmt.Sprintf("download-%d", time.Now().Unix())
+	}
+	name = strings.NewReplacer("\x00", "", "\n", "", "\r", "").Replace(name)
+	if strings.TrimSpace(name) == "" {
+		return fmt.Sprintf("download-%d", time.Now().Unix())
+	}
+	return name
+}
+
+func uniqueDownloadPath(dir, fileName string) string {
+	target := filepath.Join(dir, fileName)
+	if _, err := os.Stat(target); os.IsNotExist(err) {
+		return target
+	}
+	ext := filepath.Ext(fileName)
+	base := strings.TrimSuffix(fileName, ext)
+	for i := 1; ; i++ {
+		candidate := filepath.Join(dir, fmt.Sprintf("%s (%d)%s", base, i, ext))
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
 }
 
 // ===================== 文件树 =====================

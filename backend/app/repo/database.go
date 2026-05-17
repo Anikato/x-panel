@@ -19,6 +19,7 @@ type IDatabaseRepo interface {
 	UpdateInstance(id uint, fields map[string]interface{}) error
 	DeleteInstance(id uint) error
 	GetInstance(id uint) (*model.DatabaseInstance, error)
+	GetInstanceWithServer(id uint, serverType string) (*model.DatabaseInstance, *model.DatabaseServer, error)
 	PageInstance(page, pageSize int, opts ...DBOption) (int64, []model.DatabaseInstance, error)
 	ListInstancesByServerID(serverID uint) ([]model.DatabaseInstance, error)
 	DeleteInstanceByServerID(serverID uint) error
@@ -93,6 +94,21 @@ func (r *DatabaseRepo) GetInstance(id uint) (*model.DatabaseInstance, error) {
 		return nil, err
 	}
 	return &i, nil
+}
+
+func (r *DatabaseRepo) GetInstanceWithServer(id uint, serverType string) (*model.DatabaseInstance, *model.DatabaseServer, error) {
+	instance, err := r.GetInstance(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	server, err := r.GetServer(instance.ServerID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if serverType != "" && server.Type != serverType {
+		return nil, nil, gorm.ErrRecordNotFound
+	}
+	return instance, server, nil
 }
 
 func (r *DatabaseRepo) PageInstance(page, pageSize int, opts ...DBOption) (int64, []model.DatabaseInstance, error) {

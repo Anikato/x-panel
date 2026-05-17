@@ -7,6 +7,7 @@
       </div>
       <div class="header-actions">
         <el-button :icon="Refresh" @click="loadNotifications">{{ t('commons.refresh') }}</el-button>
+        <el-button :icon="Setting" @click="openPreference">{{ t('notification.preference') }}</el-button>
         <el-button :icon="CircleCheck" type="primary" @click="handleMarkAllRead">
           {{ t('notification.markAllRead') }}
         </el-button>
@@ -24,6 +25,14 @@
         <el-option :label="t('notification.typeError')" value="error" />
         <el-option :label="t('notification.typeWarning')" value="warning" />
         <el-option :label="t('notification.typeInfo')" value="info" />
+      </el-select>
+      <el-select v-model="query.source" clearable style="width: 140px" :placeholder="t('notification.source')">
+        <el-option :label="t('commons.all')" value="" />
+        <el-option v-for="item in sourceOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-select v-model="query.event" clearable style="width: 190px" :placeholder="t('notification.event')">
+        <el-option :label="t('commons.all')" value="" />
+        <el-option v-for="item in eventOptions" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
       <el-input
         v-model="query.info"
@@ -55,6 +64,11 @@
       <el-table-column prop="source" :label="t('notification.source')" width="120">
         <template #default="{ row }">
           <el-tag size="small" effect="plain">{{ sourceLabel(row.source) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="event" :label="t('notification.event')" width="160">
+        <template #default="{ row }">
+          <span class="event-label">{{ eventLabel(row.event) }}</span>
         </template>
       </el-table-column>
       <el-table-column :label="t('notification.status')" width="100">
@@ -89,28 +103,70 @@
         @current-change="loadNotifications"
       />
     </div>
+
+    <el-drawer v-model="preferenceVisible" :title="t('notification.preference')" size="520px">
+      <div class="preference-section">
+        <div class="preference-title">{{ t('notification.defaultRule') }}</div>
+        <div class="preference-row">
+          <span>{{ t('notification.writeCenter') }}</span>
+          <el-switch v-model="preference.defaults.center" />
+        </div>
+        <div class="preference-row">
+          <span>{{ t('notification.showBadge') }}</span>
+          <el-switch v-model="preference.defaults.badge" />
+        </div>
+        <div class="preference-row">
+          <span>{{ t('notification.showPopup') }}</span>
+          <el-switch v-model="preference.defaults.popup" />
+        </div>
+      </div>
+
+      <div class="preference-section">
+        <div class="preference-title">{{ t('notification.eventRule') }}</div>
+        <div v-for="item in eventOptions" :key="item.value" class="event-rule">
+          <div class="event-rule-head">
+            <strong>{{ item.label }}</strong>
+            <code>{{ item.value }}</code>
+          </div>
+          <div class="event-rule-controls">
+            <el-checkbox v-model="preference.events[item.value].center">{{ t('notification.writeCenter') }}</el-checkbox>
+            <el-checkbox v-model="preference.events[item.value].badge">{{ t('notification.showBadge') }}</el-checkbox>
+            <el-checkbox v-model="preference.events[item.value].popup">{{ t('notification.showPopup') }}</el-checkbox>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="preferenceVisible = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="preferenceSaving" @click="savePreference">{{ t('commons.save') }}</el-button>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { CircleCheck, Delete, Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, Delete, Refresh, Setting } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
-import type { NotificationItem, NotificationSearchReq } from '@/api/interface'
+import type { NotificationItem, NotificationPreference, NotificationSearchReq } from '@/api/interface'
 import {
   clearReadNotifications,
   deleteNotification,
+  getNotificationPreference,
   markAllNotificationsRead,
   markNotificationsRead,
   searchNotifications,
+  updateNotificationPreference,
 } from '@/api/modules/notification'
 
 const { t } = useI18n()
 const router = useRouter()
 
 const loading = ref(false)
+const preferenceVisible = ref(false)
+const preferenceSaving = ref(false)
 const items = ref<NotificationItem[]>([])
 const total = ref(0)
 const query = reactive<NotificationSearchReq>({
@@ -122,11 +178,41 @@ const query = reactive<NotificationSearchReq>({
   info: '',
 })
 
+const preference = reactive<NotificationPreference>({
+  defaults: { center: true, badge: true, popup: false },
+  events: {},
+})
+
 const statusOptions = computed(() => [
   { label: t('commons.all'), value: 'all' },
   { label: t('notification.unread'), value: 'unread' },
   { label: t('notification.read'), value: 'read' },
 ])
+
+const sourceOptions = computed(() => [
+  { label: t('notification.sourceFile'), value: 'file' },
+  { label: t('notification.sourceDatabase'), value: 'database' },
+  { label: t('notification.sourceCronjob'), value: 'cronjob' },
+  { label: t('notification.sourceSystem'), value: 'system' },
+  { label: t('notification.sourceSecurity'), value: 'security' },
+])
+
+const eventOptions = computed(() => [
+  { label: t('notification.eventFileUpload'), value: 'file.upload.completed' },
+  { label: t('notification.eventFileTaskFailed'), value: 'file.task.failed' },
+  { label: t('notification.eventDatabaseTaskFailed'), value: 'database.task.failed' },
+  { label: t('notification.eventCronjobFailed'), value: 'cronjob.failed' },
+  { label: t('notification.eventOperationFailed'), value: 'operation.failed' },
+  { label: t('notification.eventSystemLogError'), value: 'system.log.error' },
+])
+
+const ensurePreferenceEvents = () => {
+  eventOptions.value.forEach((item) => {
+    if (!preference.events[item.value]) {
+      preference.events[item.value] = { ...preference.defaults }
+    }
+  })
+}
 
 const loadNotifications = async () => {
   loading.value = true
@@ -165,6 +251,27 @@ const handleDelete = async (row: NotificationItem) => {
   await loadNotifications()
 }
 
+const openPreference = async () => {
+  const res: any = await getNotificationPreference()
+  Object.assign(preference.defaults, res.data?.defaults || { center: true, badge: true, popup: false })
+  preference.events = { ...(res.data?.events || {}) }
+  ensurePreferenceEvents()
+  preferenceVisible.value = true
+}
+
+const savePreference = async () => {
+  preferenceSaving.value = true
+  try {
+    ensurePreferenceEvents()
+    await updateNotificationPreference(JSON.parse(JSON.stringify(preference)))
+    ElMessage.success(t('commons.saveSuccess'))
+    preferenceVisible.value = false
+    await loadNotifications()
+  } finally {
+    preferenceSaving.value = false
+  }
+}
+
 const openTarget = async (row: NotificationItem) => {
   if (!row.readAt) {
     await markNotificationsRead({ ids: [row.id] })
@@ -181,6 +288,11 @@ const sourceLabel = (source: string) => {
     security: t('notification.sourceSecurity'),
   }
   return labels[source] || source || '-'
+}
+
+const eventLabel = (event: string) => {
+  const found = eventOptions.value.find((item) => item.value === event)
+  return found?.label || event || '-'
 }
 
 const formatTime = (value: string) => {
@@ -279,10 +391,55 @@ onMounted(loadNotifications)
   text-overflow: ellipsis;
 }
 
+.event-label {
+  color: var(--xp-text-secondary);
+  font-size: 12px;
+}
+
 .pager-row {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.preference-section {
+  margin-bottom: 22px;
+}
+
+.preference-title {
+  margin-bottom: 10px;
+  font-weight: 700;
+  color: var(--xp-text-primary);
+}
+
+.preference-row,
+.event-rule-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.preference-row {
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--xp-border-light);
+}
+
+.event-rule {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--xp-border-light);
+}
+
+.event-rule-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+
+  code {
+    color: var(--xp-text-muted);
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 900px) {

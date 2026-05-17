@@ -4,7 +4,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
+	"xpanel/app/dto"
+	"xpanel/app/service"
 	"xpanel/global"
 
 	"github.com/sirupsen/logrus"
@@ -46,5 +51,51 @@ func Init() {
 	}
 
 	global.LOG = logger
+	global.LOG.AddHook(newNotificationHook())
 	global.LOG.Info("Logger initialized")
+}
+
+type notificationHook struct {
+	mu       sync.Mutex
+	lastSeen map[string]time.Time
+}
+
+func newNotificationHook() *notificationHook {
+	return &notificationHook{lastSeen: map[string]time.Time{}}
+}
+
+func (h *notificationHook) Levels() []logrus.Level {
+	return []logrus.Level{logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel}
+}
+
+func (h *notificationHook) Fire(entry *logrus.Entry) error {
+	if global.DB == nil {
+		return nil
+	}
+	msg := strings.TrimSpace(entry.Message)
+	if msg == "" {
+		msg = "面板记录了一条错误日志"
+	}
+	if len(msg) > 500 {
+		msg = msg[:500] + "\n...(truncated)"
+	}
+	key := entry.Level.String() + ":" + msg
+
+	h.mu.Lock()
+	if last, ok := h.lastSeen[key]; ok && time.Since(last) < time.Minute {
+		h.mu.Unlock()
+		return nil
+	}
+	h.lastSeen[key] = time.Now()
+	h.mu.Unlock()
+
+	go service.CreateNotification(dto.NotificationCreate{
+		Type:      "error",
+		Event:     "system.log.error",
+		Title:     "面板错误日志",
+		Content:   msg,
+		Source:    "system",
+		TargetURL: "/logs/system",
+	})
+	return nil
 }

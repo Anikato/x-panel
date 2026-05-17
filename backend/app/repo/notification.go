@@ -13,6 +13,7 @@ import (
 type INotificationRepo interface {
 	Create(notification *model.Notification) error
 	Page(page, pageSize int, opts ...DBOption) (int64, []model.Notification, error)
+	Recent(limit int, opts ...DBOption) ([]model.Notification, error)
 	UnreadCount() (int64, error)
 	MarkRead(ids []uint) error
 	MarkAllRead() error
@@ -44,9 +45,22 @@ func (r *NotificationRepo) Page(page, pageSize int, opts ...DBOption) (int64, []
 	return total, items, err
 }
 
+func (r *NotificationRepo) Recent(limit int, opts ...DBOption) ([]model.Notification, error) {
+	var items []model.Notification
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	db := global.DB.Model(&model.Notification{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	err := db.Limit(limit).Order("created_at desc").Find(&items).Error
+	return items, err
+}
+
 func (r *NotificationRepo) UnreadCount() (int64, error) {
 	var count int64
-	err := global.DB.Model(&model.Notification{}).Where("read_at IS NULL").Count(&count).Error
+	err := global.DB.Model(&model.Notification{}).Where("read_at IS NULL").Where("show_badge = ?", true).Count(&count).Error
 	return count, err
 }
 
@@ -99,6 +113,15 @@ func WithNotificationSource(source string) DBOption {
 			return db
 		}
 		return db.Where("source = ?", source)
+	}
+}
+
+func WithNotificationEvent(event string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		if event == "" {
+			return db
+		}
+		return db.Where("event = ?", event)
 	}
 }
 

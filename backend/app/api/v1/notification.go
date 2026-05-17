@@ -37,6 +37,37 @@ func (a *NotificationAPI) GetNotificationSummary(c *gin.Context) {
 	helper.SuccessWithData(c, summary)
 }
 
+func (a *NotificationAPI) GetRecentNotifications(c *gin.Context) {
+	items, err := notificationService.Recent(10)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, items)
+}
+
+func (a *NotificationAPI) GetNotificationPreference(c *gin.Context) {
+	pref, err := notificationService.GetPreference()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, pref)
+}
+
+func (a *NotificationAPI) UpdateNotificationPreference(c *gin.Context) {
+	var req dto.NotificationPreference
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := notificationService.UpdatePreference(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *NotificationAPI) MarkNotificationsRead(c *gin.Context) {
 	var req struct {
 		IDs []uint `json:"ids" binding:"required"`

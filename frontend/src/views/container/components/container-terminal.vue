@@ -43,6 +43,7 @@ import type { Container } from '@/api/interface'
 import { getToken } from '@/utils/auth'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { useGlobalStore } from '@/store/modules/global'
+import { createTerminalHistoryController } from '@/utils/terminal-history'
 
 const { t } = useI18n()
 const globalStore = useGlobalStore()
@@ -65,6 +66,7 @@ let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
 let terminalListeners: Array<{ dispose: () => void }> = []
+let history = createTerminalHistoryController()
 
 const open = async (row: Container) => {
   container.value = row
@@ -147,7 +149,9 @@ const connect = async () => {
 
   clearTerminalListeners()
   terminalListeners.push(terminal!.onData((data: string) => {
-    if (ws?.readyState === WebSocket.OPEN) {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !terminal) return
+    const inAlternateBuffer = terminal.buffer.active.type === 'alternate'
+    if (!history.handleData(data, (payload) => ws?.send(payload), { inAlternateBuffer })) {
       ws.send(data)
     }
   }))
@@ -186,6 +190,7 @@ const cleanupConnection = () => {
     ws = null
   }
   connected.value = false
+  history = createTerminalHistoryController()
 }
 
 const clearTerminalListeners = () => {

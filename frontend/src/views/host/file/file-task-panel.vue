@@ -32,6 +32,7 @@
           <div class="task-icon">
             <el-icon v-if="task.status === 'running'" class="spin-icon"><Loading /></el-icon>
             <el-icon v-else-if="task.status === 'success'" color="var(--el-color-success)"><CircleCheck /></el-icon>
+            <el-icon v-else-if="task.status === 'cancelled'" color="var(--el-color-warning)"><CircleClose /></el-icon>
             <el-icon v-else color="var(--el-color-danger)"><CircleClose /></el-icon>
           </div>
           <div class="task-info">
@@ -56,7 +57,12 @@
                 <div v-if="task.currentFile" class="task-current-file">{{ task.currentFile }}</div>
               </template>
               <template v-else>
-                <span class="task-time">{{ formatDuration(task.startTime) }}</span>
+                <div class="task-stats">
+                  <span v-if="task.bytesDone > 0">已下载 {{ formatBytes(task.bytesDone) }}</span>
+                  <span v-if="task.speed > 0">· {{ formatBytes(task.speed) }}/s</span>
+                  <span>用时 {{ formatDuration(task.startTime) }}</span>
+                </div>
+                <div v-if="task.currentFile" class="task-current-file">{{ task.currentFile }}</div>
               </template>
             </template>
 
@@ -65,10 +71,20 @@
               <span class="task-error">{{ task.message }}</span>
             </template>
 
+            <!-- 已取消 -->
+            <template v-else-if="task.status === 'cancelled'">
+              <span class="task-time">已取消</span>
+            </template>
+
             <!-- 成功 -->
             <template v-else>
               <span class="task-time">{{ formatEndDuration(task.startTime, task.endTime) }}</span>
             </template>
+          </div>
+          <div v-if="task.status === 'running' && task.type === 'download'" class="task-actions">
+            <el-button link size="small" :loading="cancellingIds.has(task.id)" @click.stop="cancelTask(task)">
+              取消
+            </el-button>
           </div>
         </div>
         <div v-if="tasks.length === 0" class="task-empty">{{ t('file.taskEmpty') }}</div>
@@ -80,8 +96,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus'
 import { Loading, CircleCheck, CircleClose, ArrowDown } from '@element-plus/icons-vue'
-import { listFileTasks } from '@/api/modules/file'
+import { cancelFileTask, listFileTasks } from '@/api/modules/file'
 
 const { t } = useI18n()
 
@@ -102,6 +119,7 @@ interface FileTask {
 
 const tasks = ref<FileTask[]>([])
 const isCollapsed = ref(false)
+const cancellingIds = ref(new Set<string>())
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const runningCount = computed(() => tasks.value.filter(t => t.status === 'running').length)
@@ -112,6 +130,7 @@ function taskTypeLabel(type: string): string {
     move: '文件操作',
     compress: '压缩',
     decompress: '解压',
+    download: '远程下载',
   }
   return map[type] || type
 }
@@ -165,6 +184,22 @@ async function fetchTasks() {
 
 function clearFinished() {
   tasks.value = tasks.value.filter(t => t.status === 'running')
+}
+
+async function cancelTask(task: FileTask) {
+  if (cancellingIds.value.has(task.id)) return
+  cancellingIds.value = new Set([...cancellingIds.value, task.id])
+  try {
+    await cancelFileTask(task.id)
+    ElMessage.success('已发送取消请求')
+    await fetchTasks()
+  } catch {
+    // 全局请求拦截器会处理错误提示
+  } finally {
+    const next = new Set(cancellingIds.value)
+    next.delete(task.id)
+    cancellingIds.value = next
+  }
 }
 
 function refresh() {
@@ -280,6 +315,11 @@ defineExpose({ refresh })
 .task-info {
   flex: 1;
   min-width: 0;
+}
+
+.task-actions {
+  flex-shrink: 0;
+  margin-top: -2px;
 }
 
 .task-name {

@@ -52,12 +52,16 @@ func (s *CronjobService) Create(req dto.CronjobCreate) error {
 		Website:         req.Website,
 		DBType:          req.DBType,
 		DBName:          req.DBName,
+		DBInstanceID:    req.DBInstanceID,
 		SourceDir:       req.SourceDir,
 		TargetAccountID: req.TargetAccountID,
 		RetainCopies:    req.RetainCopies,
 		ExclusionRules:  req.ExclusionRules,
 		CompressFormat:  req.CompressFormat,
 		EncryptPassword: req.EncryptPassword,
+	}
+	if err := s.validateJobConfig(job); err != nil {
+		return err
 	}
 	if err := s.cronjobRepo.Create(job); err != nil {
 		return err
@@ -83,12 +87,32 @@ func (s *CronjobService) Update(req dto.CronjobUpdate) error {
 		"website":           req.Website,
 		"db_type":           req.DBType,
 		"db_name":           req.DBName,
+		"db_instance_id":    req.DBInstanceID,
 		"source_dir":        req.SourceDir,
 		"target_account_id": req.TargetAccountID,
 		"retain_copies":     req.RetainCopies,
 		"exclusion_rules":   req.ExclusionRules,
 		"compress_format":   req.CompressFormat,
 		"encrypt_password":  req.EncryptPassword,
+	}
+	updatedJob := *job
+	updatedJob.Name = req.Name
+	updatedJob.Type = req.Type
+	updatedJob.Spec = req.Spec
+	updatedJob.Script = req.Script
+	updatedJob.URL = req.URL
+	updatedJob.Website = req.Website
+	updatedJob.DBType = req.DBType
+	updatedJob.DBName = req.DBName
+	updatedJob.DBInstanceID = req.DBInstanceID
+	updatedJob.SourceDir = req.SourceDir
+	updatedJob.TargetAccountID = req.TargetAccountID
+	updatedJob.RetainCopies = req.RetainCopies
+	updatedJob.ExclusionRules = req.ExclusionRules
+	updatedJob.CompressFormat = req.CompressFormat
+	updatedJob.EncryptPassword = req.EncryptPassword
+	if err := s.validateJobConfig(&updatedJob); err != nil {
+		return err
 	}
 	if err := s.cronjobRepo.Update(req.ID, fields); err != nil {
 		return err
@@ -211,6 +235,43 @@ func (s *CronjobService) addCronJob(job *model.Cronjob) error {
 	return s.cronjobRepo.Update(job.ID, map[string]interface{}{"entry_id": int(entryID)})
 }
 
+func (s *CronjobService) validateJobConfig(job *model.Cronjob) error {
+	if strings.TrimSpace(job.Spec) == "" {
+		return fmt.Errorf("cron spec is empty")
+	}
+	if _, err := cron.ParseStandard(job.Spec); err != nil {
+		return fmt.Errorf("invalid cron spec: %v", err)
+	}
+	switch job.Type {
+	case "shell":
+		if strings.TrimSpace(job.Script) == "" {
+			return fmt.Errorf("script is empty")
+		}
+	case "curl":
+		if strings.TrimSpace(job.URL) == "" {
+			return fmt.Errorf("url is empty")
+		}
+	case "database":
+		if strings.TrimSpace(job.DBType) == "" {
+			return fmt.Errorf("database type is empty")
+		}
+		if job.DBInstanceID == 0 && strings.TrimSpace(job.DBName) == "" {
+			return fmt.Errorf("database instance is empty")
+		}
+	case "website":
+		if strings.TrimSpace(job.Website) == "" {
+			return fmt.Errorf("website name is empty")
+		}
+	case "directory":
+		if strings.TrimSpace(job.SourceDir) == "" {
+			return fmt.Errorf("source directory is empty")
+		}
+	default:
+		return fmt.Errorf("unsupported job type: %s", job.Type)
+	}
+	return nil
+}
+
 func (s *CronjobService) removeCronJob(job *model.Cronjob) {
 	if global.CRON != nil && job.EntryID > 0 {
 		global.CRON.Remove(cron.EntryID(job.EntryID))
@@ -271,6 +332,7 @@ func (s *CronjobService) notifyJobResult(job *model.Cronjob, status, message str
 	}
 	CreateNotification(dto.NotificationCreate{
 		Type:      notificationType,
+		Event:     "cronjob." + status,
 		Title:     title,
 		Content:   content,
 		Source:    "cronjob",
@@ -292,26 +354,41 @@ func (s *CronjobService) execShell(job *model.Cronjob) (string, string) {
 }
 
 func (s *CronjobService) execCurl(job *model.Cronjob) (string, string) {
-	resp, err := http.Get(job.URL)
+	client := http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(job.URL)
 	if err != nil {
 		return err.Error(), constant.StatusFailed
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return fmt.Sprintf("HTTP %d", resp.StatusCode), constant.StatusFailed
+	}
 	return fmt.Sprintf("HTTP %d", resp.StatusCode), constant.StatusSuccess
 }
 
 func (s *CronjobService) execDatabaseBackup(job *model.Cronjob) (string, string, string) {
-	if job.DBName == "" || job.DBType == "" {
-		return "database name or type is empty", constant.StatusFailed, ""
+	if job.DBType == "" {
+		return "database type is empty", constant.StatusFailed, ""
 	}
 	backupService := NewIBackupService()
 	dbRepo := repo.NewIDatabaseRepo()
+	if job.DBInstanceID > 0 {
+		instance, _, err := dbRepo.GetInstanceWithServer(job.DBInstanceID, job.DBType)
+		if err != nil {
+			return fmt.Sprintf("database instance [%d] not found", job.DBInstanceID), constant.StatusFailed, ""
+		}
+		return s.backupOneDatabase(job, backupService, instance.ID, instance.Name)
+	}
+	if job.DBName == "" {
+		return "database name is empty", constant.StatusFailed, ""
+	}
 	servers, _ := dbRepo.ListServers(repo.WithServerType(job.DBType))
 	if len(servers) == 0 {
 		return fmt.Sprintf("no %s server found", job.DBType), constant.StatusFailed, ""
 	}
 	if isAllDatabases(job.DBName) {
 		successCount := 0
+		failedCount := 0
 		var lastFile string
 		var messages []string
 		for _, server := range servers {
@@ -322,28 +399,44 @@ func (s *CronjobService) execDatabaseBackup(job *model.Cronjob) (string, string,
 				if status == constant.StatusSuccess {
 					successCount++
 					lastFile = file
+				} else {
+					failedCount++
 				}
 			}
 		}
 		if successCount == 0 {
+			if len(messages) == 0 {
+				return "no database instances found", constant.StatusFailed, ""
+			}
 			return strings.Join(messages, "\n"), constant.StatusFailed, ""
 		}
-		return fmt.Sprintf("backup %d database(s)\n%s", successCount, strings.Join(messages, "\n")), constant.StatusSuccess, lastFile
+		summary := fmt.Sprintf("backup %d database(s), failed %d database(s)\n%s", successCount, failedCount, strings.Join(messages, "\n"))
+		if failedCount > 0 {
+			return summary, constant.StatusFailed, lastFile
+		}
+		return summary, constant.StatusSuccess, lastFile
 	}
+	var matches []model.DatabaseInstance
 	for _, server := range servers {
 		instances, _ := dbRepo.ListInstancesByServerID(server.ID)
 		for _, inst := range instances {
 			if inst.Name == job.DBName {
-				return s.backupOneDatabase(job, backupService, inst.ID, inst.Name)
+				matches = append(matches, inst)
 			}
 		}
+	}
+	if len(matches) == 1 {
+		return s.backupOneDatabase(job, backupService, matches[0].ID, matches[0].Name)
+	}
+	if len(matches) > 1 {
+		return fmt.Sprintf("database instance [%s] is ambiguous, please select a specific instance", job.DBName), constant.StatusFailed, ""
 	}
 	return fmt.Sprintf("database instance [%s] not found", job.DBName), constant.StatusFailed, ""
 }
 
 func (s *CronjobService) backupOneDatabase(job *model.Cronjob, backupService IBackupService, instanceID uint, dbName string) (string, string, string) {
 	if job.TargetAccountID > 0 {
-		output, err := backupService.PerformBackupWithInfo("database", dbName, job.DBType, "", job.TargetAccountID)
+		output, err := backupService.PerformDatabaseInstanceBackupWithInfo(instanceID, job.TargetAccountID)
 		if err != nil {
 			_ = backupService.CreateRecordForFile("database", dbName, job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
 			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
@@ -466,6 +559,7 @@ func toCronjobInfo(j *model.Cronjob) *dto.CronjobInfo {
 		Website:         j.Website,
 		DBType:          j.DBType,
 		DBName:          j.DBName,
+		DBInstanceID:    j.DBInstanceID,
 		SourceDir:       j.SourceDir,
 		TargetAccountID: j.TargetAccountID,
 		RetainCopies:    j.RetainCopies,

@@ -14,6 +14,7 @@ type Cronjob struct {
 	Website         string `json:"website"`
 	DBType          string `json:"dbType"`
 	DBName          string `json:"dbName"`
+	DBInstanceID    uint   `gorm:"index" json:"dbInstanceID"`
 	SourceDir       string `json:"sourceDir"`
 	TargetAccountID uint   `json:"targetAccountID"`
 	RetainCopies    uint   `gorm:"default:7" json:"retainCopies"`

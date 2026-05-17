@@ -1,7 +1,15 @@
 import http from '../http'
-import type { NotificationSearchReq } from '../interface'
+import type { NotificationPreference, NotificationSearchReq } from '../interface'
 
 export const getNotificationSummary = () => http.get('/notifications/summary')
+
+export const getRecentNotifications = () => http.get('/notifications/recent')
+
+export const getNotificationPreference = () => http.get('/notifications/preference')
+
+export const updateNotificationPreference = (data: NotificationPreference) => {
+  return http.post('/notifications/preference', data)
+}
 
 export const searchNotifications = (data: NotificationSearchReq) => {
   return http.post('/notifications/search', data)

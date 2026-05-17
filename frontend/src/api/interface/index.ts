@@ -21,10 +21,13 @@ export interface SearchReq {
 export interface NotificationItem {
   id: number
   type: 'info' | 'success' | 'warning' | 'error'
+  event: string
   title: string
   content: string
   source: string
   targetUrl: string
+  showBadge: boolean
+  popup: boolean
   readAt?: string
   createdAt: string
   updatedAt: string
@@ -38,7 +41,19 @@ export interface NotificationSearchReq extends SearchReq {
   status?: 'unread' | 'read' | 'all'
   type?: string
   source?: string
+  event?: string
   info?: string
+}
+
+export interface NotificationPreferenceRule {
+  center: boolean
+  badge: boolean
+  popup: boolean
+}
+
+export interface NotificationPreference {
+  defaults: NotificationPreferenceRule
+  events: Record<string, NotificationPreferenceRule>
 }
 
 // ======================== Auth ========================
@@ -135,6 +150,7 @@ export interface DatabaseServer {
 
 export interface DatabaseInstance {
   id: number
+  serverID: number
   name: string
   charset: string
   owner: string
@@ -254,6 +270,7 @@ export interface Cronjob {
   website: string
   dbType: string
   dbName: string
+  dbInstanceID: number
   sourceDir: string
   targetAccountID: number
   retainCopies: number
@@ -272,6 +289,7 @@ export interface CronjobCreateForm {
   website: string
   dbType: string
   dbName: string
+  dbInstanceID: number
   sourceDir: string
   targetAccountID: number
   retainCopies: number

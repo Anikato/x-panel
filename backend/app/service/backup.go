@@ -34,6 +34,7 @@ type IBackupService interface {
 
 	PerformBackup(backupType, name, dbType, sourceDir string, accountID uint) (string, error)
 	PerformBackupWithInfo(backupType, name, dbType, sourceDir string, accountID uint) (*BackupOutput, error)
+	PerformDatabaseInstanceBackupWithInfo(instanceID uint, accountID uint) (*BackupOutput, error)
 }
 
 type BackupOutput struct {
@@ -167,6 +168,37 @@ func (s *BackupService) PerformBackupWithInfo(backupType, name, dbType, sourceDi
 	return &BackupOutput{Path: targetPath, Size: size}, nil
 }
 
+func (s *BackupService) PerformDatabaseInstanceBackupWithInfo(instanceID uint, accountID uint) (*BackupOutput, error) {
+	account, err := s.repo.GetAccount(accountID)
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+
+	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
+	if err != nil {
+		return nil, fmt.Errorf("create storage client failed: %v", err)
+	}
+
+	timestamp := time.Now().Format("20060102150405")
+	tmpDir := filepath.Join(os.TempDir(), "xpanel-backup")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return nil, err
+	}
+
+	localFile, targetPath, err := s.backupDatabaseInstance(instanceID, tmpDir, timestamp)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(localFile)
+	size := fileSize(localFile)
+
+	if err := client.Upload(localFile, targetPath); err != nil {
+		return nil, fmt.Errorf("upload failed: %v", err)
+	}
+
+	return &BackupOutput{Path: targetPath, Size: size}, nil
+}
+
 func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, string, error) {
 	websiteRepo := repo.NewIWebsiteRepo()
 	website, err := websiteRepo.Get(repo.WithByPrimaryDomain(name))
@@ -239,6 +271,47 @@ func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (
 		}
 	}
 	return localFile, filepath.Join("database", name, fileName), nil
+}
+
+func (s *BackupService) backupDatabaseInstance(instanceID uint, tmpDir, timestamp string) (string, string, error) {
+	instance, err := s.dbRepo.GetInstance(instanceID)
+	if err != nil {
+		return "", "", buserr.New(constant.ErrRecordNotFound)
+	}
+	server, err := s.dbRepo.GetServer(instance.ServerID)
+	if err != nil {
+		return "", "", buserr.New(constant.ErrRecordNotFound)
+	}
+
+	fileName := fmt.Sprintf("db_%s_%s_%s.sql", instance.Name, server.Type, timestamp)
+	if server.Type == "postgresql" {
+		fileName = fmt.Sprintf("db_%s_%s_%s.dump", instance.Name, server.Type, timestamp)
+	}
+	localFile := filepath.Join(tmpDir, fileName)
+
+	switch server.Type {
+	case "mysql":
+		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return "", "", err
+		}
+		defer client.Close()
+		if err := client.Backup(instance.Name, localFile); err != nil {
+			return "", "", err
+		}
+	case "postgresql":
+		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return "", "", err
+		}
+		defer client.Close()
+		if err := client.Backup(instance.Name, localFile); err != nil {
+			return "", "", err
+		}
+	default:
+		return "", "", fmt.Errorf("unsupported database type: %s", server.Type)
+	}
+	return localFile, filepath.Join("database", instance.Name, fileName), nil
 }
 
 func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp string) (string, string, error) {
@@ -322,8 +395,13 @@ func (s *BackupService) CleanSuccessfulRecords(cronjobID uint, retainCopies uint
 	if err != nil {
 		return err
 	}
-	for i := int(retainCopies); i < len(records); i++ {
-		record := records[i]
+	retained := make(map[string]uint)
+	for _, record := range records {
+		key := fmt.Sprintf("%s/%s/%d", record.Type, record.Name, record.AccountID)
+		retained[key]++
+		if retained[key] <= retainCopies {
+			continue
+		}
 		if err := s.deleteRecordFile(&record); err != nil {
 			global.LOG.Warnf("delete retained backup file failed: %v", err)
 		}

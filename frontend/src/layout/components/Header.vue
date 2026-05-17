@@ -101,21 +101,45 @@
       </el-popover>
 
       <!-- 通知中心 -->
-      <el-tooltip :content="t('notification.title')" placement="bottom">
-        <div
-          class="theme-btn notification-btn"
-          role="button"
-          tabindex="0"
-          :aria-label="t('notification.title')"
-          @click="openNotifications"
-          @keydown.enter.prevent="openNotifications"
-          @keydown.space.prevent="openNotifications"
-        >
-          <el-badge :value="unreadNotifications" :hidden="unreadNotifications <= 0" :max="99">
-            <el-icon :size="16"><Bell /></el-icon>
-          </el-badge>
+      <el-popover placement="bottom-end" :width="360" trigger="click" :teleported="false" @show="fetchRecentNotifications">
+        <template #reference>
+          <div
+            class="theme-btn notification-btn"
+            role="button"
+            tabindex="0"
+            :aria-label="t('notification.title')"
+            @keydown.enter.prevent="fetchRecentNotifications"
+            @keydown.space.prevent="fetchRecentNotifications"
+          >
+            <el-badge :value="unreadNotifications" :hidden="unreadNotifications <= 0" :max="99">
+              <el-icon :size="16"><Bell /></el-icon>
+            </el-badge>
+          </div>
+        </template>
+        <div class="notification-panel">
+          <div class="notification-panel-head">
+            <strong>{{ t('notification.title') }}</strong>
+            <el-button link type="primary" @click="openNotifications">{{ t('notification.viewAll') }}</el-button>
+          </div>
+          <div v-if="recentNotifications.length === 0" class="notification-empty">{{ t('commons.noData') }}</div>
+          <div v-else class="notification-recent-list">
+            <div
+              v-for="item in recentNotifications"
+              :key="item.id"
+              class="notification-recent-item"
+              :class="{ unread: !item.readAt }"
+              @click="openNotificationItem(item)"
+            >
+              <span class="type-dot" :class="item.type"></span>
+              <div class="notification-recent-main">
+                <div class="notification-recent-title">{{ item.title }}</div>
+                <div v-if="item.content" class="notification-recent-content">{{ item.content }}</div>
+                <div class="notification-recent-meta">{{ formatNotificationTime(item.createdAt) }}</div>
+              </div>
+            </div>
+          </div>
         </div>
-      </el-tooltip>
+      </el-popover>
 
       <!-- 悬浮终端按钮 -->
       <el-tooltip :content="t('header.quickTerminal')" placement="bottom">
@@ -129,7 +153,7 @@
           @keydown.enter.prevent="toggleFloatTerm"
           @keydown.space.prevent="toggleFloatTerm"
         >
-          <el-icon :size="16"><Promotion /></el-icon>
+          <el-icon :size="16"><Monitor /></el-icon>
         </div>
       </el-tooltip>
 
@@ -178,7 +202,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 import { useGlobalStore } from '@/store/modules/global'
 import { useUserStore } from '@/store/modules/user'
 import { logout as logoutApi } from '@/api/modules/auth'
@@ -186,10 +210,10 @@ import { listNodes } from '@/api/modules/node'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
-import { getNotificationSummary } from '@/api/modules/notification'
+import { getNotificationSummary, getRecentNotifications, markNotificationsRead } from '@/api/modules/notification'
 import { useI18n } from 'vue-i18n'
-import type { NodeItem } from '@/api/interface'
-import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Promotion, Bell } from '@element-plus/icons-vue'
+import type { NodeItem, NotificationItem } from '@/api/interface'
+import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Monitor, Bell } from '@element-plus/icons-vue'
 import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
 
 const route = useRoute()
@@ -241,6 +265,8 @@ let clockTimer: ReturnType<typeof setInterval> | null = null
 let notificationTimer: ReturnType<typeof setInterval> | null = null
 const serverClock = ref('')
 const unreadNotifications = ref(0)
+const recentNotifications = ref<NotificationItem[]>([])
+const popupShown = new Set<number>()
 
 const extractIANA = (tz: string): string => {
   const match = tz.match(/^([A-Za-z_/]+)/)
@@ -299,6 +325,43 @@ const fetchNotificationSummary = async () => {
   } catch { /* ignore */ }
 }
 
+const fetchRecentNotifications = async () => {
+  try {
+    const res: any = await getRecentNotifications()
+    const items = res.data || []
+    recentNotifications.value = items
+    items
+      .filter((item: NotificationItem) => item.popup && !item.readAt && !popupShown.has(item.id))
+      .slice(0, 3)
+      .forEach((item: NotificationItem) => {
+        popupShown.add(item.id)
+        ElNotification({
+          title: item.title,
+          message: item.content || '',
+          type: item.type === 'error' ? 'error' : item.type,
+          duration: item.type === 'error' ? 8000 : 4500,
+          onClick: () => openNotificationItem(item),
+        })
+      })
+  } catch { /* ignore */ }
+}
+
+const openNotificationItem = async (item: NotificationItem) => {
+  if (!item.readAt) {
+    await markNotificationsRead({ ids: [item.id] })
+    await fetchNotificationSummary()
+    await fetchRecentNotifications()
+  }
+  if (item.targetUrl) {
+    router.push(item.targetUrl)
+  }
+}
+
+const formatNotificationTime = (value: string) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+}
+
 const formatUptime = (seconds: number) => {
   if (!seconds) return '-'
   const d = Math.floor(seconds / 86400)
@@ -328,9 +391,13 @@ onMounted(() => {
   fetchServerInfo()
   fetchVersion()
   fetchNotificationSummary()
+  fetchRecentNotifications()
   serverInfoTimer = setInterval(fetchServerInfo, 30000)
   clockTimer = setInterval(updateClock, 1000)
-  notificationTimer = setInterval(fetchNotificationSummary, 30000)
+  notificationTimer = setInterval(() => {
+    fetchNotificationSummary()
+    fetchRecentNotifications()
+  }, 30000)
 })
 
 onUnmounted(() => {
@@ -516,6 +583,84 @@ const openNotifications = () => {
   .notification-btn :deep(.el-badge__content) {
     border: none;
     box-shadow: 0 0 0 1px var(--xp-bg-header);
+  }
+
+  .notification-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    color: var(--xp-text-primary);
+  }
+
+  .notification-empty {
+    padding: 18px 0;
+    text-align: center;
+    color: var(--xp-text-secondary);
+    font-size: 13px;
+  }
+
+  .notification-recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 360px;
+    overflow: auto;
+  }
+
+  .notification-recent-item {
+    display: flex;
+    gap: 10px;
+    padding: 9px 8px;
+    border-radius: var(--xp-radius-sm);
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover {
+      background: var(--xp-accent-muted);
+    }
+
+    &.unread .notification-recent-title {
+      color: var(--xp-text-primary);
+      font-weight: 700;
+    }
+  }
+
+  .type-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: var(--el-color-info);
+    flex: 0 0 auto;
+
+    &.success { background: var(--el-color-success); }
+    &.warning { background: var(--el-color-warning); }
+    &.error { background: var(--el-color-danger); }
+  }
+
+  .notification-recent-main {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .notification-recent-title,
+  .notification-recent-content {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .notification-recent-title {
+    color: var(--xp-text-secondary);
+    font-size: 13px;
+  }
+
+  .notification-recent-content,
+  .notification-recent-meta {
+    margin-top: 2px;
+    color: var(--xp-text-muted);
+    font-size: 12px;
   }
 
   .user-dropdown {

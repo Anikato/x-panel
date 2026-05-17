@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/repo"
+	"xpanel/app/service"
 	"xpanel/constant"
 	"xpanel/global"
 
@@ -94,6 +96,20 @@ func OperationLog() gin.HandlerFunc {
 			logRepo := repo.NewILogRepo()
 			if err := logRepo.CreateOperationLog(log); err != nil {
 				global.LOG.Errorf("Failed to save operation log: %v", err)
+			}
+			if status == constant.StatusFailed && !strings.HasPrefix(path, "/api/v1/notifications") {
+				content := strings.TrimSpace(message)
+				if content == "" {
+					content = fmt.Sprintf("%s %s 返回异常", method, path)
+				}
+				service.CreateNotification(dto.NotificationCreate{
+					Type:      "error",
+					Event:     "operation.failed",
+					Title:     "面板操作失败",
+					Content:   content,
+					Source:    "system",
+					TargetURL: "/logs/operation",
+				})
 			}
 		}()
 	}

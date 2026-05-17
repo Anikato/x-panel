@@ -11,6 +11,7 @@ type CronjobCreate struct {
 	Website         string `json:"website"`
 	DBType          string `json:"dbType"`
 	DBName          string `json:"dbName"`
+	DBInstanceID    uint   `json:"dbInstanceID"`
 	SourceDir       string `json:"sourceDir"`
 	TargetAccountID uint   `json:"targetAccountID"`
 	RetainCopies    uint   `json:"retainCopies"`
@@ -29,6 +30,7 @@ type CronjobUpdate struct {
 	Website         string `json:"website"`
 	DBType          string `json:"dbType"`
 	DBName          string `json:"dbName"`
+	DBInstanceID    uint   `json:"dbInstanceID"`
 	SourceDir       string `json:"sourceDir"`
 	TargetAccountID uint   `json:"targetAccountID"`
 	RetainCopies    uint   `json:"retainCopies"`
@@ -57,6 +59,7 @@ type CronjobInfo struct {
 	Website         string    `json:"website"`
 	DBType          string    `json:"dbType"`
 	DBName          string    `json:"dbName"`
+	DBInstanceID    uint      `json:"dbInstanceID"`
 	SourceDir       string    `json:"sourceDir"`
 	TargetAccountID uint      `json:"targetAccountID"`
 	RetainCopies    uint      `json:"retainCopies"`

@@ -80,6 +80,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useGlobalStore } from '@/store/modules/global'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { getToken } from '@/utils/auth'
+import { createTerminalHistoryController, type TerminalHistoryController } from '@/utils/terminal-history'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -141,6 +142,7 @@ const startResize = (e: MouseEvent, dir: string) => {
 interface TermTab {
   id: string; title: string; hostId?: number
   terminal?: Terminal; fitAddon?: FitAddon; ws?: WebSocket
+  history?: TerminalHistoryController
   _observer?: ResizeObserver
 }
 
@@ -204,6 +206,8 @@ const createTerminal = async (tab: TermTab) => {
 
   const ws = new WebSocket(getWsUrl(tab.hostId))
   ws.binaryType = 'arraybuffer'; tab.ws = ws
+  const history = createTerminalHistoryController()
+  tab.history = history
 
   ws.onopen  = () => { sendResize(ws, term.rows, term.cols); term.focus() }
   ws.onmessage = (e) => {
@@ -212,7 +216,11 @@ const createTerminal = async (tab: TermTab) => {
   }
   ws.onclose = () => term.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
   ws.onerror = () => term.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
-  term.onData((d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(d) })
+  term.onData((d: string) => {
+    if (ws.readyState !== WebSocket.OPEN) return
+    const inAlternateBuffer = term.buffer.active.type === 'alternate'
+    if (!history.handleData(d, (payload) => ws.send(payload), { inAlternateBuffer })) ws.send(d)
+  })
   term.onResize(({ rows, cols }) => { if (ws.readyState === WebSocket.OPEN) sendResize(ws, rows, cols) })
 }
 

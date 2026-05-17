@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -312,6 +313,20 @@ func (a *FileAPI) ListFileTasks(c *gin.Context) {
 	helper.SuccessWithData(c, tasks)
 }
 
+// CancelFileTask 取消支持取消的文件后台任务
+func (a *FileAPI) CancelFileTask(c *gin.Context) {
+	taskID := c.Query("id")
+	if taskID == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "task id is required")
+		return
+	}
+	if err := service.CancelFileTask(taskID); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 // CheckConflict 检查移动/复制目标冲突
 func (a *FileAPI) CheckConflict(c *gin.Context) {
 	var req dto.FileMoveReq
@@ -335,10 +350,12 @@ func (a *FileAPI) WgetFile(c *gin.Context) {
 		return
 	}
 	svc := service.NewIFileService()
+	ctx, cancel := context.WithCancel(context.Background())
 	taskName := fmt.Sprintf("远程下载 %s", req.URL)
-	task := service.StartFileTask("download", taskName, func() error {
-		return svc.Wget(req)
+	task := service.StartFileTaskWithProgress("download", taskName, 0, func(tracker *service.ProgressTracker) error {
+		return svc.WgetWithTracker(ctx, req, tracker)
 	})
+	service.RegisterFileTaskCancel(task.ID, cancel)
 	helper.SuccessWithData(c, map[string]string{"taskID": task.ID})
 }
 
@@ -418,6 +435,7 @@ func (a *FileAPI) UploadFile(c *gin.Context) {
 
 	service.CreateNotification(dto.NotificationCreate{
 		Type:      "success",
+		Event:     "file.upload.completed",
 		Title:     fmt.Sprintf("文件「%s」上传完成", fileName),
 		Content:   filepath.Join(filepath.Clean(dstPath), fileName),
 		Source:    "file",

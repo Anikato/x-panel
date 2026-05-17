@@ -77,6 +77,12 @@ func runOnceDataMigrations() {
 		migrateSSLCertsToIndependentDir()
 		markDone("_mig_ssl_dir_independent")
 	}
+
+	if !migrated("_mig_notification_delivery_defaults") {
+		global.DB.Exec("UPDATE notifications SET show_badge = 1 WHERE show_badge = 0")
+		global.DB.Exec("UPDATE notifications SET popup = 0 WHERE popup != 0")
+		markDone("_mig_notification_delivery_defaults")
+	}
 }
 
 // migrateSSLCertsToIndependentDir 将旧 Nginx 目录下的证书迁移到独立 SSL 目录
@@ -263,6 +269,7 @@ func initDefaultSettings() {
 		{Key: "FleetInstanceToken", Value: ""},
 		{Key: "FleetHeartbeatIntervalSeconds", Value: "300"},
 		{Key: "FleetTaskPollIntervalSeconds", Value: "10"},
+		{Key: "NotificationPreferences", Value: `{"defaults":{"center":true,"badge":true,"popup":false},"events":{"file.upload.completed":{"center":true,"badge":false,"popup":false},"file.task.failed":{"center":true,"badge":true,"popup":true},"database.task.failed":{"center":true,"badge":true,"popup":true},"cronjob.failed":{"center":true,"badge":true,"popup":true},"operation.failed":{"center":true,"badge":true,"popup":true},"system.log.error":{"center":true,"badge":true,"popup":false}}}`},
 	}
 
 	for _, s := range defaults {

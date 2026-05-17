@@ -38,6 +38,7 @@ func SuccessWithOutData(c *gin.Context) {
 
 // ErrorWithDetail 错误响应（带详情）
 func ErrorWithDetail(c *gin.Context, code int, msg string) {
+	_ = c.Error(buserr.WithDetail(constant.ErrInternalServer, msg, nil))
 	c.JSON(code, dto.Response{
 		Code:    code,
 		Message: msg,
@@ -49,6 +50,7 @@ func HandleError(c *gin.Context, err error) {
 	if err == nil {
 		return
 	}
+	_ = c.Error(err)
 	switch e := err.(type) {
 	case buserr.BusinessError:
 		c.JSON(http.StatusOK, dto.Response{

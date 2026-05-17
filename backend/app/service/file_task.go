@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -38,6 +40,7 @@ type ProgressTracker struct {
 type FileTaskNotification struct {
 	Source             string
 	TargetURL          string
+	Event              string
 	SuccessTitle       string
 	SuccessContent     string
 	SuccessContentFunc func() string
@@ -46,6 +49,18 @@ type FileTaskNotification struct {
 
 func newProgressTracker(task *FileTaskStatus) *ProgressTracker {
 	return &ProgressTracker{task: task, lastTime: time.Now()}
+}
+
+// SetTotal 更新任务总字节数，适用于下载开始后才能拿到 Content-Length 的场景。
+func (pt *ProgressTracker) SetTotal(total int64) {
+	if total > 0 {
+		atomic.StoreInt64(&pt.task.BytesTotal, total)
+	}
+}
+
+// SetCurrentFile 更新当前处理文件名。
+func (pt *ProgressTracker) SetCurrentFile(name string) {
+	pt.task.CurrentFile = name
 }
 
 // AddBytes 原子累加已完成字节，并按500ms采样更新速度
@@ -73,9 +88,10 @@ func (pt *ProgressTracker) AddBytes(n int64) {
 }
 
 var (
-	fileTasksMu sync.RWMutex
-	fileTasks   = make(map[string]*FileTaskStatus)
-	taskSeq     int64
+	fileTasksMu     sync.RWMutex
+	fileTasks       = make(map[string]*FileTaskStatus)
+	fileTaskCancels = make(map[string]context.CancelFunc)
+	taskSeq         int64
 )
 
 // newFileTask 创建异步文件任务
@@ -103,6 +119,7 @@ func newFileTask(taskType, name string) *FileTaskStatus {
 // completeFileTask 标记任务完成
 func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotification) {
 	fileTasksMu.Lock()
+	delete(fileTaskCancels, task.ID)
 	task.EndTime = time.Now().Unix()
 	notificationType := "success"
 	notificationTitle := notify.SuccessTitle
@@ -113,7 +130,13 @@ func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotificati
 	if notificationContent == "" {
 		notificationContent = "后台任务已完成"
 	}
-	if err != nil {
+	if errors.Is(err, context.Canceled) {
+		task.Status = "cancelled"
+		task.Message = "任务已取消"
+		notificationType = "warning"
+		notificationTitle = task.Name + "已取消"
+		notificationContent = "后台任务已取消"
+	} else if err != nil {
 		task.Status = "failed"
 		task.Message = err.Error()
 		notificationType = "error"
@@ -139,8 +162,20 @@ func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotificati
 	if notify.TargetURL == "" {
 		notify.TargetURL = "/host/files"
 	}
+	event := notify.Event
+	if event == "" {
+		switch task.Status {
+		case "success":
+			event = notify.Source + ".task.success"
+		case "cancelled":
+			event = notify.Source + ".task.cancelled"
+		default:
+			event = notify.Source + ".task.failed"
+		}
+	}
 	CreateNotification(dto.NotificationCreate{
 		Type:      notificationType,
+		Event:     event,
 		Title:     notificationTitle,
 		Content:   notificationContent,
 		Source:    notify.Source,
@@ -155,6 +190,42 @@ func GetFileTask(id string) *FileTaskStatus {
 	if t, ok := fileTasks[id]; ok {
 		return t
 	}
+	return nil
+}
+
+// RegisterFileTaskCancel 为运行中的任务登记取消函数。
+func RegisterFileTaskCancel(id string, cancel context.CancelFunc) {
+	fileTasksMu.Lock()
+	defer fileTasksMu.Unlock()
+	task, ok := fileTasks[id]
+	if !ok || task.Status != "running" {
+		cancel()
+		return
+	}
+	fileTaskCancels[id] = cancel
+}
+
+// CancelFileTask 取消支持取消的运行中任务。
+func CancelFileTask(id string) error {
+	fileTasksMu.Lock()
+	task, ok := fileTasks[id]
+	if !ok {
+		fileTasksMu.Unlock()
+		return fmt.Errorf("task not found")
+	}
+	if task.Status != "running" {
+		fileTasksMu.Unlock()
+		return fmt.Errorf("task is not running")
+	}
+	cancel, ok := fileTaskCancels[id]
+	if !ok {
+		fileTasksMu.Unlock()
+		return fmt.Errorf("task cannot be cancelled")
+	}
+	delete(fileTaskCancels, id)
+	fileTasksMu.Unlock()
+
+	cancel()
 	return nil
 }
 

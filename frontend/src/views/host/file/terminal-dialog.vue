@@ -27,10 +27,12 @@ let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
+let history = createTerminalHistoryController()
 
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { useGlobalStore } from '@/store/modules/global'
 import { getToken } from '@/utils/auth'
+import { createTerminalHistoryController } from '@/utils/terminal-history'
 
 const globalStore = useGlobalStore()
 
@@ -121,7 +123,9 @@ function initTerminal() {
   }
 
   terminal.onData((data: string) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !terminal) return
+    const inAlternateBuffer = terminal.buffer.active.type === 'alternate'
+    if (!history.handleData(data, (payload) => ws?.send(payload), { inAlternateBuffer })) {
       ws.send(data)
     }
   })
@@ -146,6 +150,7 @@ function cleanup() {
   if (terminal) { terminal.dispose(); terminal = null }
   if (fitAddon) { fitAddon = null }
   if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
+  history = createTerminalHistoryController()
 }
 
 onBeforeUnmount(() => cleanup())
