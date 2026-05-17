@@ -24,13 +24,13 @@ const routes: RouteRecordRaw[] = [
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
-    meta: { requiresAuth: false },
+    meta: { requiresAuth: false, guestOnly: true },
   },
   {
     path: '/init',
     name: 'Init',
     component: () => import('@/views/init/index.vue'),
-    meta: { requiresAuth: false },
+    meta: { requiresAuth: false, guestOnly: true },
   },
   {
     path: '/',

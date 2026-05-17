@@ -3,18 +3,23 @@ import { cancelAllPendingRequests } from '@/api/http'
 import { getToken } from '@/utils/auth'
 
 export function setupGuard(router: Router) {
-  router.beforeEach((_to, _from, next) => {
+  router.beforeEach((to, _from, next) => {
     cancelAllPendingRequests()
 
     const token = getToken()
 
-    if (_to.meta.requiresAuth === false) {
+    if (token && to.meta.guestOnly) {
+      next({ path: '/home', replace: true })
+      return
+    }
+
+    if (to.meta.requiresAuth === false) {
       next()
       return
     }
 
     if (!token) {
-      next({ path: '/login', query: { redirect: _to.fullPath } })
+      next({ path: '/login', query: { redirect: to.fullPath } })
       return
     }
 

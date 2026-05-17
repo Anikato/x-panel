@@ -18,6 +18,7 @@ import (
 	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/version"
+	"xpanel/constant"
 	"xpanel/global"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -66,14 +67,15 @@ func NewIFleetReporterService() IFleetReporterService {
 }
 
 type fleetPayload struct {
-	InstanceID string             `json:"instanceId"`
-	Panel      fleetPanelPayload  `json:"panel"`
-	Host       fleetHostPayload   `json:"host"`
-	CPU        fleetCPUPayload    `json:"cpu"`
-	Memory     fleetMemoryPayload `json:"memory"`
-	Swap       fleetSwapPayload   `json:"swap"`
-	Disk       fleetDiskPayload   `json:"disk"`
-	State      fleetStatePayload  `json:"state"`
+	InstanceID       string                       `json:"instanceId"`
+	Panel            fleetPanelPayload            `json:"panel"`
+	Host             fleetHostPayload             `json:"host"`
+	CPU              fleetCPUPayload              `json:"cpu"`
+	Memory           fleetMemoryPayload           `json:"memory"`
+	Swap             fleetSwapPayload             `json:"swap"`
+	Disk             fleetDiskPayload             `json:"disk"`
+	State            fleetStatePayload            `json:"state"`
+	TrafficSummaries []fleetTrafficSummaryPayload `json:"trafficSummaries"`
 }
 
 type fleetPanelPayload struct {
@@ -138,6 +140,19 @@ type fleetStatePayload struct {
 	NetOutTransfer uint64  `json:"netOutTransfer"`
 }
 
+type fleetTrafficSummaryPayload struct {
+	InterfaceName string    `json:"interfaceName"`
+	MonthlyLimit  uint64    `json:"monthlyLimit"`
+	ResetDay      int       `json:"resetDay"`
+	PeriodStart   time.Time `json:"periodStart"`
+	PeriodEnd     time.Time `json:"periodEnd"`
+	TotalSent     uint64    `json:"totalSent"`
+	TotalRecv     uint64    `json:"totalRecv"`
+	TotalUsed     uint64    `json:"totalUsed"`
+	UsedPercent   float64   `json:"usedPercent"`
+	Enabled       bool      `json:"enabled"`
+}
+
 type fleetResponse struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
@@ -191,6 +206,37 @@ type fleetRunCommandPayload struct {
 
 type fleetPanelUpgradePayload struct {
 	ReleaseURL string `json:"releaseUrl"`
+}
+
+type fleetCronjobTaskPayload struct {
+	Action          string `json:"action"`
+	ID              uint   `json:"id"`
+	Name            string `json:"name"`
+	Type            string `json:"type"`
+	Spec            string `json:"spec"`
+	Status          string `json:"status"`
+	Script          string `json:"script"`
+	URL             string `json:"url"`
+	Website         string `json:"website"`
+	DBType          string `json:"dbType"`
+	DBName          string `json:"dbName"`
+	SourceDir       string `json:"sourceDir"`
+	TargetAccountID uint   `json:"targetAccountID"`
+	RetainCopies    uint   `json:"retainCopies"`
+	ExclusionRules  string `json:"exclusionRules"`
+	CompressFormat  string `json:"compressFormat"`
+	EncryptPassword string `json:"encryptPassword"`
+}
+
+type fleetProcessTaskPayload struct {
+	Action   string `json:"action"`
+	PID      int32  `json:"pid"`
+	Name     string `json:"name"`
+	Username string `json:"username"`
+	Status   string `json:"status"`
+	SortBy   string `json:"sortBy"`
+	SortDesc bool   `json:"sortDesc"`
+	Signal   string `json:"signal"`
 }
 
 type fleetTaskReportRequest struct {
@@ -453,6 +499,12 @@ func (s *FleetReporterService) executeTask(endpoint, instanceID, token string, t
 	if task.Type == "panel_upgrade" {
 		return s.executePanelUpgradeTask(instanceID, task)
 	}
+	if task.Type == "cronjob_manage" {
+		return s.executeCronjobTask(instanceID, task)
+	}
+	if task.Type == "process_manage" {
+		return s.executeProcessTask(instanceID, task)
+	}
 	if task.Type != "tail_panel_log" {
 		report.Error = "unsupported task type"
 		return report
@@ -616,6 +668,132 @@ func (s *FleetReporterService) executePanelUpgradeTask(instanceID string, task f
 	data, _ := json.MarshalIndent(info, "", "  ")
 	report.Output = "upgrade started\n" + string(data)
 	report.Output, report.Truncated = truncateFleetTaskOutput(report.Output)
+	return report
+}
+
+func (s *FleetReporterService) executeCronjobTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+	report := fleetTaskReportRequest{InstanceID: instanceID, TaskID: task.ID, Status: "failed", ExitCode: 1}
+	var payload fleetCronjobTaskPayload
+	if len(task.Payload) > 0 {
+		if err := json.Unmarshal(task.Payload, &payload); err != nil {
+			report.Error = err.Error()
+			return report
+		}
+	}
+
+	svc := NewICronjobService()
+	var result interface{}
+	var err error
+	switch payload.Action {
+	case "list":
+		var total int64
+		var items []dto.CronjobInfo
+		total, items, err = svc.SearchWithPage(dto.CronjobSearch{PageInfo: dto.PageInfo{Page: 1, PageSize: 100}})
+		result = map[string]interface{}{"total": total, "items": items}
+	case "create":
+		err = svc.Create(dto.CronjobCreate{
+			Name:            payload.Name,
+			Type:            payload.Type,
+			Spec:            payload.Spec,
+			Script:          payload.Script,
+			URL:             payload.URL,
+			Website:         payload.Website,
+			DBType:          payload.DBType,
+			DBName:          payload.DBName,
+			SourceDir:       payload.SourceDir,
+			TargetAccountID: payload.TargetAccountID,
+			RetainCopies:    payload.RetainCopies,
+			ExclusionRules:  payload.ExclusionRules,
+			CompressFormat:  payload.CompressFormat,
+			EncryptPassword: payload.EncryptPassword,
+		})
+		result = map[string]string{"message": "cronjob created"}
+	case "update":
+		err = svc.Update(dto.CronjobUpdate{
+			ID:              payload.ID,
+			Name:            payload.Name,
+			Type:            payload.Type,
+			Spec:            payload.Spec,
+			Script:          payload.Script,
+			URL:             payload.URL,
+			Website:         payload.Website,
+			DBType:          payload.DBType,
+			DBName:          payload.DBName,
+			SourceDir:       payload.SourceDir,
+			TargetAccountID: payload.TargetAccountID,
+			RetainCopies:    payload.RetainCopies,
+			ExclusionRules:  payload.ExclusionRules,
+			CompressFormat:  payload.CompressFormat,
+			EncryptPassword: payload.EncryptPassword,
+		})
+		result = map[string]string{"message": "cronjob updated"}
+	case "delete":
+		err = svc.Delete(payload.ID)
+		result = map[string]string{"message": "cronjob deleted"}
+	case "enable":
+		err = svc.UpdateStatus(payload.ID, constant.StatusEnable)
+		result = map[string]string{"message": "cronjob enabled"}
+	case "disable":
+		err = svc.UpdateStatus(payload.ID, constant.StatusDisable)
+		result = map[string]string{"message": "cronjob disabled"}
+	case "run_once":
+		err = svc.HandleOnce(payload.ID)
+		result = map[string]string{"message": "cronjob started"}
+	default:
+		report.Error = "unsupported cronjob action"
+		return report
+	}
+	if err != nil {
+		report.Error = err.Error()
+		return report
+	}
+	data, _ := json.MarshalIndent(result, "", "  ")
+	report.Status = "success"
+	report.ExitCode = 0
+	report.Output, report.Truncated = truncateFleetTaskOutput(string(data))
+	return report
+}
+
+func (s *FleetReporterService) executeProcessTask(instanceID string, task fleetTask) fleetTaskReportRequest {
+	report := fleetTaskReportRequest{InstanceID: instanceID, TaskID: task.ID, Status: "failed", ExitCode: 1}
+	var payload fleetProcessTaskPayload
+	if len(task.Payload) > 0 {
+		if err := json.Unmarshal(task.Payload, &payload); err != nil {
+			report.Error = err.Error()
+			return report
+		}
+	}
+
+	svc := NewIProcessService()
+	var result interface{}
+	var err error
+	switch payload.Action {
+	case "list":
+		result, err = svc.ListProcesses(dto.ProcessSearchReq{
+			PID:      payload.PID,
+			Name:     payload.Name,
+			Username: payload.Username,
+			Status:   payload.Status,
+			SortBy:   payload.SortBy,
+			SortDesc: payload.SortDesc,
+		})
+	case "connections":
+		result, err = svc.ListConnections()
+	case "stop":
+		err = svc.StopProcess(dto.ProcessStopReq{PID: payload.PID, Signal: payload.Signal})
+		result = map[string]string{"message": "process signal sent"}
+	default:
+		report.Error = "unsupported process action"
+		return report
+	}
+	if err != nil {
+		report.Error = err.Error()
+		return report
+	}
+	data, _ := json.MarshalIndent(result, "", "  ")
+	report.Status = "success"
+	report.ExitCode = 0
+	report.Output, report.Truncated = truncateFleetTaskOutput(string(data))
 	return report
 }
 
@@ -789,8 +967,32 @@ func (s *FleetReporterService) buildFleetPayload(instanceID string) (fleetPayloa
 	payload.State.UDPConnCount = connectionCount("udp")
 	payload.State.ProcessCount = processCount()
 	payload.State.NetInTransfer, payload.State.NetOutTransfer, payload.State.NetInSpeed, payload.State.NetOutSpeed = s.networkState()
+	payload.TrafficSummaries = collectFleetTrafficSummaries()
 
 	return payload, nil
+}
+
+func collectFleetTrafficSummaries() []fleetTrafficSummaryPayload {
+	items, err := NewITrafficService().GetSummary()
+	if err != nil || len(items) == 0 {
+		return nil
+	}
+	result := make([]fleetTrafficSummaryPayload, 0, len(items))
+	for _, item := range items {
+		result = append(result, fleetTrafficSummaryPayload{
+			InterfaceName: item.InterfaceName,
+			MonthlyLimit:  item.MonthlyLimit,
+			ResetDay:      item.ResetDay,
+			PeriodStart:   item.PeriodStart,
+			PeriodEnd:     item.PeriodEnd,
+			TotalSent:     item.TotalSent,
+			TotalRecv:     item.TotalRecv,
+			TotalUsed:     item.TotalUsed,
+			UsedPercent:   item.UsedPercent,
+			Enabled:       item.Enabled,
+		})
+	}
+	return result
 }
 
 func collectNetworkInterfaces() []fleetNetworkInterfacePayload {

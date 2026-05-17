@@ -32,13 +32,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { initUser } from '@/api/modules/auth'
+import { checkIsInit, initUser } from '@/api/modules/auth'
 import { useI18n } from 'vue-i18n'
+import { getToken } from '@/utils/auth'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -63,6 +64,15 @@ const rules: FormRules = {
     { validator: validateConfirm, trigger: 'blur' },
   ],
 }
+
+onMounted(async () => {
+  try {
+    const res = await checkIsInit()
+    if (res.data) {
+      router.replace(getToken() ? '/home' : '/login')
+    }
+  } catch { /* backend not ready */ }
+})
 
 const handleInit = async () => {
   if (!formRef.value) return
