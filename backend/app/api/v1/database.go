@@ -140,6 +140,19 @@ func (a *DatabaseAPI) ChangeInstancePassword(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *DatabaseAPI) ChangeInstancePrivileges(c *gin.Context) {
+	var req dto.DatabaseInstanceChangePrivileges
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := databaseService.ChangeInstancePrivileges(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *DatabaseAPI) BackupDatabaseInstance(c *gin.Context) {
 	var req dto.OperateByID
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

@@ -31,6 +31,7 @@ type IDatabaseService interface {
 	BackupInstanceAsync(id uint) (*FileTaskStatus, error)
 	RestoreInstance(req dto.DatabaseInstanceRestore) error
 	RestoreInstanceAsync(req dto.DatabaseInstanceRestore) (*FileTaskStatus, error)
+	ChangeInstancePrivileges(req dto.DatabaseInstanceChangePrivileges) error
 }
 
 func NewIDatabaseService() IDatabaseService {
@@ -120,32 +121,54 @@ func (s *DatabaseService) CreateInstance(req dto.DatabaseInstanceCreate) error {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		if err := client.CreateDatabase(req.Name, req.Charset); err != nil {
+		username := req.Username
+		if username == "" {
+			username = req.Name
+		}
+		permission := req.Permission
+		if permission == "" {
+			permission = "%"
+		}
+		if req.Password == "" {
+			return buserr.WithDetail(constant.ErrInternalServer, "password is required", fmt.Errorf("password is required"))
+		}
+		if err := client.CreateDatabaseWithUser(req.Name, req.Charset, username, req.Password, permission); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
-		if req.Password != "" {
-			_ = client.CreateUser(req.Name, req.Password, req.Name)
-		}
+		req.Username = username
+		req.Permission = permission
 	case "postgresql":
 		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
 		if err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		owner := req.Owner
-		if owner == "" {
-			owner = server.Username
+		username := req.Username
+		if username == "" {
+			username = req.Owner
 		}
-		if err := client.CreateDatabase(req.Name, owner); err != nil {
+		if username == "" {
+			username = req.Name
+		}
+		if req.Password == "" {
+			return buserr.WithDetail(constant.ErrInternalServer, "password is required", fmt.Errorf("password is required"))
+		}
+		if err := client.CreateDatabaseWithUser(req.Name, username, req.Password, req.SuperUser); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
+		req.Owner = username
+		req.Username = username
 	}
 
 	instance := &model.DatabaseInstance{
-		ServerID: req.ServerID,
-		Name:     req.Name,
-		Charset:  req.Charset,
-		Owner:    req.Owner,
+		ServerID:   req.ServerID,
+		Name:       req.Name,
+		Charset:    req.Charset,
+		Owner:      req.Owner,
+		Username:   req.Username,
+		Password:   req.Password,
+		Permission: req.Permission,
+		SuperUser:  req.SuperUser,
 	}
 	return s.repo.CreateInstance(instance)
 }
@@ -163,13 +186,20 @@ func (s *DatabaseService) DeleteInstance(id uint) error {
 			if err == nil {
 				defer client.Close()
 				_ = client.DeleteDatabase(instance.Name)
-				_ = client.DeleteUser(instance.Name)
+				username := instance.Username
+				if username == "" {
+					username = instance.Name
+				}
+				_ = client.DeleteUser(username, instance.Permission)
 			}
 		case "postgresql":
 			client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
 			if err == nil {
 				defer client.Close()
 				_ = client.DeleteDatabase(instance.Name)
+				if instance.Username != "" && instance.Password != "" {
+					_ = client.DeleteUser(instance.Username)
+				}
 			}
 		}
 	}
@@ -190,6 +220,8 @@ func (s *DatabaseService) SearchInstance(req dto.DatabaseInstanceSearch) (int64,
 		items = append(items, dto.DatabaseInstanceInfo{
 			ID: inst.ID, CreatedAt: inst.CreatedAt, ServerID: inst.ServerID,
 			Name: inst.Name, Charset: inst.Charset, Owner: inst.Owner,
+			Username: inst.Username, Permission: inst.Permission,
+			SuperUser: inst.SuperUser,
 		})
 	}
 	return total, items, nil
@@ -241,16 +273,31 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 	for _, info := range remoteDBs {
 		remoteSet[info.Name] = struct{}{}
 		if existing, found := existingMap[info.Name]; found {
-			_ = s.repo.UpdateInstance(existing.ID, map[string]interface{}{
-				"charset": info.Charset,
-				"owner":   info.Owner,
-			})
+			fields := map[string]interface{}{
+				"charset":    info.Charset,
+				"owner":      info.Owner,
+				"permission": info.Permission,
+			}
+			if existing.Username == "" {
+				if info.Username != "" {
+					fields["username"] = info.Username
+				} else {
+					fields["username"] = info.Owner
+				}
+			}
+			_ = s.repo.UpdateInstance(existing.ID, fields)
 		} else {
+			username := info.Username
+			if username == "" {
+				username = info.Owner
+			}
 			_ = s.repo.CreateInstance(&model.DatabaseInstance{
-				ServerID: serverID,
-				Name:     info.Name,
-				Charset:  info.Charset,
-				Owner:    info.Owner,
+				ServerID:   serverID,
+				Name:       info.Name,
+				Charset:    info.Charset,
+				Owner:      info.Owner,
+				Username:   username,
+				Permission: info.Permission,
 			})
 		}
 	}
@@ -280,9 +327,14 @@ func (s *DatabaseService) ChangeInstancePassword(req dto.DatabaseInstanceChangeP
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 		defer client.Close()
-		if err := client.ChangePassword(instance.Name, req.Password); err != nil {
+		userName := instance.Username
+		if userName == "" {
+			userName = instance.Name
+		}
+		if err := client.ChangePassword(userName, req.Password, instance.Permission); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
+		_ = s.repo.UpdateInstance(instance.ID, map[string]interface{}{"password": req.Password})
 	case "postgresql":
 		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
 		if err != nil {
@@ -290,14 +342,48 @@ func (s *DatabaseService) ChangeInstancePassword(req dto.DatabaseInstanceChangeP
 		}
 		defer client.Close()
 		userName := instance.Owner
+		if instance.Username != "" {
+			userName = instance.Username
+		}
 		if userName == "" {
 			userName = instance.Name
 		}
 		if err := client.ChangePassword(userName, req.Password); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
+		_ = s.repo.UpdateInstance(instance.ID, map[string]interface{}{"password": req.Password})
 	}
 	return nil
+}
+
+func (s *DatabaseService) ChangeInstancePrivileges(req dto.DatabaseInstanceChangePrivileges) error {
+	instance, err := s.repo.GetInstance(req.ID)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	server, err := s.repo.GetServer(instance.ServerID)
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	if server.Type != "postgresql" {
+		return buserr.WithDetail(constant.ErrInternalServer, "privileges are only supported for PostgreSQL", fmt.Errorf("privileges are only supported for PostgreSQL"))
+	}
+	client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	defer client.Close()
+	userName := instance.Username
+	if userName == "" {
+		userName = instance.Owner
+	}
+	if userName == "" {
+		return buserr.WithDetail(constant.ErrInternalServer, "database user is empty", fmt.Errorf("database user is empty"))
+	}
+	if err := client.ChangePrivileges(userName, req.SuperUser); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	return s.repo.UpdateInstance(instance.ID, map[string]interface{}{"super_user": req.SuperUser})
 }
 
 func (s *DatabaseService) BackupInstance(id uint) (string, error) {

@@ -83,22 +83,22 @@ func mysqlSocketCandidates() []string {
 func (c *MysqlClient) Close() { c.db.Close() }
 
 func (c *MysqlClient) CreateDatabase(name, charset string) error {
-	if charset == "" {
-		charset = "utf8mb4"
-	}
-	_, err := c.db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET %s", name, charset))
+	charset = normalizeMysqlCharset(charset)
+	_, err := c.db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s CHARACTER SET %s", quoteMysqlIdentifier(name), charset))
 	return err
 }
 
 func (c *MysqlClient) DeleteDatabase(name string) error {
-	_, err := c.db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", name))
+	_, err := c.db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", quoteMysqlIdentifier(name)))
 	return err
 }
 
 type DBInfo struct {
-	Name    string
-	Charset string
-	Owner   string
+	Name       string
+	Charset    string
+	Owner      string
+	Username   string
+	Permission string
 }
 
 func (c *MysqlClient) ListDatabases() ([]string, error) {
@@ -129,36 +129,74 @@ func (c *MysqlClient) ListDatabasesWithInfo() ([]DBInfo, error) {
 	for rows.Next() {
 		var info DBInfo
 		rows.Scan(&info.Name, &info.Charset)
+		info.Username, info.Permission = c.loadDatabaseUser(info.Name)
 		dbs = append(dbs, info)
 	}
 	return dbs, nil
 }
 
-func (c *MysqlClient) CreateUser(username, password, database string) error {
-	_, err := c.db.Exec(fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'", username, password))
+func (c *MysqlClient) CreateDatabaseWithUser(name, charset, username, password, permission string) error {
+	if username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+	if permission == "" {
+		permission = "%"
+	}
+	if err := c.CreateDatabase(name, charset); err != nil {
+		return err
+	}
+	if err := c.CreateUser(username, password, name, permission); err != nil {
+		_ = c.DeleteDatabase(name)
+		return err
+	}
+	return nil
+}
+
+func (c *MysqlClient) CreateUser(username, password, database string, permissions ...string) error {
+	permissionList := normalizeMysqlPermissions(permissions...)
+	for _, permission := range permissionList {
+		_, err := c.db.Exec(fmt.Sprintf("CREATE USER IF NOT EXISTS %s IDENTIFIED BY %s", quoteMysqlUser(username, permission), quoteMysqlLiteral(password)))
+		if err != nil {
+			return err
+		}
+		_, err = c.db.Exec(fmt.Sprintf("ALTER USER %s IDENTIFIED BY %s", quoteMysqlUser(username, permission), quoteMysqlLiteral(password)))
+		if err != nil {
+			return err
+		}
+		_, err = c.db.Exec(fmt.Sprintf("GRANT ALL PRIVILEGES ON %s.* TO %s", quoteMysqlIdentifier(database), quoteMysqlUser(username, permission)))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := c.db.Exec("FLUSH PRIVILEGES")
 	if err != nil {
 		return err
 	}
-	_, err = c.db.Exec(fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%'", database, username))
-	if err != nil {
-		return err
+	return nil
+}
+
+func (c *MysqlClient) ChangePassword(username, password string, permissions ...string) error {
+	var err error
+	for _, permission := range normalizeMysqlPermissions(permissions...) {
+		_, err = c.db.Exec(fmt.Sprintf("ALTER USER %s IDENTIFIED BY %s", quoteMysqlUser(username, permission), quoteMysqlLiteral(password)))
+		if err != nil {
+			return err
+		}
 	}
 	_, err = c.db.Exec("FLUSH PRIVILEGES")
 	return err
 }
 
-func (c *MysqlClient) ChangePassword(username, password string) error {
-	_, err := c.db.Exec(fmt.Sprintf("ALTER USER '%s'@'%%' IDENTIFIED BY '%s'", username, password))
-	if err != nil {
-		return err
+func (c *MysqlClient) DeleteUser(username string, permissions ...string) error {
+	for _, permission := range normalizeMysqlPermissions(permissions...) {
+		if _, err := c.db.Exec(fmt.Sprintf("DROP USER IF EXISTS %s", quoteMysqlUser(username, permission))); err != nil {
+			return err
+		}
 	}
-	_, err = c.db.Exec("FLUSH PRIVILEGES")
-	return err
-}
-
-func (c *MysqlClient) DeleteUser(username string) error {
-	_, err := c.db.Exec(fmt.Sprintf("DROP USER IF EXISTS '%s'@'%%'", username))
-	return err
+	return nil
 }
 
 func (c *MysqlClient) Backup(database, outFile string) error {
@@ -208,4 +246,64 @@ func (c *MysqlClient) commandConnectionArgs() []string {
 		args = append(args, fmt.Sprintf("-p%s", c.Password))
 	}
 	return args
+}
+
+func (c *MysqlClient) loadDatabaseUser(database string) (string, string) {
+	rows, err := c.db.Query("SELECT User, Host FROM mysql.db WHERE Db = ? AND User <> 'root' ORDER BY User, Host", database)
+	if err != nil {
+		return "", ""
+	}
+	defer rows.Close()
+	var username string
+	var hosts []string
+	for rows.Next() {
+		var user, host string
+		if err := rows.Scan(&user, &host); err != nil {
+			continue
+		}
+		if username == "" {
+			username = user
+		}
+		if user == username {
+			hosts = append(hosts, host)
+		}
+	}
+	return username, strings.Join(hosts, ",")
+}
+
+func normalizeMysqlPermissions(permissions ...string) []string {
+	var items []string
+	for _, permission := range permissions {
+		for _, item := range strings.Split(permission, ",") {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				items = append(items, item)
+			}
+		}
+	}
+	if len(items) == 0 {
+		return []string{"%"}
+	}
+	return items
+}
+
+func normalizeMysqlCharset(charset string) string {
+	switch strings.ToLower(strings.TrimSpace(charset)) {
+	case "utf8", "latin1", "gbk":
+		return strings.ToLower(strings.TrimSpace(charset))
+	default:
+		return "utf8mb4"
+	}
+}
+
+func quoteMysqlIdentifier(value string) string {
+	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+}
+
+func quoteMysqlLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func quoteMysqlUser(username, permission string) string {
+	return quoteMysqlLiteral(username) + "@" + quoteMysqlLiteral(permission)
 }

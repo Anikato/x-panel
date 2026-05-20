@@ -155,6 +155,9 @@ export interface DatabaseInstance {
   name: string
   charset: string
   owner: string
+  username: string
+  permission: string
+  superUser: boolean
   createdAt: string
   _backupLoading?: boolean
   _backupTotal?: number
@@ -178,6 +181,9 @@ export interface DatabaseInstanceForm {
   charset: string
   password: string
   owner: string
+  username: string
+  permission: string
+  superUser: boolean
 }
 
 // ======================== Container ========================

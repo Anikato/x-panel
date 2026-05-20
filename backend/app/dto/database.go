@@ -42,20 +42,26 @@ type DatabaseServerSearch struct {
 
 // Database Instance
 type DatabaseInstanceCreate struct {
-	ServerID uint   `json:"serverID" binding:"required"`
-	Name     string `json:"name" binding:"required"`
-	Charset  string `json:"charset"`
-	Owner    string `json:"owner"`
-	Password string `json:"password"`
+	ServerID   uint   `json:"serverID" binding:"required"`
+	Name       string `json:"name" binding:"required"`
+	Charset    string `json:"charset"`
+	Owner      string `json:"owner"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	Permission string `json:"permission"`
+	SuperUser  bool   `json:"superUser"`
 }
 
 type DatabaseInstanceInfo struct {
-	ID        uint      `json:"id"`
-	CreatedAt time.Time `json:"createdAt"`
-	ServerID  uint      `json:"serverID"`
-	Name      string    `json:"name"`
-	Charset   string    `json:"charset"`
-	Owner     string    `json:"owner"`
+	ID         uint      `json:"id"`
+	CreatedAt  time.Time `json:"createdAt"`
+	ServerID   uint      `json:"serverID"`
+	Name       string    `json:"name"`
+	Charset    string    `json:"charset"`
+	Owner      string    `json:"owner"`
+	Username   string    `json:"username"`
+	Permission string    `json:"permission"`
+	SuperUser  bool      `json:"superUser"`
 }
 
 type DatabaseInstanceSearch struct {
@@ -67,6 +73,11 @@ type DatabaseInstanceSearch struct {
 type DatabaseInstanceChangePassword struct {
 	ID       uint   `json:"id" binding:"required"`
 	Password string `json:"password" binding:"required"`
+}
+
+type DatabaseInstanceChangePrivileges struct {
+	ID        uint `json:"id" binding:"required"`
+	SuperUser bool `json:"superUser"`
 }
 
 type DatabaseInstanceBackup struct {

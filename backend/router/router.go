@@ -270,6 +270,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/databases/instances/search", api.SearchDatabaseInstance)
 		privateGroup.POST("/databases/instances/sync", api.SyncDatabaseInstances)
 		privateGroup.POST("/databases/instances/password", api.ChangeInstancePassword)
+		privateGroup.POST("/databases/instances/privileges", api.ChangeInstancePrivileges)
 		privateGroup.POST("/databases/instances/backup", api.BackupDatabaseInstance)
 		privateGroup.POST("/databases/instances/restore/upload", api.UploadRestoreFile)
 		privateGroup.POST("/databases/instances/restore", api.RestoreDatabaseInstance)

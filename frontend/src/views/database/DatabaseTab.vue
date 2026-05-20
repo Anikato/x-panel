@@ -20,7 +20,17 @@
             <el-table :data="row._instances || []" v-loading="row._loading" size="small" style="width:100%">
               <el-table-column prop="name" :label="t('database.dbName')" min-width="160" />
               <el-table-column prop="charset" label="Charset" width="120" />
+              <el-table-column v-if="dbType === 'mysql'" prop="username" :label="t('database.username')" width="140" />
+              <el-table-column v-if="dbType === 'mysql'" prop="permission" :label="t('database.permission')" width="140" />
+              <el-table-column v-if="dbType === 'postgresql'" prop="username" :label="t('database.username')" width="140" />
               <el-table-column v-if="dbType === 'postgresql'" prop="owner" label="Owner" width="120" />
+              <el-table-column v-if="dbType === 'postgresql'" :label="t('database.superUser')" width="110">
+                <template #default="{ row: inst }">
+                  <el-tag :type="inst.superUser ? 'danger' : 'info'" size="small" effect="plain">
+                    {{ inst.superUser ? t('database.superUser') : t('database.normalUser') }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column :label="t('database.backupOverview')" min-width="260">
                 <template #default="{ row: inst }">
                   <div v-if="inst._backupLoading" class="backup-overview muted">{{ t('database.loadingBackups') }}</div>
@@ -35,12 +45,13 @@
               <el-table-column :label="t('commons.createdAt')" width="180">
                 <template #default="{ row: inst }">{{ inst.createdAt ? new Date(inst.createdAt).toLocaleString() : '-' }}</template>
               </el-table-column>
-              <el-table-column :label="t('commons.actions')" width="380" fixed="right">
+              <el-table-column :label="t('commons.actions')" width="460" fixed="right">
                 <template #default="{ row: inst }">
                   <el-button link type="primary" size="small" @click="handleBackup(row, inst)">{{ t('database.backup') }}</el-button>
                   <el-button link type="primary" size="small" @click="openBackupHistory(row, inst)">{{ t('database.backupHistory') }}</el-button>
                   <el-button link type="success" size="small" @click="openRestore(row, inst)">{{ t('database.restore') }}</el-button>
                   <el-button link type="primary" size="small" @click="openChangePassword(row, inst)">{{ t('database.changePassword') }}</el-button>
+                  <el-button v-if="dbType === 'postgresql'" link type="primary" size="small" @click="handleChangePrivileges(row, inst)">{{ t('database.changePrivileges') }}</el-button>
                   <el-button link type="danger" size="small" @click="handleDeleteInstance(row, inst)">{{ t('commons.delete') }}</el-button>
                 </template>
               </el-table-column>
@@ -113,11 +124,33 @@
             <el-option label="gbk" value="gbk" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="dbType === 'mysql'" :label="t('database.password')">
-          <el-input v-model="instForm.password" type="password" show-password :placeholder="t('database.dbUserPasswordHint')" />
+        <el-form-item v-if="dbType === 'mysql'" :label="t('database.username')">
+          <el-input v-model="instForm.username" :placeholder="t('database.mysqlUsernameHint')" />
         </el-form-item>
-        <el-form-item v-if="dbType === 'postgresql'" label="Owner">
-          <el-input v-model="instForm.owner" :placeholder="t('database.ownerHint')" />
+        <el-form-item v-if="dbType === 'mysql'" :label="t('database.password')">
+          <el-input v-model="instForm.password" type="password" show-password :placeholder="t('database.mysqlPasswordHint')" />
+        </el-form-item>
+        <el-form-item v-if="dbType === 'mysql'" :label="t('database.permission')">
+          <el-select
+            v-model="instForm.permission"
+            filterable
+            allow-create
+            default-first-option
+            style="width:100%"
+            :placeholder="t('database.permissionHint')"
+          >
+            <el-option label="%" value="%" />
+            <el-option label="localhost" value="localhost" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="dbType === 'postgresql'" :label="t('database.username')">
+          <el-input v-model="instForm.username" :placeholder="t('database.pgUsernameHint')" />
+        </el-form-item>
+        <el-form-item v-if="dbType === 'postgresql'" :label="t('database.password')">
+          <el-input v-model="instForm.password" type="password" show-password :placeholder="t('database.pgPasswordHint')" />
+        </el-form-item>
+        <el-form-item v-if="dbType === 'postgresql'" :label="t('database.superUser')">
+          <el-switch v-model="instForm.superUser" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -245,7 +278,7 @@ import { useFileTaskStore } from '@/store/modules/fileTask'
 import {
   searchDatabaseServer, createDatabaseServer, updateDatabaseServer, deleteDatabaseServer,
   testDatabaseConnection, searchDatabaseInstance, createDatabaseInstance, deleteDatabaseInstance,
-  syncDatabaseInstances, changeInstancePassword, backupDatabaseInstance, restoreDatabaseInstance,
+  syncDatabaseInstances, changeInstancePassword, changeInstancePrivileges, backupDatabaseInstance, restoreDatabaseInstance,
   uploadDatabaseRestoreFile,
 } from '@/api/modules/database'
 import { deleteBackupRecord, listBackupAccounts, searchBackupRecords } from '@/api/modules/backup'
@@ -428,19 +461,27 @@ const testConn = async (row: DatabaseServer) => {
 // Instances
 const instanceCreateDialog = ref(false)
 const instFormRef = ref<FormInstance>()
-const instForm = reactive({ name: '', charset: 'utf8mb4', password: '', owner: '' })
+const instForm = reactive({ name: '', charset: 'utf8mb4', password: '', owner: '', username: '', permission: '%', superUser: false })
 const instRules: FormRules = { name: [{ required: true, trigger: 'blur' }] }
 let currentServer: DatabaseServer | null = null
 
 const openCreateInstance = (server: DatabaseServer) => {
   currentServer = server
-  Object.assign(instForm, { name: '', charset: 'utf8mb4', password: '', owner: '' })
+  Object.assign(instForm, { name: '', charset: 'utf8mb4', password: '', owner: '', username: '', permission: '%', superUser: false })
   instanceCreateDialog.value = true
 }
 
 const submitInstance = async () => {
   if (!instFormRef.value || !currentServer) return
   await instFormRef.value.validate()
+  if (props.dbType === 'postgresql' && !instForm.password) {
+    ElMessage.warning(t('database.pgPasswordRequired'))
+    return
+  }
+  if (props.dbType === 'mysql' && !instForm.password) {
+    ElMessage.warning(t('database.mysqlPasswordRequired'))
+    return
+  }
   submitting.value = true
   try {
     await createDatabaseInstance({ serverID: currentServer.id, ...instForm })
@@ -453,6 +494,16 @@ const submitInstance = async () => {
 const handleDeleteInstance = async (server: DatabaseServer, inst: DatabaseInstance) => {
   await ElMessageBox.confirm(t('database.deleteDBConfirm'), t('commons.tip'), { type: 'warning' })
   await deleteDatabaseInstance({ id: inst.id })
+  ElMessage.success(t('commons.success'))
+  await loadInstancesForServer(server)
+}
+
+const handleChangePrivileges = async (server: DatabaseServer, inst: DatabaseInstance) => {
+  const nextSuperUser = !inst.superUser
+  const role = nextSuperUser ? t('database.superUser') : t('database.normalUser')
+  const username = inst.username || inst.owner || inst.name
+  await ElMessageBox.confirm(t('database.privilegesConfirm', { name: username, role }), t('commons.tip'), { type: 'warning' })
+  await changeInstancePrivileges({ id: inst.id, superUser: nextSuperUser })
   ElMessage.success(t('commons.success'))
   await loadInstancesForServer(server)
 }

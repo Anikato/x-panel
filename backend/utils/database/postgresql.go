@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"unicode/utf8"
 
 	_ "github.com/lib/pq"
 )
@@ -37,12 +38,40 @@ func (c *PostgresClient) CreateDatabase(name, owner string) error {
 	if owner == "" {
 		owner = c.Username
 	}
-	_, err := c.db.Exec(fmt.Sprintf("CREATE DATABASE \"%s\" OWNER \"%s\"", name, owner))
+	_, err := c.db.Exec(fmt.Sprintf("CREATE DATABASE %s OWNER %s", quotePostgresIdentifier(name), quotePostgresIdentifier(owner)))
 	return err
 }
 
+func (c *PostgresClient) CreateDatabaseWithUser(name, username, password string, superUser bool) error {
+	if username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+	if err := c.CreateUser(username, password); err != nil {
+		return err
+	}
+	if superUser {
+		if err := c.ChangePrivileges(username, true); err != nil {
+			_ = c.DeleteUser(username)
+			return err
+		}
+	}
+	if err := c.CreateDatabase(name, username); err != nil {
+		_ = c.DeleteUser(username)
+		return err
+	}
+	if err := c.GrantAllPrivileges(name, username); err != nil {
+		_ = c.DeleteDatabase(name)
+		_ = c.DeleteUser(username)
+		return err
+	}
+	return nil
+}
+
 func (c *PostgresClient) DeleteDatabase(name string) error {
-	_, err := c.db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\"", name))
+	_, err := c.db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", quotePostgresIdentifier(name)))
 	return err
 }
 
@@ -77,17 +106,31 @@ func (c *PostgresClient) ListDatabasesWithInfo() ([]DBInfo, error) {
 }
 
 func (c *PostgresClient) CreateUser(username, password string) error {
-	_, err := c.db.Exec(fmt.Sprintf("CREATE ROLE \"%s\" WITH LOGIN PASSWORD '%s'", username, password))
+	_, err := c.db.Exec(fmt.Sprintf("CREATE ROLE %s WITH LOGIN PASSWORD %s", quotePostgresIdentifier(username), quotePostgresLiteral(password)))
 	return err
 }
 
 func (c *PostgresClient) ChangePassword(username, password string) error {
-	_, err := c.db.Exec(fmt.Sprintf("ALTER ROLE \"%s\" WITH PASSWORD '%s'", username, password))
+	_, err := c.db.Exec(fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", quotePostgresIdentifier(username), quotePostgresLiteral(password)))
+	return err
+}
+
+func (c *PostgresClient) ChangePrivileges(username string, superUser bool) error {
+	privilege := "NOSUPERUSER"
+	if superUser {
+		privilege = "SUPERUSER"
+	}
+	_, err := c.db.Exec(fmt.Sprintf("ALTER ROLE %s WITH %s", quotePostgresIdentifier(username), privilege))
+	return err
+}
+
+func (c *PostgresClient) GrantAllPrivileges(database, username string) error {
+	_, err := c.db.Exec(fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO %s", quotePostgresIdentifier(database), quotePostgresIdentifier(username)))
 	return err
 }
 
 func (c *PostgresClient) DeleteUser(username string) error {
-	_, err := c.db.Exec(fmt.Sprintf("DROP ROLE IF EXISTS \"%s\"", username))
+	_, err := c.db.Exec(fmt.Sprintf("DROP ROLE IF EXISTS %s", quotePostgresIdentifier(username)))
 	return err
 }
 
@@ -97,6 +140,7 @@ func (c *PostgresClient) Backup(database, outFile string) error {
 		"-p", fmt.Sprintf("%d", c.Port),
 		"-U", c.Username,
 		"-Fc",
+		"--no-owner",
 		"-f", outFile,
 		database,
 	)
@@ -117,6 +161,8 @@ func (c *PostgresClient) Restore(database, inFile string) error {
 		"-h", c.Address,
 		"-p", fmt.Sprintf("%d", c.Port),
 		"-U", c.Username,
+		"--no-owner",
+		"--no-privileges",
 		"-d", database,
 		inFile,
 	)
@@ -148,4 +194,15 @@ func (c *PostgresClient) restoreSQL(database, inFile string) error {
 		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func quotePostgresIdentifier(value string) string {
+	if value == "" || !utf8.ValidString(value) {
+		return `""`
+	}
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func quotePostgresLiteral(value string) string {
+	return `'` + strings.ReplaceAll(value, `'`, `''`) + `'`
 }
