@@ -12,20 +12,29 @@ import (
 )
 
 type SFTPClient struct {
-	address  string
-	username string
-	password string
-	basePath string
+	address    string
+	username   string
+	secret     string
+	basePath   string
+	authMode   string
+	passPhrase string
 }
 
-func NewSFTPClient(address, username, password, basePath string) (*SFTPClient, error) {
-	return &SFTPClient{address: address, username: username, password: password, basePath: basePath}, nil
+func NewSFTPClient(address, username, secret, basePath, authMode, passPhrase string) (*SFTPClient, error) {
+	if authMode == "" {
+		authMode = "password"
+	}
+	return &SFTPClient{address: address, username: username, secret: secret, basePath: basePath, authMode: authMode, passPhrase: passPhrase}, nil
 }
 
 func (c *SFTPClient) connect() (*sftp.Client, *ssh.Client, error) {
+	auth, err := c.authMethods()
+	if err != nil {
+		return nil, nil, err
+	}
 	config := &ssh.ClientConfig{
 		User:            c.username,
-		Auth:            []ssh.AuthMethod{ssh.Password(c.password)},
+		Auth:            auth,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 	host := c.address
@@ -42,6 +51,23 @@ func (c *SFTPClient) connect() (*sftp.Client, *ssh.Client, error) {
 		return nil, nil, fmt.Errorf("sftp new client failed: %w", err)
 	}
 	return client, conn, nil
+}
+
+func (c *SFTPClient) authMethods() ([]ssh.AuthMethod, error) {
+	if c.authMode == "key" {
+		var signer ssh.Signer
+		var err error
+		if c.passPhrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(c.secret), []byte(c.passPhrase))
+		} else {
+			signer, err = ssh.ParsePrivateKey([]byte(c.secret))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse private key failed: %w", err)
+		}
+		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
+	}
+	return []ssh.AuthMethod{ssh.Password(c.secret)}, nil
 }
 
 func (c *SFTPClient) Upload(src, target string) error {

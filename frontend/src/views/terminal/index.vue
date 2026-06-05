@@ -244,7 +244,6 @@ import { Search, Minus } from '@element-plus/icons-vue'
 import HostManage from './host/index.vue'
 import CommandManage from './command/index.vue'
 import { getToken } from '@/utils/auth'
-import { createTerminalHistoryController, type TerminalHistoryController } from '@/utils/terminal-history'
 
 interface TermTab {
   id: string
@@ -253,7 +252,6 @@ interface TermTab {
   terminal?: Terminal
   fitAddon?: FitAddon
   ws?: WebSocket
-  history?: TerminalHistoryController
   _resizeObserver?: ResizeObserver
 }
 
@@ -462,8 +460,6 @@ const createTerminal = async (tab: TermTab) => {
   const ws = new WebSocket(getWsUrl(tab.hostId))
   ws.binaryType = 'arraybuffer'
   tab.ws = ws
-  const history = createTerminalHistoryController()
-  tab.history = history
 
   ws.onopen = () => {
     sendResize(ws, terminal.rows, terminal.cols)
@@ -488,10 +484,7 @@ const createTerminal = async (tab: TermTab) => {
 
   terminal.onData((data: string) => {
     if (ws.readyState !== WebSocket.OPEN) return
-    const inAlternateBuffer = terminal.buffer.active.type === 'alternate'
-    if (!history.handleData(data, (payload) => ws.send(payload), { inAlternateBuffer })) {
-      ws.send(data)
-    }
+    ws.send(data)
   })
 
   terminal.onResize(({ rows, cols }) => {

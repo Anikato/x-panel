@@ -153,8 +153,20 @@
             <el-form-item :label="t('backup.sftpUser')" required>
               <el-input v-model="accountForm.accessKey" placeholder="root" />
             </el-form-item>
-            <el-form-item :label="t('backup.sftpPassword')" required>
+            <el-form-item :label="t('backup.sftpAuthMode')" required>
+              <el-radio-group v-model="sftpAuthMode">
+                <el-radio-button value="password">{{ t('backup.sftpAuthPassword') }}</el-radio-button>
+                <el-radio-button value="key">{{ t('backup.sftpAuthKey') }}</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="sftpAuthMode === 'password'" :label="t('backup.sftpPassword')" required>
               <el-input v-model="accountForm.credential" type="password" show-password />
+            </el-form-item>
+            <el-form-item v-else :label="t('backup.sftpPrivateKey')" required>
+              <el-input v-model="accountForm.credential" type="textarea" :rows="8" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
+            </el-form-item>
+            <el-form-item v-if="sftpAuthMode === 'key'" :label="t('backup.sftpPassPhrase')">
+              <el-input v-model="sftpPassPhrase" type="password" show-password />
             </el-form-item>
             <el-form-item :label="t('backup.path')">
               <el-input v-model="accountForm.backupPath" placeholder="/data/backup" />
@@ -181,6 +193,7 @@
       </el-form>
       <template #footer>
         <el-button @click="accountDrawer = false">{{ t('commons.cancel') }}</el-button>
+        <el-button :loading="testing" @click="testAccount">{{ t('backup.testConn') }}</el-button>
         <el-button type="primary" :loading="submitting" @click="submitAccount">{{ t('commons.confirm') }}</el-button>
       </template>
     </el-drawer>
@@ -236,7 +249,7 @@ import { useI18n } from 'vue-i18n'
 import type { BackupAccount, BackupRecord } from '@/api/interface'
 import {
   listBackupAccounts, createBackupAccount, updateBackupAccount, deleteBackupAccount,
-  createBackup, searchBackupRecords, deleteBackupRecord,
+  testBackupAccount, createBackup, searchBackupRecords, deleteBackupRecord,
 } from '@/api/modules/backup'
 import { listRemoteMounts } from '@/api/modules/disk'
 
@@ -273,12 +286,15 @@ const accounts = ref<BackupAccount[]>([])
 const accountDrawer = ref(false)
 const editAccountMode = ref(false)
 const submitting = ref(false)
+const testing = ref(false)
 const accountFormRef = ref<FormInstance>()
 const defaultAccountForm = () => ({ id: 0, name: '', type: 'local', bucket: '', accessKey: '', credential: '', backupPath: '/opt/xpanel/backup', vars: '' })
 const accountForm = reactive(defaultAccountForm())
 const accountRules: FormRules = { name: [{ required: true, trigger: 'blur' }], type: [{ required: true }] }
 const endpointField = ref('')
 const regionField = ref('')
+const sftpAuthMode = ref<'password' | 'key'>('password')
+const sftpPassPhrase = ref('')
 
 const remoteMounts = ref<any[]>([])
 const selectedMount = ref('')
@@ -302,6 +318,8 @@ const onTypeChange = (type: string) => {
   accountForm.bucket = ''
   endpointField.value = ''
   regionField.value = ''
+  sftpAuthMode.value = 'password'
+  sftpPassPhrase.value = ''
   selectedMount.value = ''
   switch (type) {
     case 'local': accountForm.backupPath = '/opt/xpanel/backup'; break
@@ -333,6 +351,8 @@ const openCreateAccount = () => {
   Object.assign(accountForm, defaultAccountForm())
   endpointField.value = ''
   regionField.value = ''
+  sftpAuthMode.value = 'password'
+  sftpPassPhrase.value = ''
   selectedMount.value = ''
   editAccountMode.value = false
   accountDrawer.value = true
@@ -345,11 +365,40 @@ const openEditAccount = (row: BackupAccount) => {
     const v = JSON.parse(row.vars || '{}')
     endpointField.value = v.endpoint || ''
     regionField.value = v.region || ''
-  } catch { endpointField.value = ''; regionField.value = '' }
+    sftpAuthMode.value = v.authMode || 'password'
+    sftpPassPhrase.value = v.passPhrase || ''
+  } catch {
+    endpointField.value = ''
+    regionField.value = ''
+    sftpAuthMode.value = 'password'
+    sftpPassPhrase.value = ''
+  }
   selectedMount.value = ''
   editAccountMode.value = true
   accountDrawer.value = true
   if (row.type === 'local') loadRemoteMounts()
+}
+
+const buildAccountVars = () => {
+  const vars: Record<string, string> = { endpoint: endpointField.value, region: regionField.value }
+  if (accountForm.type === 'sftp') {
+    vars.authMode = sftpAuthMode.value
+    vars.passPhrase = sftpPassPhrase.value
+  }
+  return JSON.stringify(vars)
+}
+
+const testAccount = async () => {
+  if (!accountFormRef.value) return
+  await accountFormRef.value.validate()
+  testing.value = true
+  try {
+    accountForm.vars = buildAccountVars()
+    await testBackupAccount(accountForm)
+    ElMessage.success(t('backup.testSuccess'))
+  } catch (err: any) {
+    ElMessage.error(err?.message || t('backup.testFail'))
+  } finally { testing.value = false }
 }
 
 const submitAccount = async () => {
@@ -357,7 +406,7 @@ const submitAccount = async () => {
   await accountFormRef.value.validate()
   submitting.value = true
   try {
-    accountForm.vars = JSON.stringify({ endpoint: endpointField.value, region: regionField.value })
+    accountForm.vars = buildAccountVars()
     if (editAccountMode.value) await updateBackupAccount(accountForm)
     else await createBackupAccount(accountForm)
     ElMessage.success(t('commons.success'))

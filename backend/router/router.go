@@ -288,6 +288,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/backup/accounts", api.ListBackupAccounts)
 		privateGroup.POST("/backup/accounts", api.CreateBackupAccount)
 		privateGroup.POST("/backup/accounts/update", api.UpdateBackupAccount)
+		privateGroup.POST("/backup/accounts/test", api.TestBackupAccount)
 		privateGroup.POST("/backup/accounts/del", api.DeleteBackupAccount)
 		privateGroup.POST("/backup", api.CreateBackup)
 		privateGroup.POST("/backup/records/search", api.SearchBackupRecords)

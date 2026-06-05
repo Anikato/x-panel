@@ -22,6 +22,16 @@ type BackupAccountUpdate struct {
 	Vars       string `json:"vars"`
 }
 
+type BackupAccountTest struct {
+	ID         uint   `json:"id"`
+	Type       string `json:"type" binding:"required"`
+	Bucket     string `json:"bucket"`
+	AccessKey  string `json:"accessKey"`
+	Credential string `json:"credential"`
+	BackupPath string `json:"backupPath"`
+	Vars       string `json:"vars"`
+}
+
 type BackupAccountInfo struct {
 	ID         uint      `json:"id"`
 	CreatedAt  time.Time `json:"createdAt"`

@@ -13,8 +13,10 @@ type CloudStorageClient interface {
 }
 
 type Vars struct {
-	Region   string `json:"region"`
-	Endpoint string `json:"endpoint"`
+	Region     string `json:"region"`
+	Endpoint   string `json:"endpoint"`
+	AuthMode   string `json:"authMode"`
+	PassPhrase string `json:"passPhrase"`
 }
 
 func NewClient(accountType, bucket, accessKey, credential, backupPath, varsJSON string) (CloudStorageClient, error) {
@@ -29,7 +31,7 @@ func NewClient(accountType, bucket, accessKey, credential, backupPath, varsJSON 
 	case "s3":
 		return NewS3Client(vars.Region, vars.Endpoint, bucket, accessKey, credential, backupPath)
 	case "sftp":
-		return NewSFTPClient(vars.Endpoint, accessKey, credential, backupPath)
+		return NewSFTPClient(vars.Endpoint, accessKey, credential, backupPath, vars.AuthMode, vars.PassPhrase)
 	case "webdav":
 		return NewWebDAVClient(vars.Endpoint, accessKey, credential, backupPath)
 	default:

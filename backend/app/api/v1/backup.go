@@ -40,6 +40,19 @@ func (a *BackupAPI) UpdateBackupAccount(c *gin.Context) {
 	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
 }
 
+func (a *BackupAPI) TestBackupAccount(c *gin.Context) {
+	var req dto.BackupAccountTest
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := backupService.TestAccount(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *BackupAPI) DeleteBackupAccount(c *gin.Context) {
 	var req dto.OperateByID
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -21,6 +23,7 @@ import (
 type IBackupService interface {
 	CreateAccount(req dto.BackupAccountCreate) error
 	UpdateAccount(req dto.BackupAccountUpdate) error
+	TestAccount(req dto.BackupAccountTest) error
 	DeleteAccount(id uint) error
 	ListAccounts() ([]dto.BackupAccountInfo, error)
 	GetAccount(id uint) (*model.BackupAccount, error)
@@ -71,6 +74,51 @@ func (s *BackupService) UpdateAccount(req dto.BackupAccountUpdate) error {
 		fields["credential"] = req.Credential
 	}
 	return s.repo.UpdateAccount(req.ID, fields)
+}
+
+func (s *BackupService) TestAccount(req dto.BackupAccountTest) error {
+	credential := req.Credential
+	if credential == "" && req.ID != 0 {
+		account, err := s.repo.GetAccount(req.ID)
+		if err != nil {
+			return buserr.New(constant.ErrRecordNotFound)
+		}
+		credential = account.Credential
+	}
+	client, err := cs.NewClient(req.Type, req.Bucket, req.AccessKey, credential, req.BackupPath, req.Vars)
+	if err != nil {
+		return fmt.Errorf("create storage client failed: %v", err)
+	}
+
+	tmpDir := filepath.Join(os.TempDir(), "xpanel-backup-test")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return err
+	}
+	filePath := filepath.Join(tmpDir, "xpanel")
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	writer := bufio.NewWriter(file)
+	_, _ = writer.WriteString("XPanel backup account test file.\n")
+	_, _ = writer.WriteString("XPanel 备份账户测试文件。\n")
+	if err := writer.Flush(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	defer os.Remove(filePath)
+
+	target := path.Join("test", fmt.Sprintf("xpanel-%d", time.Now().UnixNano()))
+	if err := client.Upload(filePath, target); err != nil {
+		return fmt.Errorf("upload test file failed: %v", err)
+	}
+	if err := client.Delete(target); err != nil {
+		global.LOG.Warnf("delete backup test file failed: %v", err)
+	}
+	return nil
 }
 
 func (s *BackupService) DeleteAccount(id uint) error {
