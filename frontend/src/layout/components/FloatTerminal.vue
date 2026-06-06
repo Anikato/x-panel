@@ -92,7 +92,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useGlobalStore } from '@/store/modules/global'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
-import { buildInitialCwdCommand, normalizeTerminalCwd } from '@/utils/terminal-cwd'
+import { normalizeTerminalCwd } from '@/utils/terminal-cwd'
+import { buildTerminalWsUrl } from '@/utils/terminal-ws'
 import { getToken } from '@/utils/auth'
 import { useI18n } from 'vue-i18n'
 
@@ -163,7 +164,7 @@ interface TermTab {
   reconnectTimer?: ReturnType<typeof setTimeout>
   reconnectDelay?: number
   closing?: boolean
-  initialCwd?: string
+  cwd?: string
 }
 
 const tabs = ref<TermTab[]>([])
@@ -190,12 +191,14 @@ const fitActive = () => {
   })
 }
 
-const getWsUrl = (hostId?: number) => {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = getToken()
-  let url = `${proto}//${location.host}/api/v1/terminal?token=${token}`
-  if (hostId) url += `&id=${hostId}`
-  return url
+const getWsUrl = (hostId?: number, cwd?: string | null) => {
+  return buildTerminalWsUrl({
+    protocol: location.protocol,
+    host: location.host,
+    token: getToken(),
+    hostId,
+    cwd,
+  })
 }
 
 const sendResize = (ws: WebSocket, rows: number, cols: number) => {
@@ -241,7 +244,7 @@ const connectWebSocket = (tab: TermTab) => {
   }
 
   const term = tab.terminal
-  const ws = new WebSocket(getWsUrl(tab.hostId))
+  const ws = new WebSocket(getWsUrl(tab.hostId, tab.cwd))
   ws.binaryType = 'arraybuffer'
   tab.ws = ws
 
@@ -251,14 +254,6 @@ const connectWebSocket = (tab: TermTab) => {
     tab.reconnectDelay = undefined
     sendResize(ws, term.rows, term.cols)
     term.focus()
-    if (tab.initialCwd) {
-      setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(buildInitialCwdCommand(tab.initialCwd))
-        }
-      }, 300)
-      tab.initialCwd = undefined
-    }
   }
   ws.onmessage = (e) => {
     if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
@@ -397,7 +392,7 @@ watch(() => globalStore.terminalTrigger, async (trigger) => {
       title: cwd.split('/').pop() || cwd || '终端',
       status: 'connecting',
       reconnectAttempts: 0,
-      initialCwd: cwd,
+      cwd,
     }
     tabs.value.push(tab)
     activeTab.value = tab.id

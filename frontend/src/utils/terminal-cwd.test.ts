@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildInitialCwdCommand, normalizeTerminalCwd } from './terminal-cwd'
+import { buildInitialCwdCommand, normalizeTerminalCwd } from './terminal-cwd.ts'
 
 test('normalizes invalid terminal cwd values to root', () => {
   assert.equal(normalizeTerminalCwd(undefined), '/')

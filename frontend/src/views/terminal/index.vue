@@ -254,6 +254,7 @@ import { Search, Minus, RefreshRight } from '@element-plus/icons-vue'
 import HostManage from './host/index.vue'
 import CommandManage from './command/index.vue'
 import { getToken } from '@/utils/auth'
+import { buildTerminalWsUrl } from '@/utils/terminal-ws'
 
 interface TermTab {
   id: string
@@ -399,11 +400,12 @@ const focusActiveTerminal = () => {
 }
 
 const getWsUrl = (hostId?: number) => {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = getToken()
-  let url = `${proto}//${location.host}/api/v1/terminal?token=${token}`
-  if (hostId) url += `&id=${hostId}`
-  return url
+  return buildTerminalWsUrl({
+    protocol: location.protocol,
+    host: location.host,
+    token: getToken(),
+    hostId,
+  })
 }
 
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'

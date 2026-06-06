@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,18 +51,19 @@ func (a *TerminalAPI) WsTerminal(c *gin.Context) {
 	hostIDStr := c.Query("id")
 	hostID, _ := strconv.ParseUint(hostIDStr, 10, 64)
 	containerID := c.Query("containerID")
+	cwd := c.Query("cwd")
 
 	if containerID != "" {
 		a.handleContainerTerminal(conn, containerID, c.Query("command"), c.Query("user"))
 	} else if hostID > 0 {
 		a.handleSSHTerminal(conn, uint(hostID))
 	} else {
-		a.handleLocalTerminal(conn)
+		a.handleLocalTerminal(conn, cwd)
 	}
 }
 
 // handleLocalTerminal 本地 PTY 终端
-func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
+func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn, cwd string) {
 	sc := &safeConn{conn: conn}
 
 	// 检查 PTY 设备是否可用
@@ -77,11 +80,7 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 
 	shell := getShell()
 	cmd := exec.Command(shell, "-l")
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = "/root"
-	}
-	cmd.Dir = home
+	cmd.Dir = resolveLocalTerminalDir(cwd)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LANG=en_US.UTF-8")
 
 	ptmx, err := pty.Start(cmd)
@@ -153,6 +152,33 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn) {
 	go wsHeartbeat(sc, done, &once)
 	<-done
 	global.LOG.Info("Local terminal session closed")
+}
+
+func resolveLocalTerminalDir(cwd string) string {
+	fallback := localTerminalHomeDir()
+	requested := strings.TrimSpace(cwd)
+	if requested == "" {
+		return fallback
+	}
+
+	cleaned := filepath.Clean(requested)
+	if !filepath.IsAbs(cleaned) {
+		return fallback
+	}
+
+	info, err := os.Stat(cleaned)
+	if err != nil || !info.IsDir() {
+		return fallback
+	}
+	return cleaned
+}
+
+func localTerminalHomeDir() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return "/root"
+	}
+	return home
 }
 
 // handleSSHTerminal 远程 SSH 终端
