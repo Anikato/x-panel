@@ -293,6 +293,12 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/backup", api.CreateBackup)
 		privateGroup.POST("/backup/records/search", api.SearchBackupRecords)
 		privateGroup.POST("/backup/records/del", api.DeleteBackupRecord)
+		privateGroup.POST("/backup/storage/list", api.ListStorageObjects)
+		privateGroup.POST("/backup/storage/read", api.ReadStorageObject)
+		privateGroup.POST("/backup/storage/save", api.SaveStorageObject)
+		privateGroup.POST("/backup/storage/delete", api.DeleteStorageObject)
+		privateGroup.POST("/backup/storage/upload", api.UploadStorageObject)
+		privateGroup.POST("/backup/storage/download", api.DownloadStorageObject)
 
 		// 容器管理
 		privateGroup.GET("/containers/docker/status", api.DockerStatus)

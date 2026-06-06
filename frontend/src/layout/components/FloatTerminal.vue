@@ -24,12 +24,24 @@
           <el-icon :size="13"><Monitor /></el-icon>
           <span>{{ t('terminal.title') }}</span>
           <span v-if="tabs.length > 1" class="tab-count">{{ t('terminal.tabCount', { count: tabs.length }) }}</span>
+          <span v-if="activeTabInfo" class="conn-state" :class="activeTabInfo.status">
+            <span class="conn-dot" />
+            {{ connectionText(activeTabInfo) }}
+          </span>
         </div>
         <div class="float-term-actions" @mousedown.stop>
           <!-- 字体大小 -->
           <el-icon :size="11" class="action-btn" @click="changeFontSize(-1)"><Minus /></el-icon>
           <span class="fs-label">{{ globalStore.termFontSize }}</span>
           <el-icon :size="11" class="action-btn" @click="changeFontSize(1)"><Plus /></el-icon>
+          <!-- 重连 -->
+          <el-icon
+            v-if="activeTabInfo && activeTabInfo.status !== 'connected' && activeTabInfo.status !== 'connecting'"
+            :size="13"
+            class="action-btn"
+            :title="t('terminal.reconnect')"
+            @click="reconnectTab(activeTabInfo, true)"
+          ><RefreshRight /></el-icon>
           <!-- 新建标签 -->
           <el-icon :size="13" class="action-btn" :title="t('terminal.newTerminal')" @click="addLocalTab"><Plus /></el-icon>
           <!-- 最小化 -->
@@ -45,9 +57,10 @@
           v-for="(tab, idx) in tabs"
           :key="tab.id"
           class="ft-tab"
-          :class="{ active: activeTab === tab.id }"
+          :class="{ active: activeTab === tab.id, disconnected: tab.status === 'disconnected', reconnecting: tab.status === 'reconnecting' }"
           @click="switchTab(tab.id)"
         >
+          <span class="ft-tab-dot" />
           <span>{{ tab.title }}</span>
           <el-icon :size="10" class="ft-tab-close" @click.stop="closeTab(idx)"><Close /></el-icon>
         </div>
@@ -73,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -138,18 +151,36 @@ const startResize = (e: MouseEvent, dir: string) => {
 }
 
 // ==================== 终端 Tab ====================
+type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
+
 interface TermTab {
   id: string; title: string; hostId?: number
   terminal?: Terminal; fitAddon?: FitAddon; ws?: WebSocket
   _observer?: ResizeObserver
+  status: ConnectionStatus
+  reconnectAttempts: number
+  reconnectTimer?: ReturnType<typeof setTimeout>
+  reconnectDelay?: number
+  closing?: boolean
+  initialCwd?: string
 }
 
 const tabs = ref<TermTab[]>([])
 const activeTab = ref('')
 const termRefs: Record<string, HTMLElement | null> = {}
 let tabCounter = 0
+const reconnectDelays = [1000, 2000, 5000, 10000]
 
 const setTermRef = (id: string, el: HTMLElement | null) => { if (el) termRefs[id] = el }
+
+const activeTabInfo = computed(() => tabs.value.find(t => t.id === activeTab.value))
+
+const connectionText = (tab: TermTab) => {
+  if (tab.status === 'connected') return t('terminal.connected')
+  if (tab.status === 'connecting') return t('terminal.connecting')
+  if (tab.status === 'reconnecting') return t('terminal.reconnecting', { seconds: Math.ceil((tab.reconnectDelay || 0) / 1000) })
+  return t('terminal.disconnected')
+}
 
 const fitActive = () => {
   nextTick(() => {
@@ -172,6 +203,83 @@ const sendResize = (ws: WebSocket, rows: number, cols: number) => {
   msg[0] = 1
   for (let i = 0; i < data.length; i++) msg[i + 1] = data.charCodeAt(i)
   ws.send(msg)
+}
+
+const clearReconnectTimer = (tab: TermTab) => {
+  if (tab.reconnectTimer) {
+    clearTimeout(tab.reconnectTimer)
+    tab.reconnectTimer = undefined
+  }
+}
+
+const scheduleReconnect = (tab: TermTab) => {
+  if (tab.closing || !tabs.value.includes(tab)) return
+  clearReconnectTimer(tab)
+  const delay = reconnectDelays[Math.min(tab.reconnectAttempts, reconnectDelays.length - 1)]
+  tab.reconnectDelay = delay
+  tab.status = 'reconnecting'
+  tab.terminal?.write(`\r\n\x1b[33m${t('terminal.reconnecting', { seconds: Math.ceil(delay / 1000) })}\x1b[0m\r\n`)
+  tab.reconnectTimer = setTimeout(() => {
+    tab.reconnectAttempts++
+    connectWebSocket(tab)
+  }, delay)
+}
+
+const connectWebSocket = (tab: TermTab) => {
+  if (!tab.terminal) return
+  clearReconnectTimer(tab)
+  tab.closing = false
+  tab.status = tab.reconnectAttempts > 0 ? 'reconnecting' : 'connecting'
+
+  if (tab.ws && tab.ws.readyState !== WebSocket.CLOSED) {
+    tab.ws.onclose = null
+    tab.ws.onerror = null
+    tab.ws.onmessage = null
+    tab.ws.onopen = null
+    tab.ws.close()
+  }
+
+  const term = tab.terminal
+  const ws = new WebSocket(getWsUrl(tab.hostId))
+  ws.binaryType = 'arraybuffer'
+  tab.ws = ws
+
+  ws.onopen = () => {
+    tab.status = 'connected'
+    tab.reconnectAttempts = 0
+    tab.reconnectDelay = undefined
+    sendResize(ws, term.rows, term.cols)
+    term.focus()
+    if (tab.initialCwd) {
+      setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(`cd ${JSON.stringify(tab.initialCwd)} && clear\n`)
+        }
+      }, 300)
+      tab.initialCwd = undefined
+    }
+  }
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
+    else term.write(e.data)
+  }
+  ws.onclose = () => {
+    if (tab.closing || !tabs.value.includes(tab)) return
+    tab.status = 'disconnected'
+    term.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
+    scheduleReconnect(tab)
+  }
+  ws.onerror = () => {
+    if (!tab.closing) term.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
+  }
+}
+
+const reconnectTab = (tab: TermTab, manual = false) => {
+  if (!tab.terminal) return
+  clearReconnectTimer(tab)
+  tab.reconnectAttempts = 0
+  if (manual) tab.terminal.write(`\r\n\x1b[33m${t('terminal.reconnect')}...\x1b[0m\r\n`)
+  connectWebSocket(tab)
 }
 
 const createTerminal = async (tab: TermTab) => {
@@ -202,26 +310,24 @@ const createTerminal = async (tab: TermTab) => {
 
   setTimeout(() => { try { fit.fit() } catch { /* */ }; term.focus() }, 100)
 
-  const ws = new WebSocket(getWsUrl(tab.hostId))
-  ws.binaryType = 'arraybuffer'; tab.ws = ws
-
-  ws.onopen  = () => { sendResize(ws, term.rows, term.cols); term.focus() }
-  ws.onmessage = (e) => {
-    if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
-    else term.write(e.data)
-  }
-  ws.onclose = () => term.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
-  ws.onerror = () => term.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
   term.onData((d: string) => {
-    if (ws.readyState !== WebSocket.OPEN) return
-    ws.send(d)
+    if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) return
+    tab.ws.send(d)
   })
-  term.onResize(({ rows, cols }) => { if (ws.readyState === WebSocket.OPEN) sendResize(ws, rows, cols) })
+  term.onResize(({ rows, cols }) => {
+    if (tab.ws?.readyState === WebSocket.OPEN) sendResize(tab.ws, rows, cols)
+  })
+  connectWebSocket(tab)
 }
 
 const addLocalTab = async () => {
   tabCounter++
-  const tab: TermTab = { id: `ft-${tabCounter}`, title: `终端 ${tabCounter}` }
+  const tab: TermTab = {
+    id: `ft-${tabCounter}`,
+    title: `终端 ${tabCounter}`,
+    status: 'connecting',
+    reconnectAttempts: 0,
+  }
   tabs.value.push(tab)
   activeTab.value = tab.id
   await createTerminal(tab)
@@ -238,6 +344,8 @@ const switchTab = (id: string) => {
 
 const closeTab = (idx: number) => {
   const tab = tabs.value[idx]
+  tab.closing = true
+  clearReconnectTimer(tab)
   tab.ws?.close(); tab.terminal?.dispose(); tab._observer?.disconnect()
   tabs.value.splice(idx, 1)
   if (activeTab.value === tab.id && tabs.value.length > 0) {
@@ -278,6 +386,24 @@ watch(() => globalStore.floatTermMinimized, (min) => {
   if (!min) setTimeout(fitActive, 150)
 })
 
+watch(() => globalStore.terminalTrigger, async (trigger) => {
+  if (trigger && trigger.cwd) {
+    const cwd = trigger.cwd
+    globalStore.terminalTrigger = null // reset trigger
+    tabCounter++
+    const tab: TermTab = {
+      id: `ft-${tabCounter}`,
+      title: cwd.split('/').pop() || cwd || '终端',
+      status: 'connecting',
+      reconnectAttempts: 0,
+      initialCwd: cwd,
+    }
+    tabs.value.push(tab)
+    activeTab.value = tab.id
+    await createTerminal(tab)
+  }
+})
+
 onMounted(() => {
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
@@ -288,7 +414,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
   window.removeEventListener('resize', updateStyle)
-  tabs.value.forEach(t => { t.ws?.close(); t.terminal?.dispose(); t._observer?.disconnect() })
+  tabs.value.forEach(t => {
+    t.closing = true
+    clearReconnectTimer(t)
+    t.ws?.close(); t.terminal?.dispose(); t._observer?.disconnect()
+  })
 })
 </script>
 
@@ -330,6 +460,28 @@ onBeforeUnmount(() => {
     font-size: 10px;
     color: var(--xp-text-muted);
     font-weight: 400;
+  }
+
+  .conn-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    font-size: 10px;
+    color: var(--xp-text-muted);
+    font-weight: 400;
+
+    .conn-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #f59e0b;
+    }
+
+    &.connected .conn-dot { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.75); }
+    &.disconnected .conn-dot { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.65); }
+    &.reconnecting .conn-dot,
+    &.connecting .conn-dot { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.65); }
   }
 }
 
@@ -379,6 +531,17 @@ onBeforeUnmount(() => {
 
     &.active { color: var(--xp-accent); background: var(--xp-accent-muted); }
     &:hover:not(.active) { color: var(--xp-text-secondary); background: rgba(255,255,255,0.06); }
+
+    .ft-tab-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #22c55e;
+      flex-shrink: 0;
+    }
+
+    &.disconnected .ft-tab-dot { background: #ef4444; }
+    &.reconnecting .ft-tab-dot { background: #f59e0b; }
 
     .ft-tab-close {
       opacity: 0.5;

@@ -370,7 +370,6 @@
 
     <!-- 子组件 -->
     <CodeEditor ref="codeEditorRef" @saved="refreshFiles" />
-    <TerminalDialog ref="terminalRef" />
     <CompressDialog ref="compressRef" @done="onAsyncDone" />
     <PermissionDialog ref="permissionRef" @done="refreshFiles" />
     <ChownDialog ref="chownRef" @done="refreshFiles" />
@@ -398,15 +397,16 @@ import {
 } from '@element-plus/icons-vue'
 import FileIcon from '@/components/file-icons/FileIcon.vue'
 import CodeEditor from './code-editor.vue'
-import TerminalDialog from './terminal-dialog.vue'
 import CompressDialog from './compress-dialog.vue'
 import PermissionDialog from './permission-dialog.vue'
 import ChownDialog from './chown-dialog.vue'
 import DetailDrawer from './detail-drawer.vue'
 import FilePreview from './FilePreview.vue'
 import { useFileTaskStore } from '@/store/modules/fileTask'
+import { useGlobalStore } from '@/store/modules/global'
 
 const fileTaskStore = useFileTaskStore()
+const globalStore = useGlobalStore()
 const route = useRoute()
 
 const { t } = useI18n()
@@ -686,7 +686,6 @@ function getFileIconColor(row: FileInfo) {
 
 const tableRef = ref<any>()
 const codeEditorRef = ref<InstanceType<typeof CodeEditor>>()
-const terminalRef = ref<InstanceType<typeof TerminalDialog>>()
 const compressRef = ref<InstanceType<typeof CompressDialog>>()
 const permissionRef = ref<InstanceType<typeof PermissionDialog>>()
 const chownRef = ref<InstanceType<typeof ChownDialog>>()
@@ -721,7 +720,7 @@ const openEditor = (row: FileInfo | null) => {
 // ===================== 终端 =====================
 
 const openTerminal = () => {
-  terminalRef.value?.open(currentTab.value?.path || '/')
+  globalStore.openFloatTerminal(currentTab.value?.path || '/')
 }
 
 // ===================== 下载 =====================

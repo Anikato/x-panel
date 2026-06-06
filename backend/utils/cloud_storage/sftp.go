@@ -36,6 +36,7 @@ func (c *SFTPClient) connect() (*sftp.Client, *ssh.Client, error) {
 		User:            c.username,
 		Auth:            auth,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         metadataTimeout,
 	}
 	host := c.address
 	if _, _, err := net.SplitHostPort(host); err != nil {
@@ -71,82 +72,94 @@ func (c *SFTPClient) authMethods() ([]ssh.AuthMethod, error) {
 }
 
 func (c *SFTPClient) Upload(src, target string) error {
-	client, conn, err := c.connect()
-	if err != nil {
+	return retryStorageOp(func() error {
+		client, conn, err := c.connect()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		defer client.Close()
+
+		remotePath := filepath.Join(c.basePath, target)
+		if err := client.MkdirAll(filepath.Dir(remotePath)); err != nil {
+			return err
+		}
+
+		srcFile, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		dstFile, err := client.Create(remotePath)
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		_, err = io.Copy(dstFile, srcFile)
 		return err
-	}
-	defer conn.Close()
-	defer client.Close()
-
-	remotePath := filepath.Join(c.basePath, target)
-	client.MkdirAll(filepath.Dir(remotePath))
-
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	dstFile, err := client.Create(remotePath)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	return err
+	})
 }
 
 func (c *SFTPClient) Download(src, target string) error {
-	client, conn, err := c.connect()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	defer client.Close()
+	return retryStorageOp(func() error {
+		client, conn, err := c.connect()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		defer client.Close()
 
-	remotePath := filepath.Join(c.basePath, src)
-	srcFile, err := client.Open(remotePath)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
+		remotePath := filepath.Join(c.basePath, src)
+		srcFile, err := client.Open(remotePath)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
 
-	dstFile, err := os.Create(target)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
+		dstFile, err := os.Create(target)
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
 
-	_, err = io.Copy(dstFile, srcFile)
-	return err
+		_, err = io.Copy(dstFile, srcFile)
+		return err
+	})
 }
 
 func (c *SFTPClient) Delete(path string) error {
-	client, conn, err := c.connect()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	defer client.Close()
-	return client.Remove(filepath.Join(c.basePath, path))
+	return retryStorageOp(func() error {
+		client, conn, err := c.connect()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		defer client.Close()
+		return client.Remove(filepath.Join(c.basePath, path))
+	})
 }
 
 func (c *SFTPClient) ListObjects(prefix string) ([]string, error) {
-	client, conn, err := c.connect()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	defer client.Close()
+	var entries []os.FileInfo
+	err := retryStorageOp(func() error {
+		client, conn, err := c.connect()
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		defer client.Close()
 
-	entries, err := client.ReadDir(filepath.Join(c.basePath, prefix))
+		entries, err = client.ReadDir(filepath.Join(c.basePath, prefix))
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
 	var result []string
 	for _, e := range entries {
-		result = append(result, e.Name())
+		result = append(result, filepath.ToSlash(filepath.Join(prefix, e.Name())))
 	}
 	return result, nil
 }

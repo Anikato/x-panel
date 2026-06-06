@@ -1,12 +1,15 @@
 <template>
-  <div class="route-loading-bar" :class="{ active: routeLoading }" />
-  <router-view />
+  <el-config-provider :locale="zhCn">
+    <div class="route-loading-bar" :class="{ active: routeLoading }" />
+    <router-view />
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, watchEffect, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useGlobalStore } from '@/store/modules/global'
 import type { ThemeMode } from '@/store/modules/global'
 import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'

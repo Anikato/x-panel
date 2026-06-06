@@ -290,7 +290,7 @@ import {
 } from '@/api/modules/ssh-manage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import * as monaco from 'monaco-editor'
+import type * as Monaco from 'monaco-editor'
 import type { SSHInfo, SSHLogEntry, AuthorizedKey } from '@/api/interface'
 
 const { t } = useI18n()
@@ -521,7 +521,13 @@ const handleCopyText = (text: string) => {
 const sshdEditorRef = ref<HTMLElement>()
 const sshdLoading = ref(false)
 const sshdSaving = ref(false)
-let sshdEditor: monaco.editor.IStandaloneCodeEditor | null = null
+let sshdEditor: Monaco.editor.IStandaloneCodeEditor | null = null
+let monacoLoader: Promise<typeof Monaco> | null = null
+
+const loadMonaco = async () => {
+  if (!monacoLoader) monacoLoader = import('monaco-editor')
+  return monacoLoader
+}
 
 const loadSSHDConfig = async () => {
   sshdLoading.value = true
@@ -532,6 +538,7 @@ const loadSSHDConfig = async () => {
     if (sshdEditor) {
       sshdEditor.setValue(content)
     } else if (sshdEditorRef.value) {
+      const monaco = await loadMonaco()
       sshdEditor = monaco.editor.create(sshdEditorRef.value, {
         value: content,
         language: 'plaintext',

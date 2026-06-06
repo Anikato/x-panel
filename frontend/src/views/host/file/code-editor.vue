@@ -33,28 +33,12 @@
 
 <script setup lang="ts">
 import { ref, onBeforeUnmount, nextTick } from 'vue'
-import * as monaco from 'monaco-editor'
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+import type * as Monaco from 'monaco-editor'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFileContent, saveFileContent } from '@/api/modules/file'
 
 const { t } = useI18n()
-
-// Setup Monaco Environment
-self.MonacoEnvironment = {
-  getWorker(_: string, label: string) {
-    if (label === 'json') return new jsonWorker()
-    if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker()
-    if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker()
-    if (label === 'typescript' || label === 'javascript') return new tsWorker()
-    return new editorWorker()
-  },
-}
 
 const emit = defineEmits(['saved'])
 const visible = ref(false)
@@ -63,10 +47,36 @@ const filePath = ref('')
 const saving = ref(false)
 const originalContent = ref('')
 const editorContainer = ref<HTMLElement>()
-let editor: monaco.editor.IStandaloneCodeEditor | null = null
+let editor: Monaco.editor.IStandaloneCodeEditor | null = null
+let monacoLoader: Promise<typeof Monaco> | null = null
 
 const theme = ref('vs-dark')
 const language = ref('plaintext')
+
+const loadMonaco = async () => {
+  if (!monacoLoader) {
+    monacoLoader = Promise.all([
+      import('monaco-editor'),
+      import('monaco-editor/esm/vs/editor/editor.worker?worker'),
+      import('monaco-editor/esm/vs/language/json/json.worker?worker'),
+      import('monaco-editor/esm/vs/language/css/css.worker?worker'),
+      import('monaco-editor/esm/vs/language/html/html.worker?worker'),
+      import('monaco-editor/esm/vs/language/typescript/ts.worker?worker'),
+    ]).then(([monaco, editorWorker, jsonWorker, cssWorker, htmlWorker, tsWorker]) => {
+      self.MonacoEnvironment = {
+        getWorker(_: string, label: string) {
+          if (label === 'json') return new jsonWorker.default()
+          if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker.default()
+          if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker.default()
+          if (label === 'typescript' || label === 'javascript') return new tsWorker.default()
+          return new editorWorker.default()
+        },
+      }
+      return monaco
+    })
+  }
+  return monacoLoader
+}
 
 const languages = [
   { label: 'Plain Text', value: 'plaintext' },
@@ -141,19 +151,20 @@ const open = async (path: string) => {
     originalContent.value = res.data?.content || ''
     visible.value = true
     await nextTick()
-    setTimeout(initEditor, 100)
+    setTimeout(() => { void initEditor() }, 100)
   } catch {
     ElMessage.error('Failed to load file')
   }
 }
 
-function initEditor() {
+async function initEditor() {
   if (!editorContainer.value) return
   if (editor) {
     editor.dispose()
     editor = null
   }
 
+  const monaco = await loadMonaco()
   editor = monaco.editor.create(editorContainer.value, {
     value: originalContent.value,
     language: language.value,
@@ -177,16 +188,18 @@ function initEditor() {
   })
 }
 
-function updateLanguage(lang: string) {
+async function updateLanguage(lang: string) {
   if (editor) {
     const model = editor.getModel()
     if (model) {
+      const monaco = await loadMonaco()
       monaco.editor.setModelLanguage(model, lang)
     }
   }
 }
 
-function updateTheme(t: string) {
+async function updateTheme(t: string) {
+  const monaco = await loadMonaco()
   monaco.editor.setTheme(t)
 }
 

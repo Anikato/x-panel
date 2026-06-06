@@ -2,6 +2,7 @@ package cloud_storage
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -33,62 +34,72 @@ func NewS3Client(region, endpoint, bucket, accessKey, secretKey, basePath string
 }
 
 func (c *S3Client) Upload(src, target string) error {
-	file, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
 	key := c.basePath + "/" + target
-	_, err = c.client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(key),
-		Body:   file,
+	return retryStorageOp(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), transferTimeout)
+		defer cancel()
+		file, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = c.client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(c.bucket),
+			Key:    aws.String(key),
+			Body:   file,
+		})
+		return err
 	})
-	return err
 }
 
 func (c *S3Client) Download(src, target string) error {
 	key := c.basePath + "/" + src
-	resp, err := c.client.GetObject(context.Background(), &s3.GetObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(key),
+	return retryStorageOp(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), transferTimeout)
+		defer cancel()
+		resp, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(c.bucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		file, err := os.Create(target)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.CopyBuffer(file, resp.Body, make([]byte, 32*1024))
+		return err
 	})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	file, err := os.Create(target)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	buf := make([]byte, 32*1024)
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			file.Write(buf[:n])
-		}
-		if readErr != nil {
-			break
-		}
-	}
-	return nil
 }
 
 func (c *S3Client) Delete(path string) error {
 	key := c.basePath + "/" + path
-	_, err := c.client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
-		Bucket: aws.String(c.bucket),
-		Key:    aws.String(key),
+	return retryStorageOp(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), metadataTimeout)
+		defer cancel()
+		_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(c.bucket),
+			Key:    aws.String(key),
+		})
+		return err
 	})
-	return err
 }
 
 func (c *S3Client) ListObjects(prefix string) ([]string, error) {
 	key := c.basePath + "/" + prefix
-	resp, err := c.client.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{
-		Bucket: aws.String(c.bucket),
-		Prefix: aws.String(key),
+	var resp *s3.ListObjectsV2Output
+	err := retryStorageOp(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), metadataTimeout)
+		defer cancel()
+		var err error
+		resp, err = c.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket: aws.String(c.bucket),
+			Prefix: aws.String(key),
+		})
+		return err
 	})
 	if err != nil {
 		return nil, err

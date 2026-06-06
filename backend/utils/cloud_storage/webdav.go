@@ -15,6 +15,7 @@ type WebDAVClient struct {
 
 func NewWebDAVClient(endpoint, username, password, basePath string) (*WebDAVClient, error) {
 	client := gowebdav.NewClient(endpoint, username, password)
+	client.SetTimeout(transferTimeout)
 	if err := client.Connect(); err != nil {
 		return nil, err
 	}
@@ -23,45 +24,58 @@ func NewWebDAVClient(endpoint, username, password, basePath string) (*WebDAVClie
 
 func (c *WebDAVClient) Upload(src, target string) error {
 	remotePath := path.Join(c.basePath, target)
-	c.client.MkdirAll(path.Dir(remotePath), 0755)
-
-	file, err := os.Open(src)
-	if err != nil {
+	if err := c.client.MkdirAll(path.Dir(remotePath), 0755); err != nil {
 		return err
 	}
-	defer file.Close()
-	return c.client.WriteStream(remotePath, file, 0644)
+
+	return retryStorageOp(func() error {
+		file, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		return c.client.WriteStream(remotePath, file, 0644)
+	})
 }
 
 func (c *WebDAVClient) Download(src, target string) error {
 	remotePath := path.Join(c.basePath, src)
-	reader, err := c.client.ReadStream(remotePath)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
+	return retryStorageOp(func() error {
+		reader, err := c.client.ReadStream(remotePath)
+		if err != nil {
+			return err
+		}
+		defer reader.Close()
 
-	file, err := os.Create(target)
-	if err != nil {
+		file, err := os.Create(target)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.Copy(file, reader)
 		return err
-	}
-	defer file.Close()
-	_, err = io.Copy(file, reader)
-	return err
+	})
 }
 
 func (c *WebDAVClient) Delete(filePath string) error {
-	return c.client.Remove(path.Join(c.basePath, filePath))
+	return retryStorageOp(func() error {
+		return c.client.Remove(path.Join(c.basePath, filePath))
+	})
 }
 
 func (c *WebDAVClient) ListObjects(prefix string) ([]string, error) {
-	files, err := c.client.ReadDir(path.Join(c.basePath, prefix))
+	var files []os.FileInfo
+	err := retryStorageOp(func() error {
+		var err error
+		files, err = c.client.ReadDir(path.Join(c.basePath, prefix))
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
 	var result []string
 	for _, f := range files {
-		result = append(result, f.Name())
+		result = append(result, path.Join(prefix, f.Name()))
 	}
 	return result, nil
 }

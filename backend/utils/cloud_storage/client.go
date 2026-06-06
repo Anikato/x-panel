@@ -3,6 +3,12 @@ package cloud_storage
 import (
 	"encoding/json"
 	"fmt"
+	"time"
+)
+
+const (
+	metadataTimeout = 60 * time.Second
+	transferTimeout = 2 * time.Hour
 )
 
 type CloudStorageClient interface {
@@ -37,4 +43,19 @@ func NewClient(accountType, bucket, accessKey, credential, backupPath, varsJSON 
 	default:
 		return nil, fmt.Errorf("unsupported storage type: %s", accountType)
 	}
+}
+
+func retryStorageOp(fn func() error) error {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Second)
+		}
+		if err := fn(); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return lastErr
 }

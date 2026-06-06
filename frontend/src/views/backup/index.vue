@@ -68,6 +68,34 @@
           <el-pagination v-model:current-page="recordPager.page" v-model:page-size="recordPager.pageSize" :total="recordPager.total" layout="total, prev, pager, next" @current-change="loadRecords" />
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="对象文件" name="storage">
+        <div class="app-toolbar storage-toolbar">
+          <el-select v-model="storageAccountID" placeholder="选择备份账号" style="width: 220px" @change="loadStorageObjects">
+            <el-option v-for="a in accounts" :key="a.id" :label="a.name + ' (' + typeLabel(a.type) + ')'" :value="a.id" />
+          </el-select>
+          <el-input v-model="storagePrefix" placeholder="前缀，例如 zsxsemi/" clearable style="width: 280px" @keyup.enter="loadStorageObjects" />
+          <el-button :loading="storageLoading" @click="loadStorageObjects">{{ t('commons.refresh') }}</el-button>
+          <div style="flex:1" />
+          <el-upload action="#" :auto-upload="false" :show-file-list="false" :on-change="handleStorageUpload">
+            <el-button type="primary">{{ t('commons.upload') }}</el-button>
+          </el-upload>
+        </div>
+        <el-table :data="storageObjects" v-loading="storageLoading">
+          <el-table-column prop="name" :label="t('commons.name')" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="path" :label="t('backup.path')" min-width="360" show-overflow-tooltip />
+          <el-table-column :label="t('commons.actions')" width="220" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openStorageEditor(row)">编辑</el-button>
+              <el-button link type="primary" @click="handleStorageDownload(row)">{{ t('commons.download') }}</el-button>
+              <el-button link type="danger" @click="handleStorageDelete(row)">{{ t('commons.delete') }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="form-hint storage-hint">
+          当前为前缀平铺列表；在线编辑限制 2MB，适合临时修改配置、JSON、文本等小文件。
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- Account drawer -->
@@ -237,6 +265,14 @@
         <el-button type="primary" :loading="submitting" @click="submitBackup">{{ t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="storageEditorVisible" :title="storageEditorPath" width="70%" destroy-on-close>
+      <el-input v-model="storageEditorContent" type="textarea" :rows="18" resize="none" class="storage-editor" />
+      <template #footer>
+        <el-button @click="storageEditorVisible = false">{{ t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="storageSaving" @click="saveStorageEditor">{{ t('commons.save') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -250,7 +286,10 @@ import type { BackupAccount, BackupRecord } from '@/api/interface'
 import {
   listBackupAccounts, createBackupAccount, updateBackupAccount, deleteBackupAccount,
   testBackupAccount, createBackup, searchBackupRecords, deleteBackupRecord,
+  listStorageObjects, readStorageObject, saveStorageObject, deleteStorageObject,
+  uploadStorageObject, downloadStorageObject,
 } from '@/api/modules/backup'
+import type { BackupStorageObject } from '@/api/modules/backup'
 import { listRemoteMounts } from '@/api/modules/disk'
 
 const { t } = useI18n()
@@ -344,6 +383,9 @@ const loadAccounts = async () => {
   try {
     const res = await listBackupAccounts()
     accounts.value = res.data || []
+    if (!storageAccountID.value && accounts.value.length > 0) {
+      storageAccountID.value = accounts.value[0].id
+    }
   } finally { accountLoading.value = false }
 }
 
@@ -456,8 +498,73 @@ const copyRecordPath = async (row: BackupRecord) => {
   ElMessage.success(t('backup.pathCopied'))
 }
 
+const storageAccountID = ref(0)
+const storagePrefix = ref('')
+const storageLoading = ref(false)
+const storageObjects = ref<BackupStorageObject[]>([])
+const storageEditorVisible = ref(false)
+const storageEditorPath = ref('')
+const storageEditorContent = ref('')
+const storageSaving = ref(false)
+
+const loadStorageObjects = async () => {
+  if (!storageAccountID.value) return
+  storageLoading.value = true
+  try {
+    const res = await listStorageObjects({ accountID: storageAccountID.value, prefix: storagePrefix.value })
+    storageObjects.value = res.data || []
+  } finally { storageLoading.value = false }
+}
+
+const openStorageEditor = async (row: BackupStorageObject) => {
+  if (!storageAccountID.value) return
+  const res = await readStorageObject({ accountID: storageAccountID.value, path: row.path })
+  storageEditorPath.value = row.path
+  storageEditorContent.value = res.data?.content || ''
+  storageEditorVisible.value = true
+}
+
+const saveStorageEditor = async () => {
+  if (!storageAccountID.value || !storageEditorPath.value) return
+  storageSaving.value = true
+  try {
+    await saveStorageObject({ accountID: storageAccountID.value, path: storageEditorPath.value, content: storageEditorContent.value })
+    ElMessage.success(t('commons.success'))
+    storageEditorVisible.value = false
+    await loadStorageObjects()
+  } finally { storageSaving.value = false }
+}
+
+const handleStorageUpload = async (uploadFile: any) => {
+  if (!storageAccountID.value || !uploadFile.raw) return false
+  await uploadStorageObject({ accountID: storageAccountID.value, prefix: storagePrefix.value, file: uploadFile.raw })
+  ElMessage.success(t('commons.success'))
+  await loadStorageObjects()
+  return false
+}
+
+const handleStorageDownload = async (row: BackupStorageObject) => {
+  if (!storageAccountID.value) return
+  const blob = await downloadStorageObject({ accountID: storageAccountID.value, path: row.path })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = row.name || 'download'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+const handleStorageDelete = async (row: BackupStorageObject) => {
+  if (!storageAccountID.value) return
+  await ElMessageBox.confirm(`确认删除对象 ${row.path}？`, t('commons.tip'), { type: 'warning' })
+  await deleteStorageObject({ accountID: storageAccountID.value, path: row.path })
+  ElMessage.success(t('commons.success'))
+  await loadStorageObjects()
+}
+
 watch(activeTab, (tab) => {
   if (tab === 'records') loadRecords()
+  if (tab === 'storage') loadStorageObjects()
 })
 
 onMounted(() => loadAccounts())

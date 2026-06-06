@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"xpanel/app/service"
 	"xpanel/global"
@@ -52,6 +53,7 @@ func Start() {
 
 	// 4.5 恢复面板进程代理环境
 	service.SyncProxyOnStartup()
+	service.CleanBackupTempDir(24 * time.Hour)
 
 	// 5. i18n 国际化
 	i18n.Init()

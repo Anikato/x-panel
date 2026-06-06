@@ -66,7 +66,7 @@ func (c *LocalClient) ListObjects(prefix string) ([]string, error) {
 	}
 	var result []string
 	for _, e := range entries {
-		result = append(result, e.Name())
+		result = append(result, filepath.ToSlash(filepath.Join(prefix, e.Name())))
 	}
 	return result, nil
 }

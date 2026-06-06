@@ -587,7 +587,7 @@ import {
 import { listFiles } from '@/api/modules/file'
 import { searchCertificate } from '@/api/modules/ssl'
 import type { Certificate } from '@/api/interface'
-import * as monaco from 'monaco-editor'
+import type * as Monaco from 'monaco-editor'
 import * as echarts from 'echarts/core'
 import { BarChart, PieChart, LineChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
@@ -698,7 +698,13 @@ const configMode = ref<'managed' | 'source'>('managed')
 const sourceActiveTab = ref('overview')
 const sourceSaving = ref(false)
 const monacoContainerRef = ref<HTMLElement>()
-let monacoEditor: monaco.editor.IStandaloneCodeEditor | null = null
+let monacoEditor: Monaco.editor.IStandaloneCodeEditor | null = null
+let monacoLoader: Promise<typeof Monaco> | null = null
+
+const loadMonaco = async () => {
+  if (!monacoLoader) monacoLoader = import('monaco-editor')
+  return monacoLoader
+}
 
 // 日志
 const logType = ref('access')
@@ -981,12 +987,13 @@ const formatBytes = (bytes: number) => {
 
 // --- 源码模式 ---
 
-const initMonacoEditor = (content: string) => {
+const initMonacoEditor = async (content: string) => {
   if (monacoEditor) {
     monacoEditor.setValue(content)
     return
   }
   if (!monacoContainerRef.value) return
+  const monaco = await loadMonaco()
   monacoEditor = monaco.editor.create(monacoContainerRef.value, {
     value: content,
     language: 'plaintext',
@@ -1014,7 +1021,7 @@ const loadSourceConf = async () => {
     const res = await getSiteConfContent(siteId)
     const content = res.data || ''
     await nextTick()
-    initMonacoEditor(content)
+    await initMonacoEditor(content)
   } catch { ElMessage.error('加载配置失败') }
 }
 

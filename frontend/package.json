@@ -32,6 +32,8 @@
     "@vitejs/plugin-vue": "^5",
     "sass-embedded": "^1",
     "typescript": "~5.7",
+    "unplugin-auto-import": "^21.0.0",
+    "unplugin-vue-components": "^32.1.0",
     "vite": "^6",
     "vue-tsc": "^2"
   }

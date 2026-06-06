@@ -563,6 +563,7 @@ export default {
     connected: '已连接',
     disconnected: '连接已断开',
     reconnect: '重新连接',
+    reconnecting: '{seconds} 秒后重新连接',
     localTerminal: '本地终端',
     remoteTerminal: '远程终端',
     hostManage: '主机管理',

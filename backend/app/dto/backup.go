@@ -71,3 +71,19 @@ type BackupCreate struct {
 	DBType    string `json:"dbType"`
 	SourceDir string `json:"sourceDir"`
 }
+
+type BackupStorageReq struct {
+	AccountID uint   `json:"accountID" binding:"required"`
+	Prefix    string `json:"prefix"`
+	Path      string `json:"path"`
+	Content   string `json:"content"`
+}
+
+type BackupStorageObject struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type BackupStorageReadResp struct {
+	Content string `json:"content"`
+}

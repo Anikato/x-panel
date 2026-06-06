@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"xpanel/app/dto"
@@ -34,6 +35,12 @@ type IBackupService interface {
 	PrepareRecordFile(id uint) (string, func(), error)
 	CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error
 	CleanSuccessfulRecords(cronjobID uint, retainCopies uint) error
+	ListStorageObjects(req dto.BackupStorageReq) ([]dto.BackupStorageObject, error)
+	ReadStorageObject(req dto.BackupStorageReq) (string, error)
+	SaveStorageObject(req dto.BackupStorageReq) error
+	DeleteStorageObject(req dto.BackupStorageReq) error
+	UploadStorageObject(accountID uint, targetPath, srcFile string) error
+	PrepareStorageObject(req dto.BackupStorageReq) (string, func(), error)
 
 	PerformBackup(backupType, name, dbType, sourceDir string, accountID uint) (string, error)
 	PerformBackupWithInfo(backupType, name, dbType, sourceDir string, accountID uint) (*BackupOutput, error)
@@ -44,6 +51,11 @@ type BackupOutput struct {
 	Path string
 	Size int64
 }
+
+const (
+	backupTempSpaceBuffer int64 = 256 * 1024 * 1024
+	storageEditorMaxBytes int64 = 2 * 1024 * 1024
+)
 
 func NewIBackupService() IBackupService {
 	return &BackupService{repo: repo.NewIBackupRepo(), dbRepo: repo.NewIDatabaseRepo()}
@@ -144,6 +156,154 @@ func (s *BackupService) GetAccount(id uint) (*model.BackupAccount, error) {
 	return s.repo.GetAccount(id)
 }
 
+func (s *BackupService) storageClient(accountID uint) (cs.CloudStorageClient, error) {
+	account, err := s.GetAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
+	if err != nil {
+		return nil, fmt.Errorf("create storage client failed: %v", err)
+	}
+	return client, nil
+}
+
+func (s *BackupService) ListStorageObjects(req dto.BackupStorageReq) ([]dto.BackupStorageObject, error) {
+	account, err := s.GetAccount(req.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
+	if err != nil {
+		return nil, fmt.Errorf("create storage client failed: %v", err)
+	}
+	keys, err := client.ListObjects(cleanObjectPath(req.Prefix))
+	if err != nil {
+		return nil, err
+	}
+	items := make([]dto.BackupStorageObject, 0, len(keys))
+	for _, key := range keys {
+		key = stripStorageBasePath(key, account.BackupPath)
+		items = append(items, dto.BackupStorageObject{Name: path.Base(key), Path: key})
+	}
+	return items, nil
+}
+
+func (s *BackupService) ReadStorageObject(req dto.BackupStorageReq) (string, error) {
+	tmp, release, err := s.PrepareStorageObject(req)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	info, err := os.Stat(tmp)
+	if err != nil {
+		return "", err
+	}
+	if info.Size() > storageEditorMaxBytes {
+		return "", fmt.Errorf("object is too large for online editing: max %s", formatSize(storageEditorMaxBytes))
+	}
+	data, err := os.ReadFile(tmp)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (s *BackupService) SaveStorageObject(req dto.BackupStorageReq) error {
+	client, err := s.storageClient(req.AccountID)
+	if err != nil {
+		return err
+	}
+	target := cleanObjectPath(req.Path)
+	if target == "" {
+		return fmt.Errorf("object path is required")
+	}
+	if err := os.MkdirAll(backupTempDir(), 0750); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(backupTempDir(), "xpanel-storage-save-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.WriteString(req.Content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return client.Upload(tmpPath, target)
+}
+
+func (s *BackupService) DeleteStorageObject(req dto.BackupStorageReq) error {
+	client, err := s.storageClient(req.AccountID)
+	if err != nil {
+		return err
+	}
+	target := cleanObjectPath(req.Path)
+	if target == "" {
+		return fmt.Errorf("object path is required")
+	}
+	return client.Delete(target)
+}
+
+func (s *BackupService) UploadStorageObject(accountID uint, targetPath, srcFile string) error {
+	client, err := s.storageClient(accountID)
+	if err != nil {
+		return err
+	}
+	target := cleanObjectPath(targetPath)
+	if target == "" {
+		return fmt.Errorf("object path is required")
+	}
+	return client.Upload(srcFile, target)
+}
+
+func (s *BackupService) PrepareStorageObject(req dto.BackupStorageReq) (string, func(), error) {
+	client, err := s.storageClient(req.AccountID)
+	if err != nil {
+		return "", nil, err
+	}
+	source := cleanObjectPath(req.Path)
+	if source == "" {
+		return "", nil, fmt.Errorf("object path is required")
+	}
+	if err := os.MkdirAll(backupTempDir(), 0750); err != nil {
+		return "", nil, err
+	}
+	tmp, err := os.CreateTemp(backupTempDir(), "xpanel-storage-*"+filepath.Ext(source))
+	if err != nil {
+		return "", nil, err
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	if err := client.Download(source, tmpPath); err != nil {
+		os.Remove(tmpPath)
+		return "", nil, err
+	}
+	return tmpPath, func() { _ = os.Remove(tmpPath) }, nil
+}
+
+func cleanObjectPath(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(path.Clean("/"+value), "/")
+	if value == "." {
+		return ""
+	}
+	return value
+}
+
+func stripStorageBasePath(key, basePath string) string {
+	key = cleanObjectPath(key)
+	base := cleanObjectPath(basePath)
+	if base == "" {
+		return key
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(key, base), "/")
+}
+
 func (s *BackupService) Backup(req dto.BackupCreate) error {
 	go func() {
 		output, err := s.PerformBackupWithInfo(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID)
@@ -187,7 +347,7 @@ func (s *BackupService) PerformBackupWithInfo(backupType, name, dbType, sourceDi
 	}
 
 	timestamp := time.Now().Format("20060102150405")
-	tmpDir := filepath.Join(os.TempDir(), "xpanel-backup")
+	tmpDir := backupTempDir()
 	os.MkdirAll(tmpDir, 0755)
 
 	var localFile string
@@ -228,7 +388,7 @@ func (s *BackupService) PerformDatabaseInstanceBackupWithInfo(instanceID uint, a
 	}
 
 	timestamp := time.Now().Format("20060102150405")
-	tmpDir := filepath.Join(os.TempDir(), "xpanel-backup")
+	tmpDir := backupTempDir()
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return nil, err
 	}
@@ -258,6 +418,9 @@ func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, s
 	}
 
 	fileName := fmt.Sprintf("website_%s_%s.tar.gz", name, timestamp)
+	if err := ensureBackupTempSpace(siteDir, tmpDir); err != nil {
+		return "", "", err
+	}
 	outFile, err := archiveUtil.CreateArchive(archiveUtil.ArchiveOptions{
 		SourceDir: siteDir,
 		OutFile:   filepath.Join(tmpDir, fileName),
@@ -266,6 +429,102 @@ func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, s
 		return "", "", err
 	}
 	return outFile, filepath.Join("website", name, filepath.Base(outFile)), nil
+}
+
+func backupTempDir() string {
+	if global.CONF.System.DataDir != "" {
+		return filepath.Join(global.CONF.System.DataDir, "tmp", "xpanel-backup")
+	}
+	return filepath.Join(os.TempDir(), "xpanel-backup")
+}
+
+func ensureBackupTempSpace(sourceDir, tmpDir string) error {
+	sourceSize, err := estimateDirectorySize(sourceDir)
+	if err != nil {
+		return fmt.Errorf("estimate source size failed: %v", err)
+	}
+	available, err := availableBytes(tmpDir)
+	if err != nil {
+		return fmt.Errorf("check backup temp space failed: %v", err)
+	}
+	required := sourceSize + backupTempSpaceBuffer
+	if available < required {
+		return fmt.Errorf("backup temp space not enough: need at least %s, available %s, temp dir %s",
+			formatSize(required), formatSize(available), tmpDir)
+	}
+	return nil
+}
+
+func estimateDirectorySize(dir string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type().IsRegular() {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
+}
+
+func availableBytes(dir string) (int64, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return 0, err
+	}
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(dir, &stat); err != nil {
+		return 0, err
+	}
+	return int64(stat.Bavail) * int64(stat.Bsize), nil
+}
+
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func CleanBackupTempDir(maxAge time.Duration) {
+	tmpDir := backupTempDir()
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, entry := range entries {
+		if entry.IsDir() || !isBackupTempArchive(entry.Name()) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(tmpDir, entry.Name())); err != nil && global.LOG != nil {
+			global.LOG.Warnf("clean backup temp file failed: %v", err)
+		}
+	}
+}
+
+func isBackupTempArchive(name string) bool {
+	return strings.HasSuffix(name, ".tar.gz") ||
+		strings.HasSuffix(name, ".tar.zst") ||
+		strings.HasSuffix(name, ".tar.xz") ||
+		strings.HasSuffix(name, ".tar.gz.enc") ||
+		strings.HasSuffix(name, ".tar.zst.enc") ||
+		strings.HasSuffix(name, ".tar.xz.enc")
 }
 
 func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (string, string, error) {
@@ -367,6 +626,9 @@ func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp strin
 		name = filepath.Base(sourceDir)
 	}
 	fileName := fmt.Sprintf("dir_%s_%s.tar.gz", name, timestamp)
+	if err := ensureBackupTempSpace(sourceDir, tmpDir); err != nil {
+		return "", "", err
+	}
 	outFile, err := archiveUtil.CreateArchive(archiveUtil.ArchiveOptions{
 		SourceDir: sourceDir,
 		OutFile:   filepath.Join(tmpDir, fileName),
