@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getSettingInfo, updateSetting } from '@/api/modules/setting'
+import { normalizeTerminalCwd } from '@/utils/terminal-cwd'
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
 export type BgPreset = 'abyss' | 'void' | 'tinted' | 'cosmos' | 'warm'
@@ -48,7 +49,7 @@ export const useGlobalStore = defineStore('global', {
     dashboardRefreshInterval: 5000,
     floatTermVisible: false,   // 悬浮终端显隐状态（不持久化，刷新后默认关闭）
     floatTermMinimized: false, // 悬浮终端最小化状态
-    terminalTrigger: null as { cwd: string } | null,
+    terminalTrigger: null as { cwd?: string | null } | null,
   }),
   actions: {
     setLogin(status: boolean) {
@@ -86,10 +87,10 @@ export const useGlobalStore = defineStore('global', {
     setServerInfo(info: ServerInfo) {
       this.serverInfo = info
     },
-    openFloatTerminal(cwd: string) {
+    openFloatTerminal(cwd?: string | null) {
       this.floatTermVisible = true
       this.floatTermMinimized = false
-      this.terminalTrigger = { cwd }
+      this.terminalTrigger = { cwd: normalizeTerminalCwd(cwd) }
     },
 
     getAppearanceKeys() {

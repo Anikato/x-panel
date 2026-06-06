@@ -92,6 +92,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useGlobalStore } from '@/store/modules/global'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
+import { buildInitialCwdCommand, normalizeTerminalCwd } from '@/utils/terminal-cwd'
 import { getToken } from '@/utils/auth'
 import { useI18n } from 'vue-i18n'
 
@@ -253,7 +254,7 @@ const connectWebSocket = (tab: TermTab) => {
     if (tab.initialCwd) {
       setTimeout(() => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(`cd ${JSON.stringify(tab.initialCwd)} && clear\n`)
+          ws.send(buildInitialCwdCommand(tab.initialCwd))
         }
       }, 300)
       tab.initialCwd = undefined
@@ -387,8 +388,8 @@ watch(() => globalStore.floatTermMinimized, (min) => {
 })
 
 watch(() => globalStore.terminalTrigger, async (trigger) => {
-  if (trigger && trigger.cwd) {
-    const cwd = trigger.cwd
+  if (trigger) {
+    const cwd = normalizeTerminalCwd(trigger.cwd)
     globalStore.terminalTrigger = null // reset trigger
     tabCounter++
     const tab: TermTab = {
