@@ -10,7 +10,16 @@ type SystemStats struct {
 	Network    NetworkStats   `json:"network"`
 	NetIO      []NetIOStats   `json:"netIO"`
 	TopProcess []ProcessBrief `json:"topProcess"`
-	Uptime     uint64         `json:"uptime"` // seconds
+	Sensors    []SensorTemp   `json:"sensors"` // 硬件温度，虚拟机等无传感器环境为空
+	Uptime     uint64         `json:"uptime"`  // seconds
+}
+
+// SensorTemp 硬件温度传感器读数
+type SensorTemp struct {
+	Key      string  `json:"key"`  // 传感器标识，如 coretemp_package_id_0 / nvme_composite
+	Temp     float64 `json:"temp"` // 当前温度（摄氏度）
+	High     float64 `json:"high,omitempty"`     // 告警阈值
+	Critical float64 `json:"critical,omitempty"` // 严重阈值
 }
 
 // SystemHostInfo 系统基本信息

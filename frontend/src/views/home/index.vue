@@ -49,6 +49,19 @@
                 <div class="res-foot">{{ disk.device }} · {{ disk.fsType }} · {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}</div>
               </div>
             </template>
+            <div class="res-item" v-if="stats.sensors?.length">
+              <div class="res-hd"><div class="res-dot temp-dot"></div><span>{{ t('home.sensorTemp') }}</span></div>
+              <div class="temp-grid">
+                <div class="temp-cell" v-for="s in stats.sensors" :key="s.key" :title="s.key">
+                  <span class="temp-name">{{ fmtSensorName(s.key) }}</span>
+                  <span class="temp-val" :class="tempCls(s)">{{ s.temp.toFixed(0) }}°C</span>
+                </div>
+              </div>
+            </div>
+            <div class="res-item" v-else-if="stats.host?.virtualization">
+              <div class="res-hd"><div class="res-dot temp-dot"></div><span>{{ t('home.sensorTemp') }}</span></div>
+              <div class="res-foot">{{ t('home.noSensorVm', { virt: stats.host.virtualization }) }}</div>
+            </div>
           </div>
         </div>
 
@@ -162,7 +175,7 @@ import { useI18n } from 'vue-i18n'
 import { useGlobalStore } from '@/store/modules/global'
 import { getSystemStats } from '@/api/modules/monitor'
 import { ElMessage } from 'element-plus'
-import type { SystemStats, HostInfo } from '@/api/interface'
+import type { SystemStats, HostInfo, SensorTemp } from '@/api/interface'
 import {
   Monitor, Cpu, Coin, Odometer, Connection,
   Box, Compass, DataLine, CopyDocument,
@@ -311,6 +324,16 @@ const barSty = (pct?: number, type = 'cpu') => {
 const pctCls = (pct?: number) => (pct || 0) >= 90 ? 'c-danger' : (pct || 0) >= 70 ? 'c-warn' : 'c-ok'
 const fmtPct = (v?: number) => `${(v ?? 0).toFixed(1)}%`
 
+const fmtSensorName = (key: string) => key.replace(/_/g, ' ')
+const tempCls = (s: SensorTemp) => {
+  // 优先使用传感器自带阈值，否则按 65/80°C 经验值
+  const high = s.high && s.high > 0 ? s.high : 80
+  const warn = Math.min(high - 15, 65)
+  if (s.temp >= high) return 'c-danger'
+  if (s.temp >= warn) return 'c-warn'
+  return 'c-ok'
+}
+
 const formatBytes = (b?: number) => {
   if (!b || b === 0) return '0 B'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -388,6 +411,22 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .mem-dot { background: #818cf8; }
 .load-dot { background: #34d399; }
 .disk-dot { background: #60a5fa; }
+.temp-dot { background: #f97316; }
+
+.temp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+  gap: 4px 14px;
+}
+.temp-cell {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+  min-width: 0;
+}
+.temp-name {
+  font-size: 11px; color: var(--xp-text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.temp-val { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 
 .res-pct {
   font-size: 18px; font-weight: 700;

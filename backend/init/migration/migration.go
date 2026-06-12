@@ -231,6 +231,7 @@ func migrateMonitorDB() {
 		&model.MonitorBase{},
 		&model.MonitorIO{},
 		&model.MonitorNetwork{},
+		&model.MonitorSensor{},
 	); err != nil {
 		global.LOG.Errorf("Failed to auto-migrate monitor database: %v", err)
 	}

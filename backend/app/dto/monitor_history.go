@@ -4,7 +4,7 @@ import "time"
 
 // MonitorSearch 历史监控数据查询请求
 type MonitorSearch struct {
-	Param     string    `json:"param" validate:"required,oneof=all cpu memory load io network"`
+	Param     string    `json:"param" validate:"required,oneof=all cpu memory load io network sensor"`
 	IO        string    `json:"io"`
 	Network   string    `json:"network"`
 	StartTime time.Time `json:"startTime"`

@@ -77,6 +77,16 @@ func (m *MonitorHistoryService) Run() {
 		global.LOG.Errorf("Insert monitor base data failed: %v", err)
 	}
 
+	if temps := loadSensorTemps(); len(temps) > 0 {
+		sensorList := make([]model.MonitorSensor, 0, len(temps))
+		for _, t := range temps {
+			sensorList = append(sensorList, model.MonitorSensor{Name: t.Key, Temp: t.Temp})
+		}
+		if err := global.MonitorDB.CreateInBatches(sensorList, len(sensorList)).Error; err != nil {
+			global.LOG.Errorf("Insert monitor sensor data failed: %v", err)
+		}
+	}
+
 	m.loadDiskIO()
 	m.loadNetIO()
 
@@ -198,6 +208,7 @@ func (m *MonitorHistoryService) cleanExpiredData() {
 	global.MonitorDB.Where("created_at < ?", cutoff).Delete(&model.MonitorBase{})
 	global.MonitorDB.Where("created_at < ?", cutoff).Delete(&model.MonitorIO{})
 	global.MonitorDB.Where("created_at < ?", cutoff).Delete(&model.MonitorNetwork{})
+	global.MonitorDB.Where("created_at < ?", cutoff).Delete(&model.MonitorSensor{})
 }
 
 func (m *MonitorHistoryService) LoadMonitorData(req dto.MonitorSearch) ([]dto.MonitorData, error) {
@@ -267,6 +278,20 @@ func (m *MonitorHistoryService) LoadMonitorData(req dto.MonitorSearch) ([]dto.Mo
 		data = append(data, itemData)
 	}
 
+	if req.Param == "all" || req.Param == "sensor" {
+		var sensorRows []model.MonitorSensor
+		global.MonitorDB.Where("created_at >= ? AND created_at <= ?", req.StartTime, req.EndTime).
+			Order("created_at ASC").Find(&sensorRows)
+
+		var itemData dto.MonitorData
+		itemData.Param = "sensor"
+		for _, row := range sensorRows {
+			itemData.Date = append(itemData.Date, row.CreatedAt)
+			itemData.Value = append(itemData.Value, row)
+		}
+		data = append(data, itemData)
+	}
+
 	return data, nil
 }
 
@@ -325,6 +350,7 @@ func (m *MonitorHistoryService) CleanData() error {
 	global.MonitorDB.Exec("DELETE FROM monitor_bases")
 	global.MonitorDB.Exec("DELETE FROM monitor_ios")
 	global.MonitorDB.Exec("DELETE FROM monitor_networks")
+	global.MonitorDB.Exec("DELETE FROM monitor_sensors")
 	return nil
 }
 

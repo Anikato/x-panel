@@ -24,6 +24,7 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 	gnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
+	"github.com/shirou/gopsutil/v4/sensors"
 )
 
 type IMonitorService interface {
@@ -187,11 +188,49 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 	}
 
 	stats.TopProcess = getTopProcesses(5)
+	stats.Sensors = loadSensorTemps()
 
 	uptime, _ := hostUtil.Uptime()
 	stats.Uptime = uptime
 
 	return stats, nil
+}
+
+// loadSensorTemps 采集硬件温度。物理机返回 CPU/NVMe/主板等传感器读数，
+// 虚拟机、容器等无 hwmon 节点的环境返回空切片（前端据此隐藏温度区块）。
+func loadSensorTemps() []dto.SensorTemp {
+	temps, err := sensors.SensorsTemperatures()
+	// err 可能是 Warnings（部分传感器读取失败），只要有数据就继续
+	if err != nil && len(temps) == 0 {
+		return nil
+	}
+
+	// coretemp 等芯片若有 package 整体温度，则跳过逐核温度，避免列表过长
+	hasPackage := make(map[string]bool)
+	for _, t := range temps {
+		if idx := strings.Index(t.SensorKey, "_package_id_"); idx > 0 {
+			hasPackage[t.SensorKey[:idx]] = true
+		}
+	}
+
+	seen := make(map[string]bool)
+	var result []dto.SensorTemp
+	for _, t := range temps {
+		if t.Temperature <= 0 || t.Temperature > 200 || seen[t.SensorKey] {
+			continue
+		}
+		if idx := strings.Index(t.SensorKey, "_core_"); idx > 0 && hasPackage[t.SensorKey[:idx]] {
+			continue
+		}
+		seen[t.SensorKey] = true
+		result = append(result, dto.SensorTemp{
+			Key:      t.SensorKey,
+			Temp:     t.Temperature,
+			High:     t.High,
+			Critical: t.Critical,
+		})
+	}
+	return result
 }
 
 // getNetworkInterfaces 获取所有网卡信息（IP/MAC/状态）

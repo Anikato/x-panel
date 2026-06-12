@@ -26,3 +26,10 @@ type MonitorNetwork struct {
 	Up   float64 `json:"up"`   // KB/s
 	Down float64 `json:"down"` // KB/s
 }
+
+// MonitorSensor 硬件温度监控数据
+type MonitorSensor struct {
+	BaseModel
+	Name string  `json:"name"` // 传感器标识，如 coretemp_package_id_0
+	Temp float64 `json:"temp"` // 摄氏度
+}

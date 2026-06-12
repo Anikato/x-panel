@@ -60,6 +60,19 @@
                   <div class="res-foot">{{ disk.device }} · {{ disk.fsType }} · {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}</div>
                 </div>
               </template>
+              <div class="res-item" v-if="stats.sensors?.length">
+                <div class="res-hd"><div class="res-dot temp-dot"></div><span>{{ $t('home.sensorTemp') }}</span></div>
+                <div class="temp-grid">
+                  <div class="temp-cell" v-for="s in stats.sensors" :key="s.key" :title="s.key">
+                    <span class="temp-name">{{ fmtSensorName(s.key) }}</span>
+                    <span class="temp-val" :class="tempCls(s)">{{ s.temp.toFixed(0) }}°C</span>
+                  </div>
+                </div>
+              </div>
+              <div class="res-item" v-else-if="stats.host?.virtualization">
+                <div class="res-hd"><div class="res-dot temp-dot"></div><span>{{ $t('home.sensorTemp') }}</span></div>
+                <div class="res-foot">{{ $t('home.noSensorVm', { virt: stats.host.virtualization }) }}</div>
+              </div>
             </div>
           </div>
           <div class="tri-sep"></div>
@@ -242,6 +255,12 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <!-- 硬件温度（仅物理机有数据时显示） -->
+      <el-card shadow="never" class="chart-card" v-show="hasSensorData">
+        <template #header><span class="chart-title">{{ $t('monitor.temperature') }}</span></template>
+        <div ref="sensorChartRef" class="chart-container"></div>
+      </el-card>
     </template>
   </div>
 </template>
@@ -253,7 +272,7 @@ import { Refresh, CopyDocument, Odometer, Connection, DataLine, Box, Setting } f
 import { getSystemStats, loadMonitorHistory, getIOOptions as fetchIOOptions, getNetworkOptions as fetchNetOptions, getMonitorSetting, updateMonitorSetting, cleanMonitorData } from '@/api/modules/monitor'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import type { SystemStats } from '@/api/interface'
+import type { SystemStats, SensorTemp } from '@/api/interface'
 
 const { t } = useI18n()
 const activeTab = ref('realtime')
@@ -339,6 +358,16 @@ const barSty = (pct?: number, type = 'cpu') => {
 }
 const pctCls = (pct?: number) => (pct || 0) >= 90 ? 'c-danger' : (pct || 0) >= 70 ? 'c-warn' : 'c-ok'
 const fmtPct = (v?: number) => `${(v ?? 0).toFixed(1)}%`
+
+const fmtSensorName = (key: string) => key.replace(/_/g, ' ')
+const tempCls = (s: SensorTemp) => {
+  // 优先使用传感器自带阈值，否则按 65/80°C 经验值
+  const high = s.high && s.high > 0 ? s.high : 80
+  const warn = Math.min(high - 15, 65)
+  if (s.temp >= high) return 'c-danger'
+  if (s.temp >= warn) return 'c-warn'
+  return 'c-ok'
+}
 const formatBytes = (b?: number) => {
   if (!b || b === 0) return '0 B'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -358,12 +387,16 @@ const cpuChartRef = ref<HTMLDivElement>()
 const memChartRef = ref<HTMLDivElement>()
 const ioChartRef = ref<HTMLDivElement>()
 const netChartRef = ref<HTMLDivElement>()
+const sensorChartRef = ref<HTMLDivElement>()
 
 let loadChart: echarts.ECharts | null = null
 let cpuChart: echarts.ECharts | null = null
 let memChart: echarts.ECharts | null = null
 let ioChart: echarts.ECharts | null = null
 let netChart: echarts.ECharts | null = null
+let sensorChart: echarts.ECharts | null = null
+
+const hasSensorData = ref(false)
 
 const ioOptions = ref<string[]>(['all'])
 const netOptions = ref<string[]>(['all'])
@@ -406,11 +439,12 @@ const initCharts = () => {
   memChart = init(memChartRef.value)
   ioChart = init(ioChartRef.value)
   netChart = init(netChartRef.value)
+  sensorChart = init(sensorChartRef.value)
 }
 
 const disposeCharts = () => {
-  ;[loadChart, cpuChart, memChart, ioChart, netChart].forEach(c => c?.dispose())
-  loadChart = cpuChart = memChart = ioChart = netChart = null
+  ;[loadChart, cpuChart, memChart, ioChart, netChart, sensorChart].forEach(c => c?.dispose())
+  loadChart = cpuChart = memChart = ioChart = netChart = sensorChart = null
 }
 
 const loadHistory = async () => {
@@ -424,6 +458,7 @@ const loadHistory = async () => {
     const baseData = allData.find((d: any) => d.param === 'base')
     const ioData = allData.find((d: any) => d.param === 'io')
     const networkData = allData.find((d: any) => d.param === 'network')
+    const sensorData = allData.find((d: any) => d.param === 'sensor')
 
     if (baseData && loadChart) {
       const dates = baseData.date || []
@@ -497,6 +532,31 @@ const loadHistory = async () => {
         ],
       })
     }
+
+    hasSensorData.value = !!(sensorData && sensorData.date?.length)
+    if (hasSensorData.value && sensorChart) {
+      // 按传感器名分组，每个传感器一条曲线
+      const dates = sensorData.date || []
+      const values = sensorData.value || []
+      const seriesMap = new Map<string, [string, number][]>()
+      values.forEach((v: any, i: number) => {
+        const arr = seriesMap.get(v.name) || []
+        arr.push([dates[i], v.temp])
+        seriesMap.set(v.name, arr)
+      })
+      const colors = ['#f97316', '#22d3ee', '#818cf8', '#34d399', '#f59e0b', '#a78bfa', '#ef4444', '#60a5fa']
+      const names = [...seriesMap.keys()].slice(0, 8)
+      sensorChart.setOption({
+        ...baseChartOption(),
+        yAxis: { type: 'value', axisLabel: { color: darkTheme() ? '#888' : '#666', formatter: '{value}°C' }, splitLine: { lineStyle: { color: darkTheme() ? '#222' : '#eee' } } },
+        legend: { data: names.map(n => n.replace(/_/g, ' ')), textStyle: { color: darkTheme() ? '#aaa' : '#666' }, top: 0 },
+        series: names.map((n, idx) => ({
+          name: n.replace(/_/g, ' '), type: 'line', smooth: true, symbol: 'none',
+          data: seriesMap.get(n), lineStyle: { width: 1.5 }, itemStyle: { color: colors[idx % colors.length] },
+        })),
+      }, true)
+      nextTick(() => sensorChart?.resize())
+    }
   } catch { /* */ }
 }
 
@@ -554,7 +614,7 @@ const loadDeviceOptions = async () => {
 }
 
 const handleResize = () => {
-  ;[loadChart, cpuChart, memChart, ioChart, netChart].forEach(c => c?.resize())
+  ;[loadChart, cpuChart, memChart, ioChart, netChart, sensorChart].forEach(c => c?.resize())
 }
 
 watch(activeTab, async (val) => {
@@ -597,7 +657,11 @@ onUnmounted(() => { if (timer) clearInterval(timer); disposeCharts(); window.rem
 .res-list { display: flex; flex-direction: column; gap: 16px; }
 .res-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; span:first-of-type { font-size: 13px; font-weight: 600; color: var(--xp-text-primary); flex: 1; } }
 .res-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.cpu-dot { background: var(--xp-accent); } .mem-dot { background: #818cf8; } .load-dot { background: #34d399; } .disk-dot { background: #60a5fa; }
+.cpu-dot { background: var(--xp-accent); } .mem-dot { background: #818cf8; } .load-dot { background: #34d399; } .disk-dot { background: #60a5fa; } .temp-dot { background: #f97316; }
+.temp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 4px 14px; }
+.temp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; }
+.temp-name { font-size: 11px; color: var(--xp-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.temp-val { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .res-pct { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .res-pct-sm { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .c-ok { color: var(--xp-accent); } .c-warn { color: #f59e0b; } .c-danger { color: #ef4444; }

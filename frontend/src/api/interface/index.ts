@@ -648,6 +648,13 @@ export interface NetworkTotal {
   bytesRecv: number
 }
 
+export interface SensorTemp {
+  key: string
+  temp: number
+  high?: number
+  critical?: number
+}
+
 export interface SystemStats {
   host: HostInfo
   cpu: CpuInfo
@@ -657,6 +664,7 @@ export interface SystemStats {
   network: NetworkTotal
   netIO: NetIOInfo[]
   topProcess: TopProcess[]
+  sensors: SensorTemp[]
   uptime: number
 }
 

@@ -176,6 +176,8 @@ export default {
     timezone: '时区',
     virtualization: '虚拟化',
     tcpCongestion: 'TCP 拥塞控制',
+    sensorTemp: '硬件温度',
+    noSensorVm: '{virt} 虚拟化环境，未检测到物理传感器',
     physicalMachine: '物理机',
     rebootServer: '重启服务器',
     shutdownServer: '关机',
@@ -671,6 +673,7 @@ export default {
     cleanConfirm: '确定要清空所有历史监控数据吗？此操作不可恢复。',
     monitorSetting: '监控设置',
     intervalSeconds: '{n} 秒',
+    temperature: '硬件温度',
     retentionDays: '{n} 天',
   },
   process: {
