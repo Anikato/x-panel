@@ -219,9 +219,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 			localCert.SerialNumber = remote.SerialNumber
 			localCert.Fingerprint = remote.Fingerprint
 			localCert.DNSNames = remote.DNSNames
-			localCert.SourceType = "synced"
-			localCert.SourceID = source.ID
-			localCert.SourceName = source.Name
+			applySyncedCertificateMetadata(&localCert, source.ID, source.Name)
 			localCert.Status = "applied"
 			localCert.Message = fmt.Sprintf("从 %s 同步 (%s)", source.Name, remote.ExpireDate.Format("2006-01-02"))
 			if err := s.certRepo.Save(&localCert); err != nil {
@@ -257,13 +255,10 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				SerialNumber:  remote.SerialNumber,
 				Fingerprint:   remote.Fingerprint,
 				DNSNames:      remote.DNSNames,
-				SourceType:    "synced",
-				SourceID:      source.ID,
-				SourceName:    source.Name,
-				AutoRenew:     false,
 				Status:        "applied",
 				Description:   fmt.Sprintf("从 %s 同步", source.Name),
 			}
+			applySyncedCertificateMetadata(&newCert, source.ID, source.Name)
 			if err := s.certRepo.Create(&newCert); err != nil {
 				logEntry.Status = "error"
 				logEntry.Message = "创建本地证书失败: " + err.Error()
@@ -405,6 +400,18 @@ func (s *CertSourceService) saveSyncedCertFiles(sslDir string, cert model.Certif
 	}
 	ensureCertPermissions(certDir, certPath, keyPath)
 	return nil
+}
+
+func applySyncedCertificateMetadata(cert *model.Certificate, sourceID uint, sourceName string) {
+	cert.Type = "synced"
+	cert.Provider = "manual"
+	cert.SourceType = "synced"
+	cert.SourceID = sourceID
+	cert.SourceName = sourceName
+	cert.AutoRenew = false
+	cert.AcmeAccountID = 0
+	cert.DnsAccountID = 0
+	cert.CertURL = ""
 }
 
 // ======================= 证书服务端 API =======================

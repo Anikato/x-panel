@@ -99,17 +99,24 @@ for (const getter of allAppearanceKeys) {
 const router = useRouter()
 const routeLoading = ref(false)
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
+let routeLoadingResetTimer: ReturnType<typeof setTimeout> | null = null
+let colorSchemeQuery: MediaQueryList | null = null
+const handleColorSchemeChange = () => {
+  if (globalStore.theme === 'auto') applyTheme('auto')
+}
 
 router.beforeEach((_to, _from, next) => {
   routeLoading.value = true
   if (loadingTimer) clearTimeout(loadingTimer)
+  if (routeLoadingResetTimer) clearTimeout(routeLoadingResetTimer)
   loadingTimer = setTimeout(() => { routeLoading.value = false }, 8000)
   next()
 })
 
 router.afterEach(() => {
   if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null }
-  setTimeout(() => { routeLoading.value = false }, 150)
+  if (routeLoadingResetTimer) clearTimeout(routeLoadingResetTimer)
+  routeLoadingResetTimer = setTimeout(() => { routeLoading.value = false }, 150)
 })
 
 onMounted(async () => {
@@ -119,14 +126,15 @@ onMounted(async () => {
 
   globalStore.loadPanelNameFromBackend()
 
-  const mq = window.matchMedia('(prefers-color-scheme: dark)')
-  mq.addEventListener('change', () => {
-    if (globalStore.theme === 'auto') applyTheme('auto')
-  })
+  colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  colorSchemeQuery.addEventListener('change', handleColorSchemeChange)
 })
 
 onUnmounted(() => {
   if (loadingTimer) clearTimeout(loadingTimer)
+  if (routeLoadingResetTimer) clearTimeout(routeLoadingResetTimer)
+  if (syncTimer) clearTimeout(syncTimer)
+  colorSchemeQuery?.removeEventListener('change', handleColorSchemeChange)
 })
 </script>
 

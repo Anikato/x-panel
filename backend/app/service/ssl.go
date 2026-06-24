@@ -385,8 +385,8 @@ func (s *CertificateService) Renew(id uint) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
-	if cert.Type == "upload" {
-		return fmt.Errorf("uploaded certificates cannot be renewed")
+	if !isRenewableCertificate(cert) {
+		return fmt.Errorf("certificate cannot be renewed locally")
 	}
 
 	logger, logFile := s.openSSLLog(cert)
@@ -954,6 +954,10 @@ func execCmd(name string, args ...string) (string, error) {
 	return string(out), err
 }
 
+func isRenewableCertificate(cert model.Certificate) bool {
+	return cert.Type != "upload" && cert.Type != "synced" && cert.SourceType != "synced"
+}
+
 // autoRenewMu 防止同一证书被并发续签
 var autoRenewMu sync.Map
 
@@ -973,7 +977,7 @@ func AutoRenewCerts() {
 	sem := make(chan struct{}, 3) // 最多 3 个并发续签
 
 	for _, cert := range certs {
-		if !cert.AutoRenew || cert.Type == "upload" || cert.Status != "applied" {
+		if !cert.AutoRenew || !isRenewableCertificate(cert) || cert.Status != "applied" {
 			continue
 		}
 		if cert.ExpireDate.IsZero() || cert.ExpireDate.Sub(now) > renewBefore {

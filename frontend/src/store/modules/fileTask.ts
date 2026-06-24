@@ -20,6 +20,7 @@ export const useFileTaskStore = defineStore('fileTask', () => {
   const tasks = ref<FileTask[]>([])
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let apiModule: any = null
+  let initialized = false
 
   // 已被用户清除的已完成任务 ID 集合，防止轮询时被后端数据重新覆盖回来
   const clearedIds = new Set<string>()
@@ -73,10 +74,13 @@ export const useFileTaskStore = defineStore('fileTask', () => {
       clearInterval(pollTimer)
       pollTimer = null
     }
+    initialized = false
   }
 
   // 初始化：全局调用一次
   function init() {
+    if (initialized) return
+    initialized = true
     fetchTasks()
     startPolling()
   }

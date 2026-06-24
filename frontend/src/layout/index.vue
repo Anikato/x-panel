@@ -39,6 +39,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', applyMobileMenuDefault)
+  fileTaskStore.stopPolling()
 })
 </script>
 

@@ -99,7 +99,7 @@
               <el-button v-if="row.status !== 'applied'" link type="primary" size="small" @click="handleApply(row.id)">
                 {{ $t('ssl.apply') }}
               </el-button>
-              <el-button v-if="row.status === 'applied' && row.type !== 'upload'" link type="success" size="small" @click="handleRenew(row.id)">
+              <el-button v-if="row.status === 'applied' && canRenewCertificate(row)" link type="success" size="small" @click="handleRenew(row.id)">
                 {{ $t('ssl.renew') }}
               </el-button>
               <el-button link type="info" size="small" @click="handleDetail(row.id)">
@@ -1093,6 +1093,10 @@ const sourceLabel = (cert?: Certificate | null) => {
   if (cert.sourceType === 'upload' || cert.type === 'upload') return '手动上传'
   if (cert.sourceType === 'acme' || cert.type === 'autoApply') return cert.acmeAccountEmail ? `ACME：${cert.acmeAccountEmail}` : 'ACME'
   return cert.sourceType || cert.type || '-'
+}
+
+const canRenewCertificate = (cert: Certificate) => {
+  return cert.type !== 'upload' && cert.type !== 'synced' && cert.sourceType !== 'synced'
 }
 
 const statusType = (s: string) => {

@@ -316,14 +316,19 @@ const createTerminal = async (tab: TermTab) => {
   connectWebSocket(tab)
 }
 
-const addLocalTab = async () => {
+const createTab = (title: string, cwd?: string): TermTab => {
   tabCounter++
-  const tab: TermTab = {
+  return reactive<TermTab>({
     id: `ft-${tabCounter}`,
-    title: `终端 ${tabCounter}`,
+    title,
     status: 'connecting',
     reconnectAttempts: 0,
-  }
+    cwd,
+  })
+}
+
+const addLocalTab = async () => {
+  const tab = createTab(`终端 ${tabCounter + 1}`)
   tabs.value.push(tab)
   activeTab.value = tab.id
   await createTerminal(tab)
@@ -372,7 +377,9 @@ watch(() => globalStore.termFont, () => {
 watch(() => globalStore.floatTermVisible, async (visible) => {
   if (visible && tabs.value.length === 0) {
     await nextTick()
-    await addLocalTab()
+    if (tabs.value.length === 0 && !globalStore.terminalTrigger) {
+      await addLocalTab()
+    }
   }
   if (visible && !globalStore.floatTermMinimized) {
     setTimeout(fitActive, 150)
@@ -386,14 +393,7 @@ watch(() => globalStore.terminalTrigger, async (trigger) => {
   if (trigger) {
     const cwd = normalizeTerminalCwd(trigger.cwd)
     globalStore.terminalTrigger = null // reset trigger
-    tabCounter++
-    const tab: TermTab = {
-      id: `ft-${tabCounter}`,
-      title: cwd.split('/').pop() || cwd || '终端',
-      status: 'connecting',
-      reconnectAttempts: 0,
-      cwd,
-    }
+    const tab = createTab(cwd.split('/').pop() || cwd || '终端', cwd)
     tabs.value.push(tab)
     activeTab.value = tab.id
     await createTerminal(tab)
