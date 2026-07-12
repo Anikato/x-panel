@@ -2,6 +2,8 @@ package model
 
 import "time"
 
+const CertificateLineageMigrationKey = "_mig_certificate_lineage_and_source_pause"
+
 // CertSource 证书源：从远程证书服务器拉取证书的配置
 // 同步策略：逐证书对比到期时间，始终保留到期时间最长的版本
 type CertSource struct {
@@ -9,10 +11,12 @@ type CertSource struct {
 	Name            string     `gorm:"not null" json:"name"`
 	ServerAddr      string     `gorm:"not null" json:"serverAddr"`
 	Token           string     `gorm:"not null" json:"-"`
+	TLSFingerprint  string     `json:"tlsFingerprint"`
 	SyncInterval    int        `gorm:"not null;default:360" json:"syncInterval"` // minutes, 0=manual only
 	SyncStrategy    string     `gorm:"not null;default:fingerprint" json:"syncStrategy"`
 	PostSyncCommand string     `json:"postSyncCommand"`
 	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
+	ResumeRequired  bool       `gorm:"not null;default:false" json:"resumeRequired"`
 	LastSyncAt      *time.Time `json:"lastSyncAt"`
 	LastSyncStatus  string     `json:"lastSyncStatus"` // success | error | ""
 	LastSyncMessage string     `json:"lastSyncMessage"`

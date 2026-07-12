@@ -26,6 +26,7 @@ type DnsAccount struct {
 // Certificate SSL 证书
 type Certificate struct {
 	BaseModel
+	LineageUID    string    `gorm:"size:36;index" json:"lineageUID"`
 	PrimaryDomain string    `gorm:"not null" json:"primaryDomain"`
 	Domains       string    `json:"domains"`
 	Provider      string    `gorm:"not null" json:"provider"`               // dns | http | manual

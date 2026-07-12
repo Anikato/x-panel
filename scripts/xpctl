@@ -1,127 +1,343 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+readonly EXIT_FAILURE=1
+readonly EXIT_USAGE=2
+
 INSTALL_DIR="${XPANEL_HOME:-/opt/xpanel}"
 SERVICE_NAME="${XPANEL_SERVICE:-xpanel}"
 CONFIG_FILE="${XPANEL_CONFIG:-$INSTALL_DIR/config.yaml}"
 DB_PATH="${XPANEL_DB:-$INSTALL_DIR/data/db/xpanel.db}"
+BACKUP_ROOT="${XPCTL_BACKUP_ROOT:-$INSTALL_DIR/backups/xpctl}"
+LOCK_FILE="$INSTALL_DIR/.xpctl.lock"
 
 log() { printf '[xpctl] %s\n' "$*"; }
 warn() { printf '[xpctl][WARN] %s\n' "$*" >&2; }
-die() { printf '[xpctl][ERROR] %s\n' "$*" >&2; exit 1; }
+die() { printf '[xpctl][ERROR] %s\n' "$*" >&2; exit "$EXIT_FAILURE"; }
+die_usage() { printf '[xpctl][ERROR] %s\n' "$*" >&2; exit "$EXIT_USAGE"; }
 
 usage() {
-  cat <<EOF
+	cat <<EOF
 X-Panel 控制与救援工具
 
 用法:
   xpctl <command>
 
 命令:
-  status            查看 systemd 服务状态
-  start             启动服务
-  stop              停止服务
-  restart           重启服务
-  logs              跟踪服务日志
-  doctor            输出安装、配置、数据库、服务诊断信息
-  fix-migrations    修复已知 SQLite 迁移兼容问题
+  status|start|stop|restart|logs       兼容的服务控制别名
+  service <status|start|stop|restart|logs>
+  doctor                               输出安装、配置、数据库、服务诊断信息
+  backup db                            创建 SQLite 一致性备份
+  recover migrate --apply              停止服务后备份并执行数据库迁移
+  recover restore <backup-file> --yes  恢复受控目录中的数据库备份
+  version                              输出 xpctl 关联的面板版本
+
+说明:
+  数据库迁移和恢复不会自动启动面板服务。
+  fix-migrations 已弃用，请使用 recover migrate --apply。
 
 环境变量:
-  XPANEL_HOME       安装目录，默认 /opt/xpanel
-  XPANEL_SERVICE    服务名，默认 xpanel
-  XPANEL_CONFIG     配置文件路径，默认 /opt/xpanel/config.yaml
-  XPANEL_DB         数据库路径，默认 /opt/xpanel/data/db/xpanel.db
+  XPANEL_HOME        安装目录，默认 /opt/xpanel
+  XPANEL_SERVICE     服务名，默认 xpanel
+  XPANEL_CONFIG      配置文件路径，默认 /opt/xpanel/config.yaml
+  XPANEL_DB          数据库路径，默认 /opt/xpanel/data/db/xpanel.db
+  XPCTL_BACKUP_ROOT  备份根目录，默认 /opt/xpanel/backups/xpctl
 EOF
 }
 
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1"
+	command -v "$1" >/dev/null 2>&1 || die_usage "缺少命令: $1"
 }
 
-run_systemctl() {
-  need_cmd systemctl
-  systemctl "$1" "$SERVICE_NAME"
+physical_dir() {
+	(
+		cd -P "$1"
+		pwd
+	)
 }
 
-sqlite_table_exists() {
-  sqlite3 "$DB_PATH" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='$1';"
+nearest_existing_dir() {
+	local path="$1"
+	local parent
+
+	while [ ! -e "$path" ]; do
+		parent="$(dirname "$path")"
+		[ "$parent" != "$path" ] || return 1
+		path="$parent"
+	done
+	[ -d "$path" ] || return 1
+	printf '%s\n' "$path"
 }
 
-sqlite_column_exists() {
-  sqlite3 "$DB_PATH" "SELECT count(*) FROM pragma_table_info('$1') WHERE name='$2';"
+ensure_install_dir() {
+	[ -d "$INSTALL_DIR" ] || die_usage "安装目录不存在: $INSTALL_DIR"
+	[ ! -L "$INSTALL_DIR" ] || die_usage "安装目录不能是符号链接: $INSTALL_DIR"
 }
 
-add_column_if_missing() {
-  local table="$1"
-  local column="$2"
-  local ddl="$3"
+ensure_existing_path_inside_install() {
+	local path="$1"
+	local install_root resolved_path
 
-  if [ "$(sqlite_table_exists "$table")" != "1" ]; then
-    warn "表不存在，跳过: $table"
-    return 0
-  fi
-  if [ "$(sqlite_column_exists "$table" "$column")" = "1" ]; then
-    log "列已存在，跳过: $table.$column"
-    return 0
-  fi
-  log "添加列: $table.$column"
-  sqlite3 "$DB_PATH" "ALTER TABLE $table ADD COLUMN $ddl;"
+	install_root="$(physical_dir "$INSTALL_DIR")" || die_usage "无法解析安装目录: $INSTALL_DIR"
+	resolved_path="$(physical_dir "$path")" || die_usage "无法解析路径: $path"
+	case "$resolved_path" in
+		"$install_root"|"$install_root"/*) ;;
+		*) die_usage "路径必须位于安装目录内: $path" ;;
+	esac
+}
+
+ensure_path_parent_inside_install() {
+	local path="$1"
+	ensure_existing_path_inside_install "$(dirname "$path")"
+}
+
+ensure_database_path() {
+	ensure_install_dir
+	[ -f "$DB_PATH" ] || die_usage "数据库不存在: $DB_PATH"
+	[ ! -L "$DB_PATH" ] || die_usage "数据库不能是符号链接: $DB_PATH"
+	ensure_path_parent_inside_install "$DB_PATH"
+}
+
+ensure_backup_root() {
+	local existing_parent
+
+	ensure_install_dir
+	case "$BACKUP_ROOT" in
+		"$INSTALL_DIR"/*) ;;
+		*) die_usage "备份目录必须位于安装目录内: $BACKUP_ROOT" ;;
+	esac
+	existing_parent="$(nearest_existing_dir "$BACKUP_ROOT")" || die_usage "备份目录父路径不可用: $BACKUP_ROOT"
+	ensure_existing_path_inside_install "$existing_parent"
+	mkdir -p "$BACKUP_ROOT"
+	[ ! -L "$BACKUP_ROOT" ] || die_usage "备份目录不能是符号链接: $BACKUP_ROOT"
+	ensure_existing_path_inside_install "$BACKUP_ROOT"
+	chmod 700 "$BACKUP_ROOT"
+}
+
+ensure_backup_ready() {
+	ensure_database_path
+	ensure_backup_root
+	[ -r "$DB_PATH" ] || die "数据库不可读: $DB_PATH"
+	[ -w "$BACKUP_ROOT" ] || die "备份目录不可写: $BACKUP_ROOT"
+	if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then
+		return
+	fi
+	die_usage "缺少 SHA-256 校验命令: sha256sum 或 shasum"
+}
+
+ensure_recovery_ready() {
+	ensure_backup_ready
+	[ -w "$INSTALL_DIR" ] || die "安装目录不可写: $INSTALL_DIR"
+	[ -w "$(dirname "$DB_PATH")" ] || die "数据库目录不可写: $(dirname "$DB_PATH")"
+}
+
+run_service() {
+	[ "$#" -eq 1 ] || die_usage "service 命令需要一个操作参数"
+	case "$1" in
+		status|start|stop|restart)
+			need_cmd systemctl
+			systemctl "$1" "$SERVICE_NAME"
+			;;
+		logs)
+			need_cmd journalctl
+			journalctl -u "$SERVICE_NAME" -f
+			;;
+		*) die_usage "未知 service 操作: $1" ;;
+	esac
+}
+
+require_service_stopped() {
+	need_cmd systemctl
+	if systemctl is-active --quiet "$SERVICE_NAME"; then
+		die_usage "服务仍在运行，请先执行: xpctl service stop"
+	fi
+}
+
+with_lock() {
+	need_cmd flock
+	ensure_install_dir
+	[ -w "$INSTALL_DIR" ] || die "安装目录不可写: $INSTALL_DIR"
+	(
+		flock -n 9 || die_usage "另一个 xpctl 恢复操作正在运行"
+		"$@"
+	) 9>"$LOCK_FILE"
+}
+
+sha256_file() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | awk '{print $1}'
+		return
+	fi
+	shasum -a 256 "$1" | awk '{print $1}'
+}
+
+backup_db() {
+	local base backup_dir backup_path checksum suffix
+
+	ensure_backup_ready
+	need_cmd sqlite3
+	base="$BACKUP_ROOT/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+	backup_dir="$base"
+	suffix=1
+	while [ -e "$backup_dir" ]; do
+		backup_dir="$base-$suffix"
+		suffix=$((suffix + 1))
+	done
+	mkdir -p "$backup_dir"
+	chmod 700 "$backup_dir"
+	backup_path="$backup_dir/xpanel.db"
+	case "$backup_path" in
+		*"'"*) die_usage "备份路径不能包含单引号: $backup_path" ;;
+	esac
+	sqlite3 "$DB_PATH" ".backup '$backup_path'"
+	[ -f "$backup_path" ] || die "数据库备份未创建: $backup_path"
+	[ ! -L "$backup_path" ] || die "数据库备份不能是符号链接: $backup_path"
+	chmod 600 "$backup_path"
+	checksum="$(sha256_file "$backup_path")"
+	log "数据库备份已创建: $backup_path (sha256: $checksum)" >&2
+	printf '%s\n' "$backup_path"
+}
+
+run_migration_locked() {
+	local backup_path
+	backup_path="$(backup_db)"
+	[ -x "$INSTALL_DIR/xpanel" ] || die_usage "主程序不存在或不可执行: $INSTALL_DIR/xpanel"
+	log "已创建迁移前备份: $backup_path"
+	"$INSTALL_DIR/xpanel" migrate
+	log "数据库迁移完成；服务仍保持停止状态"
+}
+
+recover_migrate() {
+	[ "$#" -eq 1 ] && [ "$1" = "--apply" ] || die_usage "用法: xpctl recover migrate --apply"
+	ensure_recovery_ready
+	require_service_stopped
+	with_lock run_migration_locked
+}
+
+validate_restore_file() {
+	local backup_file="$1"
+	local backup_root backup_parent integrity
+
+	ensure_backup_root
+	need_cmd sqlite3
+	[ -f "$backup_file" ] || die_usage "备份文件不存在: $backup_file"
+	[ ! -L "$backup_file" ] || die_usage "备份文件不能是符号链接: $backup_file"
+	backup_root="$(physical_dir "$BACKUP_ROOT")" || die_usage "无法解析备份目录: $BACKUP_ROOT"
+	backup_parent="$(physical_dir "$(dirname "$backup_file")")" || die_usage "无法解析备份文件: $backup_file"
+	case "$backup_parent" in
+		"$backup_root"|"$backup_root"/*) ;;
+		*) die_usage "恢复文件必须位于受控备份目录内: $BACKUP_ROOT" ;;
+	esac
+	integrity="$(sqlite3 "$backup_file" 'PRAGMA integrity_check;' 2>/dev/null)" || die_usage "无法校验备份文件: $backup_file"
+	[ "$integrity" = "ok" ] || die_usage "备份文件 SQLite 完整性校验失败: $backup_file"
+}
+
+restore_database_locked() {
+	local backup_file="$1"
+	local current_backup temp_path
+
+	current_backup="$(backup_db)"
+	temp_path="$DB_PATH.restore.$$"
+	if ! cp -p "$backup_file" "$temp_path"; then
+		rm -f "$temp_path"
+		die "无法写入恢复临时文件: $temp_path"
+	fi
+	if ! mv -f "$temp_path" "$DB_PATH"; then
+		rm -f "$temp_path"
+		die "无法替换数据库: $DB_PATH"
+	fi
+	rm -f "$DB_PATH-wal" "$DB_PATH-shm"
+	log "数据库已恢复，恢复前备份: $current_backup"
+	log "服务仍保持停止状态"
+}
+
+recover_restore() {
+	[ "$#" -eq 2 ] && [ "$2" = "--yes" ] || die_usage "用法: xpctl recover restore <backup-file> --yes"
+	ensure_recovery_ready
+	require_service_stopped
+	validate_restore_file "$1"
+	with_lock restore_database_locked "$1"
 }
 
 doctor() {
-  log "安装目录: $INSTALL_DIR"
-  log "配置文件: $CONFIG_FILE"
-  log "数据库: $DB_PATH"
+	log "安装目录: $INSTALL_DIR"
+	log "配置文件: $CONFIG_FILE"
+	log "数据库: $DB_PATH"
 
-  if [ -x "$INSTALL_DIR/xpanel" ]; then
-    log "主程序: $INSTALL_DIR/xpanel"
-    "$INSTALL_DIR/xpanel" --version 2>/dev/null || true
-  else
-    warn "主程序不存在或不可执行: $INSTALL_DIR/xpanel"
-  fi
+	if [ -x "$INSTALL_DIR/xpanel" ]; then
+		log "主程序: $INSTALL_DIR/xpanel"
+		"$INSTALL_DIR/xpanel" --version || warn "无法读取主程序版本"
+	else
+		warn "主程序不存在或不可执行: $INSTALL_DIR/xpanel"
+	fi
 
-  if [ -f "$CONFIG_FILE" ]; then
-    log "配置文件存在"
-  else
-    warn "配置文件不存在"
-  fi
+	if [ -f "$CONFIG_FILE" ]; then
+		log "配置文件存在"
+	else
+		warn "配置文件不存在"
+	fi
 
-  if [ -f "$DB_PATH" ]; then
-    log "数据库存在: $(du -h "$DB_PATH" | awk '{print $1}')"
-  else
-    warn "数据库不存在"
-  fi
+	if [ -f "$DB_PATH" ]; then
+		log "数据库存在: $(du -h "$DB_PATH" | awk '{print $1}')"
+	else
+		warn "数据库不存在"
+	fi
 
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl status "$SERVICE_NAME" --no-pager || true
-  else
-    warn "systemctl 不可用"
-  fi
+	if command -v systemctl >/dev/null 2>&1; then
+		systemctl status "$SERVICE_NAME" --no-pager || true
+	else
+		warn "systemctl 不可用"
+	fi
 }
 
-fix_migrations() {
-  need_cmd sqlite3
-  [ -f "$DB_PATH" ] || die "数据库不存在: $DB_PATH"
-
-  log "开始修复已知迁移兼容问题..."
-  add_column_if_missing "notifications" "event" "event text"
-  add_column_if_missing "notifications" "show_badge" "show_badge numeric NOT NULL DEFAULT 1"
-  add_column_if_missing "notifications" "popup" "popup numeric NOT NULL DEFAULT 0"
-  add_column_if_missing "cronjobs" "db_instance_id" "db_instance_id integer DEFAULT 0"
-  log "迁移兼容修复完成"
+version() {
+	log "xpctl rescue CLI"
+	if [ -x "$INSTALL_DIR/xpanel" ]; then
+		"$INSTALL_DIR/xpanel" --version
+	else
+		warn "主程序不存在或不可执行: $INSTALL_DIR/xpanel"
+	fi
 }
 
 case "${1:-}" in
-  status) run_systemctl status ;;
-  start) run_systemctl start ;;
-  stop) run_systemctl stop ;;
-  restart) run_systemctl restart ;;
-  logs)
-    need_cmd journalctl
-    journalctl -u "$SERVICE_NAME" -f
-    ;;
-  doctor) doctor ;;
-  fix-migrations) fix_migrations ;;
-  help|-h|--help|"") usage ;;
-  *) die "未知命令: $1" ;;
+	status|start|stop|restart|logs)
+		run_service "$1"
+		;;
+	service)
+		shift
+		run_service "$@"
+		;;
+	doctor)
+		[ "$#" -eq 1 ] || die_usage "用法: xpctl doctor"
+		doctor
+		;;
+	backup)
+		shift
+		[ "$#" -eq 1 ] && [ "$1" = "db" ] || die_usage "用法: xpctl backup db"
+		backup_db
+		;;
+	recover)
+		shift
+		[ "$#" -ge 1 ] || die_usage "recover 需要子命令"
+		action="$1"
+		shift
+		case "$action" in
+			migrate) recover_migrate "$@" ;;
+			restore) recover_restore "$@" ;;
+			*) die_usage "未知 recover 操作: $action" ;;
+		esac
+		;;
+	fix-migrations)
+		warn "fix-migrations 已弃用且不会修改数据库；请使用: xpctl recover migrate --apply"
+		exit "$EXIT_USAGE"
+		;;
+	version|--version)
+		version
+		;;
+	help|-h|--help|"")
+		usage
+		;;
+	*)
+		die_usage "未知命令: $1"
+		;;
 esac

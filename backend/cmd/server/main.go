@@ -1,17 +1,34 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"xpanel/app/version"
 	"xpanel/server"
 )
 
-func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
+func run(args []string, start func(), migrate func(), setup func([]string), showVersion func()) {
+	if len(args) > 0 {
+		switch args[0] {
 		case "setup":
-			runSetup(os.Args[2:])
+			setup(args[1:])
+			return
+		case "migrate":
+			migrate()
+			return
+		case "version", "--version":
+			showVersion()
 			return
 		}
 	}
-	server.Start()
+	start()
+}
+
+func main() {
+	run(os.Args[1:], server.Start, server.Migrate, runSetup, printVersion)
+}
+
+func printVersion() {
+	info := version.Get()
+	fmt.Printf("xpanel %s (commit %s, built %s, %s)\n", info.Version, info.CommitHash, info.BuildTime, info.GoVersion)
 }

@@ -54,6 +54,12 @@ func WithBySourceID(sourceID uint) DBOption {
 	}
 }
 
+func WithBySourceLineage(sourceID uint, lineageUID string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("source_id = ? AND lineage_uid = ?", sourceID, lineageUID)
+	}
+}
+
 func WithByFingerprint(fingerprint string) DBOption {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Where("fingerprint = ?", fingerprint)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -44,12 +45,7 @@ func Start() {
 		}
 	}
 
-	// 3. 数据库连接
-	initDB.Init()
-	initDB.InitMonitorDB()
-
-	// 4. 数据库迁移 + 默认数据
-	migration.Init()
+	initDatabaseAndMigrations()
 
 	// 4.5 恢复面板进程代理环境
 	service.SyncProxyOnStartup()
@@ -90,12 +86,20 @@ func Start() {
 
 	if sslConf.Enable && sslConf.CertPath != "" && sslConf.KeyPath != "" {
 		global.LOG.Infof("X-Panel server starting on HTTPS :%s", port)
+		reloader, err := newTLSCertificateReloader(sslConf.CertPath, sslConf.KeyPath)
+		if err != nil {
+			panic(fmt.Sprintf("Server failed to load TLS certificate: %v", err))
+		}
 		srv := &http.Server{
 			Addr:     ":" + port,
 			Handler:  r,
 			ErrorLog: newTLSFilteredLogger(),
+			TLSConfig: &tls.Config{
+				MinVersion:     tls.VersionTLS12,
+				GetCertificate: reloader.GetCertificate,
+			},
 		}
-		if err := srv.ListenAndServeTLS(sslConf.CertPath, sslConf.KeyPath); err != nil {
+		if err := srv.ListenAndServeTLS("", ""); err != nil {
 			panic(fmt.Sprintf("Server failed to start with TLS: %v", err))
 		}
 	} else {
@@ -104,6 +108,23 @@ func Start() {
 			panic(fmt.Sprintf("Server failed to start: %v", err))
 		}
 	}
+}
+
+// Migrate runs the same database migration entry point as server startup without
+// starting HTTP, cron jobs, heartbeats, or other background services.
+func Migrate() {
+	initViper.Init()
+	initLog.Init()
+	initDatabaseAndMigrations()
+}
+
+func initDatabaseAndMigrations() {
+	// 3. 数据库连接
+	initDB.Init()
+	initDB.InitMonitorDB()
+
+	// 4. 数据库迁移 + 默认数据
+	migration.Init()
 }
 
 type tlsFilterWriter struct{}

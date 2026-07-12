@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-acme/lego/v4/certificate"
+	"github.com/google/uuid"
 	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/repo"
@@ -60,6 +61,7 @@ func NewICertificateService() ICertificateService {
 
 func (s *CertificateService) Create(req dto.CertificateCreate) error {
 	cert := model.Certificate{
+		LineageUID:    uuid.NewString(),
 		PrimaryDomain: req.PrimaryDomain,
 		Domains:       req.OtherDomains,
 		Provider:      req.Provider,
@@ -116,6 +118,7 @@ func (s *CertificateService) Upload(req dto.CertificateUpload) error {
 	}
 
 	cert := model.Certificate{
+		LineageUID:    uuid.NewString(),
 		PrimaryDomain: certInfo.primaryDomain,
 		Domains:       strings.Join(otherDomains(certInfo.primaryDomain, certInfo.domains), ","),
 		Provider:      "manual",
@@ -146,13 +149,9 @@ func (s *CertificateService) Delete(id uint) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
-	// 删除证书文件（兼容旧路径含 * 和新路径 _wildcard）
+	// 只删除该记录拥有的 ID 目录。旧域名目录可能仍被其他记录或服务配置引用。
 	sslDir := s.GetSSLDir()
 	os.RemoveAll(certDirPath(sslDir, cert))
-	if safeDomainDir(cert.PrimaryDomain) != cert.PrimaryDomain {
-		os.RemoveAll(filepath.Join(sslDir, "certs", cert.PrimaryDomain))
-	}
-	os.RemoveAll(filepath.Join(sslDir, "certs", safeDomainDir(cert.PrimaryDomain)))
 
 	return s.certRepo.Delete(repo.WithByID(id))
 }

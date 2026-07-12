@@ -820,7 +820,8 @@ echo "    systemctl restart $SERVICE_NAME   # 重启"
 echo "    systemctl status $SERVICE_NAME    # 查看状态"
 echo "    journalctl -u $SERVICE_NAME -f    # 查看日志"
 echo "    xpctl doctor                      # 诊断"
-echo "    xpctl fix-migrations              # 修复已知迁移问题"
+echo "    xpctl backup db                   # 备份面板数据库"
+echo "    xpctl recover migrate --apply     # 服务停止后执行迁移"
 echo ""
 if [ "$IS_UPGRADE" = false ]; then
     if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ]; then

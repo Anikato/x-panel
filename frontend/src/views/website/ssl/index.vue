@@ -191,8 +191,8 @@
           </el-table-column>
           <el-table-column :label="$t('commons.status')" width="90">
             <template #default="{ row }">
-              <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
-                {{ row.enabled ? $t('commons.enabled') : $t('commons.disabled') }}
+              <el-tag :type="row.resumeRequired ? 'warning' : row.enabled ? 'success' : 'info'" size="small">
+                {{ row.resumeRequired ? '升级保护暂停' : row.enabled ? $t('commons.enabled') : $t('commons.disabled') }}
               </el-tag>
             </template>
           </el-table-column>
@@ -209,7 +209,7 @@
           </el-table-column>
           <el-table-column :label="$t('commons.actions')" width="280" fixed="right">
             <template #default="{ row }">
-              <el-button link type="success" size="small" :loading="row._syncing" @click="handleSync(row)">
+              <el-button link type="success" size="small" :loading="row._syncing" :disabled="row.resumeRequired || !row.enabled" @click="handleSync(row)">
                 {{ $t('ssl.syncNow') }}
               </el-button>
               <el-button link type="info" size="small" @click="handleViewSyncLogs(row.id)">
@@ -461,12 +461,24 @@
     <!-- 证书源对话框 -->
     <el-dialog v-model="sourceDialogVisible" :title="sourceEditMode ? $t('ssl.editSource') : $t('ssl.addSource')" width="560px" destroy-on-close>
       <el-form :model="sourceForm" label-width="130px">
+        <el-alert
+          v-if="sourceForm.resumeRequired"
+          title="升级后同步已暂停。请确认上游面板已经升级，然后打开启用开关并保存。"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px"
+        />
         <el-form-item :label="$t('ssl.sourceName')">
           <el-input v-model="sourceForm.name" placeholder="主服务器" />
         </el-form-item>
         <el-form-item :label="$t('ssl.sourceAddr')">
           <el-input v-model="sourceForm.serverAddr" placeholder="https://1.2.3.4:7777" />
           <div class="form-tip">{{ $t('ssl.sourceAddrTip') }}</div>
+        </el-form-item>
+        <el-form-item label="TLS 指纹（可选）">
+          <el-input v-model="sourceForm.tlsFingerprint" placeholder="SHA-256 指纹，用于自签名或 IP 地址上游" />
+          <div class="form-tip">留空时校验证书链和域名；填写后仅信任该服务端证书。</div>
         </el-form-item>
         <el-form-item :label="$t('ssl.sourceToken')">
           <el-input v-model="sourceForm.token" type="password" show-password :placeholder="sourceEditMode ? '留空保持不变' : ''" />
@@ -482,14 +494,6 @@
             <el-option :label="$t('ssl.intervalDaily')" :value="1440" />
             <el-option :label="$t('ssl.intervalWeekly')" :value="10080" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="同步策略">
-          <el-select v-model="sourceForm.syncStrategy" style="width: 100%">
-            <el-option label="指纹去重（推荐）" value="fingerprint" />
-            <el-option label="主域名 + 签发机构 + 密钥类型" value="domainIssuerKey" />
-            <el-option label="同主域名保留最新" value="domainLatest" />
-          </el-select>
-          <div class="form-tip">默认不会用同域名证书互相覆盖；只有“同主域名保留最新”会沿用覆盖式同步。</div>
         </el-form-item>
         <el-form-item :label="$t('ssl.postSyncCommand')">
           <el-input v-model="sourceForm.postSyncCommand" placeholder="systemctl reload nginx" />
@@ -925,10 +929,12 @@ const defaultSourceForm = () => ({
   name: '',
   serverAddr: '',
   token: '',
+  tlsFingerprint: '',
   syncInterval: 360,
   syncStrategy: 'fingerprint',
   postSyncCommand: '',
   enabled: true,
+  resumeRequired: false,
 })
 const sourceForm = ref(defaultSourceForm())
 
@@ -947,10 +953,12 @@ const openSourceDialog = (row?: CertSource) => {
       name: row.name,
       serverAddr: row.serverAddr,
       token: '',
+      tlsFingerprint: row.tlsFingerprint || '',
       syncInterval: row.syncInterval,
       syncStrategy: row.syncStrategy || 'fingerprint',
       postSyncCommand: row.postSyncCommand,
       enabled: row.enabled,
+      resumeRequired: row.resumeRequired,
     }
   } else {
     sourceEditMode.value = false
@@ -1027,12 +1035,12 @@ const handleViewSyncLogs = (sourceID: number) => {
 }
 
 const syncLogStatusType = (s: string) => {
-  const map: Record<string, string> = { success: 'success', skipped: 'info', error: 'danger' }
+  const map: Record<string, string> = { success: 'success', warning: 'warning', skipped: 'info', error: 'danger' }
   return (map[s] || 'info') as '' | 'success' | 'warning' | 'danger' | 'info'
 }
 
 const syncLogStatusLabel = (s: string) => {
-  const map: Record<string, string> = { success: '成功', skipped: '跳过', error: '失败' }
+  const map: Record<string, string> = { success: '成功', warning: '警告', skipped: '跳过', error: '失败' }
   return map[s] || s
 }
 

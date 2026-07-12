@@ -8,6 +8,7 @@ type CertSourceCreate struct {
 	Name            string `json:"name" binding:"required"`
 	ServerAddr      string `json:"serverAddr" binding:"required"`
 	Token           string `json:"token" binding:"required"`
+	TLSFingerprint  string `json:"tlsFingerprint"`
 	SyncInterval    int    `json:"syncInterval"`
 	SyncStrategy    string `json:"syncStrategy"`
 	PostSyncCommand string `json:"postSyncCommand"`
@@ -19,6 +20,7 @@ type CertSourceUpdate struct {
 	Name            string `json:"name" binding:"required"`
 	ServerAddr      string `json:"serverAddr" binding:"required"`
 	Token           string `json:"token"`
+	TLSFingerprint  string `json:"tlsFingerprint"`
 	SyncInterval    int    `json:"syncInterval"`
 	SyncStrategy    string `json:"syncStrategy"`
 	PostSyncCommand string `json:"postSyncCommand"`
@@ -29,10 +31,12 @@ type CertSourceInfo struct {
 	ID              uint       `json:"id"`
 	Name            string     `json:"name"`
 	ServerAddr      string     `json:"serverAddr"`
+	TLSFingerprint  string     `json:"tlsFingerprint"`
 	SyncInterval    int        `json:"syncInterval"`
 	SyncStrategy    string     `json:"syncStrategy"`
 	PostSyncCommand string     `json:"postSyncCommand"`
 	Enabled         bool       `json:"enabled"`
+	ResumeRequired  bool       `json:"resumeRequired"`
 	LastSyncAt      *time.Time `json:"lastSyncAt"`
 	LastSyncStatus  string     `json:"lastSyncStatus"`
 	LastSyncMessage string     `json:"lastSyncMessage"`
@@ -42,6 +46,7 @@ type CertSourceInfo struct {
 // --- 证书服务端暴露给远程拉取的结构 ---
 
 type CertServerItem struct {
+	LineageUID    string    `json:"lineageUID"`
 	PrimaryDomain string    `json:"primaryDomain"`
 	Domains       string    `json:"domains"`
 	Pem           string    `json:"pem"`

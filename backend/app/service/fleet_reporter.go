@@ -69,15 +69,17 @@ func NewIFleetReporterService() IFleetReporterService {
 }
 
 type fleetPayload struct {
-	InstanceID       string                       `json:"instanceId"`
-	Panel            fleetPanelPayload            `json:"panel"`
-	Host             fleetHostPayload             `json:"host"`
-	CPU              fleetCPUPayload              `json:"cpu"`
-	Memory           fleetMemoryPayload           `json:"memory"`
-	Swap             fleetSwapPayload             `json:"swap"`
-	Disk             fleetDiskPayload             `json:"disk"`
-	State            fleetStatePayload            `json:"state"`
-	TrafficSummaries []fleetTrafficSummaryPayload `json:"trafficSummaries"`
+	InstanceID         string                          `json:"instanceId"`
+	Panel              fleetPanelPayload               `json:"panel"`
+	Host               fleetHostPayload                `json:"host"`
+	CPU                fleetCPUPayload                 `json:"cpu"`
+	Memory             fleetMemoryPayload              `json:"memory"`
+	Swap               fleetSwapPayload                `json:"swap"`
+	Disk               fleetDiskPayload                `json:"disk"`
+	State              fleetStatePayload               `json:"state"`
+	TrafficSummaries   []fleetTrafficSummaryPayload    `json:"trafficSummaries"`
+	Certificates       []fleetCertificatePayload       `json:"certificates"`
+	CertificateTargets []fleetCertificateTargetPayload `json:"certificateTargets"`
 }
 
 type fleetPanelPayload struct {
@@ -155,6 +157,36 @@ type fleetTrafficSummaryPayload struct {
 	Enabled       bool      `json:"enabled"`
 }
 
+type fleetCertificatePayload struct {
+	LocalID              uint       `json:"localId"`
+	LineageUID           string     `json:"lineageUID"`
+	PrimaryDomain        string     `json:"primaryDomain"`
+	DNSNames             []string   `json:"dnsNames"`
+	Fingerprint          string     `json:"fingerprintSHA256"`
+	SerialNumber         string     `json:"serialNumber"`
+	Issuer               string     `json:"issuer"`
+	NotBefore            time.Time  `json:"notBefore"`
+	NotAfter             time.Time  `json:"notAfter"`
+	SourceType           string     `json:"sourceType"`
+	SourceID             uint       `json:"sourceId"`
+	SourceName           string     `json:"sourceName"`
+	SourceEnabled        bool       `json:"sourceEnabled"`
+	SourceResumeRequired bool       `json:"sourceResumeRequired"`
+	SourceLastSyncAt     *time.Time `json:"sourceLastSyncAt,omitempty"`
+	SourceLastSyncStatus string     `json:"sourceLastSyncStatus"`
+	DeploymentStatus     string     `json:"deploymentStatus"`
+}
+
+type fleetCertificateTargetPayload struct {
+	TargetKey           string `json:"targetKey"`
+	WebsiteID           uint   `json:"websiteId"`
+	Hostname            string `json:"hostname"`
+	Port                int    `json:"port"`
+	CertificateLocalID  uint   `json:"certificateLocalId"`
+	LineageUID          string `json:"lineageUID"`
+	ExpectedFingerprint string `json:"expectedFingerprintSHA256"`
+}
+
 type fleetResponse struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
@@ -162,12 +194,12 @@ type fleetResponse struct {
 }
 
 type fleetRegisterData struct {
-	InstanceID               string             `json:"instanceId"`
-	InstanceToken            string             `json:"instanceToken"`
-	ServerTime               time.Time          `json:"serverTime"`
-	HeartbeatIntervalSeconds int                `json:"heartbeatIntervalSeconds"`
-	TaskPollIntervalSeconds  int                `json:"taskPollIntervalSeconds"`
-	PanelAutoUpgrade         *fleetAutoUpgrade  `json:"panelAutoUpgrade,omitempty"`
+	InstanceID               string            `json:"instanceId"`
+	InstanceToken            string            `json:"instanceToken"`
+	ServerTime               time.Time         `json:"serverTime"`
+	HeartbeatIntervalSeconds int               `json:"heartbeatIntervalSeconds"`
+	TaskPollIntervalSeconds  int               `json:"taskPollIntervalSeconds"`
+	PanelAutoUpgrade         *fleetAutoUpgrade `json:"panelAutoUpgrade,omitempty"`
 }
 
 type fleetHeartbeatData struct {
@@ -999,8 +1031,64 @@ func (s *FleetReporterService) buildFleetPayload(instanceID string) (fleetPayloa
 	payload.State.ProcessCount = processCount()
 	payload.State.NetInTransfer, payload.State.NetOutTransfer, payload.State.NetInSpeed, payload.State.NetOutSpeed = s.networkState()
 	payload.TrafficSummaries = collectFleetTrafficSummaries()
+	payload.Certificates, payload.CertificateTargets = collectFleetCertificateHealth()
 
 	return payload, nil
+}
+
+func collectFleetCertificateHealth() ([]fleetCertificatePayload, []fleetCertificateTargetPayload) {
+	var certs []model.Certificate
+	if err := global.DB.Find(&certs).Error; err != nil {
+		return nil, nil
+	}
+	var sources []model.CertSource
+	_ = global.DB.Find(&sources).Error
+	sourceMap := make(map[uint]model.CertSource, len(sources))
+	for _, source := range sources {
+		sourceMap[source.ID] = source
+	}
+
+	inventory := make([]fleetCertificatePayload, 0, len(certs))
+	certMap := make(map[uint]model.Certificate, len(certs))
+	for _, cert := range certs {
+		certMap[cert.ID] = cert
+		source := sourceMap[cert.SourceID]
+		inventory = append(inventory, fleetCertificatePayload{
+			LocalID: cert.ID, LineageUID: cert.LineageUID, PrimaryDomain: cert.PrimaryDomain,
+			DNSNames: collectCertificateDomains(cert), Fingerprint: cert.Fingerprint,
+			SerialNumber: cert.SerialNumber, Issuer: cert.Issuer, NotBefore: cert.StartDate,
+			NotAfter: cert.ExpireDate, SourceType: cert.SourceType, SourceID: cert.SourceID,
+			SourceName: cert.SourceName, SourceEnabled: source.Enabled,
+			SourceResumeRequired: source.ResumeRequired, SourceLastSyncAt: source.LastSyncAt,
+			SourceLastSyncStatus: source.LastSyncStatus, DeploymentStatus: cert.Status,
+		})
+	}
+
+	var websites []model.Website
+	if err := global.DB.Where("ssl_enable = ? AND status = ? AND certificate_id > 0", true, "running").Find(&websites).Error; err != nil {
+		return inventory, nil
+	}
+	var targets []fleetCertificateTargetPayload
+	for _, website := range websites {
+		cert, ok := certMap[website.CertificateID]
+		if !ok {
+			continue
+		}
+		domains := append([]string{website.PrimaryDomain}, strings.Split(website.Domains, ",")...)
+		for _, domain := range domains {
+			domain = strings.TrimSpace(domain)
+			if domain == "" || strings.HasPrefix(domain, "*.") {
+				continue
+			}
+			targets = append(targets, fleetCertificateTargetPayload{
+				TargetKey: fmt.Sprintf("website:%d:%s:443", website.ID, strings.ToLower(domain)),
+				WebsiteID: website.ID, Hostname: domain, Port: 443,
+				CertificateLocalID: cert.ID, LineageUID: cert.LineageUID,
+				ExpectedFingerprint: cert.Fingerprint,
+			})
+		}
+	}
+	return inventory, targets
 }
 
 func collectFleetTrafficSummaries() []fleetTrafficSummaryPayload {

@@ -9,7 +9,9 @@ import (
 	"xpanel/app/model"
 	"xpanel/global"
 
+	"github.com/google/uuid"
 	hostUtil "github.com/shirou/gopsutil/v4/host"
+	"gorm.io/gorm"
 )
 
 // Init 执行数据库自动迁移
@@ -92,6 +94,41 @@ func runOnceDataMigrations() {
 		markDone("_mig_auto_upgrade_default_off")
 		global.LOG.Info("Migration: forced AutoUpgrade=disable for safety; re-enable manually if desired")
 	}
+
+	if err := migrateCertificateLineageAndPause(); err != nil {
+		global.LOG.Errorf("Migration: certificate lineage and source pause failed: %v", err)
+	}
+}
+
+func migrateCertificateLineageAndPause() error {
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&model.Setting{}).Where("`key` = ?", model.CertificateLineageMigrationKey).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var certs []model.Certificate
+		if err := tx.Where("lineage_uid = '' OR lineage_uid IS NULL").Find(&certs).Error; err != nil {
+			return err
+		}
+		for _, cert := range certs {
+			if cert.Type == "synced" || cert.SourceType == "synced" {
+				continue
+			}
+			if err := tx.Model(&model.Certificate{}).Where("id = ?", cert.ID).
+				Update("lineage_uid", uuid.NewString()).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Model(&model.CertSource{}).Where("1 = 1").
+			Updates(map[string]interface{}{"enabled": false, "resume_required": true}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.Setting{Key: model.CertificateLineageMigrationKey, Value: "done"}).Error
+	})
 }
 
 // migrateSSLCertsToIndependentDir 将旧 Nginx 目录下的证书迁移到独立 SSL 目录

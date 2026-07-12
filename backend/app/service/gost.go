@@ -398,8 +398,7 @@ func (s *GostService) DeleteChain(id uint) error {
 func (s *GostService) SyncAll() error {
 	client := newGostClient()
 	if !client.Ping() {
-		global.LOG.Warn("GOST API not reachable, skip sync")
-		return nil
+		return fmt.Errorf("GOST API not reachable")
 	}
 
 	chains, err := s.chainRepo.GetList()
