@@ -104,7 +104,7 @@ curl -fsSL "$checksum_url" -o "$checksum" || fail "下载校验文件失败"
 ) || fail "安装包 SHA-256 校验失败"
 
 mkdir -p "$extract_dir"
-tar -xzf "$archive" -C "$extract_dir" xpctl || fail "安装包中未找到 xpctl"
+tar -xzf "$archive" -C "$extract_dir" ./xpctl || fail "安装包中未找到 xpctl"
 candidate="$extract_dir/xpctl"
 [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate" ] || fail "解压出的 xpctl 无效"
 

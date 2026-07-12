@@ -57,8 +57,9 @@ create_release() {
 	mkdir -p "$release_dir" "$stage_dir"
 	printf '%s\n' "$content" >"$stage_dir/xpctl"
 	chmod +x "$stage_dir/xpctl"
-	tar -czf "$archive" -C "$stage_dir" xpctl
-	/usr/bin/shasum -a 256 "$archive" | awk '{print $1 "  " FILENAME}' FILENAME="$(basename "$archive")" >"$archive.sha256"
+	tar -czf "$archive" -C "$stage_dir" .
+	checksum="$(/usr/bin/shasum -a 256 "$archive" | awk '{print $1}')"
+	printf '%s  %s\n' "$checksum" "$(basename "$archive")" >"$archive.sha256"
 }
 
 mkdir -p "$MIRROR/releases" "$BIN_DIR" "$(dirname "$TARGET")"
@@ -129,6 +130,20 @@ fi
 /usr/bin/shasum -a 256 "$@"
 EOF
 
+cat >"$BIN_DIR/tar" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+member=""
+for argument in "$@"; do
+  member="$argument"
+done
+if [ "$member" = "xpctl" ]; then
+  printf 'tar: xpctl: Not found in archive\n' >&2
+  exit 1
+fi
+exec /usr/bin/tar "$@"
+EOF
+
 cat >"$BIN_DIR/install" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -140,7 +155,7 @@ cp "$3" "$4"
 chmod "$2" "$4"
 EOF
 
-chmod +x "$BIN_DIR/id" "$BIN_DIR/uname" "$BIN_DIR/curl" "$BIN_DIR/sha256sum" "$BIN_DIR/install"
+chmod +x "$BIN_DIR/id" "$BIN_DIR/uname" "$BIN_DIR/curl" "$BIN_DIR/sha256sum" "$BIN_DIR/tar" "$BIN_DIR/install"
 export PATH="$BIN_DIR:$PATH"
 export TEST_MIRROR="$MIRROR"
 export CURL_CALLS
