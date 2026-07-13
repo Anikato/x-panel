@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -380,6 +381,12 @@ func (s *CertificateService) Apply(id uint) error {
 }
 
 func (s *CertificateService) Renew(id uint) error {
+	release, err := acquireCertificateRenewal(id)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	cert, err := s.certRepo.Get(repo.WithByID(id))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
@@ -957,8 +964,23 @@ func isRenewableCertificate(cert model.Certificate) bool {
 	return cert.Type != "upload" && cert.Type != "synced" && cert.SourceType != "synced"
 }
 
-// autoRenewMu 防止同一证书被并发续签
-var autoRenewMu sync.Map
+var (
+	certificateRenewalMu            sync.Map
+	errCertificateRenewalInProgress = errors.New("certificate renewal is already in progress")
+)
+
+func acquireCertificateRenewal(id uint) (func(), error) {
+	if _, loaded := certificateRenewalMu.LoadOrStore(id, struct{}{}); loaded {
+		return nil, errCertificateRenewalInProgress
+	}
+	return func() { certificateRenewalMu.Delete(id) }, nil
+}
+
+func shouldAutoRenewCertificate(cert model.Certificate, now time.Time, renewBefore time.Duration) bool {
+	return cert.AutoRenew && isRenewableCertificate(cert) &&
+		strings.TrimSpace(cert.Pem) != "" && strings.TrimSpace(cert.PrivateKey) != "" &&
+		!cert.ExpireDate.IsZero() && !cert.ExpireDate.After(now.Add(renewBefore))
+}
 
 // AutoRenewCerts 自动续期即将过期的证书（由 cron 调用）
 func AutoRenewCerts() {
@@ -976,16 +998,7 @@ func AutoRenewCerts() {
 	sem := make(chan struct{}, 3) // 最多 3 个并发续签
 
 	for _, cert := range certs {
-		if !cert.AutoRenew || !isRenewableCertificate(cert) || cert.Status != "applied" {
-			continue
-		}
-		if cert.ExpireDate.IsZero() || cert.ExpireDate.Sub(now) > renewBefore {
-			continue
-		}
-
-		// 追加鼠备并发锁：同一证书 ID 同时只运行一个续签
-		if _, loaded := autoRenewMu.LoadOrStore(cert.ID, struct{}{}); loaded {
-			global.LOG.Infof("[auto-renew] Certificate %d (%s) is already being renewed, skipping", cert.ID, cert.PrimaryDomain)
+		if !shouldAutoRenewCertificate(cert, now, renewBefore) {
 			continue
 		}
 
@@ -994,11 +1007,14 @@ func AutoRenewCerts() {
 		go func(c model.Certificate) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			defer autoRenewMu.Delete(c.ID)
 
 			global.LOG.Infof("[auto-renew] Certificate %s (ID=%d) expires at %s, renewing...",
 				c.PrimaryDomain, c.ID, c.ExpireDate.Format("2006-01-02"))
 			if err := certService.Renew(c.ID); err != nil {
+				if errors.Is(err, errCertificateRenewalInProgress) {
+					global.LOG.Infof("[auto-renew] Certificate %d (%s) is already being renewed, skipping", c.ID, c.PrimaryDomain)
+					return
+				}
 				global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", c.PrimaryDomain, err)
 			} else {
 				global.LOG.Infof("[auto-renew] Successfully renewed %s", c.PrimaryDomain)

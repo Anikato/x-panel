@@ -34,6 +34,7 @@ func Init() {
 	global.CRON.AddFunc("0 2 * * *", func() {
 		service.AutoRenewCerts()
 	})
+	go service.AutoRenewCerts()
 
 	// 每天凌晨 3:30 自动升级（如果启用）
 	global.CRON.AddFunc("30 3 * * *", func() {
