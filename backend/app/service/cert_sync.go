@@ -81,9 +81,6 @@ func (s *CertSourceService) Create(req dto.CertSourceCreate) error {
 	if err != nil {
 		return err
 	}
-	if _, err := normalizeCertSourceTLSFingerprint(req.TLSFingerprint); err != nil {
-		return err
-	}
 	source := model.CertSource{
 		Name:            req.Name,
 		ServerAddr:      serverAddr,
@@ -104,9 +101,6 @@ func (s *CertSourceService) Update(req dto.CertSourceUpdate) error {
 	}
 	serverAddr, err := normalizeCertSourceServerAddr(req.ServerAddr)
 	if err != nil {
-		return err
-	}
-	if _, err := normalizeCertSourceTLSFingerprint(req.TLSFingerprint); err != nil {
 		return err
 	}
 	source.Name = req.Name
@@ -438,14 +432,10 @@ func certificateSyncStatus(errorCount, newCount, updatedCount int, postActionErr
 }
 
 func (s *CertSourceService) fetchRemoteCerts(source model.CertSource) ([]dto.CertServerItem, error) {
-	tlsConfig, err := newCertSourceTLSConfig(source)
-	if err != nil {
-		return nil, err
-	}
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
+			TLSClientConfig: newCertSourceTLSConfig(),
 		},
 	}
 

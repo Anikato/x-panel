@@ -476,10 +476,6 @@
           <el-input v-model="sourceForm.serverAddr" placeholder="https://1.2.3.4:7777" />
           <div class="form-tip">{{ $t('ssl.sourceAddrTip') }}</div>
         </el-form-item>
-        <el-form-item label="TLS 指纹（可选）">
-          <el-input v-model="sourceForm.tlsFingerprint" placeholder="SHA-256 指纹，用于自签名或 IP 地址上游" />
-          <div class="form-tip">留空时校验证书链和域名；填写后仅信任该服务端证书。</div>
-        </el-form-item>
         <el-form-item :label="$t('ssl.sourceToken')">
           <el-input v-model="sourceForm.token" type="password" show-password :placeholder="sourceEditMode ? '留空保持不变' : ''" />
           <div class="form-tip">{{ $t('ssl.sourceTokenTip') }}</div>
@@ -929,7 +925,6 @@ const defaultSourceForm = () => ({
   name: '',
   serverAddr: '',
   token: '',
-  tlsFingerprint: '',
   syncInterval: 360,
   syncStrategy: 'fingerprint',
   postSyncCommand: '',
@@ -953,7 +948,6 @@ const openSourceDialog = (row?: CertSource) => {
       name: row.name,
       serverAddr: row.serverAddr,
       token: '',
-      tlsFingerprint: row.tlsFingerprint || '',
       syncInterval: row.syncInterval,
       syncStrategy: row.syncStrategy || 'fingerprint',
       postSyncCommand: row.postSyncCommand,

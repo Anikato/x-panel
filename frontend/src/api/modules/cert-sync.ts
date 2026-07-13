@@ -9,7 +9,6 @@ export const createCertSource = (params: {
   name: string
   serverAddr: string
   token: string
-  tlsFingerprint: string
   syncInterval: number
   syncStrategy: string
   postSyncCommand: string
@@ -23,7 +22,6 @@ export const updateCertSource = (params: {
   name: string
   serverAddr: string
   token?: string
-  tlsFingerprint: string
   syncInterval: number
   syncStrategy: string
   postSyncCommand: string

@@ -2,48 +2,32 @@ package service
 
 import (
 	"crypto/tls"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-
-	"xpanel/app/model"
 )
 
-func TestCertSourceTLSConfigUsesSystemVerificationByDefault(t *testing.T) {
-	config, err := newCertSourceTLSConfig(model.CertSource{
-		ServerAddr: "https://cert.example.test",
-	})
+func TestCertSourceTLSConfigAcceptsSelfSignedInternalServer(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	config := newCertSourceTLSConfig()
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: config}}
+	response, err := client.Get(server.URL)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("trusted internal self-signed TLS server must be accepted: %v", err)
 	}
-	if config.InsecureSkipVerify {
-		t.Fatal("default certificate source connection must verify the server certificate")
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", response.StatusCode)
 	}
+}
+
+func TestCertSourceTLSConfigKeepsTLS12Minimum(t *testing.T) {
+	config := newCertSourceTLSConfig()
 	if config.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("expected TLS 1.2 minimum, got %d", config.MinVersion)
-	}
-}
-
-func TestCertSourceTLSConfigRequiresValidPinnedFingerprint(t *testing.T) {
-	config, err := newCertSourceTLSConfig(model.CertSource{
-		ServerAddr:     "https://192.0.2.10:7777",
-		TLSFingerprint: "AA:BB:CC:DD",
-	})
-	if err == nil {
-		t.Fatal("expected malformed TLS fingerprint to be rejected")
-	}
-	if config != nil {
-		t.Fatal("malformed TLS fingerprint must not produce a client configuration")
-	}
-}
-
-func TestCertSourceTLSConfigPinsExplicitFingerprint(t *testing.T) {
-	config, err := newCertSourceTLSConfig(model.CertSource{
-		ServerAddr:     "https://192.0.2.10:7777",
-		TLSFingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !config.InsecureSkipVerify || config.VerifyConnection == nil {
-		t.Fatal("pinned source must verify the presented certificate through VerifyConnection")
 	}
 }

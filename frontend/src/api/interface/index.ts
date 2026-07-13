@@ -446,7 +446,6 @@ export interface CertSource {
   id: number
   name: string
   serverAddr: string
-  tlsFingerprint: string
   syncInterval: number
   syncStrategy: string
   postSyncCommand: string
