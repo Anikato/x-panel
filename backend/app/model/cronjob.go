@@ -20,7 +20,7 @@ type Cronjob struct {
 	RetainCopies    uint   `gorm:"default:7" json:"retainCopies"`
 	ExclusionRules  string `json:"exclusionRules"`
 	CompressFormat  string `gorm:"default:gzip" json:"compressFormat"` // gzip / zstd / xz
-	EncryptPassword string `json:"encryptPassword"`
+	EncryptPassword string `json:"-"`
 }
 
 type CronjobRecord struct {

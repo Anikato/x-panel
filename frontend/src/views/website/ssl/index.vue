@@ -427,7 +427,7 @@
           <div class="pem-label">{{ $t('ssl.certificate') }} (fullchain.pem)</div>
           <el-input :model-value="certDetail.pem" type="textarea" :rows="6" readonly />
           <div class="pem-label mt-12">{{ $t('ssl.privateKey') }} (privkey.pem)</div>
-          <el-input :model-value="certDetail.privateKey" type="textarea" :rows="4" readonly />
+          <el-tag v-if="certDetail.privateKeySet" type="success">{{ $t('setting.secretConfigured') }}</el-tag>
         </div>
       </template>
     </el-dialog>
@@ -1039,18 +1039,24 @@ const syncLogStatusLabel = (s: string) => {
 }
 
 // --- 证书服务 ---
-const certServerSetting = ref<CertServerSetting>({ enabled: false, token: '' })
+const certServerSetting = ref<CertServerSetting>({ enabled: false, token: '', tokenSet: false })
 
 const loadCertServerSetting = async () => {
   try {
     const res = await getCertServerSetting()
-    certServerSetting.value = res.data || { enabled: false, token: '' }
+    certServerSetting.value = res.data
+      ? { ...res.data, token: '' }
+      : { enabled: false, token: '', tokenSet: false }
   } catch {}
 }
 
 const handleSaveCertServer = async () => {
   try {
     await updateCertServerSetting(certServerSetting.value)
+    if (certServerSetting.value.token) {
+      certServerSetting.value.token = ''
+      certServerSetting.value.tokenSet = true
+    }
     ElMessage.success('保存成功')
   } catch { ElMessage.error('保存失败') }
 }

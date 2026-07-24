@@ -22,6 +22,7 @@
 #
 
 set -e
+umask 077
 
 # ==================== 配置 ====================
 GITHUB_REPO="Anikato/x-panel"
@@ -45,6 +46,15 @@ log_info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 log_step()  { echo -e "${BLUE}>>>${NC} $*"; }
+
+random_hex() {
+    local byte_count="$1"
+    if command -v openssl &>/dev/null; then
+        openssl rand -hex "$byte_count"
+    else
+        od -An -N "$byte_count" -tx1 /dev/urandom | tr -d ' \n'
+    fi
+}
 
 # 交互式读取（支持 curl | bash 管道模式）
 read_input() {
@@ -74,6 +84,8 @@ ENABLE_SSL=true
 AGENT_TOKEN=""
 INIT_USERNAME=""
 INIT_PASSWORD=""
+ADMIN_PASSWORD_GENERATED=false
+FLEET_ENROLLMENT_TOKEN=""
 LOCAL_FILE=""   # --file 指定本地路径或任意 URL，跳过 GitHub 下载
 
 while [[ $# -gt 0 ]]; do
@@ -108,6 +120,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --password|-P)
             INIT_PASSWORD="$2"
+            shift 2
+            ;;
+        --fleet-enrollment-token)
+            FLEET_ENROLLMENT_TOKEN="$2"
             shift 2
             ;;
         --file|-f)
@@ -154,6 +170,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --agent-token <TOKEN> 设置 Agent Token（用于被主面板管理）"
             echo "  --username, -u <用户名> 预设管理员用户名（跳过初始化向导）"
             echo "  --password, -P <密码>   预设管理员密码（跳过初始化向导）"
+            echo "  --fleet-enrollment-token <TOKEN>"
+            echo "                        Fleet Center 一次性注册令牌"
             echo "  --token, -t <TOKEN>   GitHub Token（私有仓库）"
             echo "  --uninstall           卸载 X-Panel"
             echo "  --yes, -y             跳过确认提示"
@@ -292,70 +310,28 @@ for cmd in curl tar sha256sum; do
     fi
 done
 
-# ==================== 检测并安装 sqlite3 ====================
-check_and_install_sqlite3() {
-    if command -v sqlite3 &>/dev/null; then
-        log_info "sqlite3 已安装 ✓"
-        return 0
-    fi
-
-    log_warn "未检测到 sqlite3（用于配置安全入口等功能）"
-
-    # 检测包管理器并尝试自动安装
+if ! command -v sqlite3 &>/dev/null; then
+    log_step "安装 SQLite 工具（用于一致性备份和恢复校验）..."
     if command -v apt-get &>/dev/null; then
-        PKG_MGR="apt-get"
-        PKG_NAME="sqlite3"
-    elif command -v yum &>/dev/null; then
-        PKG_MGR="yum"
-        PKG_NAME="sqlite"
+        apt-get update -y >/dev/null 2>&1
+        apt-get install -y sqlite3 >/dev/null 2>&1
     elif command -v dnf &>/dev/null; then
-        PKG_MGR="dnf"
-        PKG_NAME="sqlite"
+        dnf install -y sqlite >/dev/null 2>&1
+    elif command -v yum &>/dev/null; then
+        yum install -y sqlite >/dev/null 2>&1
     elif command -v apk &>/dev/null; then
-        PKG_MGR="apk add"
-        PKG_NAME="sqlite"
+        apk add --no-cache sqlite >/dev/null 2>&1
     elif command -v pacman &>/dev/null; then
-        PKG_MGR="pacman -S --noconfirm"
-        PKG_NAME="sqlite"
+        pacman -S --noconfirm sqlite >/dev/null 2>&1
     else
-        log_warn "未识别的包管理器，无法自动安装 sqlite3"
-        log_info "请手动安装 sqlite3 后重试"
-        if [ "$YES" = true ]; then
-            log_warn "继续安装，但安全入口等功能可能无法通过命令行配置"
-            return 1
-        fi
-        read_input "是否继续安装？（安全入口需在面板中手动配置）(Y/n): " cont "Y"
-        if [[ "$cont" == "n" || "$cont" == "N" ]]; then
-            log_info "安装已取消，请先安装 sqlite3"
-            exit 0
-        fi
-        return 1
+        log_error "未检测到 sqlite3，且无法识别可用的包管理器"
+        exit 1
     fi
-
-    log_step "正在自动安装 sqlite3..."
-    if $PKG_MGR install -y $PKG_NAME &>/dev/null 2>&1 || $PKG_MGR $PKG_NAME &>/dev/null 2>&1; then
-        if command -v sqlite3 &>/dev/null; then
-            log_info "sqlite3 安装成功 ✓"
-            return 0
-        fi
-    fi
-
-    log_warn "sqlite3 自动安装失败"
-    if [ "$YES" = true ]; then
-        log_warn "继续安装，但安全入口等功能可能无法通过命令行配置"
-        return 1
-    fi
-    read_input "是否继续安装？（安全入口需在面板中手动配置）(Y/n): " cont "Y"
-    if [[ "$cont" == "n" || "$cont" == "N" ]]; then
-        log_info "安装已取消"
-        log_info "请手动安装: $PKG_MGR install -y $PKG_NAME"
-        exit 0
-    fi
-    return 1
-}
-
-SQLITE3_AVAILABLE=true
-check_and_install_sqlite3 || SQLITE3_AVAILABLE=false
+    command -v sqlite3 &>/dev/null || {
+        log_error "sqlite3 安装失败；xpctl 备份和恢复功能依赖该工具"
+        exit 1
+    }
+fi
 
 # 检查是否已安装
 IS_UPGRADE=false
@@ -363,6 +339,20 @@ if [ -f "$INSTALL_DIR/xpanel" ]; then
     CURRENT_VERSION=$("$INSTALL_DIR/xpanel" --version 2>/dev/null || echo "unknown")
     log_warn "检测到已安装 X-Panel (${CURRENT_VERSION})"
     IS_UPGRADE=true
+fi
+
+if [ "$IS_UPGRADE" = false ]; then
+    if { [ -n "$INIT_USERNAME" ] && [ -z "$INIT_PASSWORD" ]; } ||
+       { [ -z "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ]; }; then
+        log_error "全新安装必须同时提供 --username 和 --password"
+        exit 1
+    fi
+    if [ -z "$INIT_USERNAME" ] && [ -z "$INIT_PASSWORD" ]; then
+        INIT_USERNAME="admin"
+        INIT_PASSWORD=$(random_hex 16)
+        ADMIN_PASSWORD_GENERATED=true
+        log_info "未提供管理员凭据，已生成高熵初始密码并将在服务启动前写入"
+    fi
 fi
 
 TMP_DIR=$(mktemp -d)
@@ -604,16 +594,19 @@ log_step "创建安装目录: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/data/db"
 mkdir -p "$INSTALL_DIR/data/log"
+mkdir -p "$INSTALL_DIR/secrets"
+mkdir -p "$INSTALL_DIR/backups"
+chmod 0700 "$INSTALL_DIR/data" "$INSTALL_DIR/data/db" "$INSTALL_DIR/data/log" "$INSTALL_DIR/secrets" "$INSTALL_DIR/backups"
 
 # 安装二进制
 log_step "安装主程序..."
 cp -f "$TMP_DIR/extract/xpanel" "$INSTALL_DIR/xpanel"
-chmod +x "$INSTALL_DIR/xpanel"
+chmod 0755 "$INSTALL_DIR/xpanel"
 
 if [ -f "$TMP_DIR/extract/xpctl" ]; then
     log_step "安装 xpctl 控制工具..."
     cp -f "$TMP_DIR/extract/xpctl" /usr/local/bin/xpctl
-    chmod +x /usr/local/bin/xpctl
+    chmod 0755 /usr/local/bin/xpctl
 fi
 
 # 保存安装脚本副本（方便后续卸载/升级）
@@ -641,6 +634,7 @@ if [ "$ENABLE_SSL" = true ]; then
                 -subj "/C=CN/ST=Server/L=Server/O=X-Panel/CN=xpanel.local" \
                 2>/dev/null
             if [ $? -eq 0 ]; then
+                chmod 0600 "$SSL_CERT_PATH" "$SSL_KEY_PATH"
                 log_info "自签名证书已生成（有效期 10 年）"
                 SSL_ENABLED=true
             else
@@ -658,7 +652,7 @@ fi
 # 首次安装：创建配置文件
 if [ ! -f "$CONFIG_FILE" ]; then
     log_step "创建配置文件..."
-    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | xxd -p | head -c 64)
+    JWT_SECRET=$(random_hex 32)
 
     cat > "$CONFIG_FILE" << YAML
 system:
@@ -666,6 +660,7 @@ system:
   mode: "release"
   data_dir: "${INSTALL_DIR}/data"
   db_path: "db/xpanel.db"
+  credential_key_path: "${INSTALL_DIR}/secrets/credential-keyring.json"
   jwt_secret: "${JWT_SECRET}"
   session_timeout: 86400
   ssl:
@@ -685,9 +680,11 @@ nginx:
   version: ""
   build_repo: "Anikato/nginx-build"
 YAML
+    chmod 0600 "$CONFIG_FILE"
 
     log_info "配置文件已生成: $CONFIG_FILE"
 else
+    chmod 0600 "$CONFIG_FILE"
     log_info "配置文件已存在，跳过生成"
     # 升级时如果指定了新端口，更新配置
     if [ -n "$CUSTOM_PORT" ]; then
@@ -710,6 +707,7 @@ ExecStart=$INSTALL_DIR/xpanel
 WorkingDirectory=$INSTALL_DIR
 Restart=always
 RestartSec=5
+UMask=0077
 LimitNOFILE=65535
 StandardOutput=journal
 StandardError=journal
@@ -720,6 +718,38 @@ EOF
 
 systemctl daemon-reload
 systemctl enable $SERVICE_NAME >/dev/null 2>&1
+
+# ==================== 首次启动前安全初始化 ====================
+if [ "$IS_UPGRADE" = false ]; then
+    if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ]; then
+        log_step "配置管理员账户..."
+        if SETUP_LOG=$(cd "$INSTALL_DIR" && ./xpanel setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>&1); then
+            log_info "管理员账户已设置: ${INIT_USERNAME}"
+        else
+            log_error "管理员账户设置失败: $SETUP_LOG"
+            exit 1
+        fi
+    fi
+
+    if [ -n "$FLEET_ENROLLMENT_TOKEN" ]; then
+        log_step "配置 Fleet Center 一次性注册令牌..."
+        if ! (cd "$INSTALL_DIR" && XPANEL_FLEET_ENROLLMENT_TOKEN="$FLEET_ENROLLMENT_TOKEN" ./xpanel fleet-enroll); then
+            log_error "Fleet Enrollment Token 写入失败，服务未启动"
+            exit 1
+        fi
+        FLEET_ENROLLMENT_TOKEN=""
+        log_info "Fleet Enrollment Token 已写入本地数据库"
+    fi
+
+    if [ -n "$ENTRANCE" ] || [ -n "$AGENT_TOKEN" ]; then
+        log_step "写入安全引导配置..."
+        if ! (cd "$INSTALL_DIR" && XPANEL_SECURITY_ENTRANCE="$ENTRANCE" XPANEL_AGENT_TOKEN="$AGENT_TOKEN" ./xpanel bootstrap-config); then
+            log_error "安全入口或 Agent Token 写入失败，服务未启动"
+            exit 1
+        fi
+        log_info "安全引导配置已写入本地数据库"
+    fi
+fi
 
 # ==================== 启动服务 ====================
 log_step "启动 X-Panel..."
@@ -732,39 +762,6 @@ if systemctl is-active --quiet $SERVICE_NAME; then
 else
     log_warn "X-Panel 可能还在启动中..."
     log_info "请稍后检查: systemctl status $SERVICE_NAME"
-fi
-
-# ==================== 预设管理员账户 ====================
-if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ] && [ "$IS_UPGRADE" = false ]; then
-    log_step "配置管理员账户..."
-    # 等待 xpanel 服务完成数据库初始化（DB 文件出现且 Password 记录写入）
-    DB_PATH="$INSTALL_DIR/data/db/xpanel.db"
-    WAIT_MAX=30
-    WAITED=0
-    while [ ! -f "$DB_PATH" ] && [ "$WAITED" -lt "$WAIT_MAX" ]; do
-        sleep 1
-        WAITED=$((WAITED + 1))
-    done
-    if [ ! -f "$DB_PATH" ]; then
-        log_warn "数据库文件在 ${WAIT_MAX}s 内未创建，账户设置可能失败"
-    fi
-    # 再额外等 2 秒让 migration 写入默认记录
-    sleep 2
-    SETUP_LOG=$(cd "$INSTALL_DIR" && ./xpanel setup --username "$INIT_USERNAME" --password "$INIT_PASSWORD" 2>&1)
-    SETUP_EXIT=$?
-    if [ "$SETUP_EXIT" -eq 0 ]; then
-        log_info "管理员账户已设置: ${INIT_USERNAME}"
-    else
-        log_warn "管理员账户设置失败: $SETUP_LOG"
-        log_warn "请打开面板后手动完成初始化向导"
-    fi
-fi
-
-# ==================== 安全入口 ====================
-if [ -n "$ENTRANCE" ] && [ "$IS_UPGRADE" = false ]; then
-    log_step "配置安全入口: /${ENTRANCE}"
-    # 安全入口存储在数据库中，首次启动后通过 migration 初始化
-    # 这里在启动后通过 SQLite 直接写入
 fi
 
 # ==================== 获取访问信息 ====================
@@ -824,12 +821,11 @@ echo "    xpctl backup db                   # 备份面板数据库"
 echo "    xpctl recover migrate --apply     # 服务停止后执行迁移"
 echo ""
 if [ "$IS_UPGRADE" = false ]; then
-    if [ -n "$INIT_USERNAME" ] && [ -n "$INIT_PASSWORD" ]; then
-        echo -e "  ${GREEN}${BOLD}✓ 管理员账户已预设，可直接登录${NC}"
-        echo -e "  ${BOLD}用户名:${NC} ${INIT_USERNAME}"
-    else
-        echo -e "  ${YELLOW}${BOLD}⚠ 首次安装需要初始化管理员账户${NC}"
-        echo -e "  ${YELLOW}请打开面板地址完成初始化设置${NC}"
+    echo -e "  ${GREEN}${BOLD}✓ 管理员账户已在服务启动前设置${NC}"
+    echo -e "  ${BOLD}用户名:${NC} ${INIT_USERNAME}"
+    if [ "$ADMIN_PASSWORD_GENERATED" = true ]; then
+        echo -e "  ${BOLD}初始密码:${NC} ${INIT_PASSWORD}"
+        echo -e "  ${YELLOW}请立即安全保存，并在首次登录后修改密码${NC}"
     fi
     echo ""
 fi
@@ -840,32 +836,3 @@ if [ "$INSTALL_DIR" != "$DEFAULT_INSTALL_DIR" ]; then
 fi
 echo "    $UNINSTALL_CMD"
 echo ""
-
-# ==================== 安全入口写入数据库 ====================
-# 等服务启动后写入安全入口（SQLite 数据库在服务首次启动时创建）
-if { [ -n "$ENTRANCE" ] || [ -n "$AGENT_TOKEN" ]; } && [ "$IS_UPGRADE" = false ]; then
-    sleep 3  # 等待服务初始化数据库
-    DB_PATH="$INSTALL_DIR/data/db/xpanel.db"
-    if [ "$SQLITE3_AVAILABLE" = true ] && command -v sqlite3 &>/dev/null && [ -f "$DB_PATH" ]; then
-        if [ -n "$ENTRANCE" ]; then
-            sqlite3 "$DB_PATH" "UPDATE settings SET value='${ENTRANCE}' WHERE key='SecurityEntrance';" 2>/dev/null
-            if [ $? -eq 0 ]; then
-                log_info "安全入口已配置: /${ENTRANCE}"
-            else
-                log_warn "安全入口写入失败，请在面板设置中手动配置"
-            fi
-        fi
-        if [ -n "$AGENT_TOKEN" ]; then
-            sqlite3 "$DB_PATH" "UPDATE settings SET value='${AGENT_TOKEN}' WHERE key='AgentToken';" 2>/dev/null
-            if [ $? -eq 0 ]; then
-                log_info "Agent Token 已配置 ✓"
-            else
-                log_warn "Agent Token 写入失败，请在面板设置中手动配置"
-            fi
-        fi
-    else
-        log_warn "sqlite3 不可用或数据库未创建"
-        [ -n "$ENTRANCE" ] && log_info "安全入口需在面板设置中手动配置"
-        [ -n "$AGENT_TOKEN" ] && log_info "Agent Token 需在面板设置中手动配置"
-    fi
-fi

@@ -27,11 +27,23 @@ func NewICronjobRepo() ICronjobRepo {
 type CronjobRepo struct{}
 
 func (r *CronjobRepo) Create(job *model.Cronjob) error {
-	return global.DB.Create(job).Error
+	stored := *job
+	if err := protectCronjob(&stored); err != nil {
+		return err
+	}
+	if err := global.DB.Create(&stored).Error; err != nil {
+		return err
+	}
+	*job = stored
+	return revealCronjob(job)
 }
 
 func (r *CronjobRepo) Update(id uint, fields map[string]interface{}) error {
-	return global.DB.Model(&model.Cronjob{}).Where("id = ?", id).Updates(fields).Error
+	protected, err := protectUpdates("cronjobs", fields)
+	if err != nil {
+		return err
+	}
+	return global.DB.Model(&model.Cronjob{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *CronjobRepo) Delete(id uint) error {
@@ -43,7 +55,7 @@ func (r *CronjobRepo) Get(id uint) (*model.Cronjob, error) {
 	if err := global.DB.First(&job, id).Error; err != nil {
 		return nil, err
 	}
-	return &job, nil
+	return &job, revealCronjob(&job)
 }
 
 func (r *CronjobRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model.Cronjob, error) {
@@ -59,6 +71,11 @@ func (r *CronjobRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model
 	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at desc").Find(&items).Error; err != nil {
 		return 0, nil, err
 	}
+	for i := range items {
+		if err := revealCronjob(&items[i]); err != nil {
+			return 0, nil, err
+		}
+	}
 	return total, items, nil
 }
 
@@ -70,6 +87,11 @@ func (r *CronjobRepo) List(opts ...DBOption) ([]model.Cronjob, error) {
 	}
 	if err := db.Find(&items).Error; err != nil {
 		return nil, err
+	}
+	for i := range items {
+		if err := revealCronjob(&items[i]); err != nil {
+			return nil, err
+		}
 	}
 	return items, nil
 }
@@ -139,4 +161,12 @@ func WithRecordStatus(s string) DBOption {
 		}
 		return db
 	}
+}
+
+func protectCronjob(item *model.Cronjob) error {
+	return protectFields(secureField{Scope: "cronjobs.encrypt_password", Value: &item.EncryptPassword})
+}
+
+func revealCronjob(item *model.Cronjob) error {
+	return revealFields(secureField{Scope: "cronjobs.encrypt_password", Value: &item.EncryptPassword})
 }

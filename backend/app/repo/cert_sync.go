@@ -25,8 +25,15 @@ func (r *CertSourceRepo) GetList(opts ...DBOption) ([]model.CertSource, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Order("created_at DESC").Find(&items).Error
-	return items, err
+	if err := db.Order("created_at DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealCertSource(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *CertSourceRepo) Get(opts ...DBOption) (model.CertSource, error) {
@@ -35,20 +42,42 @@ func (r *CertSourceRepo) Get(opts ...DBOption) (model.CertSource, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealCertSource(&item)
 }
 
 func (r *CertSourceRepo) Create(item *model.CertSource) error {
-	return getDB().Create(item).Error
+	stored := *item
+	if err := protectCertSource(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealCertSource(item)
 }
 
 func (r *CertSourceRepo) Save(item *model.CertSource) error {
-	return getDB().Save(item).Error
+	stored := *item
+	if err := protectCertSource(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Save(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealCertSource(item)
 }
 
 func (r *CertSourceRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.CertSource{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("cert_sources", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.CertSource{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *CertSourceRepo) Delete(opts ...DBOption) error {
@@ -57,6 +86,14 @@ func (r *CertSourceRepo) Delete(opts ...DBOption) error {
 		db = opt(db)
 	}
 	return db.Delete(&model.CertSource{}).Error
+}
+
+func protectCertSource(item *model.CertSource) error {
+	return protectFields(secureField{Scope: "cert_sources.token", Value: &item.Token})
+}
+
+func revealCertSource(item *model.CertSource) error {
+	return revealFields(secureField{Scope: "cert_sources.token", Value: &item.Token})
 }
 
 // --- CertSyncLog Repo ---

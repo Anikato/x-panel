@@ -5,8 +5,8 @@ type BackupAccount struct {
 	Name       string `gorm:"not null" json:"name"`
 	Type       string `gorm:"not null" json:"type"` // local / s3 / sftp / webdav
 	Bucket     string `json:"bucket"`
-	AccessKey  string `json:"accessKey"`
-	Credential string `json:"credential"`
+	AccessKey  string `json:"-"`
+	Credential string `json:"-"`
 	BackupPath string `json:"backupPath"`
 	Vars       string `json:"vars"` // JSON: region, endpoint, etc.
 }

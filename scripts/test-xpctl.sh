@@ -92,6 +92,9 @@ cat >"$INSTALL_DIR/xpanel" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"$XPANEL_CALLS"
+if [ "${1:-}" = "credentials" ] && [ "${2:-}" = "verify" ]; then
+  [ "${MOCK_CREDENTIAL_VERIFY:-success}" != "fail" ]
+fi
 EOF
 
 chmod +x "$BIN_DIR/systemctl" "$BIN_DIR/flock" "$BIN_DIR/sqlite3" "$INSTALL_DIR/xpanel"
@@ -137,9 +140,19 @@ SAFE_BACKUP_DIR="$BACKUP_ROOT/manual"
 mkdir -p "$SAFE_BACKUP_DIR"
 SAFE_BACKUP="$SAFE_BACKUP_DIR/xpanel.db"
 printf 'restored\n' >"$SAFE_BACKUP"
+
+export MOCK_CREDENTIAL_VERIFY=fail
+before_restore_checksum="$(sha256sum "$DB_PATH" | awk '{print $1}')"
+run_xpctl recover restore "$SAFE_BACKUP" --yes
+assert_exit 2
+after_restore_checksum="$(sha256sum "$DB_PATH" | awk '{print $1}')"
+[ "$before_restore_checksum" = "$after_restore_checksum" ] || fail "failed credential verification modified current database"
+
+export MOCK_CREDENTIAL_VERIFY=success
 run_xpctl recover restore "$SAFE_BACKUP" --yes
 assert_exit 0
 assert_file_content "$DB_PATH" "restored"
+grep -Fqx "credentials verify --db $SAFE_BACKUP" "$XPANEL_CALLS" || fail "restore did not verify candidate credentials"
 
 run_xpctl fix-migrations
 assert_exit 2

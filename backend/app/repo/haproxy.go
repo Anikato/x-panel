@@ -283,18 +283,35 @@ func (r *HAProxyConfigVersionRepo) List(limit int) ([]model.HAProxyConfigVersion
 	if limit > 0 {
 		db = db.Limit(limit)
 	}
-	err := db.Find(&items).Error
-	return items, err
+	if err := db.Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealHAProxyConfigVersion(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *HAProxyConfigVersionRepo) Get(id uint) (model.HAProxyConfigVersion, error) {
 	var item model.HAProxyConfigVersion
-	err := getDB().Where("id = ?", id).First(&item).Error
-	return item, err
+	if err := getDB().Where("id = ?", id).First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealHAProxyConfigVersion(&item)
 }
 
 func (r *HAProxyConfigVersionRepo) Create(item *model.HAProxyConfigVersion) error {
-	return getDB().Create(item).Error
+	stored := *item
+	if err := protectHAProxyConfigVersion(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealHAProxyConfigVersion(item)
 }
 
 func (r *HAProxyConfigVersionRepo) PruneOld(keep int) error {
@@ -317,4 +334,18 @@ func CountHAProxyLBByDefaultBackend(backendID uint) (int64, error) {
 	var count int64
 	err := getDB().Model(&model.HAProxyLB{}).Where("default_backend_id = ?", backendID).Count(&count).Error
 	return count, err
+}
+
+func protectHAProxyConfigVersion(item *model.HAProxyConfigVersion) error {
+	return protectFields(secureField{
+		Scope: "ha_proxy_config_versions.content",
+		Value: &item.Content,
+	})
+}
+
+func revealHAProxyConfigVersion(item *model.HAProxyConfigVersion) error {
+	return revealFields(secureField{
+		Scope: "ha_proxy_config_versions.content",
+		Value: &item.Content,
+	})
 }

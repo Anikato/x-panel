@@ -17,6 +17,7 @@ import (
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
+	"xpanel/security/credentials"
 
 	"golang.org/x/net/proxy"
 )
@@ -52,24 +53,24 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 	}
 
 	return &dto.SettingInfo{
-		UserName:         settingMap["UserName"],
-		Language:         settingMap["Language"],
-		SessionTimeout:   settingMap["SessionTimeout"],
-		PanelName:        settingMap["PanelName"],
-		Theme:            settingMap["Theme"],
-		SecurityEntrance: settingMap["SecurityEntrance"],
-		MFAStatus:        settingMap["MFAStatus"],
-		UpgradeURL:       settingMap["UpgradeURL"],
-		GitHubToken:      settingMap["GitHubToken"],
-		ServerPort:       global.CONF.System.Port,
-		AgentToken:       settingMap["AgentToken"],
-		AutoUpgrade:      settingMap["AutoUpgrade"],
-		FleetAutoUpgrade: settingMap["FleetAutoUpgrade"],
-		AppearanceConfig: settingMap["AppearanceConfig"],
-		ProxyEnable:      settingMap["ProxyEnable"],
-		ProxyType:        settingMap["ProxyType"],
-		ProxyAddress:     settingMap["ProxyAddress"],
-		ProxyNoProxy:     settingMap["ProxyNoProxy"],
+		UserName:            settingMap["UserName"],
+		Language:            settingMap["Language"],
+		SessionTimeout:      settingMap["SessionTimeout"],
+		PanelName:           settingMap["PanelName"],
+		Theme:               settingMap["Theme"],
+		SecurityEntranceSet: settingMap["SecurityEntrance"] != "",
+		MFAStatus:           settingMap["MFAStatus"],
+		UpgradeURL:          settingMap["UpgradeURL"],
+		GitHubTokenSet:      settingMap["GitHubToken"] != "",
+		ServerPort:          global.CONF.System.Port,
+		AgentTokenSet:       settingMap["AgentToken"] != "",
+		AutoUpgrade:         settingMap["AutoUpgrade"],
+		FleetAutoUpgrade:    settingMap["FleetAutoUpgrade"],
+		AppearanceConfig:    settingMap["AppearanceConfig"],
+		ProxyEnable:         settingMap["ProxyEnable"],
+		ProxyType:           settingMap["ProxyType"],
+		ProxyAddressSet:     settingMap["ProxyAddress"] != "",
+		ProxyNoProxy:        settingMap["ProxyNoProxy"],
 	}, nil
 }
 
@@ -86,6 +87,14 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)
+	}
+	if req.Clear {
+		if !credentials.IsSecretSetting(req.Key) {
+			return buserr.New(constant.ErrInvalidParams)
+		}
+		req.Value = ""
+	} else if credentials.IsSecretSetting(req.Key) && req.Value == "" {
+		return nil
 	}
 
 	if err := settingRepo.Update(req.Key, req.Value); err != nil {

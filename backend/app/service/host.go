@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"xpanel/app/dto"
@@ -59,6 +60,14 @@ func (s *HostService) Create(req dto.HostCreate) error {
 }
 
 func (s *HostService) Update(req dto.HostUpdate) error {
+	updates := buildHostUpdates(req)
+	if err := s.hostRepo.Update(req.ID, updates); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	return nil
+}
+
+func buildHostUpdates(req dto.HostUpdate) map[string]interface{} {
 	updates := map[string]interface{}{
 		"group_id":    req.GroupID,
 		"name":        req.Name,
@@ -66,15 +75,18 @@ func (s *HostService) Update(req dto.HostUpdate) error {
 		"port":        req.Port,
 		"user":        req.User,
 		"auth_mode":   req.AuthMode,
-		"password":    req.Password,
-		"private_key": req.PrivateKey,
-		"pass_phrase": req.PassPhrase,
 		"description": req.Description,
 	}
-	if err := s.hostRepo.Update(req.ID, updates); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	if req.Password != "" {
+		updates["password"] = req.Password
 	}
-	return nil
+	if req.PrivateKey != "" {
+		updates["private_key"] = req.PrivateKey
+	}
+	if req.PassPhrase != "" {
+		updates["pass_phrase"] = req.PassPhrase
+	}
+	return updates
 }
 
 func (s *HostService) Delete(id uint) error {
@@ -182,7 +194,7 @@ func (s *HostService) ConnSSH(id uint) (*ssh.Client, error) {
 		return nil, fmt.Errorf("unsupported auth mode: %s", host.AuthMode)
 	}
 
-	addr := fmt.Sprintf("%s:%d", host.Addr, host.Port)
+	addr := net.JoinHostPort(host.Addr, strconv.Itoa(host.Port))
 	client, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("ssh dial failed: %v", err)
@@ -232,7 +244,7 @@ func TestHostConn(addr string, port int, user, authMode, password, privateKey, p
 		}
 		config.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
 	}
-	target := fmt.Sprintf("%s:%d", addr, port)
+	target := net.JoinHostPort(addr, strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", target, 5*time.Second)
 	if err != nil {
 		return err

@@ -321,7 +321,7 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		SSLProtocols:      site.SSLProtocols,
 		BasicAuth:         site.BasicAuth,
 		BasicUser:         site.BasicUser,
-		BasicPassword:     site.BasicPassword,
+		BasicPasswordSet:  site.BasicPassword != "",
 		AntiLeech:         site.AntiLeech,
 		LeechReferers:     site.LeechReferers,
 		LimitRate:         site.LimitRate,
@@ -341,6 +341,7 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		Remark:            site.Remark,
 		ConfigMode:        site.ConfigMode,
 	}
+	redactWebsiteSecret(detail, site)
 
 	if site.CertificateID > 0 {
 		cert, err := s.certRepo.Get(repo.WithByID(site.CertificateID))
@@ -355,6 +356,11 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 	detail.NginxConfig = config
 
 	return detail, nil
+}
+
+func redactWebsiteSecret(detail *dto.WebsiteDetail, site model.Website) {
+	detail.BasicPassword = ""
+	detail.BasicPasswordSet = site.BasicPassword != ""
 }
 
 func (s *WebsiteService) Enable(id uint) error {
@@ -537,7 +543,9 @@ func (s *WebsiteService) SaveSiteConfContent(id uint, content string) error {
 
 	if site.ConfigMode != "source" {
 		site.ConfigMode = "source"
-		s.websiteRepo.Save(&site)
+		if err := s.websiteRepo.Save(&site); err != nil {
+			return fmt.Errorf("persist website config mode: %w", err)
+		}
 	}
 
 	return nil

@@ -2,25 +2,29 @@ package dto
 
 // SettingInfo 面板设置信息
 type SettingInfo struct {
-	UserName         string `json:"userName"`
-	Language         string `json:"language"`
-	SessionTimeout   string `json:"sessionTimeout"`
-	PanelName        string `json:"panelName"`
-	Theme            string `json:"theme"`
-	SecurityEntrance string `json:"securityEntrance"`
-	MFAStatus        string `json:"mfaStatus"`
-	UpgradeURL       string `json:"upgradeUrl"`
-	GitHubToken      string `json:"githubToken"`
-	ServerPort       string `json:"serverPort"`
-	AgentToken       string `json:"agentToken"`
-	AutoUpgrade      string `json:"autoUpgrade"`
+	UserName            string `json:"userName"`
+	Language            string `json:"language"`
+	SessionTimeout      string `json:"sessionTimeout"`
+	PanelName           string `json:"panelName"`
+	Theme               string `json:"theme"`
+	SecurityEntrance    string `json:"-"`
+	SecurityEntranceSet bool   `json:"securityEntranceSet"`
+	MFAStatus           string `json:"mfaStatus"`
+	UpgradeURL          string `json:"upgradeUrl"`
+	GitHubToken         string `json:"-"`
+	GitHubTokenSet      bool   `json:"githubTokenSet"`
+	ServerPort          string `json:"serverPort"`
+	AgentToken          string `json:"-"`
+	AgentTokenSet       bool   `json:"agentTokenSet"`
+	AutoUpgrade         string `json:"autoUpgrade"`
 	// FleetAutoUpgrade 是 Fleet Center 远程下发的自动升级开关（"enable" / "disable" / ""）。
 	// 本地 AutoUpgrade 与 FleetAutoUpgrade 任一为 enable 即视为开启。
 	FleetAutoUpgrade string `json:"fleetAutoUpgrade"`
 	AppearanceConfig string `json:"appearanceConfig"`
 	ProxyEnable      string `json:"proxyEnable"`
 	ProxyType        string `json:"proxyType"`
-	ProxyAddress     string `json:"proxyAddress"`
+	ProxyAddress     string `json:"-"`
+	ProxyAddressSet  bool   `json:"proxyAddressSet"`
 	ProxyNoProxy     string `json:"proxyNoProxy"`
 }
 
@@ -33,6 +37,7 @@ type ProxyTest struct {
 type SettingUpdate struct {
 	Key   string `json:"key" binding:"required"`
 	Value string `json:"value"`
+	Clear bool   `json:"clear"`
 }
 
 // PortUpdate 端口更新请求
@@ -59,4 +64,8 @@ type PanelSSLInfo struct {
 // PanelSSLUpdate 将面板 HTTPS 切换为证书管理中某张证书的落盘文件
 type PanelSSLUpdate struct {
 	CertificateID uint `json:"certificateId" binding:"required,gt=0"`
+}
+
+type CredentialRotationInfo struct {
+	KeyID string `json:"keyId"`
 }

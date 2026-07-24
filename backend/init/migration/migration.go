@@ -318,6 +318,7 @@ func initDefaultSettings() {
 		{Key: "FleetEndpoint", Value: "https://fcapi.qm.mk"},
 		{Key: "FleetInstanceID", Value: ""},
 		{Key: "FleetInstanceToken", Value: ""},
+		{Key: "FleetEnrollmentToken", Value: ""},
 		{Key: "FleetHeartbeatIntervalSeconds", Value: "300"},
 		{Key: "FleetTaskPollIntervalSeconds", Value: "10"},
 		{Key: "NotificationPreferences", Value: `{"defaults":{"center":true,"badge":true,"popup":false},"events":{"file.upload.completed":{"center":true,"badge":false,"popup":false},"file.task.failed":{"center":true,"badge":true,"popup":true},"database.task.failed":{"center":true,"badge":true,"popup":true},"cronjob.failed":{"center":true,"badge":true,"popup":true},"operation.failed":{"center":true,"badge":true,"popup":true},"system.log.error":{"center":true,"badge":true,"popup":false}}}`},

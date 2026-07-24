@@ -140,9 +140,10 @@ type WebsiteDetail struct {
 	Http2Enable   bool   `json:"http2Enable"`
 	SSLProtocols  string `json:"sslProtocols"`
 
-	BasicAuth     bool   `json:"basicAuth"`
-	BasicUser     string `json:"basicUser"`
-	BasicPassword string `json:"basicPassword"`
+	BasicAuth        bool   `json:"basicAuth"`
+	BasicUser        string `json:"basicUser"`
+	BasicPassword    string `json:"-"`
+	BasicPasswordSet bool   `json:"basicPasswordSet"`
 
 	AntiLeech     bool   `json:"antiLeech"`
 	LeechReferers string `json:"leechReferers"`

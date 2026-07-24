@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,15 +18,17 @@ import (
 	"xpanel/global"
 	"xpanel/utils/cmd"
 	haproxyutil "xpanel/utils/haproxy"
+
+	"gorm.io/gorm"
 )
 
 const (
-	haproxyBinary        = "haproxy"
-	haproxyConfigPath    = "/etc/haproxy/haproxy.cfg"
-	haproxyServiceName   = "haproxy"
-	haproxyRsyslogConf   = "/etc/rsyslog.d/49-xpanel-haproxy.conf"
+	haproxyBinary         = "haproxy"
+	haproxyConfigPath     = "/etc/haproxy/haproxy.cfg"
+	haproxyServiceName    = "haproxy"
+	haproxyRsyslogConf    = "/etc/rsyslog.d/49-xpanel-haproxy.conf"
 	haproxyCombinedPEMDir = "/opt/xpanel/haproxy/certs"
-	haproxyBackupDir     = "/opt/xpanel/haproxy/backups"
+	haproxyBackupDir      = "/opt/xpanel/haproxy/backups"
 )
 
 type IHAProxyInstallService interface {
@@ -221,21 +224,24 @@ func (s *HAProxyInstallService) SaveStatsSettings(req dto.HAProxyStatsSettingsRe
 		return buserr.New(constant.ErrHAProxyNotInstalled)
 	}
 	sr := repo.NewISettingRepo()
-	_ = sr.CreateOrUpdate("HAProxyStatsBind", req.StatsBind)
+	values := []settingValue{{Key: "HAProxyStatsBind", Value: req.StatsBind}}
 	if req.StatsURI != "" {
-		_ = sr.CreateOrUpdate("HAProxyStatsURI", req.StatsURI)
+		values = append(values, settingValue{Key: "HAProxyStatsURI", Value: req.StatsURI})
 	}
 	if req.StatsUser != "" {
-		_ = sr.CreateOrUpdate("HAProxyStatsUser", req.StatsUser)
+		values = append(values, settingValue{Key: "HAProxyStatsUser", Value: req.StatsUser})
 	}
 	if req.StatsPass != "" {
-		_ = sr.CreateOrUpdate("HAProxyStatsPass", req.StatsPass)
+		values = append(values, settingValue{Key: "HAProxyStatsPass", Value: req.StatsPass})
 	}
 	enableVal := "enable"
 	if !req.StatsEnable {
 		enableVal = "disable"
 	}
-	_ = sr.CreateOrUpdate("HAProxyStatsEnable", enableVal)
+	values = append(values, settingValue{Key: "HAProxyStatsEnable", Value: enableVal})
+	if err := persistSettingValues(sr.CreateOrUpdate, values...); err != nil {
+		return err
+	}
 
 	// 重建配置并 reload/start
 	return NewIHAProxyService().ApplyChange("更新 Stats 面板配置", operator)
@@ -326,7 +332,10 @@ func writeInitialHAProxyConfig() error {
 		)
 	}
 
-	user, pass := getHAProxyStatsAuth()
+	user, pass, err := getHAProxyStatsAuth()
+	if err != nil {
+		return err
+	}
 	cfg := haproxyutil.Build(haproxyutil.BuilderInput{
 		Settings: haproxyutil.Settings{
 			GlobalLog:   "127.0.0.1 local0",
@@ -352,33 +361,50 @@ if $programname == 'haproxy' then /var/log/haproxy.log
 
 func (s *HAProxyInstallService) seedInitialSettings() error {
 	sr := repo.NewISettingRepo()
-	ensure := func(key, def string) {
-		if v, err := sr.Get(repo.WithByKey(key)); err != nil || v.Value == "" {
-			_ = sr.CreateOrUpdate(key, def)
+	ensure := func(key, def string) error {
+		value, err := sr.Get(repo.WithByKey(key))
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
+		if errors.Is(err, gorm.ErrRecordNotFound) || value.Value == "" {
+			return sr.CreateOrUpdate(key, def)
+		}
+		return nil
 	}
-	ensure("HAProxyStatsEnable", "enable")
-	ensure("HAProxyStatsBind", "127.0.0.1:54321")
-	ensure("HAProxyStatsURI", "/stats")
-	ensure("HAProxyStatsUser", "xpanel")
-	if v, err := sr.Get(repo.WithByKey("HAProxyStatsPass")); err != nil || v.Value == "" {
-		_ = sr.CreateOrUpdate("HAProxyStatsPass", randHex(12))
+	for _, value := range []settingValue{
+		{Key: "HAProxyStatsEnable", Value: "enable"},
+		{Key: "HAProxyStatsBind", Value: "127.0.0.1:54321"},
+		{Key: "HAProxyStatsURI", Value: "/stats"},
+		{Key: "HAProxyStatsUser", Value: "xpanel"},
+		{Key: "HAProxyStatsPass", Value: randHex(12)},
+	} {
+		if err := ensure(value.Key, value.Value); err != nil {
+			return fmt.Errorf("initialize HAProxy setting %s: %w", value.Key, err)
+		}
 	}
 	return nil
 }
 
-func getHAProxyStatsAuth() (string, string) {
+func getHAProxyStatsAuth() (string, string, error) {
 	sr := repo.NewISettingRepo()
-	u, _ := sr.Get(repo.WithByKey("HAProxyStatsUser"))
-	p, _ := sr.Get(repo.WithByKey("HAProxyStatsPass"))
+	u, err := sr.Get(repo.WithByKey("HAProxyStatsUser"))
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", "", err
+	}
+	p, err := sr.Get(repo.WithByKey("HAProxyStatsPass"))
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", "", err
+	}
 	if u.Value == "" {
 		u.Value = "xpanel"
 	}
 	if p.Value == "" {
 		p.Value = randHex(12)
-		_ = sr.CreateOrUpdate("HAProxyStatsPass", p.Value)
+		if err := sr.CreateOrUpdate("HAProxyStatsPass", p.Value); err != nil {
+			return "", "", fmt.Errorf("persist generated HAProxy stats password: %w", err)
+		}
 	}
-	return u.Value, p.Value
+	return u.Value, p.Value, nil
 }
 
 func randHex(n int) string {

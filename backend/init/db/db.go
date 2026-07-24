@@ -2,10 +2,10 @@ package db
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"xpanel/global"
+	initPermission "xpanel/init/permission"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -16,6 +16,10 @@ import (
 func InitMonitorDB() {
 	dbDir := filepath.Dir(global.CONF.System.DbPath)
 	monitorPath := filepath.Join(dbDir, "monitor.db")
+	if err := initPermission.EnsurePrivateDirectory(dbDir); err != nil {
+		global.LOG.Errorf("Failed to harden monitor database directory: %v", err)
+		return
+	}
 
 	logLevel := logger.Silent
 	db, err := gorm.Open(sqlite.Open(monitorPath), &gorm.Config{
@@ -24,6 +28,10 @@ func InitMonitorDB() {
 	})
 	if err != nil {
 		global.LOG.Errorf("Failed to open monitor database: %v", err)
+		return
+	}
+	if err := hardenSQLiteFiles(monitorPath); err != nil {
+		global.LOG.Errorf("Failed to harden monitor database: %v", err)
 		return
 	}
 	global.MonitorDB = db
@@ -36,7 +44,7 @@ func Init() {
 
 	// 确保数据库目录存在
 	dbDir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
+	if err := initPermission.EnsurePrivateDirectory(dbDir); err != nil {
 		panic(fmt.Sprintf("Failed to create db directory %s: %v", dbDir, err))
 	}
 
@@ -47,13 +55,24 @@ func Init() {
 	}
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger:                 logger.Default.LogMode(logLevel),
+		Logger:                                   logger.Default.LogMode(logLevel),
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect database: %v", err))
 	}
+	if err := hardenSQLiteFiles(dbPath); err != nil {
+		panic(fmt.Sprintf("Failed to harden database: %v", err))
+	}
 
 	global.DB = db
 	global.LOG.Info("Database initialized")
+}
+
+func hardenSQLiteFiles(path string) error {
+	return initPermission.Harden(initPermission.Paths{Files: []string{
+		path,
+		path + "-wal",
+		path + "-shm",
+	}})
 }

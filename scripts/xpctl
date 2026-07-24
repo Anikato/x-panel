@@ -230,6 +230,10 @@ validate_restore_file() {
 	esac
 	integrity="$(sqlite3 "$backup_file" 'PRAGMA integrity_check;' 2>/dev/null)" || die_usage "无法校验备份文件: $backup_file"
 	[ "$integrity" = "ok" ] || die_usage "备份文件 SQLite 完整性校验失败: $backup_file"
+	[ -x "$INSTALL_DIR/xpanel" ] || die_usage "主程序不存在或不可执行: $INSTALL_DIR/xpanel"
+	if ! "$INSTALL_DIR/xpanel" credentials verify --db "$backup_file"; then
+		die_usage "备份文件与当前凭据密钥环不兼容: $backup_file"
+	fi
 }
 
 restore_database_locked() {

@@ -11,7 +11,7 @@ type AcmeAccount struct {
 	Type       string `gorm:"not null;default:letsencrypt" json:"type"` // letsencrypt | zerossl | buypass | google | custom
 	KeyType    string `gorm:"not null;default:2048" json:"keyType"`     // P256 | P384 | 2048 | 3072 | 4096
 	EabKid     string `json:"eabKid"`
-	EabHmacKey string `json:"eabHmacKey"`
+	EabHmacKey string `json:"-"`
 	CaDirURL   string `json:"caDirURL"`
 }
 

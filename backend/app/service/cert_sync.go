@@ -635,8 +635,8 @@ func (s *CertServerService) GetSetting() (*dto.CertServerSetting, error) {
 	enabled, _ := s.settingRepo.GetValueByKey("CertServerEnabled")
 	token, _ := s.settingRepo.GetValueByKey("CertServerToken")
 	return &dto.CertServerSetting{
-		Enabled: enabled == "enable",
-		Token:   token,
+		Enabled:  enabled == "enable",
+		TokenSet: token != "",
 	}, nil
 }
 

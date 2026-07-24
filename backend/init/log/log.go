@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"xpanel/app/dto"
 	"xpanel/app/service"
 	"xpanel/global"
+	initPermission "xpanel/init/permission"
 
 	"github.com/sirupsen/logrus"
 )
@@ -35,19 +37,21 @@ func Init() {
 	// 确保日志目录存在
 	logPath := global.CONF.Log.Path
 	if logPath != "" {
-		if err := os.MkdirAll(logPath, 0755); err != nil {
-			logger.Warnf("Failed to create log directory %s: %v", logPath, err)
-		} else {
-			logFile := filepath.Join(logPath, "xpanel.log")
-			f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-			if err != nil {
-				logger.Warnf("Failed to open log file %s: %v", logFile, err)
-			} else {
-				// 同时输出到文件和控制台
-				multiWriter := io.MultiWriter(os.Stdout, f)
-				logger.SetOutput(multiWriter)
-			}
+		if err := initPermission.EnsurePrivateDirectory(logPath); err != nil {
+			panic(fmt.Sprintf("Failed to harden log directory %s: %v", logPath, err))
 		}
+		logFile := filepath.Join(logPath, "xpanel.log")
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to open log file %s: %v", logFile, err))
+		}
+		if err := initPermission.HardenPrivateFileIfExists(logFile); err != nil {
+			_ = f.Close()
+			panic(fmt.Sprintf("Failed to harden log file %s: %v", logFile, err))
+		}
+		// 同时输出到文件和控制台
+		multiWriter := io.MultiWriter(os.Stdout, f)
+		logger.SetOutput(multiWriter)
 	}
 
 	global.LOG = logger

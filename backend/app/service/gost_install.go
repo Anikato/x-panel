@@ -336,9 +336,15 @@ func (s *GostInstallService) doInstall(version string) {
 	}
 
 	settingRepo := repo.NewISettingRepo()
-	settingRepo.CreateOrUpdate("GostAPIAddr", gostDefaultAPI)
-	settingRepo.CreateOrUpdate("GostAPIUser", apiUser)
-	settingRepo.CreateOrUpdate("GostAPIPass", apiPass)
+	if err := persistSettingValues(
+		settingRepo.CreateOrUpdate,
+		settingValue{Key: "GostAPIAddr", Value: gostDefaultAPI},
+		settingValue{Key: "GostAPIUser", Value: apiUser},
+		settingValue{Key: "GostAPIPass", Value: apiPass},
+	); err != nil {
+		s.setProgress("error", fmt.Sprintf("保存 GOST API 凭据失败: %v", err), 0)
+		return
+	}
 
 	s.setProgress("install", "创建 systemd 服务...", 80)
 	if err := s.writeServiceFile(); err != nil {

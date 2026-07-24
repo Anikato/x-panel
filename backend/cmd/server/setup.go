@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"xpanel/global"
+	initCredential "xpanel/init/credential"
 	initDB "xpanel/init/db"
 	"xpanel/init/migration"
+	initPermission "xpanel/init/permission"
 	initViper "xpanel/init/viper"
 	"xpanel/utils/encrypt"
 
@@ -35,17 +37,7 @@ func runSetup(args []string) {
 		os.Exit(1)
 	}
 
-	// 初始化配置和数据库（不启动 HTTP 服务）
-	initViper.Init()
-
-	// setup 命令只需简单日志输出，不需要写日志文件
-	logger := logrus.New()
-	logger.SetLevel(logrus.WarnLevel)
-	logger.SetOutput(os.Stderr)
-	global.LOG = logger
-
-	initDB.Init()
-	migration.Init()
+	initializeOfflineDatabase()
 
 	// 等待 Password 字段就绪（migration 已创建，但第一次启动的 xpanel 服务
 	// 可能还在并发写入，此处兜底等待确保字段存在）
@@ -86,4 +78,35 @@ func runSetup(args []string) {
 	}
 
 	fmt.Printf("✓ 管理员账户已设置: %s\n", *username)
+}
+
+// initializeOfflineDatabase 为不启动 HTTP 服务的管理命令初始化本地数据层。
+func initializeOfflineDatabase() {
+	initViper.Init()
+	configPath := ""
+	if global.Vp != nil {
+		configPath = global.Vp.ConfigFileUsed()
+	}
+	if err := initPermission.HardenRuntime(
+		global.CONF.System.DataDir,
+		global.CONF.System.DbPath,
+		global.CONF.Log.Path,
+		global.CONF.System.CredentialKeyPath,
+		configPath,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "运行目录权限加固失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.WarnLevel)
+	logger.SetOutput(os.Stderr)
+	global.LOG = logger
+
+	initDB.Init()
+	migration.Init()
+	if err := initCredential.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "凭据保护初始化失败: %v\n", err)
+		os.Exit(1)
+	}
 }

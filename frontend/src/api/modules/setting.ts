@@ -6,7 +6,7 @@ export const getSettingInfo = () => {
 }
 
 /** 更新设置项 */
-export const updateSetting = (data: { key: string; value: string }) => {
+export const updateSetting = (data: { key: string; value: string; clear?: boolean }) => {
   return http.post('/settings/update', data)
 }
 

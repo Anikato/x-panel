@@ -212,17 +212,24 @@ func (s *CertificateService) GetDetail(id uint) (*dto.CertificateDetail, error) 
 		}
 	}
 
-	return &dto.CertificateDetail{
+	detail := &dto.CertificateDetail{
 		CertificateInfo: func() dto.CertificateInfo {
 			info := certificateToInfo(cert)
 			info.AcmeAccountEmail = acmeEmail
 			info.DnsAccountName = dnsName
 			return info
 		}(),
-		Pem:        cert.Pem,
-		PrivateKey: cert.PrivateKey,
-		FilePath:   certPath,
-	}, nil
+		Pem:           cert.Pem,
+		PrivateKeySet: cert.PrivateKey != "",
+		FilePath:      certPath,
+	}
+	redactCertificateSecret(detail, cert)
+	return detail, nil
+}
+
+func redactCertificateSecret(detail *dto.CertificateDetail, cert model.Certificate) {
+	detail.PrivateKey = ""
+	detail.PrivateKeySet = cert.PrivateKey != ""
 }
 
 func (s *CertificateService) Apply(id uint) error {
@@ -352,7 +359,10 @@ func (s *CertificateService) Apply(id uint) error {
 		dbUpdates["start_date"] = certInfo.startDate
 		addParsedMetadataUpdates(dbUpdates, certInfo)
 	}
-	s.certRepo.Update(id, dbUpdates)
+	if err := persistCertificateUpdate(s.certRepo.Update, id, dbUpdates); err != nil {
+		logger.Printf("[错误] 证书已写入磁盘，但数据库持久化失败: %v", err)
+		return err
+	}
 	cert.ID = id
 
 	if cert.WebsiteID > 0 {
@@ -513,7 +523,10 @@ func (s *CertificateService) Renew(id uint) error {
 		renewUpdates["start_date"] = certInfo.startDate
 		addParsedMetadataUpdates(renewUpdates, certInfo)
 	}
-	s.certRepo.Update(id, renewUpdates)
+	if err := persistCertificateUpdate(s.certRepo.Update, id, renewUpdates); err != nil {
+		logger.Printf("[ERROR] Certificate files were updated, but database persistence failed: %v", err)
+		return err
+	}
 
 	// 自动 reload nginx 使新证书生效
 	if global.CONF.Nginx.IsInstalled() {
@@ -527,6 +540,17 @@ func (s *CertificateService) Renew(id uint) error {
 
 	logger.Printf("[完成] 证书续签流程结束")
 	global.LOG.Infof("Certificate renewed for: %s", cert.PrimaryDomain)
+	return nil
+}
+
+func persistCertificateUpdate(
+	update func(uint, map[string]interface{}) error,
+	id uint,
+	fields map[string]interface{},
+) error {
+	if err := update(id, fields); err != nil {
+		return fmt.Errorf("persist certificate state: %w", err)
+	}
 	return nil
 }
 

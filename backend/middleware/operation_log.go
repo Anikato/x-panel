@@ -1,9 +1,7 @@
 package middleware
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -20,16 +18,6 @@ import (
 // maxLogBodySize 操作日志最大读取 body 大小（1MB）
 const maxLogBodySize = 1 << 20
 
-// isMultipartOrUpload 检查是否为文件上传等大 body 请求
-func isMultipartOrUpload(c *gin.Context) bool {
-	ct := c.GetHeader("Content-Type")
-	if strings.HasPrefix(ct, "multipart/form-data") {
-		return true
-	}
-	path := c.Request.URL.Path
-	return strings.HasSuffix(path, "/files/upload")
-}
-
 // OperationLog 操作日志中间件
 func OperationLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -40,27 +28,7 @@ func OperationLog() gin.HandlerFunc {
 			return
 		}
 
-		// 对文件上传等大 body 请求，不读取 body，避免 OOM
-		var body string
-		if isMultipartOrUpload(c) {
-			body = "[file upload]"
-		} else if c.Request.Body != nil {
-			// 限制最大读取 1MB，防止异常大请求消耗内存
-			limited := io.LimitReader(c.Request.Body, maxLogBodySize+1)
-			bodyBytes, err := io.ReadAll(limited)
-			if err == nil {
-				if len(bodyBytes) > maxLogBodySize {
-					body = string(bodyBytes[:maxLogBodySize]) + "...(truncated)"
-				} else {
-					body = string(bodyBytes)
-				}
-				// 恢复请求体供后续处理使用
-				c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			}
-		}
-
-		// 脱敏：移除密码等敏感字段
-		body = maskSensitiveFields(body)
+		body := captureOperationLogBody(c.Request, c.Request.URL.Path)
 
 		start := time.Now()
 		c.Next()
@@ -75,7 +43,7 @@ func OperationLog() gin.HandlerFunc {
 		message := ""
 		if len(c.Errors) > 0 {
 			status = constant.StatusFailed
-			message = c.Errors.Last().Error()
+			message = sanitizeOperationMessage(c.Errors.Last().Error())
 		}
 
 		// 异步写入日志
@@ -138,41 +106,4 @@ func formatLatency(d time.Duration) string {
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 	return fmt.Sprintf("%.2fs", d.Seconds())
-}
-
-// maskSensitiveFields 脱敏敏感字段
-func maskSensitiveFields(body string) string {
-	sensitiveKeys := []string{"password", "newPassword", "oldPassword", "secret", "authPass"}
-	for _, key := range sensitiveKeys {
-		// 匹配 "key":"value" 模式并替换 value 为 ***
-		pattern := `"` + key + `"`
-		idx := strings.Index(body, pattern)
-		for idx != -1 {
-			// 跳过 key 本身和后续的 ":"
-			start := idx + len(pattern)
-			rest := body[start:]
-			// 查找冒号后的引号包裹的值
-			colonIdx := strings.Index(rest, `:"`)
-			if colonIdx != -1 && colonIdx < 3 {
-				// 找到值的起始引号
-				valueStart := start + colonIdx + 2
-				// 找到值的结束引号
-				valueEnd := strings.Index(body[valueStart:], `"`)
-				if valueEnd != -1 {
-					body = body[:valueStart] + "***" + body[valueStart+valueEnd:]
-				}
-			}
-			// 继续搜索下一个匹配
-			nextSearch := idx + len(pattern)
-			if nextSearch >= len(body) {
-				break
-			}
-			nextIdx := strings.Index(body[nextSearch:], pattern)
-			if nextIdx == -1 {
-				break
-			}
-			idx = nextSearch + nextIdx
-		}
-	}
-	return body
 }

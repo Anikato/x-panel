@@ -334,7 +334,9 @@ func (s *DatabaseService) ChangeInstancePassword(req dto.DatabaseInstanceChangeP
 		if err := client.ChangePassword(userName, req.Password, instance.Permission); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
-		_ = s.repo.UpdateInstance(instance.ID, map[string]interface{}{"password": req.Password})
+		if err := persistInstancePassword(s.repo.UpdateInstance, instance.ID, req.Password); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
 	case "postgresql":
 		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
 		if err != nil {
@@ -351,7 +353,20 @@ func (s *DatabaseService) ChangeInstancePassword(req dto.DatabaseInstanceChangeP
 		if err := client.ChangePassword(userName, req.Password); err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
-		_ = s.repo.UpdateInstance(instance.ID, map[string]interface{}{"password": req.Password})
+		if err := persistInstancePassword(s.repo.UpdateInstance, instance.ID, req.Password); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	}
+	return nil
+}
+
+func persistInstancePassword(
+	update func(uint, map[string]interface{}) error,
+	id uint,
+	password string,
+) error {
+	if err := update(id, map[string]interface{}{"password": password}); err != nil {
+		return fmt.Errorf("persist database instance password: %w", err)
 	}
 	return nil
 }

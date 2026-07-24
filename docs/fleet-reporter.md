@@ -12,6 +12,7 @@ Fleet Reporter 是 X-Panel 内置的 Fleet Center 上报协程。面板启动后
 | `FleetEndpoint` | `https://fcapi.qm.mk` | Fleet Center 节点 API 域名 |
 | `FleetInstanceID` | 空 | 首次启动自动生成，作为实例身份 |
 | `FleetInstanceToken` | 空 | 注册后由 Fleet Center 下发 |
+| `FleetEnrollmentToken` | 空 | Fleet Center 签发的一次性注册凭据，注册成功后自动清除 |
 | `FleetHeartbeatIntervalSeconds` | `300` | 心跳间隔，服务端可下发覆盖 |
 | `FleetTaskPollIntervalSeconds` | `10` | 任务轮询间隔 |
 
@@ -26,6 +27,34 @@ Fleet Reporter 是 X-Panel 内置的 Fleet Center 上报协程。面板启动后
 ```bash
 sqlite3 /opt/xpanel/data/db/xpanel.db "select key,value from settings where key like 'Fleet%';"
 ```
+
+不要在工单、日志或截图中展示 `FleetEnrollmentToken` 和 `FleetInstanceToken` 的值。
+
+## 可信首次注册
+
+Fleet Reporter 继续默认启用，但新节点只有持有 Fleet Center 签发的一次性 Enrollment Token 才能取得长期 Instance Token。未提供 Token 时 Reporter 保持运行并重试，不会获得任务权限。
+
+托管安装时直接传入 Token：
+
+```bash
+bash install-online.sh \
+  --fleet-enrollment-token 'fenr_<one-time-secret>'
+```
+
+向已安装但尚未注册的节点离线写入 Token：
+
+```bash
+sudo env XPANEL_FLEET_ENROLLMENT_TOKEN='fenr_<one-time-secret>' \
+  /opt/xpanel/xpanel fleet-enroll
+sudo systemctl restart xpanel
+```
+
+安全行为：
+
+- Token 不需要出现在 X-Panel 配置文件或服务启动参数中。
+- 本地 Token 只用于首次注册；Instance Token 写入成功后立即清空。
+- 错误、过期或重放 Token 会被 Fleet Center 拒绝，Reporter 按原调度周期重试。
+- 已有节点继续使用现有 Instance Token，不受此次协议升级影响。
 
 ## 上报内容
 
@@ -148,7 +177,7 @@ grep -i "fleet reporter" /opt/xpanel/data/log/xpanel.log | tail -50
 
 | 日志 | 含义 |
 |---|---|
-| `register failed` | 首次注册失败，检查 `FleetEndpoint`、DNS、TLS、Nginx 反代 |
+| `register failed` | 首次注册失败，检查 Enrollment Token、`FleetEndpoint`、DNS、TLS、Nginx 反代 |
 | `heartbeat failed` | 心跳失败，检查 token、实例是否存在、服务端状态 |
 | `poll tasks failed` | 任务轮询失败，检查 `/api/v1/fleet/tasks/poll` 是否能返回 |
 | `invalid instance token` | 本地 `FleetInstanceToken` 与 Fleet Center 不一致 |
@@ -156,11 +185,14 @@ grep -i "fleet reporter" /opt/xpanel/data/log/xpanel.log | tail -50
 
 如果重装面板后 Fleet Center 出现两个同名节点，通常是新的安装生成了新的 `FleetInstanceID`。保留最新在线实例，删除旧的离线实例即可。
 
-如需强制重新注册：
+如节点丢失 Instance Token，需要在 Fleet Center 删除旧实例记录并签发新的 Enrollment Token，然后执行：
 
 ```bash
-sqlite3 /opt/xpanel/data/db/xpanel.db "update settings set value='' where key='FleetInstanceToken';"
-systemctl restart xpanel
+sudo env XPANEL_FLEET_ENROLLMENT_TOKEN='fenr_<new-one-time-secret>' \
+  /opt/xpanel/xpanel fleet-enroll
+sudo sqlite3 /opt/xpanel/data/db/xpanel.db \
+  "update settings set value='' where key='FleetInstanceToken';"
+sudo systemctl restart xpanel
 ```
 
-谨慎修改 `FleetInstanceID`。该字段代表节点身份，改动后 Fleet Center 会认为这是新实例。
+若没有先删除 Center 中相同 Instance ID 的旧记录，重新注册会返回 `409`。谨慎修改 `FleetInstanceID`；该字段代表节点身份，改动后 Fleet Center 会认为这是新实例。

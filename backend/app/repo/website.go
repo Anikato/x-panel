@@ -30,8 +30,15 @@ func (r *WebsiteRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model
 		db = opt(db)
 	}
 	db.Count(&total)
-	err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
-	return total, items, err
+	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error; err != nil {
+		return total, nil, err
+	}
+	for i := range items {
+		if err := revealWebsite(&items[i]); err != nil {
+			return total, nil, err
+		}
+	}
+	return total, items, nil
 }
 
 func (r *WebsiteRepo) GetList(opts ...DBOption) ([]model.Website, error) {
@@ -40,8 +47,15 @@ func (r *WebsiteRepo) GetList(opts ...DBOption) ([]model.Website, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Order("created_at DESC").Find(&items).Error
-	return items, err
+	if err := db.Order("created_at DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealWebsite(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *WebsiteRepo) Get(opts ...DBOption) (model.Website, error) {
@@ -50,16 +64,34 @@ func (r *WebsiteRepo) Get(opts ...DBOption) (model.Website, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealWebsite(&item)
 }
 
 func (r *WebsiteRepo) Create(item *model.Website) error {
-	return getDB().Create(item).Error
+	stored := *item
+	if err := protectWebsite(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealWebsite(item)
 }
 
 func (r *WebsiteRepo) Save(item *model.Website) error {
-	return getDB().Save(item).Error
+	stored := *item
+	if err := protectWebsite(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Save(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealWebsite(item)
 }
 
 func (r *WebsiteRepo) Count(opts ...DBOption) (int64, error) {
@@ -100,4 +132,12 @@ func WithLikeWebsite(info string) DBOption {
 		return db.Where("primary_domain LIKE ? OR domains LIKE ? OR alias LIKE ? OR remark LIKE ?",
 			"%"+info+"%", "%"+info+"%", "%"+info+"%", "%"+info+"%")
 	}
+}
+
+func protectWebsite(item *model.Website) error {
+	return protectFields(secureField{Scope: "websites.basic_password", Value: &item.BasicPassword})
+}
+
+func revealWebsite(item *model.Website) error {
+	return revealFields(secureField{Scope: "websites.basic_password", Value: &item.BasicPassword})
 }

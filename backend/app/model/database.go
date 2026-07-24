@@ -8,7 +8,7 @@ type DatabaseServer struct {
 	Address  string `json:"address"`
 	Port     uint   `gorm:"default:3306" json:"port"`
 	Username string `json:"username"`
-	Password string `json:"password"`
+	Password string `json:"-"`
 }
 
 type DatabaseInstance struct {

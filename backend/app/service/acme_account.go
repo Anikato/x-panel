@@ -2,6 +2,9 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
@@ -109,14 +112,23 @@ func (s *DnsAccountService) Create(req dto.DnsAccountCreate) error {
 }
 
 func (s *DnsAccountService) Update(req dto.DnsAccountUpdate) error {
-	authJSON, err := json.Marshal(req.Authorization)
+	existing, err := s.dnsRepo.Get(repo.WithByID(req.ID))
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
+	authorization, err := mergeDNSAuthorizationForUpdate(
+		existing.Type,
+		req.Type,
+		existing.Authorization,
+		req.Authorization,
+	)
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInvalidParams, err.Error(), err)
 	}
 	updates := map[string]interface{}{
 		"name":          req.Name,
 		"type":          req.Type,
-		"authorization": string(authJSON),
+		"authorization": authorization,
 	}
 	return s.dnsRepo.Update(req.ID, updates)
 }
@@ -132,16 +144,63 @@ func (s *DnsAccountService) GetList() ([]dto.DnsAccountInfo, error) {
 	}
 	var items []dto.DnsAccountInfo
 	for _, a := range accounts {
-		var auth map[string]string
-		json.Unmarshal([]byte(a.Authorization), &auth)
 		items = append(items, dto.DnsAccountInfo{
-			ID:            a.ID,
-			Name:          a.Name,
-			Type:          a.Type,
-			Authorization: auth,
+			ID:               a.ID,
+			Name:             a.Name,
+			Type:             a.Type,
+			AuthorizationSet: a.Authorization != "",
 		})
 	}
 	return items, nil
+}
+
+func mergeDNSAuthorization(existingRaw string, update map[string]string) (string, error) {
+	existing := make(map[string]string)
+	if existingRaw != "" {
+		if err := json.Unmarshal([]byte(existingRaw), &existing); err != nil {
+			return "", fmt.Errorf("decode existing DNS authorization: %w", err)
+		}
+	}
+	merged := make(map[string]string, len(existing)+len(update))
+	for key, value := range existing {
+		merged[key] = value
+	}
+	for key, value := range update {
+		if value != "" {
+			merged[key] = value
+		}
+	}
+	data, err := json.Marshal(merged)
+	if err != nil {
+		return "", fmt.Errorf("encode DNS authorization: %w", err)
+	}
+	return string(data), nil
+}
+
+func mergeDNSAuthorizationForUpdate(
+	existingType string,
+	updatedType string,
+	existingRaw string,
+	update map[string]string,
+) (string, error) {
+	if existingType == updatedType {
+		return mergeDNSAuthorization(existingRaw, update)
+	}
+	if len(update) == 0 {
+		return "", errors.New("DNS provider changed; complete authorization is required")
+	}
+	fresh := make(map[string]string, len(update))
+	for key, value := range update {
+		if strings.TrimSpace(value) == "" {
+			return "", fmt.Errorf("DNS provider changed; authorization field %s is required", key)
+		}
+		fresh[key] = value
+	}
+	data, err := json.Marshal(fresh)
+	if err != nil {
+		return "", fmt.Errorf("encode DNS authorization: %w", err)
+	}
+	return string(data), nil
 }
 
 // --- 账户导入导出 ---

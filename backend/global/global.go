@@ -20,17 +20,28 @@ type ipTracker interface {
 }
 
 var (
-	DB        *gorm.DB
-	MonitorDB *gorm.DB
-	LOG       *logrus.Logger
-	CONF      ServerConfig
-	Vp        *viper.Viper
-	I18n      *i18n.Localizer
-	IPTracker ipTracker
-	CRON      *cron.Cron
+	DB          *gorm.DB
+	MonitorDB   *gorm.DB
+	LOG         *logrus.Logger
+	CONF        ServerConfig
+	Vp          *viper.Viper
+	I18n        *i18n.Localizer
+	IPTracker   ipTracker
+	CRON        *cron.Cron
+	CREDENTIALS CredentialProtector
 
 	MonitorCronID cron.EntryID
 )
+
+type CredentialProtector interface {
+	Protect(scope, value string) (string, error)
+	Reveal(scope, value string) (string, error)
+	Validate(scope, value string) error
+	IsEncrypted(value string) bool
+	ActiveKeyID() string
+	AddActiveKey() (string, error)
+	KeyIDs() []string
+}
 
 // ServerConfig 服务器配置结构
 type ServerConfig struct {
@@ -46,13 +57,14 @@ func (c ServerConfig) GetDefaultSSLDir() string {
 
 // SystemConfig 系统配置
 type SystemConfig struct {
-	Port           string    `mapstructure:"port"`
-	Mode           string    `mapstructure:"mode"`
-	DataDir        string    `mapstructure:"data_dir"`
-	DbPath         string    `mapstructure:"db_path"`
-	JwtSecret      string    `mapstructure:"jwt_secret"`
-	SessionTimeout int       `mapstructure:"session_timeout"`
-	SSL            SSLConfig `mapstructure:"ssl"`
+	Port              string    `mapstructure:"port"`
+	Mode              string    `mapstructure:"mode"`
+	DataDir           string    `mapstructure:"data_dir"`
+	DbPath            string    `mapstructure:"db_path"`
+	CredentialKeyPath string    `mapstructure:"credential_key_path"`
+	JwtSecret         string    `mapstructure:"jwt_secret"`
+	SessionTimeout    int       `mapstructure:"session_timeout"`
+	SSL               SSLConfig `mapstructure:"ssl"`
 }
 
 // SSLConfig 面板 SSL/TLS 配置
@@ -135,7 +147,7 @@ func (c NginxConfig) HasBothInstalled() bool {
 }
 
 func (c NginxConfig) HasSystemInstalled() bool { return c.systemExist }
-func (c NginxConfig) HasPrefixInstalled() bool  { return c.prefixExist }
+func (c NginxConfig) HasPrefixInstalled() bool { return c.prefixExist }
 
 // IsSystemMode 是否使用系统包管理器安装的 nginx
 func (c NginxConfig) IsSystemMode() bool {

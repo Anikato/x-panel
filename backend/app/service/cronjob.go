@@ -78,6 +78,23 @@ func (s *CronjobService) Update(req dto.CronjobUpdate) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 	s.removeCronJob(job)
+	fields, updatedJob := buildCronjobUpdate(job, req)
+	if err := s.validateJobConfig(&updatedJob); err != nil {
+		return err
+	}
+	if err := s.cronjobRepo.Update(req.ID, fields); err != nil {
+		return err
+	}
+	if job.Status == constant.StatusEnable {
+		updated, _ := s.cronjobRepo.Get(req.ID)
+		if updated != nil {
+			_ = s.addCronJob(updated)
+		}
+	}
+	return nil
+}
+
+func buildCronjobUpdate(job *model.Cronjob, req dto.CronjobUpdate) (map[string]interface{}, model.Cronjob) {
 	fields := map[string]interface{}{
 		"name":              req.Name,
 		"type":              req.Type,
@@ -93,7 +110,6 @@ func (s *CronjobService) Update(req dto.CronjobUpdate) error {
 		"retain_copies":     req.RetainCopies,
 		"exclusion_rules":   req.ExclusionRules,
 		"compress_format":   req.CompressFormat,
-		"encrypt_password":  req.EncryptPassword,
 	}
 	updatedJob := *job
 	updatedJob.Name = req.Name
@@ -110,20 +126,11 @@ func (s *CronjobService) Update(req dto.CronjobUpdate) error {
 	updatedJob.RetainCopies = req.RetainCopies
 	updatedJob.ExclusionRules = req.ExclusionRules
 	updatedJob.CompressFormat = req.CompressFormat
-	updatedJob.EncryptPassword = req.EncryptPassword
-	if err := s.validateJobConfig(&updatedJob); err != nil {
-		return err
+	if req.EncryptPassword != "" {
+		fields["encrypt_password"] = req.EncryptPassword
+		updatedJob.EncryptPassword = req.EncryptPassword
 	}
-	if err := s.cronjobRepo.Update(req.ID, fields); err != nil {
-		return err
-	}
-	if job.Status == constant.StatusEnable {
-		updated, _ := s.cronjobRepo.Get(req.ID)
-		if updated != nil {
-			_ = s.addCronJob(updated)
-		}
-	}
-	return nil
+	return fields, updatedJob
 }
 
 func (s *CronjobService) Delete(id uint) error {
@@ -547,24 +554,24 @@ func extractBackupFile(message string) string {
 
 func toCronjobInfo(j *model.Cronjob) *dto.CronjobInfo {
 	return &dto.CronjobInfo{
-		ID:              j.ID,
-		CreatedAt:       j.CreatedAt,
-		Name:            j.Name,
-		Type:            j.Type,
-		Spec:            j.Spec,
-		Status:          j.Status,
-		EntryID:         j.EntryID,
-		Script:          j.Script,
-		URL:             j.URL,
-		Website:         j.Website,
-		DBType:          j.DBType,
-		DBName:          j.DBName,
-		DBInstanceID:    j.DBInstanceID,
-		SourceDir:       j.SourceDir,
-		TargetAccountID: j.TargetAccountID,
-		RetainCopies:    j.RetainCopies,
-		ExclusionRules:  j.ExclusionRules,
-		CompressFormat:  j.CompressFormat,
-		EncryptPassword: j.EncryptPassword,
+		ID:                 j.ID,
+		CreatedAt:          j.CreatedAt,
+		Name:               j.Name,
+		Type:               j.Type,
+		Spec:               j.Spec,
+		Status:             j.Status,
+		EntryID:            j.EntryID,
+		Script:             j.Script,
+		URL:                j.URL,
+		Website:            j.Website,
+		DBType:             j.DBType,
+		DBName:             j.DBName,
+		DBInstanceID:       j.DBInstanceID,
+		SourceDir:          j.SourceDir,
+		TargetAccountID:    j.TargetAccountID,
+		RetainCopies:       j.RetainCopies,
+		ExclusionRules:     j.ExclusionRules,
+		CompressFormat:     j.CompressFormat,
+		EncryptPasswordSet: j.EncryptPassword != "",
 	}
 }

@@ -86,14 +86,15 @@ export interface LoginSetting {
 export interface SettingInfo {
   panelName: string
   sessionTimeout: string
-  securityEntrance: string
+  securityEntranceSet: boolean
   upgradeUrl: string
-  githubToken: string
+  githubTokenSet: boolean
   serverPort: string
   userName: string
-  agentToken: string
+  agentTokenSet: boolean
   autoUpgrade: string
   fleetAutoUpgrade: string
+  proxyAddressSet: boolean
 }
 
 export interface VersionInfo {
@@ -283,7 +284,7 @@ export interface Cronjob {
   retainCopies: number
   exclusionRules: string
   compressFormat: string
-  encryptPassword: string
+  encryptPasswordSet: boolean
 }
 
 /** 与后端 dto.CronjobCreate 对齐（创建不传 id/status） */
@@ -402,7 +403,7 @@ export interface Certificate {
   autoRenew: boolean
   message: string
   pem: string
-  privateKey: string
+  privateKeySet: boolean
   filePath: string
   description: string
   issuer: string
@@ -471,6 +472,7 @@ export interface CertSyncLog {
 export interface CertServerSetting {
   enabled: boolean
   token: string
+  tokenSet: boolean
 }
 
 // ======================== Website ========================

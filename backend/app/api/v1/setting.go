@@ -61,6 +61,16 @@ func (s *SettingAPI) UpdatePort(c *gin.Context) {
 	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
 }
 
+func (s *SettingAPI) RotateCredentialKey(c *gin.Context) {
+	result, err := service.NewICredentialSecurityService().RotateCredentialKey()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	global.LOG.Warnf("Credential encryption key rotated to %s", result.KeyID)
+	helper.SuccessWithData(c, result)
+}
+
 // RebootServer 重启服务器
 func (s *SettingAPI) RebootServer(c *gin.Context) {
 	global.LOG.Warn("Server reboot requested by user")

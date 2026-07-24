@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -320,7 +321,7 @@ func (s *GostService) SearchChain(req dto.GostChainSearch) (int64, []dto.GostCha
 		infos = append(infos, dto.GostChainInfo{
 			ID:       item.ID,
 			Name:     item.Name,
-			Hops:     item.Hops,
+			Hops:     sanitizeGostHops(item.Hops),
 			HopCount: hopCount,
 			RefCount: refCount,
 			Remark:   item.Remark,
@@ -347,10 +348,14 @@ func (s *GostService) UpdateChain(req dto.GostChainUpdate) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 	oldName := existing.Name
+	mergedHops, err := mergeGostHopSecrets(existing.Hops, req.Hops)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInvalidParams, err.Error(), err)
+	}
 
 	if err := s.chainRepo.Update(req.ID, map[string]interface{}{
 		"name":   req.Name,
-		"hops":   req.Hops,
+		"hops":   mergedHops,
 		"remark": req.Remark,
 	}); err != nil {
 		return err
@@ -370,6 +375,167 @@ func (s *GostService) UpdateChain(req dto.GostChainUpdate) error {
 	}
 	client.SaveConfig()
 	return nil
+}
+
+func sanitizeGostHops(raw string) string {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return ""
+	}
+	sanitizeJSONSecrets(value)
+	data, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func mergeGostHopSecrets(existingRaw, updateRaw string) (string, error) {
+	var existing any
+	if err := json.Unmarshal([]byte(existingRaw), &existing); err != nil {
+		return "", fmt.Errorf("decode existing GOST hops: %w", err)
+	}
+	var update any
+	if err := json.Unmarshal([]byte(updateRaw), &update); err != nil {
+		return "", fmt.Errorf("decode updated GOST hops: %w", err)
+	}
+	if err := mergeJSONSecrets(existing, update); err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(update)
+	if err != nil {
+		return "", fmt.Errorf("encode updated GOST hops: %w", err)
+	}
+	return string(data), nil
+}
+
+func sanitizeJSONSecrets(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if isJSONSecretKey(key) {
+				typed[key] = ""
+				continue
+			}
+			sanitizeJSONSecrets(child)
+		}
+	case []any:
+		for _, child := range typed {
+			sanitizeJSONSecrets(child)
+		}
+	}
+}
+
+func mergeJSONSecrets(existing, update any) error {
+	switch updated := update.(type) {
+	case map[string]any:
+		original, _ := existing.(map[string]any)
+		for key, updatedChild := range updated {
+			originalChild := original[key]
+			if isJSONSecretKey(key) {
+				if text, ok := updatedChild.(string); ok && text == "" && originalChild != nil {
+					updated[key] = originalChild
+				}
+				continue
+			}
+			if err := mergeJSONSecrets(originalChild, updatedChild); err != nil {
+				return err
+			}
+		}
+	case []any:
+		original, _ := existing.([]any)
+		if len(original) != len(updated) && containsBlankJSONSecret(updated) {
+			return errors.New("GOST chain structure changed; re-enter credentials for affected nodes")
+		}
+		for index, updatedChild := range updated {
+			if index < len(original) {
+				if !equalNonSecretJSON(original[index], updatedChild) &&
+					containsBlankJSONSecret(updatedChild) {
+					return errors.New("GOST chain node order or identity changed; re-enter credentials for affected nodes")
+				}
+				if err := mergeJSONSecrets(original[index], updatedChild); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func containsBlankJSONSecret(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if isJSONSecretKey(key) {
+				if text, ok := child.(string); ok && text == "" {
+					return true
+				}
+				continue
+			}
+			if containsBlankJSONSecret(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if containsBlankJSONSecret(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func equalNonSecretJSON(left, right any) bool {
+	switch leftValue := left.(type) {
+	case map[string]any:
+		rightValue, ok := right.(map[string]any)
+		if !ok {
+			return false
+		}
+		for key, leftChild := range leftValue {
+			if isJSONSecretKey(key) {
+				continue
+			}
+			rightChild, exists := rightValue[key]
+			if !exists || !equalNonSecretJSON(leftChild, rightChild) {
+				return false
+			}
+		}
+		for key := range rightValue {
+			if isJSONSecretKey(key) {
+				continue
+			}
+			if _, exists := leftValue[key]; !exists {
+				return false
+			}
+		}
+		return true
+	case []any:
+		rightValue, ok := right.([]any)
+		if !ok || len(leftValue) != len(rightValue) {
+			return false
+		}
+		for index := range leftValue {
+			if !equalNonSecretJSON(leftValue[index], rightValue[index]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return fmt.Sprint(left) == fmt.Sprint(right)
+	}
+}
+
+func isJSONSecretKey(key string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
+	switch normalized {
+	case "password", "passphrase", "token", "secret", "credential",
+		"authorization", "privatekey", "accesskey", "authpass":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *GostService) DeleteChain(id uint) error {

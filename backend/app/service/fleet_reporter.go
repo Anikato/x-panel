@@ -44,6 +44,7 @@ const (
 	fleetSettingEndpoint           = "FleetEndpoint"
 	fleetSettingInstanceID         = "FleetInstanceID"
 	fleetSettingInstanceToken      = "FleetInstanceToken"
+	fleetSettingEnrollmentToken    = "FleetEnrollmentToken"
 	fleetSettingInterval           = "FleetHeartbeatIntervalSeconds"
 	fleetSettingTaskInterval       = "FleetTaskPollIntervalSeconds"
 	fleetSettingAutoUpgrade        = "FleetAutoUpgrade"
@@ -403,7 +404,18 @@ func (s *FleetReporterService) reportOnce() time.Duration {
 
 func (s *FleetReporterService) register(endpoint string, payload fleetPayload) error {
 	var data fleetRegisterData
-	if err := s.postJSON(endpoint+"/api/v1/fleet/register", "", payload, &data); err != nil {
+	enrollmentToken := strings.TrimSpace(s.settingValue(fleetSettingEnrollmentToken, ""))
+	headers := http.Header{}
+	if enrollmentToken != "" {
+		headers.Set("X-Fleet-Enrollment-Token", enrollmentToken)
+	}
+	if err := s.postJSONWithHeaders(
+		endpoint+"/api/v1/fleet/register",
+		"",
+		payload,
+		&data,
+		headers,
+	); err != nil {
 		return err
 	}
 	if data.InstanceToken == "" {
@@ -414,6 +426,11 @@ func (s *FleetReporterService) register(endpoint string, payload fleetPayload) e
 	}
 	if err := settingRepo.CreateOrUpdate(fleetSettingInstanceToken, data.InstanceToken); err != nil {
 		return err
+	}
+	if enrollmentToken != "" {
+		if err := settingRepo.CreateOrUpdate(fleetSettingEnrollmentToken, ""); err != nil {
+			return err
+		}
 	}
 	s.applyServerInterval(data.HeartbeatIntervalSeconds)
 	s.applyServerTaskInterval(data.TaskPollIntervalSeconds)
@@ -433,6 +450,16 @@ func (s *FleetReporterService) heartbeat(endpoint string, payload fleetPayload, 
 }
 
 func (s *FleetReporterService) postJSON(url, token string, payload interface{}, out interface{}) error {
+	return s.postJSONWithHeaders(url, token, payload, out, nil)
+}
+
+func (s *FleetReporterService) postJSONWithHeaders(
+	url string,
+	token string,
+	payload interface{},
+	out interface{},
+	headers http.Header,
+) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -443,6 +470,11 @@ func (s *FleetReporterService) postJSON(url, token string, payload interface{}, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "X-Panel Fleet Reporter")
+	for key, values := range headers {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

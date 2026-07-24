@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"xpanel/global"
+	initPermission "xpanel/init/permission"
 
 	"github.com/spf13/viper"
 )
@@ -63,7 +64,22 @@ func Init() {
 	if !filepath.IsAbs(conf.Log.Path) {
 		conf.Log.Path = filepath.Join(conf.System.DataDir, conf.Log.Path)
 	}
+	conf.System.CredentialKeyPath = resolveCredentialKeyPath(
+		conf.System.DataDir,
+		conf.System.CredentialKeyPath,
+	)
 
 	global.CONF = conf
 	global.Vp = v
+}
+
+func resolveCredentialKeyPath(dataDir, configured string) string {
+	installRoot := initPermission.ResolveInstallRoot(dataDir)
+	if configured == "" {
+		return filepath.Join(installRoot, "secrets", "credential-keyring.json")
+	}
+	if filepath.IsAbs(configured) {
+		return filepath.Clean(configured)
+	}
+	return filepath.Join(installRoot, configured)
 }

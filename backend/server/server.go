@@ -13,10 +13,12 @@ import (
 	"xpanel/global"
 	"xpanel/i18n"
 	initAuth "xpanel/init/auth"
+	initCredential "xpanel/init/credential"
 	initCron "xpanel/init/cron"
 	initDB "xpanel/init/db"
 	initLog "xpanel/init/log"
 	"xpanel/init/migration"
+	initPermission "xpanel/init/permission"
 	initViper "xpanel/init/viper"
 	"xpanel/router"
 	"xpanel/utils/iplocation"
@@ -26,6 +28,7 @@ import (
 func Start() {
 	// 1. Viper 加载配置
 	initViper.Init()
+	hardenRuntimePaths()
 
 	// 1.5 检测 Nginx 安装模式
 	global.CONF.Nginx.DetectNginx()
@@ -114,8 +117,25 @@ func Start() {
 // starting HTTP, cron jobs, heartbeats, or other background services.
 func Migrate() {
 	initViper.Init()
+	hardenRuntimePaths()
 	initLog.Init()
 	initDatabaseAndMigrations()
+}
+
+func hardenRuntimePaths() {
+	configPath := ""
+	if global.Vp != nil {
+		configPath = global.Vp.ConfigFileUsed()
+	}
+	if err := initPermission.HardenRuntime(
+		global.CONF.System.DataDir,
+		global.CONF.System.DbPath,
+		global.CONF.Log.Path,
+		global.CONF.System.CredentialKeyPath,
+		configPath,
+	); err != nil {
+		panic(fmt.Sprintf("Failed to harden X-Panel runtime paths: %v", err))
+	}
 }
 
 func initDatabaseAndMigrations() {
@@ -125,6 +145,12 @@ func initDatabaseAndMigrations() {
 
 	// 4. 数据库迁移 + 默认数据
 	migration.Init()
+
+	// 4.1 凭据密钥环 + 历史明文迁移。任何失败都必须阻止业务任务启动，
+	// 避免把密文误当成外部系统密码或 Token 使用。
+	if err := initCredential.Init(); err != nil {
+		panic(fmt.Sprintf("Failed to initialize credential protection: %v", err))
+	}
 }
 
 type tlsFilterWriter struct{}

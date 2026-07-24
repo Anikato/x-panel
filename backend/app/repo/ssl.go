@@ -24,8 +24,15 @@ func (r *AcmeAccountRepo) GetList(opts ...DBOption) ([]model.AcmeAccount, error)
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Order("created_at DESC").Find(&items).Error
-	return items, err
+	if err := db.Order("created_at DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealAcmeAccount(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *AcmeAccountRepo) Get(opts ...DBOption) (model.AcmeAccount, error) {
@@ -34,16 +41,30 @@ func (r *AcmeAccountRepo) Get(opts ...DBOption) (model.AcmeAccount, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealAcmeAccount(&item)
 }
 
 func (r *AcmeAccountRepo) Create(item *model.AcmeAccount) error {
-	return getDB().Create(item).Error
+	stored := *item
+	if err := protectAcmeAccount(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealAcmeAccount(item)
 }
 
 func (r *AcmeAccountRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.AcmeAccount{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("acme_accounts", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.AcmeAccount{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *AcmeAccountRepo) Delete(opts ...DBOption) error {
@@ -74,8 +95,15 @@ func (r *DnsAccountRepo) GetList(opts ...DBOption) ([]model.DnsAccount, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Order("created_at DESC").Find(&items).Error
-	return items, err
+	if err := db.Order("created_at DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealDNSAccount(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *DnsAccountRepo) Get(opts ...DBOption) (model.DnsAccount, error) {
@@ -84,16 +112,30 @@ func (r *DnsAccountRepo) Get(opts ...DBOption) (model.DnsAccount, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealDNSAccount(&item)
 }
 
 func (r *DnsAccountRepo) Create(item *model.DnsAccount) error {
-	return getDB().Create(item).Error
+	stored := *item
+	if err := protectDNSAccount(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealDNSAccount(item)
 }
 
 func (r *DnsAccountRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.DnsAccount{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("dns_accounts", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.DnsAccount{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *DnsAccountRepo) Delete(opts ...DBOption) error {
@@ -130,8 +172,15 @@ func (r *CertificateRepo) Page(page, pageSize int, opts ...DBOption) (int64, []m
 		db = opt(db)
 	}
 	db.Count(&total)
-	err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
-	return total, items, err
+	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error; err != nil {
+		return total, nil, err
+	}
+	for i := range items {
+		if err := revealCertificate(&items[i]); err != nil {
+			return total, nil, err
+		}
+	}
+	return total, items, nil
 }
 
 func (r *CertificateRepo) GetList(opts ...DBOption) ([]model.Certificate, error) {
@@ -140,8 +189,15 @@ func (r *CertificateRepo) GetList(opts ...DBOption) ([]model.Certificate, error)
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Find(&items).Error
-	return items, err
+	if err := db.Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealCertificate(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *CertificateRepo) Get(opts ...DBOption) (model.Certificate, error) {
@@ -150,20 +206,42 @@ func (r *CertificateRepo) Get(opts ...DBOption) (model.Certificate, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealCertificate(&item)
 }
 
 func (r *CertificateRepo) Create(item *model.Certificate) error {
-	return getDB().Create(item).Error
+	stored := *item
+	if err := protectCertificate(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealCertificate(item)
 }
 
 func (r *CertificateRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.Certificate{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("certificates", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.Certificate{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *CertificateRepo) Save(item *model.Certificate) error {
-	return getDB().Save(item).Error
+	stored := *item
+	if err := protectCertificate(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Save(&stored).Error; err != nil {
+		return err
+	}
+	*item = stored
+	return revealCertificate(item)
 }
 
 func (r *CertificateRepo) Delete(opts ...DBOption) error {
@@ -172,4 +250,34 @@ func (r *CertificateRepo) Delete(opts ...DBOption) error {
 		db = opt(db)
 	}
 	return db.Delete(&model.Certificate{}).Error
+}
+
+func protectAcmeAccount(item *model.AcmeAccount) error {
+	return protectFields(
+		secureField{Scope: "acme_accounts.private_key", Value: &item.PrivateKey},
+		secureField{Scope: "acme_accounts.eab_hmac_key", Value: &item.EabHmacKey},
+	)
+}
+
+func revealAcmeAccount(item *model.AcmeAccount) error {
+	return revealFields(
+		secureField{Scope: "acme_accounts.private_key", Value: &item.PrivateKey},
+		secureField{Scope: "acme_accounts.eab_hmac_key", Value: &item.EabHmacKey},
+	)
+}
+
+func protectDNSAccount(item *model.DnsAccount) error {
+	return protectFields(secureField{Scope: "dns_accounts.authorization", Value: &item.Authorization})
+}
+
+func revealDNSAccount(item *model.DnsAccount) error {
+	return revealFields(secureField{Scope: "dns_accounts.authorization", Value: &item.Authorization})
+}
+
+func protectCertificate(item *model.Certificate) error {
+	return protectFields(secureField{Scope: "certificates.private_key", Value: &item.PrivateKey})
+}
+
+func revealCertificate(item *model.Certificate) error {
+	return revealFields(secureField{Scope: "certificates.private_key", Value: &item.PrivateKey})
 }

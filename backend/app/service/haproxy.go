@@ -661,11 +661,15 @@ func (s *HAProxyService) ListConfigVersions(limit int) ([]dto.HAProxyConfigVersi
 }
 
 func (s *HAProxyService) GetConfigVersion(id uint) (string, error) {
-	v, err := repo.NewIHAProxyConfigVersionRepo().Get(id)
+	_, err := repo.NewIHAProxyConfigVersionRepo().Get(id)
 	if err != nil {
 		return "", buserr.New(constant.ErrRecordNotFound)
 	}
-	return v.Content, nil
+	return redactHAProxyConfigHistory(""), nil
+}
+
+func redactHAProxyConfigHistory(string) string {
+	return ""
 }
 
 func (s *HAProxyService) RollbackToVersion(id uint, operator string) error {
@@ -741,7 +745,10 @@ func (s *HAProxyService) buildConfig() (string, error) {
 		as, _ := repo.NewIHAProxyACLRepo().GetListByLB(lb.ID)
 		aclMap[lb.ID] = as
 	}
-	user, pass := getHAProxyStatsAuth()
+	user, pass, err := getHAProxyStatsAuth()
+	if err != nil {
+		return "", err
+	}
 	settings := haproxyutil.Settings{
 		GlobalLog:   readHAProxySetting("HAProxyGlobalLog", "127.0.0.1 local0"),
 		SocketPath:  haproxyutil.DefaultSocketPath,

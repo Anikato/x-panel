@@ -73,10 +73,11 @@
             <el-text type="info" size="small">{{ t('setting.autoUpgradeHint') }}</el-text>
           </div>
           <div class="xp-inline-form">
-            <el-input v-model="githubToken" :placeholder="t('setting.githubTokenPlaceholder')" clearable show-password>
+            <el-input v-model="githubToken" :placeholder="githubTokenSet ? t('setting.secretConfiguredPlaceholder') : t('setting.githubTokenPlaceholder')" clearable show-password>
               <template #prepend>{{ t('setting.githubToken') }}</template>
             </el-input>
-            <el-button :loading="savingToken" @click="handleSaveToken">{{ t('setting.save') }}</el-button>
+            <el-tag v-if="githubTokenSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
+            <el-button :loading="savingToken" :disabled="!githubToken" @click="handleSaveToken">{{ t('setting.save') }}</el-button>
           </div>
           <div class="update-url-hint">
             <el-text type="info" size="small">{{ t('setting.upgradeUrlHint') }}。{{ t('setting.githubTokenHint') }}</el-text>
@@ -312,9 +313,11 @@
               <el-input-number v-model="form.sessionTimeout" :min="3600" :step="3600" />
             </el-form-item>
             <el-form-item :label="t('setting.securityEntrance')">
-              <el-input v-model="form.securityEntrance" :placeholder="t('setting.securityEntrancePlaceholder')" clearable>
+              <el-input v-model="form.securityEntrance" :placeholder="securityEntranceSet ? t('setting.secretConfiguredPlaceholder') : t('setting.securityEntrancePlaceholder')" clearable>
                 <template #prepend>/</template>
               </el-input>
+              <el-tag v-if="securityEntranceSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
+              <el-button v-if="securityEntranceSet" type="danger" plain @click="clearSettingSecret('SecurityEntrance')">{{ t('setting.clearSecret') }}</el-button>
               <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.securityEntranceHint') }}</el-text>
               </div>
@@ -377,7 +380,8 @@
           <el-form label-width="140px" class="xp-form-narrow">
             <el-form-item :label="t('setting.agentToken')">
               <div class="xp-inline-form">
-                <el-input v-model="agentTokenForm.token" :placeholder="t('setting.agentTokenPlaceholder')" show-password clearable />
+                <el-input v-model="agentTokenForm.token" :placeholder="agentTokenSet ? t('setting.secretConfiguredPlaceholder') : t('setting.agentTokenPlaceholder')" show-password clearable />
+                <el-tag v-if="agentTokenSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
                 <el-button @click="generateAgentToken">{{ t('setting.generateToken') }}</el-button>
               </div>
               <div class="xp-form-tip">
@@ -385,7 +389,7 @@
               </div>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :loading="savingAgentToken" @click="handleSaveAgentToken">{{ t('setting.save') }}</el-button>
+              <el-button type="primary" :loading="savingAgentToken" :disabled="!agentTokenForm.token" @click="handleSaveAgentToken">{{ t('setting.save') }}</el-button>
             </el-form-item>
           </el-form>
         </el-collapse-item>
@@ -409,7 +413,9 @@
               </div>
             </el-form-item>
             <el-form-item :label="t('setting.proxyAddress')">
-              <el-input v-model="proxyForm.address" :placeholder="proxyAddressPlaceholder" clearable />
+              <el-input v-model="proxyForm.address" :placeholder="proxyAddressSet ? t('setting.secretConfiguredPlaceholder') : proxyAddressPlaceholder" clearable />
+              <el-tag v-if="proxyAddressSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
+              <el-button v-if="proxyAddressSet" type="danger" plain @click="clearSettingSecret('ProxyAddress')">{{ t('setting.clearSecret') }}</el-button>
               <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ proxyAddressHint }}</el-text>
               </div>
@@ -613,13 +619,16 @@ const onCustomAccent = (e: Event) => {
 const loading = ref(false)
 const saving = ref(false)
 const form = reactive({ panelName: globalStore.panelName || 'X-Panel', port: 7777, sessionTimeout: 86400, securityEntrance: '' })
+const securityEntranceSet = ref(false)
 
 const savingAgentToken = ref(false)
 const agentTokenForm = reactive({ token: '' })
+const agentTokenSet = ref(false)
 
 const savingProxy = ref(false)
 const testingProxy = ref(false)
 const proxyForm = reactive({ type: 'mix', address: '', noProxy: 'localhost,127.0.0.1,::1', enable: false })
+const proxyAddressSet = ref(false)
 
 const proxyTypeDesc = computed(() => {
   const map: Record<string, string> = {
@@ -656,6 +665,7 @@ const passwordForm = reactive({ oldPassword: '', newPassword: '', confirmPasswor
 const versionInfo = reactive({ version: '', commitHash: '', buildTime: '', goVersion: '' })
 const upgradeUrl = ref('')
 const githubToken = ref('')
+const githubTokenSet = ref(false)
 const savingToken = ref(false)
 const autoUpgradeEnabled = ref(false)
 const fleetAutoUpgrade = ref('')
@@ -735,6 +745,8 @@ const handleSaveToken = async () => {
   savingToken.value = true
   try {
     await updateSetting({ key: 'GitHubToken', value: githubToken.value })
+    githubToken.value = ''
+    githubTokenSet.value = true
     ElMessage.success(t('commons.success'))
   } catch { /* */ } finally { savingToken.value = false }
 }
@@ -747,15 +759,19 @@ const fetchSettings = async () => {
       if (res.data.panelName) form.panelName = res.data.panelName
       form.port = parseInt(res.data.serverPort) || 7777
       form.sessionTimeout = parseInt(res.data.sessionTimeout) || 86400
-      form.securityEntrance = res.data.securityEntrance || ''
+      form.securityEntrance = ''
+      securityEntranceSet.value = res.data.securityEntranceSet === true
       upgradeUrl.value = res.data.upgradeUrl || ''
-      githubToken.value = res.data.githubToken || ''
+      githubToken.value = ''
+      githubTokenSet.value = res.data.githubTokenSet === true
       accountForm.userName = res.data.userName || 'admin'
       autoUpgradeEnabled.value = res.data.autoUpgrade === 'enable'
       fleetAutoUpgrade.value = res.data.fleetAutoUpgrade || ''
-      agentTokenForm.token = res.data.agentToken || ''
+      agentTokenForm.token = ''
+      agentTokenSet.value = res.data.agentTokenSet === true
       proxyForm.type = res.data.proxyType || 'mix'
-      proxyForm.address = res.data.proxyAddress || ''
+      proxyForm.address = ''
+      proxyAddressSet.value = res.data.proxyAddressSet === true
       proxyForm.noProxy = res.data.proxyNoProxy || 'localhost,127.0.0.1,::1'
       proxyForm.enable = res.data.proxyEnable === 'enable'
     }
@@ -774,6 +790,10 @@ const handleSave = async () => {
     await updatePort({ port: String(form.port) })
     await updateSetting({ key: 'SessionTimeout', value: String(form.sessionTimeout) })
     await updateSetting({ key: 'SecurityEntrance', value: form.securityEntrance })
+    if (form.securityEntrance) {
+      securityEntranceSet.value = true
+      form.securityEntrance = ''
+    }
     form.panelName = panelName
     globalStore.setPanelName(panelName)
     ElMessage.success(t('commons.success'))
@@ -791,6 +811,8 @@ const handleSaveAgentToken = async () => {
   savingAgentToken.value = true
   try {
     await updateSetting({ key: 'AgentToken', value: agentTokenForm.token })
+    agentTokenForm.token = ''
+    agentTokenSet.value = true
     ElMessage.success(t('commons.success'))
   } catch { /* */ } finally { savingAgentToken.value = false }
 }
@@ -823,6 +845,10 @@ const handleSaveProxy = async () => {
   try {
     await updateSetting({ key: 'ProxyType', value: proxyForm.type })
     await updateSetting({ key: 'ProxyAddress', value: proxyForm.address })
+    if (proxyForm.address) {
+      proxyAddressSet.value = true
+      proxyForm.address = ''
+    }
     await updateSetting({ key: 'ProxyNoProxy', value: proxyForm.noProxy })
     await updateSetting({ key: 'ProxyEnable', value: proxyForm.enable ? 'enable' : 'disable' })
     ElMessage.success(t('commons.success'))
@@ -833,7 +859,7 @@ const handleSaveProxy = async () => {
 }
 
 const handleProxyToggle = async (val: boolean) => {
-  if (val && !proxyForm.address.trim()) {
+  if (val && !proxyForm.address.trim() && !proxyAddressSet.value) {
     proxyForm.enable = false
     ElMessage.warning(proxyAddressPlaceholder.value)
     return
@@ -849,6 +875,18 @@ const handleProxyToggle = async (val: boolean) => {
     ElMessage.success(t('commons.success'))
     ElMessage.info(t('setting.proxyRestartHint'))
   } catch { proxyForm.enable = !val } finally { savingProxy.value = false }
+}
+
+const clearSettingSecret = async (key: 'SecurityEntrance' | 'ProxyAddress') => {
+  await updateSetting({ key, value: '', clear: true })
+  if (key === 'SecurityEntrance') {
+    securityEntranceSet.value = false
+    form.securityEntrance = ''
+  } else {
+    proxyAddressSet.value = false
+    proxyForm.address = ''
+  }
+  ElMessage.success(t('commons.success'))
 }
 
 const handleTestProxy = async () => {

@@ -239,7 +239,14 @@
               <el-input v-model="detail.basicUser" style="width: 300px" />
             </el-form-item>
             <el-form-item :label="$t('website.basicPassword')">
-              <el-input v-model="detail.basicPassword" type="password" show-password style="width: 300px" />
+              <el-input
+                v-model="detail.basicPassword"
+                type="password"
+                show-password
+                style="width: 300px"
+                :placeholder="detail.basicPasswordSet ? $t('setting.secretConfiguredPlaceholder') : ''"
+              />
+              <el-tag v-if="detail.basicPasswordSet" type="success">{{ $t('setting.secretConfigured') }}</el-tag>
             </el-form-item>
           </template>
 
@@ -621,6 +628,7 @@ interface WebsiteDetail {
   basicAuth: boolean
   basicUser: string
   basicPassword: string
+  basicPasswordSet: boolean
   antiLeech: boolean
   leechReferers: string
   accessLog: boolean

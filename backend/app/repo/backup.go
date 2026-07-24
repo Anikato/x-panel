@@ -28,11 +28,23 @@ func NewIBackupRepo() IBackupRepo {
 type BackupRepo struct{}
 
 func (r *BackupRepo) CreateAccount(a *model.BackupAccount) error {
-	return global.DB.Create(a).Error
+	stored := *a
+	if err := protectBackupAccount(&stored); err != nil {
+		return err
+	}
+	if err := global.DB.Create(&stored).Error; err != nil {
+		return err
+	}
+	*a = stored
+	return revealBackupAccount(a)
 }
 
 func (r *BackupRepo) UpdateAccount(id uint, fields map[string]interface{}) error {
-	return global.DB.Model(&model.BackupAccount{}).Where("id = ?", id).Updates(fields).Error
+	protected, err := protectUpdates("backup_accounts", fields)
+	if err != nil {
+		return err
+	}
+	return global.DB.Model(&model.BackupAccount{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *BackupRepo) DeleteAccount(id uint) error {
@@ -44,12 +56,23 @@ func (r *BackupRepo) GetAccount(id uint) (*model.BackupAccount, error) {
 	if err := global.DB.First(&a, id).Error; err != nil {
 		return nil, err
 	}
+	if err := revealBackupAccount(&a); err != nil {
+		return nil, err
+	}
 	return &a, nil
 }
 
 func (r *BackupRepo) ListAccounts() ([]model.BackupAccount, error) {
 	var items []model.BackupAccount
-	return items, global.DB.Order("created_at desc").Find(&items).Error
+	if err := global.DB.Order("created_at desc").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealBackupAccount(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *BackupRepo) CreateRecord(rec *model.BackupRecord) error {
@@ -136,4 +159,18 @@ func WithBackupCronjobID(id uint) DBOption {
 		}
 		return db
 	}
+}
+
+func protectBackupAccount(item *model.BackupAccount) error {
+	return protectFields(
+		secureField{Scope: "backup_accounts.access_key", Value: &item.AccessKey},
+		secureField{Scope: "backup_accounts.credential", Value: &item.Credential},
+	)
+}
+
+func revealBackupAccount(item *model.BackupAccount) error {
+	return revealFields(
+		secureField{Scope: "backup_accounts.access_key", Value: &item.AccessKey},
+		secureField{Scope: "backup_accounts.credential", Value: &item.Credential},
+	)
 }

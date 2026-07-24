@@ -4,7 +4,7 @@ type Node struct {
 	BaseModel
 	Name     string `gorm:"not null" json:"name"`
 	Address  string `gorm:"not null" json:"address"` // IP:Port for X-Panel API
-	Token    string `json:"token"`
+	Token    string `json:"-"`
 	Status   string `gorm:"default:offline" json:"status"` // online / offline
 	GroupID  uint   `json:"groupID"`
 	OS       string `json:"os"`
@@ -15,5 +15,5 @@ type Node struct {
 	SSHHost     string `json:"sshHost"`
 	SSHPort     uint   `gorm:"default:22" json:"sshPort"`
 	SSHUser     string `json:"sshUser"`
-	SSHPassword string `json:"sshPassword"`
+	SSHPassword string `json:"-"`
 }

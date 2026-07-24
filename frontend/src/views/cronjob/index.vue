@@ -184,7 +184,13 @@
             </el-select>
           </el-form-item>
           <el-form-item :label="t('cronjob.encryptPassword')">
-            <el-input v-model="form.encryptPassword" type="password" show-password :placeholder="t('cronjob.encryptPasswordHint')" />
+            <el-input
+              v-model="form.encryptPassword"
+              type="password"
+              show-password
+              :placeholder="encryptPasswordSet ? t('cronjob.encryptPasswordConfiguredHint') : t('cronjob.encryptPasswordHint')"
+            />
+            <el-tag v-if="encryptPasswordSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
           </el-form-item>
           <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.exclusionRules')">
             <el-input v-model="form.exclusionRules" type="textarea" :rows="3" :placeholder="t('cronjob.exclusionRulesHint')" />
@@ -263,6 +269,7 @@ const drawerVisible = ref(false)
 const editMode = ref(false)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
+const encryptPasswordSet = ref(false)
 
 const defaultForm = () => ({
   id: 0, name: '', type: 'shell', spec: '0 2 * * *', script: '', url: '',
@@ -385,6 +392,7 @@ const search = async () => {
 
 const openCreate = () => {
   Object.assign(form, defaultForm())
+  encryptPasswordSet.value = false
   editMode.value = false
   cronTime.value = initCronTime(2, 0)
   parseCronToBuilder(form.spec)
@@ -395,6 +403,8 @@ const openCreate = () => {
 
 const openEdit = (row: Cronjob) => {
   Object.assign(form, { ...row })
+  form.encryptPassword = ''
+  encryptPasswordSet.value = row.encryptPasswordSet === true
   form.dbInstanceID = row.dbInstanceID || 0
   editMode.value = true
   parseCronToBuilder(row.spec)

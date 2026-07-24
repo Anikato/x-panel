@@ -34,8 +34,15 @@ func (r *GostServiceRepo) Page(page, pageSize int, opts ...DBOption) (int64, []m
 		db = opt(db)
 	}
 	db.Count(&total)
-	err := db.Offset((page-1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
-	return total, items, err
+	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error; err != nil {
+		return total, nil, err
+	}
+	for i := range items {
+		if err := revealGostService(&items[i]); err != nil {
+			return total, nil, err
+		}
+	}
+	return total, items, nil
 }
 
 func (r *GostServiceRepo) GetList(opts ...DBOption) ([]model.GostService, error) {
@@ -44,8 +51,15 @@ func (r *GostServiceRepo) GetList(opts ...DBOption) ([]model.GostService, error)
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Find(&items).Error
-	return items, err
+	if err := db.Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealGostService(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *GostServiceRepo) Get(opts ...DBOption) (model.GostService, error) {
@@ -54,16 +68,30 @@ func (r *GostServiceRepo) Get(opts ...DBOption) (model.GostService, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealGostService(&item)
 }
 
 func (r *GostServiceRepo) Create(svc *model.GostService) error {
-	return getDB().Create(svc).Error
+	stored := *svc
+	if err := protectGostService(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*svc = stored
+	return revealGostService(svc)
 }
 
 func (r *GostServiceRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.GostService{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("gost_services", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.GostService{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *GostServiceRepo) Delete(opts ...DBOption) error {
@@ -105,8 +133,15 @@ func (r *GostChainRepo) Page(page, pageSize int, opts ...DBOption) (int64, []mod
 		db = opt(db)
 	}
 	db.Count(&total)
-	err := db.Offset((page-1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
-	return total, items, err
+	if err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error; err != nil {
+		return total, nil, err
+	}
+	for i := range items {
+		if err := revealGostChain(&items[i]); err != nil {
+			return total, nil, err
+		}
+	}
+	return total, items, nil
 }
 
 func (r *GostChainRepo) GetList(opts ...DBOption) ([]model.GostChain, error) {
@@ -115,8 +150,15 @@ func (r *GostChainRepo) GetList(opts ...DBOption) ([]model.GostChain, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.Find(&items).Error
-	return items, err
+	if err := db.Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if err := revealGostChain(&items[i]); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }
 
 func (r *GostChainRepo) Get(opts ...DBOption) (model.GostChain, error) {
@@ -125,16 +167,30 @@ func (r *GostChainRepo) Get(opts ...DBOption) (model.GostChain, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	err := db.First(&item).Error
-	return item, err
+	if err := db.First(&item).Error; err != nil {
+		return item, err
+	}
+	return item, revealGostChain(&item)
 }
 
 func (r *GostChainRepo) Create(chain *model.GostChain) error {
-	return getDB().Create(chain).Error
+	stored := *chain
+	if err := protectGostChain(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*chain = stored
+	return revealGostChain(chain)
 }
 
 func (r *GostChainRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.GostChain{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("gost_chains", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.GostChain{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *GostChainRepo) Delete(opts ...DBOption) error {
@@ -157,4 +213,20 @@ func WithByGostType(t string) DBOption {
 		}
 		return db.Where("type IN ?", types)
 	}
+}
+
+func protectGostService(item *model.GostService) error {
+	return protectFields(secureField{Scope: "gost_services.auth_pass", Value: &item.AuthPass})
+}
+
+func revealGostService(item *model.GostService) error {
+	return revealFields(secureField{Scope: "gost_services.auth_pass", Value: &item.AuthPass})
+}
+
+func protectGostChain(item *model.GostChain) error {
+	return protectFields(secureField{Scope: "gost_chains.hops", Value: &item.Hops})
+}
+
+func revealGostChain(item *model.GostChain) error {
+	return revealFields(secureField{Scope: "gost_chains.hops", Value: &item.Hops})
 }

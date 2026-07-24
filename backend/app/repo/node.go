@@ -20,11 +20,23 @@ func NewINodeRepo() INodeRepo {
 type NodeRepo struct{}
 
 func (r *NodeRepo) Create(n *model.Node) error {
-	return global.DB.Create(n).Error
+	stored := *n
+	if err := protectNode(&stored); err != nil {
+		return err
+	}
+	if err := global.DB.Create(&stored).Error; err != nil {
+		return err
+	}
+	*n = stored
+	return revealNode(n)
 }
 
 func (r *NodeRepo) Update(id uint, fields map[string]interface{}) error {
-	return global.DB.Model(&model.Node{}).Where("id = ?", id).Updates(fields).Error
+	protected, err := protectUpdates("nodes", fields)
+	if err != nil {
+		return err
+	}
+	return global.DB.Model(&model.Node{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *NodeRepo) Delete(id uint) error {
@@ -36,6 +48,9 @@ func (r *NodeRepo) Get(id uint) (*model.Node, error) {
 	if err := global.DB.First(&n, id).Error; err != nil {
 		return nil, err
 	}
+	if err := revealNode(&n); err != nil {
+		return nil, err
+	}
 	return &n, nil
 }
 
@@ -45,5 +60,34 @@ func (r *NodeRepo) List(opts ...DBOption) ([]model.Node, error) {
 	for _, opt := range opts {
 		db = opt(db)
 	}
-	return items, db.Order("created_at desc").Find(&items).Error
+	if err := db.Order("created_at desc").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	if err := revealNodes(items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func protectNode(item *model.Node) error {
+	return protectFields(
+		secureField{Scope: "nodes.token", Value: &item.Token},
+		secureField{Scope: "nodes.ssh_password", Value: &item.SSHPassword},
+	)
+}
+
+func revealNode(item *model.Node) error {
+	return revealFields(
+		secureField{Scope: "nodes.token", Value: &item.Token},
+		secureField{Scope: "nodes.ssh_password", Value: &item.SSHPassword},
+	)
+}
+
+func revealNodes(items []model.Node) error {
+	for i := range items {
+		if err := revealNode(&items[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

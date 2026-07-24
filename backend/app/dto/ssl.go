@@ -36,10 +36,11 @@ type DnsAccountUpdate struct {
 }
 
 type DnsAccountInfo struct {
-	ID            uint              `json:"id"`
-	Name          string            `json:"name"`
-	Type          string            `json:"type"`
-	Authorization map[string]string `json:"authorization"`
+	ID               uint              `json:"id"`
+	Name             string            `json:"name"`
+	Type             string            `json:"type"`
+	Authorization    map[string]string `json:"-"`
+	AuthorizationSet bool              `json:"authorizationSet"`
 }
 
 // --- 证书 ---
@@ -106,9 +107,10 @@ type CertificateInfo struct {
 
 type CertificateDetail struct {
 	CertificateInfo
-	Pem        string `json:"pem"`
-	PrivateKey string `json:"privateKey"`
-	FilePath   string `json:"filePath"`
+	Pem           string `json:"pem"`
+	PrivateKey    string `json:"-"`
+	PrivateKeySet bool   `json:"privateKeySet"`
+	FilePath      string `json:"filePath"`
 }
 
 type SearchCertReq struct {

@@ -30,6 +30,9 @@ func (r *HostRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model.Ho
 	}
 	db.Count(&total)
 	err := db.Offset((page - 1) * pageSize).Limit(pageSize).Order("created_at DESC").Find(&items).Error
+	if err == nil {
+		err = revealHosts(items)
+	}
 	return total, items, err
 }
 
@@ -40,6 +43,9 @@ func (r *HostRepo) GetList(opts ...DBOption) ([]model.Host, error) {
 		db = opt(db)
 	}
 	err := db.Find(&items).Error
+	if err == nil {
+		err = revealHosts(items)
+	}
 	return items, err
 }
 
@@ -50,15 +56,30 @@ func (r *HostRepo) Get(opts ...DBOption) (model.Host, error) {
 		db = opt(db)
 	}
 	err := db.First(&item).Error
+	if err == nil {
+		err = revealHost(&item)
+	}
 	return item, err
 }
 
 func (r *HostRepo) Create(host *model.Host) error {
-	return getDB().Create(host).Error
+	stored := *host
+	if err := protectHost(&stored); err != nil {
+		return err
+	}
+	if err := getDB().Create(&stored).Error; err != nil {
+		return err
+	}
+	*host = stored
+	return revealHost(host)
 }
 
 func (r *HostRepo) Update(id uint, updates map[string]interface{}) error {
-	return getDB().Model(&model.Host{}).Where("id = ?", id).Updates(updates).Error
+	protected, err := protectUpdates("hosts", updates)
+	if err != nil {
+		return err
+	}
+	return getDB().Model(&model.Host{}).Where("id = ?", id).Updates(protected).Error
 }
 
 func (r *HostRepo) Delete(opts ...DBOption) error {
@@ -199,4 +220,29 @@ func WithByType(t string) DBOption {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Where("type = ?", t)
 	}
+}
+
+func protectHost(item *model.Host) error {
+	return protectFields(
+		secureField{Scope: "hosts.password", Value: &item.Password},
+		secureField{Scope: "hosts.private_key", Value: &item.PrivateKey},
+		secureField{Scope: "hosts.pass_phrase", Value: &item.PassPhrase},
+	)
+}
+
+func revealHost(item *model.Host) error {
+	return revealFields(
+		secureField{Scope: "hosts.password", Value: &item.Password},
+		secureField{Scope: "hosts.private_key", Value: &item.PrivateKey},
+		secureField{Scope: "hosts.pass_phrase", Value: &item.PassPhrase},
+	)
+}
+
+func revealHosts(items []model.Host) error {
+	for i := range items {
+		if err := revealHost(&items[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -3,6 +3,7 @@ system:
   mode: "debug"             # debug / release
   data_dir: "./data"        # 开发环境使用相对路径
   db_path: "db/xpanel.db"   # 相对于 data_dir
+  credential_key_path: ""   # 留空时按安装根目录推导 secrets/credential-keyring.json
   jwt_secret: "dev-secret-change-in-production"
   session_timeout: 86400    # 24h
   ssl:
