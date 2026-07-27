@@ -420,6 +420,25 @@ export interface Certificate {
   dnsAccountName?: string
 }
 
+export type CertificateRenewalManagementType = 'local' | 'synced' | 'manual'
+
+export interface CertificateRenewalPlanItem {
+  id: number
+  primaryDomain: string
+  managementType: CertificateRenewalManagementType
+  autoRenew: boolean
+  renewalMetadataKnown: boolean
+  sourceID: number
+  sourceName: string
+  expireDate: string | null
+  nextAutoRenewAt: string | null
+  lastAutoRenewedAt: string | null
+  lastSyncAt: string | null
+  nextSyncAt: string | null
+  status: string
+  statusMessage: string
+}
+
 export interface AcmeAccount {
   id: number
   email: string

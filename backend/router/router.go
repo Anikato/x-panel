@@ -145,6 +145,7 @@ func Setup(mode string) *gin.Engine {
 
 		// SSL 证书
 		privateGroup.POST("/certificates/search", api.SearchCertificate)
+		privateGroup.POST("/certificates/renewal-plan/search", api.SearchCertificateRenewalPlan)
 		privateGroup.POST("/certificates", api.CreateCertificate)
 		privateGroup.POST("/certificates/update", api.UpdateCertificate)
 		privateGroup.POST("/certificates/upload", api.UploadCertificate)

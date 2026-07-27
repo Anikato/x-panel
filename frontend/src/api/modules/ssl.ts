@@ -5,6 +5,15 @@ export const searchCertificate = (params: { page: number; pageSize: number; info
   return http.post('/certificates/search', params)
 }
 
+export const searchCertificateRenewalPlan = (params: {
+  page: number
+  pageSize: number
+  info?: string
+  managementType?: 'all' | 'local' | 'synced' | 'manual'
+}) => {
+  return http.post('/certificates/renewal-plan/search', params)
+}
+
 export const createCertificate = (params: {
   primaryDomain: string
   otherDomains?: string

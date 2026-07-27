@@ -118,6 +118,29 @@ type SearchCertReq struct {
 	Info string `json:"info"`
 }
 
+type SearchCertRenewalPlanReq struct {
+	PageInfo
+	Info           string `json:"info"`
+	ManagementType string `json:"managementType" binding:"omitempty,oneof=all local synced manual"`
+}
+
+type CertificateRenewalPlanItem struct {
+	ID                   uint       `json:"id"`
+	PrimaryDomain        string     `json:"primaryDomain"`
+	ManagementType       string     `json:"managementType"`
+	AutoRenew            bool       `json:"autoRenew"`
+	RenewalMetadataKnown bool       `json:"renewalMetadataKnown"`
+	SourceID             uint       `json:"sourceID"`
+	SourceName           string     `json:"sourceName"`
+	ExpireDate           *time.Time `json:"expireDate"`
+	NextAutoRenewAt      *time.Time `json:"nextAutoRenewAt"`
+	LastAutoRenewedAt    *time.Time `json:"lastAutoRenewedAt"`
+	LastSyncAt           *time.Time `json:"lastSyncAt"`
+	NextSyncAt           *time.Time `json:"nextSyncAt"`
+	Status               string     `json:"status"`
+	StatusMessage        string     `json:"statusMessage"`
+}
+
 // --- 导入导出 ---
 
 type AccountExport struct {

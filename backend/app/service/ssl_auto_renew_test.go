@@ -84,3 +84,29 @@ func TestCertificateRenewalLockExcludesConcurrentCallersAndReleases(t *testing.T
 	}
 	release()
 }
+
+func TestRenewalCompletionMetadataRecordsAutomaticSuccess(t *testing.T) {
+	completedAt := time.Date(2026, 7, 26, 2, 3, 4, 0, time.UTC)
+	updates := map[string]interface{}{}
+
+	addRenewalCompletionMetadata(updates, certificateRenewalAuto, completedAt)
+
+	got, ok := updates["last_auto_renewed_at"].(time.Time)
+	if !ok || !got.Equal(completedAt) {
+		t.Fatalf("last_auto_renewed_at = %#v, want %v", updates["last_auto_renewed_at"], completedAt)
+	}
+}
+
+func TestRenewalCompletionMetadataDoesNotRecordManualSuccess(t *testing.T) {
+	updates := map[string]interface{}{}
+
+	addRenewalCompletionMetadata(
+		updates,
+		certificateRenewalManual,
+		time.Date(2026, 7, 26, 2, 3, 4, 0, time.UTC),
+	)
+
+	if _, ok := updates["last_auto_renewed_at"]; ok {
+		t.Fatal("manual renewal must not update last_auto_renewed_at")
+	}
+}

@@ -46,21 +46,25 @@ type CertSourceInfo struct {
 // --- 证书服务端暴露给远程拉取的结构 ---
 
 type CertServerItem struct {
-	LineageUID    string    `json:"lineageUID"`
-	PrimaryDomain string    `json:"primaryDomain"`
-	Domains       string    `json:"domains"`
-	Pem           string    `json:"pem"`
-	PrivateKey    string    `json:"privateKey"`
-	ExpireDate    time.Time `json:"expireDate"`
-	StartDate     time.Time `json:"startDate"`
-	KeyType       string    `json:"keyType"`
-	Issuer        string    `json:"issuer"`
-	Subject       string    `json:"subject"`
-	SerialNumber  string    `json:"serialNumber"`
-	Fingerprint   string    `json:"fingerprintSHA256"`
-	DNSNames      string    `json:"dnsNames"`
-	SourceType    string    `json:"sourceType"`
-	SourceName    string    `json:"sourceName"`
+	LineageUID           string     `json:"lineageUID"`
+	PrimaryDomain        string     `json:"primaryDomain"`
+	Domains              string     `json:"domains"`
+	Pem                  string     `json:"pem"`
+	PrivateKey           string     `json:"privateKey"`
+	ExpireDate           time.Time  `json:"expireDate"`
+	StartDate            time.Time  `json:"startDate"`
+	KeyType              string     `json:"keyType"`
+	Issuer               string     `json:"issuer"`
+	Subject              string     `json:"subject"`
+	SerialNumber         string     `json:"serialNumber"`
+	Fingerprint          string     `json:"fingerprintSHA256"`
+	DNSNames             string     `json:"dnsNames"`
+	SourceType           string     `json:"sourceType"`
+	SourceName           string     `json:"sourceName"`
+	AutoRenew            bool       `json:"autoRenew"`
+	RenewalMetadataKnown bool       `json:"renewalMetadataKnown"`
+	LastAutoRenewedAt    *time.Time `json:"lastAutoRenewedAt,omitempty"`
+	NextAutoRenewAt      *time.Time `json:"nextAutoRenewAt,omitempty"`
 }
 
 // --- 同步日志 ---

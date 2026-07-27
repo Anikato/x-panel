@@ -26,32 +26,36 @@ type DnsAccount struct {
 // Certificate SSL 证书
 type Certificate struct {
 	BaseModel
-	LineageUID    string    `gorm:"size:36;index" json:"lineageUID"`
-	PrimaryDomain string    `gorm:"not null" json:"primaryDomain"`
-	Domains       string    `json:"domains"`
-	Provider      string    `gorm:"not null" json:"provider"`               // dns | http | manual
-	Type          string    `gorm:"not null;default:autoApply" json:"type"` // autoApply | upload
-	AcmeAccountID uint      `json:"acmeAccountID"`
-	DnsAccountID  uint      `json:"dnsAccountID"`
-	WebsiteID     uint      `gorm:"default:0" json:"websiteID"`
-	KeyType       string    `gorm:"not null;default:2048" json:"keyType"`
-	Pem           string    `gorm:"type:text" json:"-"`
-	PrivateKey    string    `gorm:"type:text" json:"-"`
-	CertURL       string    `json:"certURL"`
-	Issuer        string    `gorm:"type:text" json:"issuer"`
-	Subject       string    `gorm:"type:text" json:"subject"`
-	SerialNumber  string    `json:"serialNumber"`
-	Fingerprint   string    `gorm:"index" json:"fingerprintSHA256"`
-	DNSNames      string    `gorm:"type:text" json:"dnsNames"`
-	SourceType    string    `json:"sourceType"` // acme | upload | synced
-	SourceID      uint      `json:"sourceID"`
-	SourceName    string    `json:"sourceName"`
-	AutoRenew     bool      `gorm:"default:true" json:"autoRenew"`
-	ExpireDate    time.Time `json:"expireDate"`
-	StartDate     time.Time `json:"startDate"`
-	Status        string    `gorm:"default:ready" json:"status"` // ready | applying | applied | error
-	Message       string    `json:"message"`
-	Description   string    `json:"description"`
+	LineageUID                   string     `gorm:"size:36;index" json:"lineageUID"`
+	PrimaryDomain                string     `gorm:"not null" json:"primaryDomain"`
+	Domains                      string     `json:"domains"`
+	Provider                     string     `gorm:"not null" json:"provider"`               // dns | http | manual
+	Type                         string     `gorm:"not null;default:autoApply" json:"type"` // autoApply | upload
+	AcmeAccountID                uint       `json:"acmeAccountID"`
+	DnsAccountID                 uint       `json:"dnsAccountID"`
+	WebsiteID                    uint       `gorm:"default:0" json:"websiteID"`
+	KeyType                      string     `gorm:"not null;default:2048" json:"keyType"`
+	Pem                          string     `gorm:"type:text" json:"-"`
+	PrivateKey                   string     `gorm:"type:text" json:"-"`
+	CertURL                      string     `json:"certURL"`
+	Issuer                       string     `gorm:"type:text" json:"issuer"`
+	Subject                      string     `gorm:"type:text" json:"subject"`
+	SerialNumber                 string     `json:"serialNumber"`
+	Fingerprint                  string     `gorm:"index" json:"fingerprintSHA256"`
+	DNSNames                     string     `gorm:"type:text" json:"dnsNames"`
+	SourceType                   string     `json:"sourceType"` // acme | upload | synced
+	SourceID                     uint       `json:"sourceID"`
+	SourceName                   string     `json:"sourceName"`
+	AutoRenew                    bool       `json:"autoRenew"`
+	LastAutoRenewedAt            *time.Time `json:"lastAutoRenewedAt"`
+	UpstreamAutoRenew            bool       `gorm:"default:false" json:"upstreamAutoRenew"`
+	UpstreamRenewalMetadataKnown bool       `gorm:"default:false" json:"upstreamRenewalMetadataKnown"`
+	UpstreamNextAutoRenewAt      *time.Time `json:"upstreamNextAutoRenewAt"`
+	ExpireDate                   time.Time  `json:"expireDate"`
+	StartDate                    time.Time  `json:"startDate"`
+	Status                       string     `gorm:"default:ready" json:"status"` // ready | applying | applied | error
+	Message                      string     `json:"message"`
+	Description                  string     `json:"description"`
 
 	AcmeAccount AcmeAccount `json:"acmeAccount" gorm:"-:migration"`
 	DnsAccount  DnsAccount  `json:"dnsAccount" gorm:"-:migration"`

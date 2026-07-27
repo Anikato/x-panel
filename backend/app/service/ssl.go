@@ -34,6 +34,7 @@ type ICertificateService interface {
 	Upload(req dto.CertificateUpload) error
 	Delete(id uint) error
 	SearchWithPage(req dto.SearchCertReq) (int64, []dto.CertificateInfo, error)
+	SearchRenewalPlan(req dto.SearchCertRenewalPlanReq) (int64, []dto.CertificateRenewalPlanItem, error)
 	GetDetail(id uint) (*dto.CertificateDetail, error)
 	Apply(id uint) error
 	Renew(id uint) error
@@ -390,7 +391,18 @@ func (s *CertificateService) Apply(id uint) error {
 	return nil
 }
 
+type certificateRenewalTrigger string
+
+const (
+	certificateRenewalManual certificateRenewalTrigger = "manual"
+	certificateRenewalAuto   certificateRenewalTrigger = "auto"
+)
+
 func (s *CertificateService) Renew(id uint) error {
+	return s.renew(id, certificateRenewalManual)
+}
+
+func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) error {
 	release, err := acquireCertificateRenewal(id)
 	if err != nil {
 		return err
@@ -523,6 +535,7 @@ func (s *CertificateService) Renew(id uint) error {
 		renewUpdates["start_date"] = certInfo.startDate
 		addParsedMetadataUpdates(renewUpdates, certInfo)
 	}
+	addRenewalCompletionMetadata(renewUpdates, trigger, time.Now())
 	if err := persistCertificateUpdate(s.certRepo.Update, id, renewUpdates); err != nil {
 		logger.Printf("[ERROR] Certificate files were updated, but database persistence failed: %v", err)
 		return err
@@ -541,6 +554,16 @@ func (s *CertificateService) Renew(id uint) error {
 	logger.Printf("[完成] 证书续签流程结束")
 	global.LOG.Infof("Certificate renewed for: %s", cert.PrimaryDomain)
 	return nil
+}
+
+func addRenewalCompletionMetadata(
+	updates map[string]interface{},
+	trigger certificateRenewalTrigger,
+	completedAt time.Time,
+) {
+	if trigger == certificateRenewalAuto {
+		updates["last_auto_renewed_at"] = completedAt
+	}
 }
 
 func persistCertificateUpdate(
@@ -1016,13 +1039,11 @@ func AutoRenewCerts() {
 	}
 
 	now := time.Now()
-	renewBefore := 15 * 24 * time.Hour // 提前 15 天开始续期，给失败重试留充分余量
-
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 3) // 最多 3 个并发续签
 
 	for _, cert := range certs {
-		if !shouldAutoRenewCertificate(cert, now, renewBefore) {
+		if !shouldAutoRenewCertificate(cert, now, certificateRenewBefore) {
 			continue
 		}
 
@@ -1034,7 +1055,7 @@ func AutoRenewCerts() {
 
 			global.LOG.Infof("[auto-renew] Certificate %s (ID=%d) expires at %s, renewing...",
 				c.PrimaryDomain, c.ID, c.ExpireDate.Format("2006-01-02"))
-			if err := certService.Renew(c.ID); err != nil {
+			if err := certService.renew(c.ID, certificateRenewalAuto); err != nil {
 				if errors.Is(err, errCertificateRenewalInProgress) {
 					global.LOG.Infof("[auto-renew] Certificate %d (%s) is already being renewed, skipping", c.ID, c.PrimaryDomain)
 					return

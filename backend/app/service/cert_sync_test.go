@@ -4,9 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
+	"xpanel/app/repo"
+	"xpanel/global"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestSyncedCertificateIsNotRenewable(t *testing.T) {
@@ -138,5 +144,153 @@ func TestApplySyncedCertificateMetadataDisablesLocalRenewal(t *testing.T) {
 	}
 	if cert.SourceID != 9 || cert.SourceName != "upstream" {
 		t.Fatalf("expected upstream source metadata, got id=%d name=%q", cert.SourceID, cert.SourceName)
+	}
+}
+
+func TestSyncedCertificatePersistsLocalAutoRenewDisabled(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	previousDB := global.DB
+	global.DB = db
+	t.Cleanup(func() { global.DB = previousDB })
+	if err := db.AutoMigrate(&model.Certificate{}); err != nil {
+		t.Fatalf("migrate test database: %v", err)
+	}
+
+	cert := model.Certificate{
+		PrimaryDomain: "synced.example.com",
+		Type:          "autoApply",
+		SourceType:    "acme",
+		AutoRenew:     true,
+	}
+	applySyncedCertificateMetadata(&cert, 9, "upstream")
+	if err := repo.NewICertificateRepo().Create(&cert); err != nil {
+		t.Fatalf("create synchronized certificate: %v", err)
+	}
+
+	var storedAutoRenew bool
+	if err := db.Model(&model.Certificate{}).
+		Select("auto_renew").
+		Where("id = ?", cert.ID).
+		Scan(&storedAutoRenew).Error; err != nil {
+		t.Fatalf("read stored auto renewal flag: %v", err)
+	}
+	if storedAutoRenew {
+		t.Fatal("synchronized certificate persisted local auto renewal as enabled")
+	}
+}
+
+func TestApplyRemoteRenewalMetadataCopiesUpstreamWithoutEnablingLocalRenewal(t *testing.T) {
+	lastRenewedAt := time.Date(2026, 6, 1, 2, 0, 0, 0, time.UTC)
+	nextRenewAt := time.Date(2026, 8, 1, 2, 0, 0, 0, time.UTC)
+	cert := model.Certificate{AutoRenew: true}
+	remote := dto.CertServerItem{
+		AutoRenew:            true,
+		RenewalMetadataKnown: true,
+		LastAutoRenewedAt:    &lastRenewedAt,
+		NextAutoRenewAt:      &nextRenewAt,
+	}
+
+	applyRemoteRenewalMetadata(&cert, remote)
+
+	if cert.AutoRenew {
+		t.Fatal("synchronized certificate must not enable local renewal")
+	}
+	if !cert.UpstreamAutoRenew {
+		t.Fatal("upstream auto-renew flag was not copied")
+	}
+	if !cert.UpstreamRenewalMetadataKnown {
+		t.Fatal("upstream renewal metadata presence was not copied")
+	}
+	if cert.LastAutoRenewedAt == nil || !cert.LastAutoRenewedAt.Equal(lastRenewedAt) {
+		t.Fatalf("last auto renewal = %v, want %v", cert.LastAutoRenewedAt, lastRenewedAt)
+	}
+	if cert.UpstreamNextAutoRenewAt == nil || !cert.UpstreamNextAutoRenewAt.Equal(nextRenewAt) {
+		t.Fatalf("upstream next renewal = %v, want %v", cert.UpstreamNextAutoRenewAt, nextRenewAt)
+	}
+}
+
+func TestApplyRemoteRenewalMetadataAcceptsLegacyPayload(t *testing.T) {
+	now := time.Date(2026, 6, 1, 2, 0, 0, 0, time.UTC)
+	cert := model.Certificate{
+		AutoRenew:               true,
+		UpstreamAutoRenew:       true,
+		LastAutoRenewedAt:       &now,
+		UpstreamNextAutoRenewAt: &now,
+	}
+
+	applyRemoteRenewalMetadata(&cert, dto.CertServerItem{})
+
+	if cert.AutoRenew || cert.UpstreamAutoRenew || cert.UpstreamRenewalMetadataKnown ||
+		cert.LastAutoRenewedAt != nil || cert.UpstreamNextAutoRenewAt != nil {
+		t.Fatalf("legacy payload must produce safe zero-value renewal metadata: %+v", cert)
+	}
+}
+
+func TestApplyEffectiveRenewalMetadataToServerItemForwardsSyncedOwner(t *testing.T) {
+	now := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	lastRenewedAt := now.Add(-20 * 24 * time.Hour)
+	nextRenewAt := now.Add(30 * 24 * time.Hour)
+	cert := model.Certificate{
+		Type:                         "synced",
+		SourceType:                   "synced",
+		UpstreamAutoRenew:            true,
+		UpstreamRenewalMetadataKnown: true,
+		LastAutoRenewedAt:            &lastRenewedAt,
+		UpstreamNextAutoRenewAt:      &nextRenewAt,
+	}
+	item := dto.CertServerItem{}
+
+	applyEffectiveRenewalMetadataToServerItem(&item, cert, now, time.UTC)
+
+	if !item.AutoRenew {
+		t.Fatal("server item must forward upstream automatic-renewal ownership")
+	}
+	if !item.RenewalMetadataKnown {
+		t.Fatal("server item must forward upstream renewal metadata presence")
+	}
+	if item.LastAutoRenewedAt == nil || !item.LastAutoRenewedAt.Equal(lastRenewedAt) {
+		t.Fatalf("last auto renewal = %v, want %v", item.LastAutoRenewedAt, lastRenewedAt)
+	}
+	if item.NextAutoRenewAt == nil || !item.NextAutoRenewAt.Equal(nextRenewAt) {
+		t.Fatalf("next auto renewal = %v, want %v", item.NextAutoRenewAt, nextRenewAt)
+	}
+}
+
+func TestRemoteRenewalMetadataChangedDetectsScheduleOnlyUpdates(t *testing.T) {
+	oldTime := time.Date(2026, 6, 1, 2, 0, 0, 0, time.UTC)
+	newTime := oldTime.Add(24 * time.Hour)
+	cert := model.Certificate{
+		UpstreamAutoRenew:       true,
+		LastAutoRenewedAt:       &oldTime,
+		UpstreamNextAutoRenewAt: &oldTime,
+	}
+	remote := dto.CertServerItem{
+		AutoRenew:            true,
+		RenewalMetadataKnown: true,
+		LastAutoRenewedAt:    &newTime,
+		NextAutoRenewAt:      &newTime,
+	}
+
+	if !remoteRenewalMetadataChanged(cert, remote) {
+		t.Fatal("schedule-only upstream change must be persisted")
+	}
+	applyRemoteRenewalMetadata(&cert, remote)
+	if remoteRenewalMetadataChanged(cert, remote) {
+		t.Fatal("equal upstream renewal metadata must not cause another update")
+	}
+}
+
+func TestRemoteRenewalMetadataChangedRepairsHistoricalLocalRenewalFlag(t *testing.T) {
+	cert := model.Certificate{
+		Type:       "synced",
+		SourceType: "synced",
+		AutoRenew:  true,
+	}
+
+	if !remoteRenewalMetadataChanged(cert, dto.CertServerItem{}) {
+		t.Fatal("historical synchronized certificate with local renewal enabled must be repaired")
 	}
 }

@@ -22,7 +22,7 @@
       </div>
     </div>
 
-    <el-tabs v-model="activeTab" class="ssl-tabs">
+    <el-tabs v-model="activeTab" class="ssl-tabs" @tab-change="handleTabChange">
       <!-- 证书列表 -->
       <el-tab-pane :label="$t('ssl.certificates')" name="certs">
         <div class="tab-toolbar">
@@ -112,6 +112,96 @@
           </el-table-column>
         </el-table>
         <el-pagination v-if="certTotal > 0" class="mt-pagination" :current-page="certPage" :page-size="certPageSize" :total="certTotal" layout="total, prev, pager, next" @current-change="(p: number) => { certPage = p; loadCerts() }" />
+      </el-tab-pane>
+
+      <!-- 续签计划 -->
+      <el-tab-pane :label="$t('ssl.renewalPlan')" name="renewal-plan">
+        <div class="renewal-plan-note">
+          <el-icon><Clock /></el-icon>
+          <span>{{ $t('ssl.renewalPlanHint') }}</span>
+        </div>
+        <div class="tab-toolbar renewal-plan-toolbar">
+          <el-input
+            v-model="renewalPlanSearch"
+            :placeholder="$t('commons.search')"
+            prefix-icon="Search"
+            size="small"
+            clearable
+            class="search-input"
+            @input="handleRenewalPlanFilterChange"
+          />
+          <el-select
+            v-model="renewalPlanManagement"
+            size="small"
+            class="renewal-plan-filter"
+            @change="handleRenewalPlanFilterChange"
+          >
+            <el-option :label="$t('ssl.managementAll')" value="all" />
+            <el-option :label="$t('ssl.managementLocal')" value="local" />
+            <el-option :label="$t('ssl.managementSynced')" value="synced" />
+            <el-option :label="$t('ssl.managementManual')" value="manual" />
+          </el-select>
+        </div>
+        <el-table v-loading="renewalPlanLoading" :data="renewalPlanItems" style="width: 100%">
+          <el-table-column prop="primaryDomain" :label="$t('ssl.domain')" min-width="190">
+            <template #default="{ row }">
+              <span class="primary-domain">{{ row.primaryDomain }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.managementType')" min-width="150">
+            <template #default="{ row }">
+              <el-tag :type="renewalManagementType(row)" size="small" effect="plain">
+                {{ renewalManagementLabel(row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="sourceName" :label="$t('ssl.certificateSource')" min-width="130">
+            <template #default="{ row }">
+              <span :class="{ 'text-muted': !row.sourceName }">{{ row.sourceName || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.expireDate')" min-width="165">
+            <template #default="{ row }">
+              <span :class="{ 'text-danger': row.status === 'expired' || row.status === 'expiring_manual' }">
+                {{ formatDateTime(row.expireDate) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.nextAutoRenew')" min-width="165">
+            <template #default="{ row }">
+              <span class="plan-time-cell">{{ formatDateTime(row.nextAutoRenewAt) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.lastAutoRenew')" min-width="165">
+            <template #default="{ row }">
+              <span class="plan-time-cell">{{ formatDateTime(row.lastAutoRenewedAt) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.nextSync')" min-width="165">
+            <template #default="{ row }">
+              <span class="plan-time-cell">{{ formatDateTime(row.nextSyncAt) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('ssl.status')" min-width="120" fixed="right">
+            <template #default="{ row }">
+              <el-tooltip :content="row.statusMessage" placement="top" :disabled="!row.statusMessage">
+                <el-tag :type="renewalPlanStatusType(row.status)" size="small">
+                  <el-icon v-if="row.status === 'applying'" class="is-loading"><Loading /></el-icon>
+                  {{ renewalPlanStatusLabel(row.status) }}
+                </el-tag>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-pagination
+          v-if="renewalPlanTotal > 0"
+          class="mt-pagination"
+          :current-page="renewalPlanPage"
+          :page-size="renewalPlanPageSize"
+          :total="renewalPlanTotal"
+          layout="total, prev, pager, next"
+          @current-change="handleRenewalPlanPageChange"
+        />
       </el-tab-pane>
 
       <!-- ACME 账户 -->
@@ -531,9 +621,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Loading } from '@element-plus/icons-vue'
 import {
-  searchCertificate, createCertificate, uploadCertificate, deleteCertificate,
+  searchCertificate, searchCertificateRenewalPlan, createCertificate, uploadCertificate, deleteCertificate,
   getCertificateDetail, applyCertificate, renewCertificate, getCertificateLog,
   listAcmeAccount, createAcmeAccount, deleteAcmeAccount,
   listDnsAccount, createDnsAccount, updateDnsAccount, deleteDnsAccount,
@@ -546,9 +637,13 @@ import {
 } from '@/api/modules/cert-sync'
 import { searchWebsite } from '@/api/modules/website'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { Certificate, AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting } from '@/api/interface'
+import type {
+  Certificate, CertificateRenewalPlanItem, CertificateRenewalManagementType,
+  AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting,
+} from '@/api/interface'
 
 const activeTab = ref('certs')
+const { t } = useI18n()
 
 // --- 证书 ---
 const certs = ref<Certificate[]>([])
@@ -562,6 +657,16 @@ const uploadVisible = ref(false)
 const uploadSubmitting = ref(false)
 const detailVisible = ref(false)
 const certDetail = ref<Certificate | null>(null)
+
+// --- 续签计划 ---
+const renewalPlanItems = ref<CertificateRenewalPlanItem[]>([])
+const renewalPlanTotal = ref(0)
+const renewalPlanPage = ref(1)
+const renewalPlanPageSize = ref(20)
+const renewalPlanSearch = ref('')
+const renewalPlanManagement = ref<'all' | CertificateRenewalManagementType>('all')
+const renewalPlanLoading = ref(false)
+let renewalPlanRequestVersion = 0
 
 const defaultCertForm = () => ({
   primaryDomain: '',
@@ -622,6 +727,47 @@ const loadCerts = async () => {
     certs.value = res.data?.items || []
     certTotal.value = res.data?.total || 0
   } catch { certs.value = [] }
+}
+
+const loadRenewalPlan = async () => {
+  const requestVersion = ++renewalPlanRequestVersion
+  renewalPlanLoading.value = true
+  try {
+    const res = await searchCertificateRenewalPlan({
+      page: renewalPlanPage.value,
+      pageSize: renewalPlanPageSize.value,
+      info: renewalPlanSearch.value,
+      managementType: renewalPlanManagement.value,
+    })
+    if (requestVersion !== renewalPlanRequestVersion) return
+    renewalPlanItems.value = res.data?.items || []
+    renewalPlanTotal.value = res.data?.total || 0
+  } catch {
+    if (requestVersion !== renewalPlanRequestVersion) return
+    renewalPlanItems.value = []
+    renewalPlanTotal.value = 0
+    ElMessage.error('获取续签计划失败')
+  } finally {
+    if (requestVersion === renewalPlanRequestVersion) {
+      renewalPlanLoading.value = false
+    }
+  }
+}
+
+const handleRenewalPlanFilterChange = () => {
+  renewalPlanPage.value = 1
+  loadRenewalPlan()
+}
+
+const handleRenewalPlanPageChange = (page: number) => {
+  renewalPlanPage.value = page
+  loadRenewalPlan()
+}
+
+const handleTabChange = (name: string | number) => {
+  if (name === 'renewal-plan') {
+    loadRenewalPlan()
+  }
 }
 
 const loadAcmeAccounts = async () => {
@@ -1122,6 +1268,64 @@ const caLabel = (t: string) => {
   return map[t] || t
 }
 
+const renewalManagementLabel = (row: CertificateRenewalPlanItem) => {
+  if (row.managementType === 'synced') return t('ssl.upstreamRenew')
+  if (row.managementType === 'manual') return t('ssl.manualImport')
+  return row.autoRenew ? t('ssl.localAutoRenew') : t('ssl.localRenewDisabled')
+}
+
+const renewalManagementType = (row: CertificateRenewalPlanItem) => {
+  if (row.managementType === 'local') return row.autoRenew ? 'success' : 'warning'
+  if (row.managementType === 'synced') return 'primary'
+  return 'info'
+}
+
+const renewalPlanStatusType = (status: string) => {
+  const map: Record<string, string> = {
+    expired: 'danger',
+    applying: 'warning',
+    sync_paused: 'warning',
+    renew_error: 'danger',
+    sync_error: 'danger',
+    renew_due: 'warning',
+    expiring_manual: 'warning',
+    waiting_sync: 'info',
+    scheduled: 'success',
+    manual: 'info',
+  }
+  return (map[status] || 'info') as '' | 'primary' | 'success' | 'warning' | 'danger' | 'info'
+}
+
+const renewalPlanStatusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    expired: 'ssl.statusExpired',
+    applying: 'ssl.statusApplying',
+    sync_paused: 'ssl.statusSyncPaused',
+    renew_error: 'ssl.statusRenewError',
+    sync_error: 'ssl.statusSyncError',
+    renew_due: 'ssl.statusRenewDue',
+    expiring_manual: 'ssl.statusExpiringManual',
+    waiting_sync: 'ssl.statusWaitingSync',
+    scheduled: 'ssl.statusScheduled',
+    manual: 'ssl.statusManual',
+  }
+  return map[status] ? t(map[status]) : status
+}
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 const formatDate = (d: string) => {
   return new Date(d).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
@@ -1214,6 +1418,41 @@ onUnmounted(() => {
   .search-input {
     width: 240px;
   }
+}
+
+.renewal-plan-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--xp-border);
+  border-left: 3px solid var(--xp-accent);
+  border-radius: 5px;
+  background: var(--xp-bg-inset);
+  color: var(--xp-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+
+  .el-icon {
+    flex: 0 0 auto;
+    color: var(--xp-accent);
+  }
+}
+
+.renewal-plan-toolbar {
+  justify-content: flex-start;
+
+  .renewal-plan-filter {
+    width: 160px;
+  }
+}
+
+.plan-time-cell {
+  color: var(--xp-text-secondary);
+  font-family: var(--xp-font-mono);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .mt-pagination {

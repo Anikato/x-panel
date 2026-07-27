@@ -27,6 +27,20 @@ func (a *SSLAPI) SearchCertificate(c *gin.Context) {
 	helper.SuccessWithPage(c, total, items)
 }
 
+func (a *SSLAPI) SearchCertificateRenewalPlan(c *gin.Context) {
+	var req dto.SearchCertRenewalPlanReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	total, items, err := service.NewICertificateService().SearchRenewalPlan(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithPage(c, total, items)
+}
+
 func (a *SSLAPI) CreateCertificate(c *gin.Context) {
 	var req dto.CertificateCreate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

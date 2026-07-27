@@ -89,6 +89,31 @@ func WithLikeDomain(domain string) DBOption {
 	}
 }
 
+func WithCertificateManagementType(managementType string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		switch managementType {
+		case "local":
+			return db.Where(
+				"`type` NOT IN ? AND (source_type IS NULL OR source_type NOT IN ?)",
+				[]string{"upload", "synced"},
+				[]string{"upload", "synced"},
+			)
+		case "synced":
+			return db.Where("`type` = ? OR source_type = ?", "synced", "synced")
+		case "manual":
+			return db.Where(
+				"(`type` = ? OR source_type = ?) AND `type` <> ? AND (source_type IS NULL OR source_type <> ?)",
+				"upload",
+				"upload",
+				"synced",
+				"synced",
+			)
+		default:
+			return db
+		}
+	}
+}
+
 // getDB 获取全局 DB 实例
 func getDB() *gorm.DB {
 	return global.DB

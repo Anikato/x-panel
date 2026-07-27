@@ -242,13 +242,17 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 			// 本地已存在该域名的证书 — 逐证书对比
 			if localCert.LineageUID != remote.LineageUID || localCert.SourceID != source.ID || localCert.SourceName != source.Name {
 				identityUpdates := map[string]interface{}{
-					"lineage_uid": remote.LineageUID,
-					"source_id":   source.ID,
-					"source_name": source.Name,
-					"source_type": "synced",
-					"type":        "synced",
-					"provider":    "manual",
-					"auto_renew":  false,
+					"lineage_uid":                     remote.LineageUID,
+					"source_id":                       source.ID,
+					"source_name":                     source.Name,
+					"source_type":                     "synced",
+					"type":                            "synced",
+					"provider":                        "manual",
+					"auto_renew":                      false,
+					"upstream_auto_renew":             remote.AutoRenew,
+					"upstream_renewal_metadata_known": remote.RenewalMetadataKnown,
+					"last_auto_renewed_at":            remote.LastAutoRenewedAt,
+					"upstream_next_auto_renew_at":     remote.NextAutoRenewAt,
 				}
 				if err := s.certRepo.Update(localCert.ID, identityUpdates); err != nil {
 					logEntry.Status = "error"
@@ -264,6 +268,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				localCert.Type = "synced"
 				localCert.Provider = "manual"
 				localCert.AutoRenew = false
+				applyRemoteRenewalMetadata(&localCert, remote)
 			}
 			if localCert.ExpireDate.After(remote.ExpireDate) {
 				logEntry.Status = "skipped"
@@ -278,6 +283,17 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				continue
 			}
 			if localCert.ExpireDate.Equal(remote.ExpireDate) && localCert.Pem == remote.Pem {
+				if remoteRenewalMetadataChanged(localCert, remote) {
+					if err := s.certRepo.Update(localCert.ID, remoteRenewalMetadataUpdates(remote)); err != nil {
+						logEntry.Status = "error"
+						logEntry.Message = "更新上游续签计划失败: " + err.Error()
+						logEntry.CertificateID = localCert.ID
+						s.logRepo.Create(&logEntry)
+						errorCount++
+						continue
+					}
+					applyRemoteRenewalMetadata(&localCert, remote)
+				}
 				logEntry.Status = "skipped"
 				logEntry.Message = "证书内容无变化"
 				logEntry.CertificateID = localCert.ID
@@ -303,6 +319,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 			localCert.DNSNames = remote.DNSNames
 			localCert.LineageUID = remote.LineageUID
 			applySyncedCertificateMetadata(&localCert, source.ID, source.Name)
+			applyRemoteRenewalMetadata(&localCert, remote)
 			localCert.Status = "applied"
 			localCert.Message = fmt.Sprintf("从 %s 同步 (%s)", source.Name, remote.ExpireDate.Format("2006-01-02"))
 			fileTx, err := prepareSyncedCertFileTransaction(sslDir, localCert, true)
@@ -361,6 +378,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 				Description:   fmt.Sprintf("从 %s 同步", source.Name),
 			}
 			applySyncedCertificateMetadata(&newCert, source.ID, source.Name)
+			applyRemoteRenewalMetadata(&newCert, remote)
 			if err := s.certRepo.Create(&newCert); err != nil {
 				logEntry.Status = "error"
 				logEntry.Message = "创建本地证书失败: " + err.Error()
@@ -576,6 +594,55 @@ func applySyncedCertificateMetadata(cert *model.Certificate, sourceID uint, sour
 	cert.CertURL = ""
 }
 
+func applyRemoteRenewalMetadata(cert *model.Certificate, remote dto.CertServerItem) {
+	cert.AutoRenew = false
+	cert.UpstreamAutoRenew = remote.AutoRenew
+	cert.UpstreamRenewalMetadataKnown = remote.RenewalMetadataKnown
+	cert.LastAutoRenewedAt = remote.LastAutoRenewedAt
+	cert.UpstreamNextAutoRenewAt = remote.NextAutoRenewAt
+}
+
+func remoteRenewalMetadataUpdates(remote dto.CertServerItem) map[string]interface{} {
+	return map[string]interface{}{
+		"auto_renew":                      false,
+		"upstream_auto_renew":             remote.AutoRenew,
+		"upstream_renewal_metadata_known": remote.RenewalMetadataKnown,
+		"last_auto_renewed_at":            remote.LastAutoRenewedAt,
+		"upstream_next_auto_renew_at":     remote.NextAutoRenewAt,
+	}
+}
+
+func remoteRenewalMetadataChanged(cert model.Certificate, remote dto.CertServerItem) bool {
+	return cert.AutoRenew ||
+		cert.UpstreamAutoRenew != remote.AutoRenew ||
+		cert.UpstreamRenewalMetadataKnown != remote.RenewalMetadataKnown ||
+		!equalOptionalTime(cert.LastAutoRenewedAt, remote.LastAutoRenewedAt) ||
+		!equalOptionalTime(cert.UpstreamNextAutoRenewAt, remote.NextAutoRenewAt)
+}
+
+func equalOptionalTime(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Equal(*right)
+}
+
+func applyEffectiveRenewalMetadataToServerItem(
+	item *dto.CertServerItem,
+	cert model.Certificate,
+	now time.Time,
+	location *time.Location,
+) {
+	item.AutoRenew, item.LastAutoRenewedAt, item.NextAutoRenewAt =
+		effectiveRenewalMetadata(cert, now, location)
+	switch certificateRenewalManagement(cert) {
+	case renewalManagementSynced:
+		item.RenewalMetadataKnown = cert.UpstreamRenewalMetadataKnown
+	default:
+		item.RenewalMetadataKnown = true
+	}
+}
+
 // ======================= 证书服务端 API =======================
 
 type ICertServerService interface {
@@ -626,6 +693,7 @@ func (s *CertServerService) ListCerts() ([]dto.CertServerItem, error) {
 			SourceType:    c.SourceType,
 			SourceName:    c.SourceName,
 		}
+		applyEffectiveRenewalMetadataToServerItem(&item, c, time.Now(), time.Local)
 		items = append(items, normalizeRemoteCertItem(item))
 	}
 	return items, nil
