@@ -534,6 +534,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/nezha-agent/status", api.GetNezhaAgentStatus)
 		privateGroup.PUT("/nezha-agent/config", api.UpdateNezhaAgentConfig)
 		privateGroup.POST("/nezha-agent/operate", api.OperateNezhaAgent)
+		privateGroup.POST("/nezha-agent/install", api.InstallNezhaAgent)
 	}
 
 	// 证书服务端 API（Token 认证，供其他面板拉取证书）

@@ -19,6 +19,7 @@ type nezhaAgentService interface {
 	Status() (*dto.NezhaAgentStatus, error)
 	Configure(req dto.NezhaAgentConfigUpdate) error
 	Operate(operation string) error
+	Install() error
 }
 
 // newNezhaAgentService is a package-level factory for handler tests.
@@ -60,6 +61,15 @@ func (a *NezhaAgentAPI) OperateNezhaAgent(c *gin.Context) {
 		return
 	}
 	if err := newNezhaAgentService().Operate(req.Operation); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+// InstallNezhaAgent restores the bundled binary and unit. It accepts no body or secret.
+func (a *NezhaAgentAPI) InstallNezhaAgent(c *gin.Context) {
+	if err := newNezhaAgentService().Install(); err != nil {
 		helper.HandleError(c, err)
 		return
 	}

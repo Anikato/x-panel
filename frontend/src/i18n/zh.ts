@@ -2225,6 +2225,7 @@ export default {
     configure: '配置',
     editConfig: '修改配置',
     configureAndStart: '配置并启动',
+    installAndConfigure: '安装并配置',
     start: '启动',
     restart: '重启',
     enable: '启用并启动',
@@ -2249,7 +2250,7 @@ export default {
         '将执行 disable-and-stop：停止进程并关闭开机自启，同时保留二进制、config.yml 与 UUID。重新启用后仍作为同一 Dashboard 节点连接，不会注册为新节点。确定继续？',
     },
     alert: {
-      componentMissing: '捆绑的哪吒 Agent 组件不可用。请确认当前 X-Panel 发布包包含 Agent 资产，或重新安装/升级面板。',
+      componentMissing: '捆绑的哪吒 Agent 组件不可用。可从当前 X-Panel 版本的发布包安全安装组件，然后配置 Dashboard 并启动。',
       configMissing: '尚未配置 Dashboard 与 AgentSecret。请先完成配置后再启动服务。',
       configCorrupt:
         '配置文件存在但无法解析或健康检查失败。请在本机检查 /opt/xpanel/nezha-agent/config.yml，不要用数据库值覆盖文件。',

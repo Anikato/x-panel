@@ -180,6 +180,12 @@ func (f *fakeNezhaRunner) CombinedOutput(name string, args ...string) ([]byte, e
 			return []byte(out), f.listUnitsErr
 		}
 		return []byte(f.listUnitsOutput), nil
+
+	case "daemon-reload":
+		if err := f.failOps["daemon-reload"]; err != nil {
+			return []byte(err.Error()), err
+		}
+		return []byte{}, nil
 	}
 
 	return nil, fmt.Errorf("unexpected systemctl verb %q", verb)
@@ -982,11 +988,15 @@ func TestNezhaStatusHealthyDoesNotExposeSecret(t *testing.T) {
 
 	binaryPath := filepath.Join(dir, "nezha-agent")
 	configPath := filepath.Join(dir, "config.yml")
+	unitPath := filepath.Join(dir, "xpanel-nezha-agent.service")
 
 	if err := os.WriteFile(binaryPath, []byte("#!/bin/sh\necho stub\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(binaryPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unitPath, []byte("[Unit]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1015,6 +1025,7 @@ func TestNezhaStatusHealthyDoesNotExposeSecret(t *testing.T) {
 	svc := newNezhaAgentService(nezhaAgentDeps{
 		ConfigPath:  configPath,
 		BinaryPath:  binaryPath,
+		UnitPath:    unitPath,
 		Unit:        NezhaAgentUnitName,
 		Runner:      runner,
 		Settings:    settings,
@@ -1131,6 +1142,9 @@ func nezhaStatusFixture(t *testing.T, dirMode, binMode, cfgMode os.FileMode, cfg
 	if err := os.Chmod(binaryPath, binMode); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "xpanel-nezha-agent.service"), []byte("[Unit]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if cfgContent != nil {
 		if err := os.WriteFile(configPath, cfgContent, cfgMode); err != nil {
 			t.Fatal(err)
@@ -1150,6 +1164,7 @@ func newStatusNezhaService(t *testing.T, configPath, binaryPath string, runner *
 	return newNezhaAgentService(nezhaAgentDeps{
 		ConfigPath:  configPath,
 		BinaryPath:  binaryPath,
+		UnitPath:    filepath.Join(filepath.Dir(binaryPath), "xpanel-nezha-agent.service"),
 		Unit:        NezhaAgentUnitName,
 		Runner:      runner,
 		Settings:    settings,
@@ -2268,6 +2283,7 @@ func TestNezhaStatusConflictPopulatesConflicts(t *testing.T) {
 	svc := newNezhaAgentService(nezhaAgentDeps{
 		ConfigPath: configPath,
 		BinaryPath: binaryPath,
+		UnitPath:   filepath.Join(filepath.Dir(binaryPath), "xpanel-nezha-agent.service"),
 		Unit:       NezhaAgentUnitName,
 		Runner:     runner,
 		Settings:   newFakeNezhaSettings(nil),
@@ -2311,6 +2327,7 @@ func TestNezhaStatusConflictDetectionErrorEntersServiceError(t *testing.T) {
 	svc := newNezhaAgentService(nezhaAgentDeps{
 		ConfigPath: configPath,
 		BinaryPath: binaryPath,
+		UnitPath:   filepath.Join(filepath.Dir(binaryPath), "xpanel-nezha-agent.service"),
 		Unit:       NezhaAgentUnitName,
 		Runner:     runner,
 		Settings:   newFakeNezhaSettings(map[string]string{"NezhaEnabled": "true"}),

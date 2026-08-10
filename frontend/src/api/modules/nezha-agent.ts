@@ -26,6 +26,11 @@ export const updateNezhaAgentConfig = (data: NezhaAgentConfigPayload) => {
   return http.put('/nezha-agent/config', data)
 }
 
+/** Restore the version-matched bundled binary and systemd unit. No secret body. */
+export const installNezhaAgent = () => {
+  return http.post('/nezha-agent/install')
+}
+
 export const operateNezhaAgent = (operation: NezhaAgentOperation) => {
   return http.post('/nezha-agent/operate', { operation })
 }

@@ -28,6 +28,9 @@ type fakeNezhaAgentService struct {
 	operateOp  string
 	operateErr error
 	operateN   int
+
+	installErr error
+	installN   int
 }
 
 func (f *fakeNezhaAgentService) Status() (*dto.NezhaAgentStatus, error) {
@@ -48,6 +51,11 @@ func (f *fakeNezhaAgentService) Operate(operation string) error {
 	f.operateN++
 	f.operateOp = operation
 	return f.operateErr
+}
+
+func (f *fakeNezhaAgentService) Install() error {
+	f.installN++
+	return f.installErr
 }
 
 func installFakeNezhaAgentService(t *testing.T, fake nezhaAgentService) {
@@ -162,6 +170,18 @@ func TestNezhaAgentStatusReturnsSafeFieldsWithoutSecrets(t *testing.T) {
 		if strings.Contains(dataStr, banned) {
 			t.Fatal("status data contained a forbidden secret field or value")
 		}
+	}
+}
+
+func TestNezhaAgentInstallHasNoRequestBodyOrSecret(t *testing.T) {
+	fake := &fakeNezhaAgentService{}
+	installFakeNezhaAgentService(t, fake)
+	rec := performNezhaHandler(http.MethodPost, "/api/v1/nezha-agent/install", "", (&NezhaAgentAPI{}).InstallNezhaAgent)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if fake.installN != 1 || fake.configureN != 0 || fake.operateN != 0 {
+		t.Fatalf("calls install=%d configure=%d operate=%d", fake.installN, fake.configureN, fake.operateN)
 	}
 }
 

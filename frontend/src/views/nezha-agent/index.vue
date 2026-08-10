@@ -196,6 +196,15 @@
             </template>
             <div class="operate-buttons">
               <el-button
+                v-if="!status.componentAvailable"
+                type="primary"
+                size="small"
+                :loading="configSaving"
+                @click="openInstall"
+              >
+                {{ $t('nezhaAgent.installAndConfigure') }}
+              </el-button>
+              <el-button
                 v-if="view.canConfigure"
                 type="primary"
                 size="small"
@@ -343,6 +352,7 @@ import { useI18n } from 'vue-i18n'
 import {
   getNezhaAgentStatus,
   updateNezhaAgentConfig,
+  installNezhaAgent,
   operateNezhaAgent,
   type NezhaAgentConfigPayload,
   type NezhaAgentOperation,
@@ -367,6 +377,7 @@ const status = ref<NezhaAgentStatus | null>(null)
 const operateLoading = ref('')
 const configVisible = ref(false)
 const configSaving = ref(false)
+const installMode = ref(false)
 const formRef = ref<FormInstance>()
 const form = ref<NezhaAgentForm>({
   dashboardUrl: '',
@@ -416,6 +427,7 @@ const configHealthLabel = computed(() => {
 })
 
 const configDialogTitle = computed(() => {
+  if (installMode.value) return t('nezhaAgent.installAndConfigure')
   if (status.value?.configured) return t('nezhaAgent.editConfig')
   return t('nezhaAgent.configureAndStart')
 })
@@ -467,7 +479,17 @@ const openConfig = () => {
   configVisible.value = true
 }
 
+const openInstall = () => {
+  if (!status.value) return
+  installMode.value = true
+  form.value = createNezhaAgentForm(status.value)
+  form.value.enableAndStart = true
+  originalRemoteOps.value = status.value.remoteOperationsEnabled
+  configVisible.value = true
+}
+
 const resetConfigForm = () => {
+  installMode.value = false
   form.value = {
     dashboardUrl: '',
     clientSecret: '',
@@ -511,19 +533,32 @@ const submitConfig = async () => {
   }
 
   configSaving.value = true
+  let installedForSubmit = false
   try {
+    if (installMode.value) {
+      // Install first: AgentSecret is not sent unless component repair succeeds.
+      await installNezhaAgent()
+      installedForSubmit = true
+    }
     await updateNezhaAgentConfig(payload)
     ElMessage.success(t('commons.operationSuccess'))
     // Clear secret after success before closing.
     form.value.clientSecret = ''
     configVisible.value = false
-    await loadStatus()
   } catch {
-    /* interceptor */
+    // If configuration/start fails after repair, retain assets but leave the unit stopped.
+    if (installedForSubmit) {
+      try {
+        await operateNezhaAgent('stop')
+      } catch {
+        /* original request error is already surfaced by the interceptor */
+      }
+    }
   } finally {
     configSaving.value = false
     // Ensure secret never lingers in form state after a submit attempt.
     form.value.clientSecret = ''
+    await loadStatus()
   }
 }
 

@@ -28,6 +28,8 @@ const (
 	NezhaAgentConfigPath = "/opt/xpanel/nezha-agent/config.yml"
 	// NezhaAgentUnitName is the systemd unit managed by X-Panel.
 	NezhaAgentUnitName = "xpanel-nezha-agent"
+	// NezhaAgentUnitPath is the bundled systemd unit installed by X-Panel.
+	NezhaAgentUnitPath = "/etc/systemd/system/xpanel-nezha-agent.service"
 
 	nezhaEnabledSettingKey      = "NezhaEnabled"
 	nezhaServerSettingKey       = "NezhaServer"
@@ -88,6 +90,7 @@ func (s repoNezhaSettingStore) GetValueByKey(key string) (string, error) {
 type nezhaAgentDeps struct {
 	ConfigPath  string
 	BinaryPath  string
+	UnitPath    string
 	Unit        string
 	Runner      nezhaCmdRunner
 	Settings    nezhaSettingStore
@@ -113,12 +116,14 @@ type nezhaAgentDeps struct {
 	// CheckConflictFree is an optional extra hook for tests.
 	// nil means “no extra check”. Non-nil error blocks enable --now on EnableAndStart.
 	CheckConflictFree func() error
+	InstallBundle     func() (archivePath string, cleanup func(), err error)
 }
 
 // NezhaAgentService manages the bundled Nezha Agent systemd lifecycle and config saves.
 type NezhaAgentService struct {
 	configPath string
 	binaryPath string
+	unitPath   string
 	unit       string
 	runner     nezhaCmdRunner
 	settings   nezhaSettingStore
@@ -135,6 +140,7 @@ type NezhaAgentService struct {
 	lstat                  func(name string) (os.FileInfo, error)
 
 	checkConflictFree func() error
+	installBundle     func() (archivePath string, cleanup func(), err error)
 }
 
 // NewNezhaAgentService constructs the production service with real os/exec,
@@ -143,6 +149,7 @@ func NewNezhaAgentService() *NezhaAgentService {
 	return newNezhaAgentService(nezhaAgentDeps{
 		ConfigPath:             NezhaAgentConfigPath,
 		BinaryPath:             NezhaAgentBinaryPath,
+		UnitPath:               NezhaAgentUnitPath,
 		Unit:                   NezhaAgentUnitName,
 		Runner:                 execNezhaCmdRunner{},
 		Settings:               repoNezhaSettingStore{repo: repo.NewISettingRepo()},
@@ -152,6 +159,7 @@ func NewNezhaAgentService() *NezhaAgentService {
 		PollEvery:              defaultNezhaPollEvery,
 		ListProcessExecutables: listNezhaProcessExecutablesFromProc,
 		ExternalDirs:           append([]string(nil), defaultNezhaExternalAgentDirs...),
+		InstallBundle:          downloadCurrentNezhaAgentBundle,
 	})
 }
 
@@ -161,6 +169,9 @@ func newNezhaAgentService(deps nezhaAgentDeps) *NezhaAgentService {
 	}
 	if deps.BinaryPath == "" {
 		deps.BinaryPath = NezhaAgentBinaryPath
+	}
+	if deps.UnitPath == "" {
+		deps.UnitPath = NezhaAgentUnitPath
 	}
 	if deps.Unit == "" {
 		deps.Unit = NezhaAgentUnitName
@@ -179,6 +190,9 @@ func newNezhaAgentService(deps nezhaAgentDeps) *NezhaAgentService {
 	}
 	if deps.PollEvery <= 0 {
 		deps.PollEvery = defaultNezhaPollEvery
+	}
+	if deps.InstallBundle == nil {
+		deps.InstallBundle = downloadCurrentNezhaAgentBundle
 	}
 	readFn := deps.ReadConfig
 	if readFn == nil {
@@ -200,6 +214,7 @@ func newNezhaAgentService(deps nezhaAgentDeps) *NezhaAgentService {
 	return &NezhaAgentService{
 		configPath:             deps.ConfigPath,
 		binaryPath:             deps.BinaryPath,
+		unitPath:               deps.UnitPath,
 		unit:                   deps.Unit,
 		runner:                 deps.Runner,
 		settings:               deps.Settings,
@@ -213,6 +228,7 @@ func newNezhaAgentService(deps nezhaAgentDeps) *NezhaAgentService {
 		externalDirs:           extDirs,
 		lstat:                  lstatFn,
 		checkConflictFree:      deps.CheckConflictFree,
+		installBundle:          deps.InstallBundle,
 	}
 }
 
@@ -226,7 +242,7 @@ func (s *NezhaAgentService) Status() (*dto.NezhaAgentStatus, error) {
 		Conflicts: []dto.NezhaAgentConflict{},
 	}
 
-	st.ComponentAvailable = s.binaryAvailable()
+	st.ComponentAvailable = s.binaryAvailable() && s.unitAvailable()
 	if st.ComponentAvailable {
 		st.Version = s.binaryVersion()
 	}
@@ -266,6 +282,9 @@ func (s *NezhaAgentService) Status() (*dto.NezhaAgentStatus, error) {
 	} else if len(conflicts) > 0 {
 		st.Conflicts = conflicts
 	}
+	if !st.ComponentAvailable {
+		st.ServiceError = filterMissingUnitDiagnostics(st.ServiceError)
+	}
 	return st, nil
 }
 
@@ -292,6 +311,27 @@ func (s *NezhaAgentService) binaryAvailable() bool {
 	}
 	// Require owner/group/other execute bit (0755 satisfies this).
 	return info.Mode().Perm()&0o111 != 0
+}
+
+func (s *NezhaAgentService) unitAvailable() bool {
+	info, err := os.Lstat(s.unitPath)
+	return err == nil && info.Mode().IsRegular()
+}
+
+func filterMissingUnitDiagnostics(message string) string {
+	parts := strings.Split(message, "; ")
+	kept := parts[:0]
+	for _, part := range parts {
+		lower := strings.ToLower(part)
+		if strings.Contains(lower, "systemctl") &&
+			(strings.Contains(lower, "not-found") || strings.Contains(lower, "not found")) {
+			continue
+		}
+		if strings.TrimSpace(part) != "" {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, "; ")
 }
 
 func (s *NezhaAgentService) binaryVersion() string {
@@ -1141,7 +1181,7 @@ func (s *NezhaAgentService) probeEnabledState() (bool, error) {
 	switch state {
 	case "enabled", "enabled-runtime":
 		return true, nil
-	case "disabled", "static", "masked":
+	case "disabled", "static", "masked", "not-found":
 		return false, nil
 	case "":
 		if err != nil {
