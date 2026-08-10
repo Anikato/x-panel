@@ -49,6 +49,7 @@ var sensitiveOperationPaths = []string{
 	"/api/v1/toolbox/services",
 	"/api/v1/haproxy/config",
 	"/api/v1/haproxy/stats/settings",
+	"/api/v1/nezha-agent",
 }
 
 var sensitiveJSONKeys = map[string]struct{}{

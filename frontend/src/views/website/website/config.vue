@@ -11,9 +11,12 @@
           {{ detail.type === 'static' ? $t('website.typeStatic') : $t('website.typeProxy') }}
         </el-tag>
         <el-tag v-if="configMode === 'source'" type="primary" size="small" effect="plain">{{ $t('website.sourceMode') }}</el-tag>
+        <el-tag v-if="detail.nginxConfPath" :type="detail.configActive ? 'success' : 'danger'" size="small" effect="plain">
+          {{ detail.configActive ? $t('website.configActive') : $t('website.configInactive') }}
+        </el-tag>
       </div>
       <div class="header-right">
-        <el-radio-group v-model="configMode" size="small" class="mode-switcher" @change="handleModeSwitch">
+        <el-radio-group v-if="!isExternalSite" v-model="configMode" size="small" class="mode-switcher" @change="handleModeSwitch">
           <el-radio-button value="managed">{{ $t('website.managedMode') }}</el-radio-button>
           <el-radio-button value="source">{{ $t('website.sourceMode') }}</el-radio-button>
         </el-radio-group>
@@ -25,12 +28,54 @@
     <!-- 源码模式提示 -->
     <el-alert
       v-if="configMode === 'source'"
-      :title="$t('website.sourceModeHint')"
+      :title="isExternalSite ? $t('website.externalSourceModeHint') : $t('website.sourceModeHint')"
       type="info"
       show-icon
       :closable="false"
       class="mode-alert"
     />
+
+    <el-card v-if="detail.sslEnable || detail.configuredCertificate" shadow="never" class="certificate-health-panel">
+      <template #header>
+        <div class="certificate-health-header">
+          <div>
+            <strong>{{ $t('website.certificateHealth') }}</strong>
+            <span v-if="certificateHealth" class="checked-at">{{ formatCheckedAt(certificateHealth.checkedAt) }} · HTTPS :{{ certificateHealth.httpsPort }}</span>
+          </div>
+          <el-button size="small" type="primary" :loading="certificateChecking" @click="handleCertificateHealth">{{ $t('website.checkNow') }}</el-button>
+        </div>
+      </template>
+      <div v-if="certificateHealth" class="certificate-health-grid">
+        <div class="health-evidence">
+          <span class="evidence-label">{{ $t('website.configuredCertificate') }}</span>
+          <el-tag :type="certificateTagType(certificateHealth.configured.status)" size="small">{{ certificateStatusLabel(certificateHealth.configured.status) }}</el-tag>
+          <strong>{{ certificateHealth.configured.daysLeft }} 天</strong>
+          <code>{{ certificateHealth.configured.certPath || '—' }}</code>
+          <span v-if="certificateHealth.configured.error" class="evidence-error">{{ certificateHealth.configured.error }}</span>
+        </div>
+        <div class="health-evidence">
+          <span class="evidence-label">本机 Nginx</span>
+          <el-tag :type="certificateTagType(certificateHealth.local.status)" size="small">{{ certificateStatusLabel(certificateHealth.local.status) }}</el-tag>
+          <strong>{{ certificateHealth.local.daysLeft }} 天</strong>
+          <code>{{ certificateHealth.local.address }}</code>
+          <span v-if="certificateHealth.configMatchesLocal === false" class="evidence-error">配置证书与本机实际证书指纹不一致</span>
+          <span v-else-if="certificateHealth.configMatchesLocal === true" class="evidence-ok">配置与本机指纹一致</span>
+        </div>
+        <div class="health-evidence public-evidence">
+          <span class="evidence-label">公网端点</span>
+          <div v-for="endpoint in certificateHealth.public" :key="endpoint.address" class="public-endpoint">
+            <code>{{ endpoint.domain }}</code>
+            <el-tag :type="certificateTagType(endpoint.status)" size="small" effect="plain">{{ certificateStatusLabel(endpoint.status) }}</el-tag>
+            <span>{{ endpoint.daysLeft }} 天</span>
+          </div>
+          <span class="evidence-note">公网指纹可能因 CDN / 反向代理与源站不同，仅作信息展示。</span>
+        </div>
+      </div>
+      <div v-else-if="detail.configuredCertificate" class="configured-summary">
+        <el-tag :type="certificateTagType(detail.configuredCertificate.status)" size="small">{{ certificateStatusLabel(detail.configuredCertificate.status) }}</el-tag>
+        <span>配置文件证书剩余 {{ detail.configuredCertificate.daysLeft }} 天；点击“立即检测”核对本机和公网。</span>
+      </div>
+    </el-card>
 
     <el-tabs v-if="configMode === 'managed'" v-model="activeTab" class="config-tabs">
       <!-- 基本设置 -->
@@ -464,29 +509,30 @@
         <el-tab-pane :label="$t('website.sourceOverview')" name="overview">
           <el-form :model="detail" label-width="120px" class="config-form">
             <el-form-item :label="$t('website.domain')">
-              <el-input v-model="detail.primaryDomain" />
+              <el-input v-model="detail.primaryDomain" :disabled="isExternalSite" />
             </el-form-item>
             <el-form-item :label="$t('website.otherDomains')">
-              <el-input v-model="detail.domains" :placeholder="$t('website.otherDomainsHint')" />
+              <el-input v-model="detail.domains" :disabled="isExternalSite" :placeholder="$t('website.otherDomainsHint')" />
             </el-form-item>
             <el-form-item :label="$t('website.siteDir')">
               <div style="display:flex; gap:8px; width:100%;">
-                <el-input v-model="detail.siteDir" style="flex:1" />
-                <el-button :icon="FolderOpened" @click="openConfigDirBrowser" title="浏览目录" />
+                <el-input v-model="detail.siteDir" :disabled="isExternalSite" style="flex:1" />
+                <el-button v-if="!isExternalSite" :icon="FolderOpened" @click="openConfigDirBrowser" title="浏览目录" />
                 <el-button type="primary" plain @click="openSourceDir">{{ $t('website.openSourceDir') }}</el-button>
               </div>
             </el-form-item>
             <el-form-item :label="$t('website.accessLogPath')">
-              <el-input v-model="detail.accessLogPath" placeholder="/var/log/nginx/example.com.access.log" />
+              <el-input v-model="detail.accessLogPath" :disabled="isExternalSite" placeholder="/var/log/nginx/example.com.access.log" />
             </el-form-item>
             <el-form-item :label="$t('website.errorLogPath')">
-              <el-input v-model="detail.errorLogPath" placeholder="/var/log/nginx/example.com.error.log" />
+              <el-input v-model="detail.errorLogPath" :disabled="isExternalSite" placeholder="/var/log/nginx/example.com.error.log" />
             </el-form-item>
             <el-form-item :label="$t('commons.description')">
-              <el-input v-model="detail.remark" type="textarea" :rows="2" />
+              <el-input v-model="detail.remark" :disabled="isExternalSite" type="textarea" :rows="2" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
+              <el-button v-if="!isExternalSite" type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
+              <el-button v-else type="primary" plain :loading="refreshingExternal" @click="handleRefreshExternal">{{ $t('website.refreshExternalConfig') }}</el-button>
               <el-button @click="loadDiagnostics" :loading="diagnosticsLoading">运行诊断</el-button>
               <el-button @click="handleDetectLogPaths">探测日志路径</el-button>
             </el-form-item>
@@ -504,7 +550,10 @@
         </el-tab-pane>
         <el-tab-pane :label="$t('website.nginxConfig')" name="nginx">
       <div class="source-editor-toolbar">
-        <span class="source-file-label">{{ detail.alias }}.conf</span>
+        <div class="source-file-meta">
+          <span class="source-file-label">{{ sourceConfPath || `${detail.alias}.conf` }}</span>
+          <span v-if="isExternalSite" class="source-file-note">编辑会直接修改原始配置文件</span>
+        </div>
         <div class="source-actions">
           <el-button size="small" @click="loadSourceConf">{{ $t('commons.refresh') }}</el-button>
           <el-button size="small" type="primary" @click="handleSaveSource" :loading="sourceSaving">{{ $t('commons.save') }}</el-button>
@@ -581,7 +630,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -590,10 +639,11 @@ import {
   getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog,
   getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog,
   checkWebsiteHealth, inspectWebsite, detectWebsiteLogPaths, getWebsiteLogAlerts,
+  refreshExternalNginxSite, checkWebsiteCertificateHealth,
 } from '@/api/modules/website'
 import { listFiles } from '@/api/modules/file'
 import { searchCertificate } from '@/api/modules/ssl'
-import type { Certificate } from '@/api/interface'
+import type { Certificate, CertificateHealthSnapshot, WebsiteCertificateHealth } from '@/api/interface'
 import type * as Monaco from 'monaco-editor'
 import * as echarts from 'echarts/core'
 import { BarChart, PieChart, LineChart } from 'echarts/charts'
@@ -644,6 +694,10 @@ interface WebsiteDetail {
   nginxConfig: string
   alias: string
   configMode: string
+  nginxConfPath: string
+  configActive: boolean
+  configIssues: string[]
+  configuredCertificate?: CertificateHealthSnapshot
 }
 
 interface RedirectItem {
@@ -705,6 +759,11 @@ const redirects = ref<RedirectItem[]>([])
 const configMode = ref<'managed' | 'source'>('managed')
 const sourceActiveTab = ref('overview')
 const sourceSaving = ref(false)
+const sourceConfPath = ref('')
+const sourceConfHash = ref('')
+const refreshingExternal = ref(false)
+const certificateChecking = ref(false)
+const certificateHealth = ref<WebsiteCertificateHealth | null>(null)
 const monacoContainerRef = ref<HTMLElement>()
 let monacoEditor: Monaco.editor.IStandaloneCodeEditor | null = null
 let monacoLoader: Promise<typeof Monaco> | null = null
@@ -733,6 +792,7 @@ const inspectData = ref<WebsiteInspectData | null>(null)
 const logAlerts = ref<WebsiteLogAlert[]>([])
 
 const siteId = Number(route.params.id)
+const isExternalSite = computed(() => Boolean(detail.value.nginxConfPath))
 
 const rewritePresets = [
   { name: 'Vue/React SPA', content: 'location / {\n    try_files $uri $uri/ /index.html;\n}' },
@@ -1027,9 +1087,11 @@ const disposeMonacoEditor = () => {
 const loadSourceConf = async () => {
   try {
     const res = await getSiteConfContent(siteId)
-    const content = res.data || ''
+    const source = res.data
+    sourceConfPath.value = source.path
+    sourceConfHash.value = source.hash
     await nextTick()
-    await initMonacoEditor(content)
+    await initMonacoEditor(source.content)
   } catch { ElMessage.error('加载配置失败') }
 }
 
@@ -1039,11 +1101,60 @@ const handleSaveSource = async () => {
   if (!content.trim()) { ElMessage.warning('配置内容不能为空'); return }
   sourceSaving.value = true
   try {
-    await saveSiteConfContent(siteId, content)
+    await saveSiteConfContent(siteId, content, sourceConfHash.value)
     ElMessage.success(t('commons.success'))
-  } catch {}
+    await loadSourceConf()
+    await loadDetail()
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('变化')) {
+      try {
+        await ElMessageBox.confirm(t('website.sourceConflictMessage'), t('website.sourceConflictTitle'), {
+          confirmButtonText: t('website.reloadSource'),
+          cancelButtonText: t('commons.cancel'),
+          type: 'warning',
+        })
+        await loadSourceConf()
+      } catch { /* keep current editor content */ }
+    }
+  }
   finally { sourceSaving.value = false }
 }
+
+const handleRefreshExternal = async () => {
+  refreshingExternal.value = true
+  try {
+    await refreshExternalNginxSite(siteId)
+    await loadDetail()
+    await loadSourceConf()
+    ElMessage.success(t('website.externalConfigRefreshed'))
+  } finally { refreshingExternal.value = false }
+}
+
+const certificateTagType = (status: string): 'success' | 'warning' | 'info' | 'danger' => {
+  if (status === 'valid') return 'success'
+  if (status === 'expiring' || status === 'unavailable' || status === 'not_checked') return 'warning'
+  if (status === 'not_configured') return 'info'
+  return 'danger'
+}
+
+const certificateStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    valid: '有效', expiring: '即将过期', expired: '已过期', not_yet_valid: '尚未生效',
+    domain_mismatch: '域名不匹配', key_mismatch: '私钥不匹配', unreadable: '无法读取',
+    unavailable: '不可用', untrusted: '证书链不受信任', not_checked: '未检测', not_configured: '未配置',
+  }
+  return labels[status] || status
+}
+
+const handleCertificateHealth = async () => {
+  certificateChecking.value = true
+  try {
+    const res = await checkWebsiteCertificateHealth(siteId)
+    certificateHealth.value = res.data
+  } finally { certificateChecking.value = false }
+}
+
+const formatCheckedAt = (value: string) => value ? new Date(value).toLocaleString() : ''
 
 const handleModeSwitch = async (val: string | number | boolean) => {
   const mode = val as string
@@ -1234,6 +1345,79 @@ onBeforeUnmount(() => {
   margin-bottom: 16px;
 }
 
+.certificate-health-panel {
+  margin-bottom: 16px;
+}
+
+.certificate-health-header,
+.configured-summary,
+.public-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.certificate-health-header {
+  justify-content: space-between;
+}
+
+.certificate-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.health-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-extra-light);
+
+  code {
+    overflow: hidden;
+    color: var(--xp-text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.evidence-label {
+  color: var(--xp-text-secondary);
+  font-size: 13px;
+}
+
+.evidence-error {
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+
+.evidence-ok {
+  color: var(--el-color-success);
+  font-size: 12px;
+}
+
+.evidence-note {
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.public-evidence {
+  gap: 10px;
+}
+
+.public-endpoint {
+  justify-content: space-between;
+
+  code {
+    flex: 1;
+  }
+}
+
 .source-editor-section {
   display: flex;
   flex-direction: column;
@@ -1277,6 +1461,18 @@ onBeforeUnmount(() => {
     font-weight: 500;
     color: var(--xp-accent);
     font-family: 'Fira Code', 'Consolas', monospace;
+  }
+
+  .source-file-meta {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .source-file-note {
+    color: var(--xp-text-muted);
+    font-size: 12px;
   }
 
   .preset-actions {
@@ -1384,6 +1580,12 @@ onBeforeUnmount(() => {
 
   .analysis-rankings {
     margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .certificate-health-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

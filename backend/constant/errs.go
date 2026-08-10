@@ -28,27 +28,32 @@ const (
 	ErrCmdNotFound         = "ErrCmdNotFound"
 
 	// SSL 证书
-	ErrSSLAcmeRegister = "ErrSSLAcmeRegister"
-	ErrSSLApply        = "ErrSSLApply"
-	ErrSSLRenew        = "ErrSSLRenew"
+	ErrSSLAcmeRegister        = "ErrSSLAcmeRegister"
+	ErrSSLApply               = "ErrSSLApply"
+	ErrSSLRenew               = "ErrSSLRenew"
 	ErrPanelSSLCertNotReady   = "ErrPanelSSLCertNotReady"
 	ErrPanelSSLCertFiles      = "ErrPanelSSLCertFiles"
 	ErrPanelSSLKeyPairInvalid = "ErrPanelSSLKeyPairInvalid"
 
 	// Nginx
-	ErrNginxNotInstalled    = "ErrNginxNotInstalled"
-	ErrNginxAlreadyRunning  = "ErrNginxAlreadyRunning"
+	ErrNginxNotInstalled     = "ErrNginxNotInstalled"
+	ErrNginxAlreadyRunning   = "ErrNginxAlreadyRunning"
 	ErrNginxAlreadyInstalled = "ErrNginxAlreadyInstalled"
-	ErrNginxNotRunning      = "ErrNginxNotRunning"
-	ErrNginxConfigTest      = "ErrNginxConfigTest"
-	ErrNginxInstall         = "ErrNginxInstall"
-	ErrNginxBuildDeps       = "ErrNginxBuildDeps"
-	ErrNginxHasSites        = "ErrNginxHasSites"
+	ErrNginxNotRunning       = "ErrNginxNotRunning"
+	ErrNginxConfigTest       = "ErrNginxConfigTest"
+	ErrNginxInstall          = "ErrNginxInstall"
+	ErrNginxBuildDeps        = "ErrNginxBuildDeps"
+	ErrNginxHasSites         = "ErrNginxHasSites"
 
 	// Website
-	ErrWebsiteDomainExist = "ErrWebsiteDomainExist"
-	ErrWebsiteApplyConfig = "ErrWebsiteApplyConfig"
-	ErrWebsiteNotFound    = "ErrWebsiteNotFound"
+	ErrWebsiteDomainExist             = "ErrWebsiteDomainExist"
+	ErrWebsiteApplyConfig             = "ErrWebsiteApplyConfig"
+	ErrWebsiteNotFound                = "ErrWebsiteNotFound"
+	ErrWebsiteExternalConfigInvalid   = "ErrWebsiteExternalConfigInvalid"
+	ErrWebsiteExternalConfigInactive  = "ErrWebsiteExternalConfigInactive"
+	ErrWebsiteExternalConfigDuplicate = "ErrWebsiteExternalConfigDuplicate"
+	ErrWebsiteExternalConfigConflict  = "ErrWebsiteExternalConfigConflict"
+	ErrWebsiteExternalOperationDenied = "ErrWebsiteExternalOperationDenied"
 
 	// 升级
 	ErrUpgradeInProgress = "ErrUpgradeInProgress"

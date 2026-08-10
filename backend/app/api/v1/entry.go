@@ -32,6 +32,7 @@ type ApiGroup struct {
 	SSHKeyAPI
 	CertSyncAPI
 	NotificationAPI
+	NezhaAgentAPI
 }
 
 // ApiGroupApp 全局 API 实例

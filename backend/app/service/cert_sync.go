@@ -41,6 +41,16 @@ type CertSourceService struct {
 	settingRepo repo.ISettingRepo
 }
 
+const certificateRefreshRetryInterval = 5 * time.Minute
+
+type certificateRefreshRetryOps struct {
+	listCertificates func(uint) ([]model.Certificate, error)
+	updateSource     func(uint, map[string]interface{}) error
+	createLog        func(*model.CertSyncLog) error
+	refresh          func([]uint) error
+	runCommand       func(string) error
+}
+
 func NewICertSourceService() ICertSourceService {
 	return &CertSourceService{
 		sourceRepo:  repo.NewICertSourceRepo(),
@@ -58,19 +68,20 @@ func (s *CertSourceService) GetList() ([]dto.CertSourceInfo, error) {
 	var items []dto.CertSourceInfo
 	for _, src := range sources {
 		items = append(items, dto.CertSourceInfo{
-			ID:              src.ID,
-			Name:            src.Name,
-			ServerAddr:      src.ServerAddr,
-			TLSFingerprint:  src.TLSFingerprint,
-			SyncInterval:    src.SyncInterval,
-			SyncStrategy:    normalizeSyncStrategy(src.SyncStrategy),
-			PostSyncCommand: src.PostSyncCommand,
-			Enabled:         src.Enabled,
-			ResumeRequired:  src.ResumeRequired,
-			LastSyncAt:      src.LastSyncAt,
-			LastSyncStatus:  src.LastSyncStatus,
-			LastSyncMessage: src.LastSyncMessage,
-			CreatedAt:       src.CreatedAt,
+			ID:               src.ID,
+			Name:             src.Name,
+			ServerAddr:       src.ServerAddr,
+			TLSFingerprint:   src.TLSFingerprint,
+			SyncInterval:     src.SyncInterval,
+			SyncStrategy:     normalizeSyncStrategy(src.SyncStrategy),
+			PostSyncCommand:  src.PostSyncCommand,
+			Enabled:          src.Enabled,
+			ResumeRequired:   src.ResumeRequired,
+			LastSyncAt:       src.LastSyncAt,
+			LastSyncStatus:   src.LastSyncStatus,
+			LastSyncMessage:  src.LastSyncMessage,
+			RefreshPendingAt: src.RefreshPendingAt,
+			CreatedAt:        src.CreatedAt,
 		})
 	}
 	return items, nil
@@ -164,7 +175,17 @@ func (s *CertSourceService) SyncAll() {
 	}
 	now := time.Now()
 	for _, src := range sources {
-		if !src.Enabled || src.ResumeRequired || src.SyncInterval <= 0 {
+		if src.ResumeRequired {
+			continue
+		}
+		if certificateRefreshRetryDue(src, now) {
+			global.LOG.Infof("[cert-sync] Retrying pending consumer refresh for source: %s", src.Name)
+			if err := s.retryPendingCertificateRefresh(src, now); err != nil {
+				global.LOG.Errorf("[cert-sync] Pending consumer refresh for %s failed: %v", src.Name, err)
+			}
+			continue
+		}
+		if !src.Enabled || src.SyncInterval <= 0 {
 			continue
 		}
 		if src.LastSyncAt != nil {
@@ -408,12 +429,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 		certIDs = append(certIDs, id)
 	}
 	postActionErr := runCertificateSyncPostActions(certIDs, source.PostSyncCommand, refreshUpdatedCertificateConsumers, func(command string) error {
-		global.LOG.Infof("[cert-sync] Running post-sync command: %s", command)
-		out, err := exec.Command("bash", "-c", command).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("%w, output: %s", err, strings.TrimSpace(string(out)))
-		}
-		return nil
+		return runCertificateSyncCommand(command)
 	})
 	if postActionErr != nil {
 		global.LOG.Warnf("[cert-sync] Certificate consumer refresh warning: %v", postActionErr)
@@ -429,14 +445,95 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 	if postActionErr != nil {
 		msg += "; 服务刷新待重试: " + postActionErr.Error()
 	}
-	s.sourceRepo.Update(source.ID, map[string]interface{}{
+	updates := map[string]interface{}{
 		"last_sync_at":      &now,
 		"last_sync_status":  status,
 		"last_sync_message": msg,
-	})
+	}
+	applyCertificateRefreshPendingUpdate(updates, len(certIDs), postActionErr, now)
+	s.sourceRepo.Update(source.ID, updates)
 
 	global.LOG.Infof("[cert-sync] Source %s: %s", source.Name, msg)
 	return nil
+}
+
+func certificateRefreshRetryDue(source model.CertSource, now time.Time) bool {
+	return source.RefreshPendingAt != nil && !now.Before(source.RefreshPendingAt.Add(certificateRefreshRetryInterval))
+}
+
+func applyCertificateRefreshPendingUpdate(updates map[string]interface{}, certificateCount int, refreshErr error, now time.Time) {
+	if certificateCount == 0 {
+		return
+	}
+	updates["refresh_pending_at"] = nil
+	if refreshErr != nil {
+		updates["refresh_pending_at"] = &now
+	}
+}
+
+func runCertificateSyncCommand(command string) error {
+	global.LOG.Infof("[cert-sync] Running post-sync command: %s", command)
+	out, err := exec.Command("bash", "-c", command).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w, output: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func retryPendingCertificateRefresh(source model.CertSource, now time.Time, ops certificateRefreshRetryOps) error {
+	certificates, err := ops.listCertificates(source.ID)
+	if err != nil {
+		message := "服务刷新重试准备失败: " + err.Error()
+		updateErr := ops.updateSource(source.ID, map[string]interface{}{
+			"last_sync_status":   "warning",
+			"last_sync_message":  message,
+			"refresh_pending_at": &now,
+		})
+		if updateErr == nil && ops.createLog != nil {
+			_ = ops.createLog(&model.CertSyncLog{
+				SourceID: source.ID, SourceName: source.Name, Domain: "*", Status: "warning", Message: message,
+			})
+		}
+		return errors.Join(err, updateErr)
+	}
+	certIDs := make([]uint, 0, len(certificates))
+	for _, certificate := range certificates {
+		certIDs = append(certIDs, certificate.ID)
+	}
+	refreshErr := runCertificateSyncPostActions(certIDs, source.PostSyncCommand, ops.refresh, ops.runCommand)
+	status := "success"
+	message := "服务刷新重试成功"
+	updates := map[string]interface{}{
+		"last_sync_status":   status,
+		"last_sync_message":  message,
+		"refresh_pending_at": nil,
+	}
+	if refreshErr != nil {
+		status = "warning"
+		message = "服务刷新重试失败: " + refreshErr.Error()
+		updates["last_sync_status"] = status
+		updates["last_sync_message"] = message
+		updates["refresh_pending_at"] = &now
+	}
+	updateErr := ops.updateSource(source.ID, updates)
+	if updateErr == nil && ops.createLog != nil {
+		_ = ops.createLog(&model.CertSyncLog{
+			SourceID: source.ID, SourceName: source.Name, Domain: "*", Status: status, Message: message,
+		})
+	}
+	return errors.Join(refreshErr, updateErr)
+}
+
+func (s *CertSourceService) retryPendingCertificateRefresh(source model.CertSource, now time.Time) error {
+	return retryPendingCertificateRefresh(source, now, certificateRefreshRetryOps{
+		listCertificates: func(sourceID uint) ([]model.Certificate, error) {
+			return s.certRepo.GetList(repo.WithBySourceID(sourceID))
+		},
+		updateSource: s.sourceRepo.Update,
+		createLog:    s.logRepo.Create,
+		refresh:      refreshUpdatedCertificateConsumers,
+		runCommand:   runCertificateSyncCommand,
+	})
 }
 
 func certificateSyncStatus(errorCount, newCount, updatedCount int, postActionErr error) string {

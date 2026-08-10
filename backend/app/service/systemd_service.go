@@ -17,6 +17,14 @@ const (
 	systemdUnitDir     = "/etc/systemd/system"
 )
 
+// systemdExecCommand is the command constructor used by GetLogs (and tests).
+// Production default is exec.Command; tests may replace it.
+var systemdExecCommand = exec.Command
+
+// nezhaJournalConfigPath is the config.yml path used when redacting Nezha agent
+// journal output. Tests may point it at a temporary file.
+var nezhaJournalConfigPath = NezhaAgentConfigPath
+
 type ISystemdService interface {
 	List(showAll bool) ([]dto.SystemdServiceInfo, error)
 	GetDetail(name string) (*dto.SystemdServiceDetail, error)
@@ -306,12 +314,19 @@ func (s *SystemdServiceImpl) GetLogs(req dto.SystemdServiceLogReq) (string, erro
 	if lines > 2000 {
 		lines = 2000
 	}
-	out, err := exec.Command("journalctl", "-u", req.Name, "-n", strconv.Itoa(lines),
+	out, err := systemdExecCommand("journalctl", "-u", req.Name, "-n", strconv.Itoa(lines),
 		"--no-pager", "--output=short-iso").CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("journalctl failed: %s", strings.TrimSpace(string(out)))
+	logs := string(out)
+	// Secondary redaction only for the bundled Nezha Agent unit (with or without .service).
+	// Redact before surfacing journalctl errors so failure diagnostics never leak secrets.
+	if isXpanelNezhaAgentUnit(req.Name) {
+		secret := readNezhaAgentSecretFromConfig(nezhaJournalConfigPath)
+		logs = redactNezhaJournal(logs, secret)
 	}
-	return string(out), nil
+	if err != nil {
+		return "", fmt.Errorf("journalctl failed: %s", strings.TrimSpace(logs))
+	}
+	return logs, nil
 }
 
 // ----- GetUnitContent / SaveUnitContent -----

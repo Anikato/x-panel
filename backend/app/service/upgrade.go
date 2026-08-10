@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -315,7 +314,10 @@ func (s *UpgradeService) DoUpgrade(req dto.UpgradeReq) error {
 	if req.DownloadURL == "" {
 		return buserr.WithDetail(constant.ErrInvalidParams, "download URL is required", nil)
 	}
-
+	// Component packages require a checksum URL; reject before taking the upgrade lock.
+	if strings.TrimSpace(req.ChecksumURL) == "" {
+		return buserr.WithDetail(constant.ErrInvalidParams, "checksum URL is required", nil)
+	}
 	// 加互斥锁，防止并发升级
 	upgradeMu.Lock()
 	if upgrading {
@@ -389,7 +391,7 @@ func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, lo
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// 3. 下载新版本
+	// 3. 下载新版本组件包
 	writeLog("正在下载: %s", downloadURL)
 	tarball := filepath.Join(tmpDir, "xpanel-update.tar.gz")
 	if err := downloadFile(downloadURL, tarball, githubToken); err != nil {
@@ -398,83 +400,30 @@ func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, lo
 	}
 	writeLog("下载完成")
 
-	// 4. 校验 SHA256（如果有 checksum URL）
-	if checksumURL != "" {
-		writeLog("正在验证 SHA256 校验和...")
-		checksumFile := filepath.Join(tmpDir, "checksum.sha256")
-		if err := downloadFile(checksumURL, checksumFile, githubToken); err != nil {
-			writeLog("警告：下载校验文件失败: %v，跳过校验", err)
-		} else {
-			if err := verifySHA256(tarball, checksumFile); err != nil {
-				writeLog("错误：SHA256 校验失败: %v", err)
-				return
-			}
-			writeLog("SHA256 校验通过")
-		}
-	}
-
-	// 5. 解压
-	writeLog("正在解压...")
-	extractDir := filepath.Join(tmpDir, "extract")
-	os.MkdirAll(extractDir, 0755)
-	cmd := exec.Command("tar", "-xzf", tarball, "-C", extractDir)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		writeLog("错误：解压失败: %s", string(output))
+	// 4. 校验 SHA256（组件包强制要求；下载失败不再跳过）
+	writeLog("正在验证 SHA256 校验和...")
+	checksumFile := filepath.Join(tmpDir, "checksum.sha256")
+	if err := downloadFile(checksumURL, checksumFile, githubToken); err != nil {
+		writeLog("错误：下载校验文件失败: %v", err)
 		return
 	}
-
-	// 6. 查找新的二进制文件
-	newBinary := filepath.Join(extractDir, "xpanel")
-	if _, err := os.Stat(newBinary); os.IsNotExist(err) {
-		writeLog("错误：解压目录中未找到 xpanel 二进制文件")
+	if err := verifySHA256(tarball, checksumFile); err != nil {
+		writeLog("错误：SHA256 校验失败: %v", err)
 		return
 	}
+	writeLog("SHA256 校验通过")
+
+	// 5. 组件包事务：安全解压 → ELF 预检 → Agent/XPanel 替换与回滚 → 重启
+	writeLog("正在应用组件包升级...")
 	writeLog("新版本二进制已就绪")
-
-	// 7. 备份当前二进制
-	backupPath := execPath + ".bak"
-	writeLog("备份当前版本: %s", backupPath)
-	if err := copyFile(execPath, backupPath); err != nil {
-		writeLog("错误：备份失败: %v", err)
+	deps := productionComponentUpgradeDeps(execPath)
+	if err := applyComponentPackage(deps, tarball); err != nil {
+		writeLog("错误：组件升级失败: %v", err)
 		return
 	}
 
-	// 8. 原子替换二进制（先复制到同目录，再 rename）
-	writeLog("替换二进制文件...")
-	tmpBinary := execPath + ".new"
-	if err := copyFile(newBinary, tmpBinary); err != nil {
-		writeLog("错误：复制新版本失败: %v，正在回滚...", err)
-		os.Remove(tmpBinary)
-		return
-	}
-	os.Chmod(tmpBinary, 0755)
-
-	if err := os.Rename(tmpBinary, execPath); err != nil {
-		writeLog("错误：原子替换失败: %v，尝试直接复制...", err)
-		// 回退到直接复制
-		if err2 := copyFile(newBinary, execPath); err2 != nil {
-			writeLog("错误：直接复制也失败: %v，正在回滚...", err2)
-			copyFile(backupPath, execPath)
-			return
-		}
-		os.Chmod(execPath, 0755)
-	}
-	writeLog("二进制替换完成")
-
-	// 9. 重启服务
 	writeLog("正在重启服务...")
 	writeLog("升级完成！新版本: %s", newVersion)
-
-	// 通过 systemd 重启（如果作为 systemd 服务运行）
-	restartCmd := exec.Command("systemctl", "restart", "xpanel")
-	if err := restartCmd.Start(); err != nil {
-		writeLog("systemctl 重启失败: %v，尝试直接重启...", err)
-		// 备选：发送信号给自己
-		proc, _ := os.FindProcess(os.Getpid())
-		if proc != nil {
-			proc.Signal(os.Interrupt)
-		}
-	}
 }
 
 // openLog 打开升级日志文件

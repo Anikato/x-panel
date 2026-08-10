@@ -65,7 +65,6 @@ func (s *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		ServerPort:          global.CONF.System.Port,
 		AgentTokenSet:       settingMap["AgentToken"] != "",
 		AutoUpgrade:         settingMap["AutoUpgrade"],
-		FleetAutoUpgrade:    settingMap["FleetAutoUpgrade"],
 		AppearanceConfig:    settingMap["AppearanceConfig"],
 		ProxyEnable:         settingMap["ProxyEnable"],
 		ProxyType:           settingMap["ProxyType"],
@@ -83,7 +82,6 @@ func (s *SettingService) Update(req dto.SettingUpdate) error {
 		"AutoUpgrade": true, "AppearanceConfig": true,
 		"ProxyEnable": true, "ProxyType": true,
 		"ProxyAddress": true, "ProxyNoProxy": true,
-		"FleetEnabled": true, "FleetEndpoint": true, "FleetHeartbeatIntervalSeconds": true, "FleetTaskPollIntervalSeconds": true,
 	}
 	if !allowedKeys[req.Key] {
 		return buserr.New(constant.ErrInvalidParams)

@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const fleetRetirementMigrationKey = "_mig_fleet_retirement_cleanup"
+
 // Init 执行数据库自动迁移
 func Init() {
 	if err := global.DB.AutoMigrate(
@@ -51,7 +53,9 @@ func Init() {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}
 
-	runOnceDataMigrations()
+	if err := runOnceDataMigrations(); err != nil {
+		panic("Failed to run security-critical data migrations: " + err.Error())
+	}
 
 	initDefaultSettings()
 	ensureSSLDir()
@@ -59,7 +63,7 @@ func Init() {
 	global.LOG.Info("Database migration completed")
 }
 
-func runOnceDataMigrations() {
+func runOnceDataMigrations() error {
 	migrated := func(key string) bool {
 		var count int64
 		global.DB.Model(&model.Setting{}).Where("`key` = ?", key).Count(&count)
@@ -67,6 +71,10 @@ func runOnceDataMigrations() {
 	}
 	markDone := func(key string) {
 		global.DB.Create(&model.Setting{Key: key, Value: "done"})
+	}
+
+	if err := migrateFleetRetirementSettings(); err != nil {
+		return err
 	}
 
 	if !migrated("_mig_website_perf_defaults") {
@@ -87,8 +95,7 @@ func runOnceDataMigrations() {
 	}
 
 	// 一次性把历史装机的 AutoUpgrade=enable 改为 disable，避免发布失败连带把
-	// 全部面板搞挂；用户后续如需自动升级请显式在 设置 中重新开启或通过 Fleet
-	// Center 下发 FleetAutoUpgrade。
+	// 全部面板搞挂；用户后续如需自动升级请显式在 设置 中重新开启。
 	if !migrated("_mig_auto_upgrade_default_off") {
 		global.DB.Exec("UPDATE settings SET value = 'disable' WHERE `key` = 'AutoUpgrade' AND value = 'enable'")
 		markDone("_mig_auto_upgrade_default_off")
@@ -98,6 +105,29 @@ func runOnceDataMigrations() {
 	if err := migrateCertificateLineageAndPause(); err != nil {
 		global.LOG.Errorf("Migration: certificate lineage and source pause failed: %v", err)
 	}
+	return nil
+}
+
+// migrateFleetRetirementSettings removes every Fleet* setting row before defaults
+// are inserted. Uses a raw prefix delete so unknown future Fleet keys are also
+// purged; values are never decrypted, converted, or reused.
+// Marker key _mig_fleet_retirement_cleanup does not match Fleet%.
+func migrateFleetRetirementSettings() error {
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&model.Setting{}).Where("`key` = ?", fleetRetirementMigrationKey).Count(&count).Error; err != nil {
+			return err
+		}
+		// Always ensure Fleet% is empty: first run retires data; later runs
+		// converge if old components or restored backups re-insert Fleet rows.
+		if err := tx.Where("`key` LIKE ?", "Fleet%").Delete(&model.Setting{}).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+		return tx.Create(&model.Setting{Key: fleetRetirementMigrationKey, Value: "done"}).Error
+	})
 }
 
 func migrateCertificateLineageAndPause() error {
@@ -298,10 +328,8 @@ func initDefaultSettings() {
 		{Key: "GitHubToken", Value: ""},
 		{Key: "AgentToken", Value: ""},
 		// 默认关闭面板侧自动升级，避免发布失败导致大规模实例不可用；
-		// 需要时由用户在本机设置中开启，或由 Fleet Center 统一下发 FleetAutoUpgrade。
+		// 需要时由用户在本机设置中开启。
 		{Key: "AutoUpgrade", Value: "disable"},
-		{Key: "FleetAutoUpgrade", Value: ""},
-		{Key: "FleetAutoUpgradeReleaseURL", Value: ""},
 		{Key: "AppearanceConfig", Value: "{}"},
 		{Key: "CertServerEnabled", Value: "disable"},
 		{Key: "CertServerToken", Value: ""},
@@ -314,13 +342,10 @@ func initDefaultSettings() {
 		{Key: "ProxyType", Value: "mix"},
 		{Key: "ProxyAddress", Value: ""},
 		{Key: "ProxyNoProxy", Value: "localhost,127.0.0.1,::1"},
-		{Key: "FleetEnabled", Value: "enable"},
-		{Key: "FleetEndpoint", Value: "https://fcapi.qm.mk"},
-		{Key: "FleetInstanceID", Value: ""},
-		{Key: "FleetInstanceToken", Value: ""},
-		{Key: "FleetEnrollmentToken", Value: ""},
-		{Key: "FleetHeartbeatIntervalSeconds", Value: "300"},
-		{Key: "FleetTaskPollIntervalSeconds", Value: "10"},
+		// Bundled Nezha Agent defaults (disabled until explicitly configured).
+		{Key: "NezhaEnabled", Value: "false"},
+		{Key: "NezhaServer", Value: ""},
+		{Key: "NezhaClientSecret", Value: ""},
 		{Key: "NotificationPreferences", Value: `{"defaults":{"center":true,"badge":true,"popup":false},"events":{"file.upload.completed":{"center":true,"badge":false,"popup":false},"file.task.failed":{"center":true,"badge":true,"popup":true},"database.task.failed":{"center":true,"badge":true,"popup":true},"cronjob.failed":{"center":true,"badge":true,"popup":true},"operation.failed":{"center":true,"badge":true,"popup":true},"system.log.error":{"center":true,"badge":true,"popup":false}}}`},
 	}
 

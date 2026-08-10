@@ -40,6 +40,76 @@ func (a *WebsiteAPI) CreateWebsite(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *WebsiteAPI) InspectExternalNginxSite(c *gin.Context) {
+	var req dto.ExternalNginxSiteInspectReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	preview, err := websiteService.InspectExternalNginxSite(req.Path)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, preview)
+}
+
+func (a *WebsiteAPI) CreateExternalNginxSite(c *gin.Context) {
+	var req dto.ExternalNginxSiteCreateReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	site, err := websiteService.CreateExternalNginxSite(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, site)
+}
+
+func (a *WebsiteAPI) RefreshExternalNginxSite(c *gin.Context) {
+	var req dto.ExternalNginxSiteRefreshReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	site, err := websiteService.RefreshExternalNginxSite(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, site)
+}
+
+func (a *WebsiteAPI) CheckWebsiteCertificateHealth(c *gin.Context) {
+	var req dto.WebsiteCertificateHealthReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	health, err := websiteService.CheckWebsiteCertificateHealth(req.ID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, health)
+}
+
+func (a *WebsiteAPI) CheckWebsiteCertificateHealthBatch(c *gin.Context) {
+	var req dto.WebsiteCertificateHealthBatchReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	health, err := websiteService.CheckWebsiteCertificateHealthBatch(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, health)
+}
+
 func (a *WebsiteAPI) UpdateWebsite(c *gin.Context) {
 	var req dto.WebsiteUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -247,7 +317,7 @@ func (a *WebsiteAPI) SaveSiteConfContent(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	if err := websiteService.SaveSiteConfContent(req.ID, req.Content); err != nil {
+	if err := websiteService.SaveSiteConfContent(req); err != nil {
 		helper.HandleError(c, err)
 		return
 	}

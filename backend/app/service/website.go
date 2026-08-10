@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"xpanel/app/dto"
@@ -23,6 +24,11 @@ import (
 
 type IWebsiteService interface {
 	Create(req dto.WebsiteCreate) error
+	InspectExternalNginxSite(path string) (*dto.ExternalNginxSitePreview, error)
+	CreateExternalNginxSite(req dto.ExternalNginxSiteCreateReq) (*model.Website, error)
+	RefreshExternalNginxSite(id uint) (*model.Website, error)
+	CheckWebsiteCertificateHealth(id uint) (*dto.WebsiteCertificateHealthResp, error)
+	CheckWebsiteCertificateHealthBatch(req dto.WebsiteCertificateHealthBatchReq) ([]dto.WebsiteCertificateHealthResp, error)
 	Update(req dto.WebsiteUpdate) error
 	Delete(id uint) error
 	SearchWithPage(req dto.WebsiteSearch) (int64, []dto.WebsiteInfo, error)
@@ -33,8 +39,8 @@ type IWebsiteService interface {
 	GetSiteLog(req dto.WebsiteLogReq) (string, error)
 
 	// Source-mode config editing
-	GetSiteConfContent(id uint) (string, error)
-	SaveSiteConfContent(id uint, content string) error
+	GetSiteConfContent(id uint) (*dto.SiteConfContentResp, error)
+	SaveSiteConfContent(req dto.SaveSiteConfReq) error
 	SwitchConfigMode(id uint, mode string) error
 
 	// Nginx config file management
@@ -54,9 +60,21 @@ type IWebsiteService interface {
 }
 
 type WebsiteService struct {
-	websiteRepo repo.IWebsiteRepo
-	certRepo    repo.ICertificateRepo
+	websiteRepo          repo.IWebsiteRepo
+	certRepo             repo.ICertificateRepo
+	sourceSaveOps        *sourceConfigSaveOps
+	certificateHealthOps *certificateHealthOps
 }
+
+type sourceConfigSaveOps struct {
+	backup      func(string) error
+	writeAtomic func(string, []byte, os.FileMode) error
+	nginxTest   func() error
+	reload      func() error
+	syncSite    func(*model.Website, nginxSiteMetadata) error
+}
+
+var sourceConfigPathLocks sync.Map
 
 func NewIWebsiteService() IWebsiteService {
 	return &WebsiteService{
@@ -157,6 +175,9 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
+	if site.NginxConfPath != "" {
+		return buserr.New(constant.ErrWebsiteExternalOperationDenied)
+	}
 
 	// 如果域名变了，检查唯一性
 	if req.PrimaryDomain != "" && req.PrimaryDomain != site.PrimaryDomain {
@@ -233,6 +254,9 @@ func (s *WebsiteService) Delete(id uint) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
+	if site.NginxConfPath != "" {
+		return s.websiteRepo.Delete(repo.WithByID(id))
+	}
 
 	nc := global.CONF.Nginx
 	needReload := site.Status == "running" && site.ConfigMode != "source"
@@ -277,18 +301,24 @@ func (s *WebsiteService) SearchWithPage(req dto.WebsiteSearch) (int64, []dto.Web
 
 	var items []dto.WebsiteInfo
 	for _, site := range sites {
+		configActive, configIssues := s.externalConfigState(site)
+		configuredCertificate := s.configuredCertificateSnapshot(site)
 		items = append(items, dto.WebsiteInfo{
-			ID:            site.ID,
-			PrimaryDomain: site.PrimaryDomain,
-			Domains:       site.Domains,
-			Alias:         site.Alias,
-			Type:          site.Type,
-			Status:        site.Status,
-			SSLEnable:     site.SSLEnable,
-			ConfigMode:    site.ConfigMode,
-			Remark:        site.Remark,
-			SiteDir:       site.SiteDir,
-			CreatedAt:     site.CreatedAt,
+			ID:                    site.ID,
+			PrimaryDomain:         site.PrimaryDomain,
+			Domains:               site.Domains,
+			Alias:                 site.Alias,
+			Type:                  site.Type,
+			Status:                site.Status,
+			SSLEnable:             site.SSLEnable,
+			ConfigMode:            site.ConfigMode,
+			Remark:                site.Remark,
+			SiteDir:               site.SiteDir,
+			NginxConfPath:         site.NginxConfPath,
+			ConfigActive:          configActive,
+			ConfigIssues:          configIssues,
+			ConfiguredCertificate: configuredCertificate,
+			CreatedAt:             site.CreatedAt,
 		})
 	}
 	return total, items, nil
@@ -300,46 +330,52 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		return nil, buserr.New(constant.ErrRecordNotFound)
 	}
 
+	configActive, configIssues := s.externalConfigState(site)
+	configuredCertificate := s.configuredCertificateSnapshot(site)
 	detail := &dto.WebsiteDetail{
-		ID:                site.ID,
-		PrimaryDomain:     site.PrimaryDomain,
-		Domains:           site.Domains,
-		Alias:             site.Alias,
-		Type:              site.Type,
-		Status:            site.Status,
-		SiteDir:           site.SiteDir,
-		IndexFile:         site.IndexFile,
-		HttpPort:          site.HttpPort,
-		HttpsPort:         site.HttpsPort,
-		ProxyPass:         site.ProxyPass,
-		WebSocket:         site.WebSocket,
-		SSLEnable:         site.SSLEnable,
-		CertificateID:     site.CertificateID,
-		HttpConfig:        site.HttpConfig,
-		HSTS:              site.HSTS,
-		Http2Enable:       site.Http2Enable,
-		SSLProtocols:      site.SSLProtocols,
-		BasicAuth:         site.BasicAuth,
-		BasicUser:         site.BasicUser,
-		BasicPasswordSet:  site.BasicPassword != "",
-		AntiLeech:         site.AntiLeech,
-		LeechReferers:     site.LeechReferers,
-		LimitRate:         site.LimitRate,
-		LimitConn:         site.LimitConn,
-		Rewrite:           site.Rewrite,
-		Redirects:         site.Redirects,
-		AccessLog:         site.AccessLog,
-		ErrorLog:          site.ErrorLog,
-		AccessLogPath:     site.AccessLogPath,
-		ErrorLogPath:      site.ErrorLogPath,
-		GzipEnable:        site.GzipEnable,
-		SecurityHeaders:   site.SecurityHeaders,
-		StaticCacheEnable: site.StaticCacheEnable,
-		Upstream:          site.Upstream,
-		CustomNginx:       site.CustomNginx,
-		DefaultServer:     site.DefaultServer,
-		Remark:            site.Remark,
-		ConfigMode:        site.ConfigMode,
+		ID:                    site.ID,
+		PrimaryDomain:         site.PrimaryDomain,
+		Domains:               site.Domains,
+		Alias:                 site.Alias,
+		Type:                  site.Type,
+		Status:                site.Status,
+		SiteDir:               site.SiteDir,
+		IndexFile:             site.IndexFile,
+		HttpPort:              site.HttpPort,
+		HttpsPort:             site.HttpsPort,
+		ProxyPass:             site.ProxyPass,
+		WebSocket:             site.WebSocket,
+		SSLEnable:             site.SSLEnable,
+		CertificateID:         site.CertificateID,
+		HttpConfig:            site.HttpConfig,
+		HSTS:                  site.HSTS,
+		Http2Enable:           site.Http2Enable,
+		SSLProtocols:          site.SSLProtocols,
+		BasicAuth:             site.BasicAuth,
+		BasicUser:             site.BasicUser,
+		BasicPasswordSet:      site.BasicPassword != "",
+		AntiLeech:             site.AntiLeech,
+		LeechReferers:         site.LeechReferers,
+		LimitRate:             site.LimitRate,
+		LimitConn:             site.LimitConn,
+		Rewrite:               site.Rewrite,
+		Redirects:             site.Redirects,
+		AccessLog:             site.AccessLog,
+		ErrorLog:              site.ErrorLog,
+		AccessLogPath:         site.AccessLogPath,
+		ErrorLogPath:          site.ErrorLogPath,
+		GzipEnable:            site.GzipEnable,
+		SecurityHeaders:       site.SecurityHeaders,
+		StaticCacheEnable:     site.StaticCacheEnable,
+		Upstream:              site.Upstream,
+		CustomNginx:           site.CustomNginx,
+		DefaultServer:         site.DefaultServer,
+		Remark:                site.Remark,
+		ConfigMode:            site.ConfigMode,
+		NginxConfPath:         site.NginxConfPath,
+		ConfigActive:          configActive,
+		ConfigIssues:          configIssues,
+		ConfiguredCertificate: configuredCertificate,
 	}
 	redactWebsiteSecret(detail, site)
 
@@ -350,12 +386,28 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		}
 	}
 
-	// 生成当前配置预览
-	gen := NewNginxConfigGenerator()
-	config, _ := gen.Generate(site)
-	detail.NginxConfig = config
+	if site.NginxConfPath != "" {
+		if config, err := os.ReadFile(site.NginxConfPath); err == nil {
+			detail.NginxConfig = string(config)
+		}
+	} else {
+		gen := NewNginxConfigGenerator()
+		config, _ := gen.Generate(site)
+		detail.NginxConfig = config
+	}
 
 	return detail, nil
+}
+
+func (s *WebsiteService) externalConfigState(site model.Website) (bool, []string) {
+	if site.NginxConfPath == "" {
+		return false, nil
+	}
+	_, metadata, err := s.inspectExternalNginxSite(site.NginxConfPath)
+	if err != nil {
+		return false, []string{err.Error()}
+	}
+	return true, metadata.Warnings
 }
 
 func redactWebsiteSecret(detail *dto.WebsiteDetail, site model.Website) {
@@ -364,13 +416,15 @@ func redactWebsiteSecret(detail *dto.WebsiteDetail, site model.Website) {
 }
 
 func (s *WebsiteService) Enable(id uint) error {
-	if !global.CONF.Nginx.IsInstalled() {
-		return buserr.New(constant.ErrNginxNotInstalled)
-	}
-
 	site, err := s.websiteRepo.Get(repo.WithByID(id))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
+	}
+	if site.NginxConfPath != "" {
+		return buserr.New(constant.ErrWebsiteExternalOperationDenied)
+	}
+	if !global.CONF.Nginx.IsInstalled() {
+		return buserr.New(constant.ErrNginxNotInstalled)
 	}
 	if site.Status == "running" {
 		return nil
@@ -394,6 +448,9 @@ func (s *WebsiteService) Disable(id uint) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
+	if site.NginxConfPath != "" {
+		return buserr.New(constant.ErrWebsiteExternalOperationDenied)
+	}
 	if site.Status == "stopped" {
 		return nil
 	}
@@ -409,6 +466,10 @@ func (s *WebsiteService) GetNginxConfig(id uint) (string, error) {
 	site, err := s.websiteRepo.Get(repo.WithByID(id))
 	if err != nil {
 		return "", buserr.New(constant.ErrRecordNotFound)
+	}
+	if site.NginxConfPath != "" {
+		content, err := os.ReadFile(site.NginxConfPath)
+		return string(content), err
 	}
 	gen := NewNginxConfigGenerator()
 	return gen.Generate(site)
@@ -461,94 +522,243 @@ func (s *WebsiteService) getWebsiteLogPath(site model.Website, logType string) s
 
 // --- 源码模式配置编辑 ---
 
-func (s *WebsiteService) GetSiteConfContent(id uint) (string, error) {
+func (s *WebsiteService) GetSiteConfContent(id uint) (*dto.SiteConfContentResp, error) {
 	site, err := s.websiteRepo.Get(repo.WithByID(id))
 	if err != nil {
-		return "", buserr.New(constant.ErrRecordNotFound)
+		return nil, buserr.New(constant.ErrRecordNotFound)
 	}
-
-	nc := global.CONF.Nginx
-
-	// Try reading from the actual config file
-	var confPath string
-	if nc.IsSystemMode() {
-		// System mode: try sites-available first, then sites-enabled
-		availPath := filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf")
-		enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
-		if _, err := os.Stat(availPath); err == nil {
-			confPath = availPath
-		} else if _, err := os.Stat(enabledPath); err == nil {
-			confPath = enabledPath
-		}
-	} else {
-		confPath = GetSiteConfPath(site.Alias)
+	confPath, err := s.resolveSiteConfPath(site)
+	if err != nil {
+		return nil, err
 	}
-
-	if confPath != "" {
-		data, err := os.ReadFile(confPath)
-		if err == nil {
-			return string(data), nil
+	content, err := os.ReadFile(confPath)
+	if os.IsNotExist(err) && site.NginxConfPath == "" {
+		generated, generateErr := NewNginxConfigGenerator().Generate(site)
+		if generateErr != nil {
+			return nil, generateErr
 		}
-		if !os.IsNotExist(err) {
-			return "", err
-		}
+		content = []byte(generated)
+		err = nil
 	}
-
-	// No config file on disk yet, generate from DB
-	gen := NewNginxConfigGenerator()
-	return gen.Generate(site)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.SiteConfContentResp{
+		Path: confPath, Content: string(content), Hash: contentSHA256(content),
+	}, nil
 }
 
-func (s *WebsiteService) SaveSiteConfContent(id uint, content string) error {
-	site, err := s.websiteRepo.Get(repo.WithByID(id))
+func (s *WebsiteService) SaveSiteConfContent(req dto.SaveSiteConfReq) error {
+	site, err := s.websiteRepo.Get(repo.WithByID(req.ID))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
+	confPath, err := s.resolveSiteConfPath(site)
+	if err != nil {
+		return err
+	}
+	lockValue, _ := sourceConfigPathLocks.LoadOrStore(confPath, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
 
+	if site.NginxConfPath != "" {
+		currentPath, err := validateExternalNginxConfigPath(site.NginxConfPath, global.CONF.Nginx.GetMainConf())
+		if err != nil {
+			return err
+		}
+		if currentPath != confPath {
+			return buserr.New(constant.ErrWebsiteExternalConfigConflict)
+		}
+	}
+
+	original, existed, mode, err := s.currentSourceConfig(site, confPath)
+	if err != nil {
+		return err
+	}
+	if contentSHA256(original) != strings.TrimSpace(req.Hash) {
+		return buserr.New(constant.ErrWebsiteExternalConfigConflict)
+	}
+	metadata, err := parseNginxSiteMetadata(req.Content)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrWebsiteExternalConfigInvalid, confPath, err)
+	}
+	if err := s.ensureWebsitePrimaryDomainAvailable(metadata.PrimaryDomain, site.ID); err != nil {
+		return err
+	}
+	return s.saveSourceConfigTransaction(&site, confPath, original, []byte(req.Content), existed, mode, metadata)
+}
+
+func (s *WebsiteService) resolveSiteConfPath(site model.Website) (string, error) {
+	if site.NginxConfPath != "" {
+		return validateExternalNginxConfigPath(site.NginxConfPath, global.CONF.Nginx.GetMainConf())
+	}
 	nc := global.CONF.Nginx
-	confPath := s.getSiteConfWritePath(site.Alias)
-
-	os.MkdirAll(filepath.Dir(confPath), 0755)
-	backup, _ := os.ReadFile(confPath)
-	_ = s.createConfigBackup(confPath)
-
-	if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("write config failed: %v", err)
-	}
-
-	// System mode: ensure symlink from sites-enabled
 	if nc.IsSystemMode() {
-		enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
-		if _, err := os.Lstat(enabledPath); os.IsNotExist(err) {
-			os.Symlink(confPath, enabledPath)
+		available := filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf")
+		if _, err := os.Stat(available); err == nil {
+			return available, nil
+		}
+		enabled := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
+		if _, err := os.Stat(enabled); err == nil {
+			return enabled, nil
+		}
+		return available, nil
+	}
+	return GetSiteConfPath(site.Alias), nil
+}
+
+func (s *WebsiteService) currentSourceConfig(site model.Website, confPath string) ([]byte, bool, os.FileMode, error) {
+	content, err := os.ReadFile(confPath)
+	if err == nil {
+		info, statErr := os.Stat(confPath)
+		if statErr != nil {
+			return nil, false, 0, statErr
+		}
+		return content, true, info.Mode().Perm(), nil
+	}
+	if !os.IsNotExist(err) || site.NginxConfPath != "" {
+		return nil, false, 0, err
+	}
+	generated, err := NewNginxConfigGenerator().Generate(site)
+	return []byte(generated), false, 0o644, err
+}
+
+func (s *WebsiteService) saveSourceConfigTransaction(
+	site *model.Website,
+	confPath string,
+	original, replacement []byte,
+	existed bool,
+	mode os.FileMode,
+	metadata nginxSiteMetadata,
+) error {
+	ops := s.effectiveSourceConfigSaveOps()
+	if err := os.MkdirAll(filepath.Dir(confPath), 0o755); err != nil {
+		return fmt.Errorf("创建配置目录 %s: %w", filepath.Dir(confPath), err)
+	}
+	if existed {
+		if err := ops.backup(confPath); err != nil {
+			return fmt.Errorf("备份配置 %s: %w", confPath, err)
 		}
 	}
-
-	if err := s.testNginxConfig(); err != nil {
-		if backup != nil {
-			os.WriteFile(confPath, backup, 0644)
-		} else {
-			if nc.IsSystemMode() {
-				enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
-				os.Remove(enabledPath)
-			}
-			os.Remove(confPath)
+	if err := ops.writeAtomic(confPath, replacement, mode); err != nil {
+		return fmt.Errorf("写入配置 %s: %w", confPath, err)
+	}
+	rollback := func() error {
+		if !existed {
+			return os.Remove(confPath)
 		}
-		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+		return ops.writeAtomic(confPath, original, mode)
+	}
+	if err := ops.nginxTest(); err != nil {
+		rollbackErr := rollback()
+		return buserr.WithDetail(constant.ErrNginxConfigTest, sourceSaveFailureDetail("test", confPath, err, rollbackErr), err)
 	}
 
+	reloaded := false
 	if site.Status == "running" {
-		s.reloadNginx()
-	}
-
-	if site.ConfigMode != "source" {
-		site.ConfigMode = "source"
-		if err := s.websiteRepo.Save(&site); err != nil {
-			return fmt.Errorf("persist website config mode: %w", err)
+		if err := ops.reload(); err != nil {
+			rollbackErr := rollback()
+			recoveryErr := recoverSourceConfig(ops)
+			return buserr.WithDetail(constant.ErrWebsiteApplyConfig, sourceSaveRecoveryDetail("reload", confPath, err, rollbackErr, recoveryErr), err)
 		}
+		reloaded = true
 	}
 
+	updated := *site
+	applyNginxSiteMetadata(&updated, metadata)
+	updated.ConfigMode = "source"
+	updated.AccessLog = metadata.AccessLogPath != ""
+	updated.ErrorLog = metadata.ErrorLogPath != ""
+	updated.CertificateID = s.matchPanelCertificate(metadata.CertPath, metadata.KeyPath)
+	if err := ops.syncSite(&updated, metadata); err != nil {
+		rollbackErr := rollback()
+		var recoveryErr error
+		if reloaded {
+			recoveryErr = recoverSourceConfig(ops)
+		}
+		return buserr.WithDetail(constant.ErrWebsiteApplyConfig, sourceSaveRecoveryDetail("sync", confPath, err, rollbackErr, recoveryErr), err)
+	}
 	return nil
+}
+
+func (s *WebsiteService) effectiveSourceConfigSaveOps() sourceConfigSaveOps {
+	ops := sourceConfigSaveOps{
+		backup:      s.createConfigBackup,
+		writeAtomic: writeFileAtomic,
+		nginxTest:   s.testNginxConfig,
+		reload:      s.reloadNginx,
+		syncSite: func(site *model.Website, _ nginxSiteMetadata) error {
+			return s.websiteRepo.Save(site)
+		},
+	}
+	if s.sourceSaveOps == nil {
+		return ops
+	}
+	if s.sourceSaveOps.backup != nil {
+		ops.backup = s.sourceSaveOps.backup
+	}
+	if s.sourceSaveOps.writeAtomic != nil {
+		ops.writeAtomic = s.sourceSaveOps.writeAtomic
+	}
+	if s.sourceSaveOps.nginxTest != nil {
+		ops.nginxTest = s.sourceSaveOps.nginxTest
+	}
+	if s.sourceSaveOps.reload != nil {
+		ops.reload = s.sourceSaveOps.reload
+	}
+	if s.sourceSaveOps.syncSite != nil {
+		ops.syncSite = s.sourceSaveOps.syncSite
+	}
+	return ops
+}
+
+func writeFileAtomic(path string, content []byte, mode os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(mode); err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(content); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
+}
+
+func recoverSourceConfig(ops sourceConfigSaveOps) error {
+	if err := ops.nginxTest(); err != nil {
+		return err
+	}
+	return ops.reload()
+}
+
+func sourceSaveFailureDetail(stage, path string, stageErr, rollbackErr error) string {
+	detail := fmt.Sprintf("%s failed for %s: %v", stage, path, stageErr)
+	if rollbackErr != nil {
+		detail += fmt.Sprintf("; rollback failed: %v", rollbackErr)
+	}
+	return detail
+}
+
+func sourceSaveRecoveryDetail(stage, path string, stageErr, rollbackErr, recoveryErr error) string {
+	detail := sourceSaveFailureDetail(stage, path, stageErr, rollbackErr)
+	if recoveryErr != nil {
+		detail += fmt.Sprintf("; recovery failed: %v", recoveryErr)
+	}
+	return detail
 }
 
 func (s *WebsiteService) getSiteConfWritePath(alias string) string {
@@ -567,6 +777,12 @@ func (s *WebsiteService) SwitchConfigMode(id uint, mode string) error {
 
 	if mode != "managed" && mode != "source" {
 		return buserr.New(constant.ErrInvalidParams)
+	}
+	if site.NginxConfPath != "" {
+		if mode != "source" {
+			return buserr.New(constant.ErrWebsiteExternalOperationDenied)
+		}
+		return nil
 	}
 
 	site.ConfigMode = mode

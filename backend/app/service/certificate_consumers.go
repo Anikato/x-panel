@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"xpanel/app/model"
 	"xpanel/global"
@@ -17,6 +19,7 @@ type certificateConsumerTargets struct {
 
 type certificateConsumerRefreshActions struct {
 	ReloadNginx   func() error
+	VerifyNginx   func() error
 	ReloadHAProxy func() error
 	ReloadGOST    func() error
 }
@@ -28,6 +31,9 @@ func refreshUpdatedCertificateConsumers(certIDs []uint) error {
 	}
 	return refreshCertificateConsumers(targets, certificateConsumerRefreshActions{
 		ReloadNginx: reloadNginxGlobal,
+		VerifyNginx: func() error {
+			return verifyUpdatedNginxCertificateConsumers(certIDs)
+		},
 		ReloadHAProxy: func() error {
 			if !isHAProxyInstalled() {
 				return nil
@@ -43,18 +49,53 @@ func refreshUpdatedCertificateConsumers(certIDs []uint) error {
 	})
 }
 
+func verifyUpdatedNginxCertificateConsumers(certIDs []uint) error {
+	if len(certIDs) == 0 {
+		return nil
+	}
+	var sites []model.Website
+	if err := global.DB.Where("certificate_id IN ? AND ssl_enable = ? AND status = ?", certIDs, true, "running").
+		Find(&sites).Error; err != nil {
+		return err
+	}
+	if len(sites) == 0 {
+		return nil
+	}
+	websiteService := NewIWebsiteService().(*WebsiteService)
+	ops := websiteService.effectiveCertificateHealthOps()
+	semaphore := make(chan struct{}, 5)
+	errorsBySite := make(chan error, len(sites))
+	var waitGroup sync.WaitGroup
+	for _, site := range sites {
+		site := site
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			if err := websiteService.verifyWebsiteLocalCertificate(context.Background(), site, ops); err != nil {
+				errorsBySite <- fmt.Errorf("网站 %s: %w", site.PrimaryDomain, err)
+			}
+		}()
+	}
+	waitGroup.Wait()
+	close(errorsBySite)
+	var errs []error
+	for err := range errorsBySite {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
 func findCertificateConsumerTargets(certIDs []uint) (certificateConsumerTargets, error) {
 	if len(certIDs) == 0 {
 		return certificateConsumerTargets{}, nil
 	}
 	var targets certificateConsumerTargets
-	var count int64
-	if err := global.DB.Model(&model.Website{}).
-		Where("certificate_id IN ? AND ssl_enable = ? AND status = ?", certIDs, true, "running").
-		Count(&count).Error; err != nil {
-		return targets, err
+	if global.CONF.Nginx.IsInstalled() {
+		_, targets.Nginx = (&NginxService{}).readPID()
 	}
-	targets.Nginx = count > 0
+	var count int64
 	if err := global.DB.Model(&model.HAProxyLB{}).
 		Where("certificate_id IN ? AND enable_ssl = ? AND enabled = ?", certIDs, true, true).
 		Count(&count).Error; err != nil {
@@ -75,6 +116,10 @@ func refreshCertificateConsumers(targets certificateConsumerTargets, actions cer
 	if targets.Nginx && actions.ReloadNginx != nil {
 		if err := actions.ReloadNginx(); err != nil {
 			errs = append(errs, fmt.Errorf("Nginx reload: %w", err))
+		} else if actions.VerifyNginx != nil {
+			if err := actions.VerifyNginx(); err != nil {
+				errs = append(errs, fmt.Errorf("Nginx 证书验证: %w", err))
+			}
 		}
 	}
 	if targets.HAProxy && actions.ReloadHAProxy != nil {

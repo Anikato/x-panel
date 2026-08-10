@@ -58,7 +58,6 @@ func (s *NotificationService) Create(req dto.NotificationCreate) error {
 	if err := s.notificationRepo.Create(notification); err != nil {
 		return err
 	}
-	ReportFleetNotification(*notification)
 	return nil
 }
 

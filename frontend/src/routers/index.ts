@@ -17,6 +17,7 @@ import gostRoutes from './modules/gost'
 import haproxyRoutes from './modules/haproxy'
 import toolboxRoutes from './modules/toolbox'
 import notificationRoutes from './modules/notification'
+import nezhaAgentRoutes from './modules/nezha-agent'
 import { setupGuard } from './guard'
 
 const routes: RouteRecordRaw[] = [
@@ -41,6 +42,7 @@ const routes: RouteRecordRaw[] = [
       ...websiteRoutes,
       ...hostRoutes,
       ...terminalRoutes,
+      ...nezhaAgentRoutes,
       ...backupRoutes,
       ...containerRoutes,
       ...cronjobRoutes,

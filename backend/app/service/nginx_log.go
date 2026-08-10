@@ -91,32 +91,15 @@ func (s *NginxLogService) DetectSites() ([]dto.NginxDetectedSite, error) {
 		return nil, buserr.New(constant.ErrNginxNotInstalled)
 	}
 
-	var confFiles []string
-	confDDir := filepath.Join(nc.GetConfDir(), "conf.d")
-	if entries, err := os.ReadDir(confDDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
-				confFiles = append(confFiles, filepath.Join(confDDir, e.Name()))
-			}
-		}
+	active, err := collectActiveNginxConfigPaths(nc.GetMainConf())
+	if err != nil {
+		return nil, err
 	}
-
-	if nc.IsSystemMode() {
-		sitesDir := nc.GetSitesDir()
-		if entries, err := os.ReadDir(sitesDir); err == nil {
-			for _, e := range entries {
-				p := filepath.Join(sitesDir, e.Name())
-				if e.Type()&os.ModeSymlink != 0 {
-					if target, err := filepath.EvalSymlinks(p); err == nil {
-						p = target
-					}
-				}
-				if !e.IsDir() {
-					confFiles = append(confFiles, p)
-				}
-			}
-		}
+	confFiles := make([]string, 0, len(active))
+	for path := range active {
+		confFiles = append(confFiles, path)
 	}
+	sort.Strings(confFiles)
 
 	seen := make(map[string]bool)
 	var sites []dto.NginxDetectedSite

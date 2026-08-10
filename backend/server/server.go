@@ -50,6 +50,10 @@ func Start() {
 
 	initDatabaseAndMigrations()
 
+	// 4.4 Mirror bundled Nezha Agent config.yml into settings (never start/enable).
+	// Failure is non-fatal: log a safe warning and continue panel startup.
+	runNezhaAgentStartupSync()
+
 	// 4.5 恢复面板进程代理环境
 	service.SyncProxyOnStartup()
 	service.CleanBackupTempDir(24 * time.Hour)
@@ -70,10 +74,7 @@ func Start() {
 	nodeService := service.NewINodeService()
 	nodeService.StartHeartbeat()
 
-	// 8.5 Fleet Center 默认上报（失败不影响面板启动）
-	service.NewIFleetReporterService().Start()
-
-	// 8.6 GOST 配置同步（如果 GOST 已安装且运行中，全量推送规则）
+	// 8.5 GOST 配置同步（如果 GOST 已安装且运行中，全量推送规则）
 	go func() {
 		gostSvc := service.NewIGostService()
 		if err := gostSvc.SyncAll(); err != nil {
@@ -150,6 +151,23 @@ func initDatabaseAndMigrations() {
 	// 避免把密文误当成外部系统密码或 Token 使用。
 	if err := initCredential.Init(); err != nil {
 		panic(fmt.Sprintf("Failed to initialize credential protection: %v", err))
+	}
+}
+
+// syncNezhaAgentSettingsOnStartup is a package-level seam for startup tests.
+// Production callback only mirrors config.yml → settings; it never Operate/systemctl.
+var syncNezhaAgentSettingsOnStartup = defaultSyncNezhaAgentSettingsOnStartup
+
+func defaultSyncNezhaAgentSettingsOnStartup() error {
+	return service.NewNezhaAgentService().SyncConfigToSettings()
+}
+
+// runNezhaAgentStartupSync mirrors Agent config into DB after migrations.
+// Errors are warnings only and must not block panel startup or lifecycle ops.
+func runNezhaAgentStartupSync() {
+	if err := syncNezhaAgentSettingsOnStartup(); err != nil {
+		// Fixed message only: never interpolate underlying error text (may hold secrets).
+		global.LOG.Warn("Nezha agent config sync on startup skipped")
 	}
 }
 

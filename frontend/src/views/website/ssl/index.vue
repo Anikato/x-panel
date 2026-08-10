@@ -573,6 +573,7 @@
         <el-form-item :label="$t('ssl.syncInterval')">
           <el-select v-model="sourceForm.syncInterval" style="width: 100%">
             <el-option :label="$t('ssl.intervalManual')" :value="0" />
+            <el-option label="10 min" :value="10" />
             <el-option label="30 min" :value="30" />
             <el-option :label="$t('ssl.intervalHourly')" :value="60" />
             <el-option :label="$t('ssl.interval6h')" :value="360" />
@@ -1071,7 +1072,7 @@ const defaultSourceForm = () => ({
   name: '',
   serverAddr: '',
   token: '',
-  syncInterval: 360,
+  syncInterval: 10,
   syncStrategy: 'fingerprint',
   postSyncCommand: '',
   enabled: true,

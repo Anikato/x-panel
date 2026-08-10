@@ -283,7 +283,7 @@ func TestSettingRepositoryEncryptsOnlyRegisteredSecrets(t *testing.T) {
 		value     string
 		encrypted bool
 	}{
-		{key: "FleetInstanceToken", value: "fleet-secret", encrypted: true},
+		{key: "NezhaClientSecret", value: "nezha-client-secret", encrypted: true},
 		{key: "ProxyAddress", value: "socks5://user:proxy-secret@127.0.0.1:1080", encrypted: true},
 		{key: "Password", value: "$2a$10$already-hashed", encrypted: false},
 		{key: "PanelName", value: "X-Panel", encrypted: false},
@@ -305,6 +305,54 @@ func TestSettingRepositoryEncryptsOnlyRegisteredSecrets(t *testing.T) {
 		if value != test.value {
 			t.Fatalf("setting %s value = %q, want %q", test.key, value, test.value)
 		}
+	}
+}
+
+func TestSettingRepositoryCreateOrUpdateManyProtectsAllValues(t *testing.T) {
+	db := openSecureRepoDatabase(t)
+	repository := NewISettingRepo()
+	values := map[string]string{
+		"NezhaClientSecret": "nezha-client-secret",
+		"NezhaServer":       "dashboard.example.com:443",
+	}
+	if err := repository.CreateOrUpdateMany(values); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range values {
+		var raw string
+		if err := db.Table("settings").Select("value").Where("key = ?", key).Scan(&raw).Error; err != nil {
+			t.Fatal(err)
+		}
+		if credentials.IsSecretSetting(key) {
+			if !global.CREDENTIALS.IsEncrypted(raw) || strings.Contains(raw, want) {
+				t.Fatalf("secret setting %s stored without protection", key)
+			}
+		} else if raw != want {
+			t.Fatalf("plain setting %s = %q, want %q", key, raw, want)
+		}
+		got, err := repository.GetValueByKey(key)
+		if err != nil || got != want {
+			t.Fatalf("GetValueByKey(%s) = %q, %v", key, got, err)
+		}
+	}
+}
+
+func TestSettingRepositoryCreateIfMissingOrEmptyNeverOverwritesExplicitValue(t *testing.T) {
+	openSecureRepoDatabase(t)
+	repository := NewISettingRepo()
+	written, err := repository.CreateIfMissingOrEmpty("NezhaServer", "https://manifest.example.com")
+	if err != nil || !written {
+		t.Fatalf("initial conditional write = %v, %v", written, err)
+	}
+	if err := repository.CreateOrUpdate("NezhaServer", "https://explicit.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	written, err = repository.CreateIfMissingOrEmpty("NezhaServer", "https://other.example.com")
+	if err != nil || written {
+		t.Fatalf("explicit value conditional write = %v, %v", written, err)
+	}
+	if got, err := repository.GetValueByKey("NezhaServer"); err != nil || got != "https://explicit.example.com" {
+		t.Fatalf("NezhaServer = %q, %v", got, err)
 	}
 }
 

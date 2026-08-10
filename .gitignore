@@ -37,14 +37,22 @@ backend/data/
 docs/*
 !docs/worklog.md
 !docs/versioning.md
-!docs/fleet-reporter.md
-!docs/security-audit-remediation-plan-2026-07-24.md
-!docs/sec-005-credential-encryption-design-2026-07-24.md
+!docs/nezha-agent.md
+!docs/archive/
+docs/archive/*
+!docs/archive/README.md
+!docs/archive/fleet-reporter.md
+!docs/archive/security-audit-remediation-plan-2026-07-24.md
+!docs/archive/sec-005-credential-encryption-design-2026-07-24.md
 !docs/superpowers/
 docs/superpowers/*
 !docs/superpowers/plans/
 docs/superpowers/plans/*
 !docs/superpowers/plans/2026-07-24-sec-005-credential-encryption.md
+!docs/superpowers/plans/2026-08-09-xpanel-bundled-nezha-agent.md
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/2026-08-09-xpanel-bundled-nezha-agent-design.md
 
 # SSH keys (never commit!)
 main_id_rsa

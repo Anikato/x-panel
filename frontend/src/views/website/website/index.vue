@@ -2,10 +2,15 @@
   <div class="website-page">
     <div class="page-header">
       <h3>{{ $t('website.title') }}</h3>
-      <el-button size="small" type="primary" @click="openCreateDialog">
-        <el-icon><Plus /></el-icon>
-        {{ $t('website.create') }}
-      </el-button>
+      <div class="header-actions">
+        <el-button size="small" :loading="certificateBatchLoading" @click="handleCertificateBatch">
+          {{ $t('website.checkAllCertificates') }}
+        </el-button>
+        <el-button size="small" type="primary" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon>
+          {{ $t('website.create') }}
+        </el-button>
+      </div>
     </div>
 
     <div class="filter-bar">
@@ -26,9 +31,13 @@
           <div class="domain-cell">
             <el-link type="primary" @click="goConfig(row.id)">{{ row.primaryDomain }}</el-link>
             <el-tag v-if="row.configMode === 'source'" type="primary" size="small" effect="plain">{{ $t('website.sourceMode') }}</el-tag>
+            <el-tag v-if="row.nginxConfPath" :type="row.configActive ? 'success' : 'danger'" size="small" effect="plain">
+              {{ row.configActive ? $t('website.configActive') : $t('website.configInactive') }}
+            </el-tag>
             <el-tag v-if="row.sslEnable" type="success" size="small" effect="plain" class="ssl-badge">SSL</el-tag>
-            <span v-if="row.domains" class="domain-extra">+{{ row.domains.split(',').length }}</span>
+            <span v-if="additionalDomainCount(row)" class="domain-extra">+{{ additionalDomainCount(row) }}</span>
           </div>
+          <code v-if="row.nginxConfPath" class="config-path">{{ row.nginxConfPath }}</code>
         </template>
       </el-table-column>
       <el-table-column :label="$t('website.type')" width="120">
@@ -36,6 +45,15 @@
           <el-tag :type="row.type === 'static' ? 'info' : 'warning'" size="small">
             {{ row.type === 'static' ? $t('website.typeStatic') : $t('website.typeProxy') }}
           </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('website.certificateHealth')" min-width="150">
+        <template #default="{ row }">
+          <el-tag v-if="row.configuredCertificate" :type="certificateTagType(row.configuredCertificate.status)" size="small" effect="plain">
+            {{ certificateStatusLabel(row.configuredCertificate.status) }}
+            <template v-if="Number.isFinite(row.configuredCertificate.daysLeft)"> · {{ row.configuredCertificate.daysLeft }}天</template>
+          </el-tag>
+          <span v-else class="muted-text">—</span>
         </template>
       </el-table-column>
       <el-table-column :label="$t('website.status')" width="100">
@@ -69,7 +87,7 @@
     <!-- 创建网站对话框 -->
     <el-dialog v-model="createDialogVisible" :title="$t('website.create')" width="540px" destroy-on-close>
       <el-form :model="createForm" label-width="100px">
-        <el-form-item :label="$t('website.type')">
+        <el-form-item v-if="createForm.configMode !== 'external'" :label="$t('website.type')">
           <el-radio-group v-model="createForm.type">
             <el-radio value="static">{{ $t('website.typeStatic') }}</el-radio>
             <el-radio value="reverse_proxy">{{ $t('website.typeProxy') }}</el-radio>
@@ -79,9 +97,40 @@
           <el-radio-group v-model="createForm.configMode">
             <el-radio value="managed">{{ $t('website.managedMode') }}</el-radio>
             <el-radio value="source">{{ $t('website.sourceMode') }}</el-radio>
+            <el-radio value="external">{{ $t('website.externalMode') }}</el-radio>
           </el-radio-group>
-          <div class="form-tip">{{ $t('website.createSourceModeHint') }}</div>
+          <div class="form-tip">{{ createForm.configMode === 'external' ? $t('website.externalModeHint') : $t('website.createSourceModeHint') }}</div>
         </el-form-item>
+        <template v-if="createForm.configMode === 'external'">
+          <el-form-item :label="$t('website.configPath')">
+            <div class="inspect-row">
+              <el-input v-model="createForm.path" placeholder="/data/site/example/conf/site.conf" @input="externalPreview = null" />
+              <el-button :loading="inspectLoading" @click="handleInspectExternal">{{ $t('website.inspectConfig') }}</el-button>
+            </div>
+          </el-form-item>
+          <el-form-item :label="$t('website.alias')">
+            <el-input v-model="createForm.alias" :placeholder="externalPreview?.primaryDomain?.replace(/[.*]/g, '_') || 'example_com'" />
+          </el-form-item>
+          <el-form-item :label="$t('commons.description')">
+            <el-input v-model="createForm.remark" />
+          </el-form-item>
+          <el-card v-if="externalPreview" shadow="never" class="external-preview">
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item :label="$t('website.domain')">{{ externalPreview.primaryDomain }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('website.otherDomains')">{{ externalPreview.domains.join(', ') }}</el-descriptions-item>
+              <el-descriptions-item label="HTTP / HTTPS">{{ externalPreview.httpPort || '—' }} / {{ externalPreview.httpsPort || '—' }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('website.type')">{{ externalPreview.type }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('website.siteDir')">{{ externalPreview.root || '—' }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('website.proxyPass')">{{ externalPreview.proxyPass || '—' }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('website.accessLogPath')">{{ externalPreview.accessLogPath || '—' }}</el-descriptions-item>
+              <el-descriptions-item :label="$t('website.errorLogPath')">{{ externalPreview.errorLogPath || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="证书">{{ externalPreview.certPath || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="私钥">{{ externalPreview.keyPath || '—' }}</el-descriptions-item>
+            </el-descriptions>
+            <el-alert v-for="warning in externalPreview.warnings" :key="warning" :title="warning" type="warning" :closable="false" show-icon />
+          </el-card>
+        </template>
+        <template v-else>
         <el-form-item :label="$t('website.domain')">
           <el-input v-model="createForm.primaryDomain" placeholder="example.com" />
         </el-form-item>
@@ -137,11 +186,38 @@
           />
           <div class="form-tip">0 = 使用默认端口 443，仅启用 SSL 后生效</div>
         </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">{{ $t('commons.cancel') }}</el-button>
         <el-button type="primary" @click="handleCreate" :loading="createLoading">{{ $t('commons.confirm') }}</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="certificateDialogVisible" :title="$t('website.certificateCheckResults')" width="860px">
+      <el-table :data="certificateBatchResults" max-height="520">
+        <el-table-column prop="websiteId" label="ID" width="70" />
+        <el-table-column :label="$t('website.configuredCertificate')" min-width="180">
+          <template #default="{ row }">
+            <el-tag :type="certificateTagType(row.configured.status)" size="small">{{ certificateStatusLabel(row.configured.status) }}</el-tag>
+            <span class="result-detail">{{ row.configured.daysLeft }} 天</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="本机 Nginx" min-width="180">
+          <template #default="{ row }">
+            <el-tag :type="certificateTagType(row.local.status)" size="small">{{ certificateStatusLabel(row.local.status) }}</el-tag>
+            <span class="result-detail">:{{ row.httpsPort }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="公网端点" min-width="260">
+          <template #default="{ row }">
+            <div v-for="endpoint in row.public" :key="endpoint.address" class="endpoint-result">
+              <code>{{ endpoint.domain }}</code>
+              <el-tag :type="certificateTagType(endpoint.status)" size="small" effect="plain">{{ certificateStatusLabel(endpoint.status) }}</el-tag>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-dialog>
 
     <!-- 目录浏览器 Dialog -->
@@ -182,9 +258,12 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons-vue'
-import { searchWebsite, createWebsite, deleteWebsite, enableWebsite, disableWebsite } from '@/api/modules/website'
+import {
+  searchWebsite, createWebsite, deleteWebsite, enableWebsite, disableWebsite,
+  inspectExternalNginxSite, createExternalNginxSite, checkWebsiteCertificateHealthBatch,
+} from '@/api/modules/website'
 import { listFiles } from '@/api/modules/file'
-import type { Website } from '@/api/interface'
+import type { ExternalNginxSitePreview, Website, WebsiteCertificateHealth } from '@/api/interface'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -200,6 +279,11 @@ const filterStatus = ref('')
 
 const createDialogVisible = ref(false)
 const createLoading = ref(false)
+const inspectLoading = ref(false)
+const externalPreview = ref<ExternalNginxSitePreview | null>(null)
+const certificateBatchLoading = ref(false)
+const certificateDialogVisible = ref(false)
+const certificateBatchResults = ref<WebsiteCertificateHealth[]>([])
 const createForm = ref({
   primaryDomain: '',
   alias: '',
@@ -213,6 +297,7 @@ const createForm = ref({
   errorLogPath: '',
   httpPort: 0,
   httpsPort: 0,
+  path: '',
 })
 
 // alias 有效值：优先用填写的，其次由域名推导
@@ -294,11 +379,45 @@ const loadWebsites = async () => {
 }
 
 const openCreateDialog = () => {
-  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', configMode: 'managed', remark: '', siteDir: '', proxyPass: '', accessLogPath: '', errorLogPath: '', httpPort: 0, httpsPort: 0 }
+  createForm.value = { primaryDomain: '', alias: '', domains: '', type: 'static', configMode: 'managed', remark: '', siteDir: '', proxyPass: '', accessLogPath: '', errorLogPath: '', httpPort: 0, httpsPort: 0, path: '' }
+  externalPreview.value = null
   createDialogVisible.value = true
 }
 
+const handleInspectExternal = async () => {
+  if (!createForm.value.path.trim()) { ElMessage.warning(t('website.configPathRequired')); return }
+  inspectLoading.value = true
+  try {
+    const res = await inspectExternalNginxSite(createForm.value.path.trim())
+    externalPreview.value = res.data
+    createForm.value.path = res.data.path
+    createForm.value.primaryDomain = res.data.primaryDomain
+    createForm.value.domains = res.data.domains.join(',')
+    createForm.value.type = res.data.type
+    createForm.value.siteDir = res.data.root
+    createForm.value.proxyPass = res.data.proxyPass
+    createForm.value.accessLogPath = res.data.accessLogPath
+    createForm.value.errorLogPath = res.data.errorLogPath
+    createForm.value.httpPort = res.data.httpPort
+    createForm.value.httpsPort = res.data.httpsPort
+  } finally { inspectLoading.value = false }
+}
+
 const handleCreate = async () => {
+  if (createForm.value.configMode === 'external') {
+    if (!externalPreview.value || externalPreview.value.path !== createForm.value.path) {
+      ElMessage.warning(t('website.inspectBeforeCreate'))
+      return
+    }
+    createLoading.value = true
+    try {
+      await createExternalNginxSite({ path: createForm.value.path, alias: createForm.value.alias, remark: createForm.value.remark })
+      ElMessage.success(t('commons.success'))
+      createDialogVisible.value = false
+      loadWebsites()
+    } finally { createLoading.value = false }
+    return
+  }
   if (!createForm.value.primaryDomain) { ElMessage.warning('请输入域名'); return }
   if (createForm.value.configMode !== 'source' && createForm.value.type === 'reverse_proxy' && !createForm.value.proxyPass) { ElMessage.warning('请输入代理地址'); return }
   if (createForm.value.configMode === 'source' && !createForm.value.siteDir) { ElMessage.warning('请输入网站目录'); return }
@@ -332,11 +451,41 @@ const handleDisable = async (row: Website) => {
 
 const handleDelete = async (row: Website) => {
   try {
-    await ElMessageBox.confirm(t('website.deleteConfirm'), t('commons.tip'), { type: 'error' })
+    const message = row.nginxConfPath ? t('website.unregisterExternalConfirm') : t('website.deleteConfirm')
+    await ElMessageBox.confirm(message, t('commons.tip'), { type: row.nginxConfPath ? 'warning' : 'error' })
     await deleteWebsite(row.id)
     ElMessage.success(t('commons.success'))
     loadWebsites()
   } catch {}
+}
+
+const additionalDomainCount = (row: Website) => {
+  return row.domains.split(',').map(item => item.trim()).filter(item => item && item !== row.primaryDomain).length
+}
+
+const certificateTagType = (status: string): 'success' | 'warning' | 'info' | 'danger' => {
+  if (status === 'valid') return 'success'
+  if (status === 'expiring' || status === 'unavailable' || status === 'not_checked') return 'warning'
+  if (status === 'not_configured') return 'info'
+  return 'danger'
+}
+
+const certificateStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    valid: '有效', expiring: '即将过期', expired: '已过期', not_yet_valid: '尚未生效',
+    domain_mismatch: '域名不匹配', key_mismatch: '私钥不匹配', unreadable: '无法读取',
+    unavailable: '不可用', untrusted: '证书链不受信任', not_checked: '未检测', not_configured: '未配置',
+  }
+  return labels[status] || status
+}
+
+const handleCertificateBatch = async () => {
+  certificateBatchLoading.value = true
+  try {
+    const res = await checkWebsiteCertificateHealthBatch({ all: true })
+    certificateBatchResults.value = res.data || []
+    certificateDialogVisible.value = true
+  } finally { certificateBatchLoading.value = false }
 }
 
 const goConfig = (id: number) => {
@@ -349,6 +498,17 @@ onMounted(() => loadWebsites())
 <style lang="scss" scoped>
 .website-page {
   height: 100%;
+}
+
+.header-actions,
+.inspect-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspect-row {
+  width: 100%;
 }
 
 .filter-bar {
@@ -385,6 +545,41 @@ onMounted(() => loadWebsites())
     background: var(--xp-accent-muted);
     color: var(--xp-accent);
   }
+}
+
+.config-path {
+  display: block;
+  max-width: 420px;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--xp-text-muted);
+  font-family: var(--xp-font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted-text,
+.result-detail {
+  margin-left: 6px;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+}
+
+.external-preview {
+  margin: 0 0 16px 100px;
+
+  :deep(.el-alert) {
+    margin-top: 8px;
+  }
+}
+
+.endpoint-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
 }
 
 .form-tip {

@@ -13,7 +13,6 @@ func run(
 	start func(),
 	migrate func(),
 	setup func([]string),
-	fleetEnroll func([]string),
 	bootstrapConfig func([]string),
 	credentialsCommand func([]string),
 	showVersion func(),
@@ -22,9 +21,6 @@ func run(
 		switch args[0] {
 		case "setup":
 			setup(args[1:])
-			return
-		case "fleet-enroll":
-			fleetEnroll(args[1:])
 			return
 		case "bootstrap-config":
 			bootstrapConfig(args[1:])
@@ -50,7 +46,6 @@ func main() {
 		server.Start,
 		server.Migrate,
 		runSetup,
-		runFleetEnroll,
 		runBootstrapConfig,
 		runCredentials,
 		printVersion,

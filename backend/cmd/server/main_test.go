@@ -11,7 +11,6 @@ func TestRunDispatchesMigrateWithoutStartingServer(t *testing.T) {
 		func([]string) {},
 		func([]string) {},
 		func([]string) {},
-		func([]string) {},
 		func() {},
 	)
 	if started || !migrated {
@@ -26,7 +25,6 @@ func TestRunDispatchesSetupArguments(t *testing.T) {
 		func() {},
 		func() {},
 		func(args []string) { got = args },
-		func([]string) {},
 		func([]string) {},
 		func([]string) {},
 		func() {},
@@ -45,28 +43,10 @@ func TestRunDispatchesVersionWithoutStartingServer(t *testing.T) {
 		func([]string) {},
 		func([]string) {},
 		func([]string) {},
-		func([]string) {},
 		func() { printed = true },
 	)
 	if started || !printed {
 		t.Fatalf("started=%v printed=%v, want started=false printed=true", started, printed)
-	}
-}
-
-func TestRunDispatchesFleetEnrollArguments(t *testing.T) {
-	var got []string
-	run(
-		[]string{"fleet-enroll", "--token", "fenr_test"},
-		func() {},
-		func() {},
-		func([]string) {},
-		func(args []string) { got = args },
-		func([]string) {},
-		func([]string) {},
-		func() {},
-	)
-	if len(got) != 2 || got[0] != "--token" || got[1] != "fenr_test" {
-		t.Fatalf("fleet-enroll args = %#v", got)
 	}
 }
 
@@ -76,7 +56,6 @@ func TestRunDispatchesBootstrapConfigArguments(t *testing.T) {
 		[]string{"bootstrap-config"},
 		func() {},
 		func() {},
-		func([]string) {},
 		func([]string) {},
 		func(args []string) { got = args },
 		func([]string) {},
@@ -93,7 +72,6 @@ func TestRunDispatchesCredentialsArguments(t *testing.T) {
 		[]string{"credentials", "verify", "--db", "/tmp/backup.db"},
 		func() {},
 		func() {},
-		func([]string) {},
 		func([]string) {},
 		func([]string) {},
 		func(args []string) { got = args },

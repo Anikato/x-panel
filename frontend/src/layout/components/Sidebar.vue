@@ -167,6 +167,7 @@ const menuList = computed<MenuItem[]>(() => [
   { path: '/cronjob', title: t('menu.cronjob'), icon: 'Timer' },
   { path: '/backup', title: t('menu.backup'), icon: 'FolderChecked' },
   { path: '/terminal', title: t('menu.terminal'), icon: 'Monitor' },
+  { path: '/nezha-agent', title: t('menu.nezhaAgent'), icon: 'Odometer' },
   {
     path: '/log',
     title: t('menu.log'),

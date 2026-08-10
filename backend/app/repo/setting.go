@@ -3,6 +3,9 @@ package repo
 import (
 	"xpanel/app/model"
 	"xpanel/security/credentials"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ISettingRepo Setting 仓库接口
@@ -13,6 +16,8 @@ type ISettingRepo interface {
 	Create(setting *model.Setting) error
 	Update(key, value string) error
 	CreateOrUpdate(key, value string) error
+	CreateOrUpdateMany(values map[string]string) error
+	CreateIfMissingOrEmpty(key, value string) (bool, error)
 	Delete(opts ...DBOption) error
 }
 
@@ -95,6 +100,63 @@ func (s *SettingRepo) CreateOrUpdate(key, value string) error {
 		return getDB().Create(&model.Setting{Key: key, Value: protected}).Error
 	}
 	return getDB().Model(&model.Setting{}).Where("`key` = ?", key).Update("value", protected).Error
+}
+
+func (s *SettingRepo) CreateOrUpdateMany(values map[string]string) error {
+	protected := make(map[string]string, len(values))
+	for key, value := range values {
+		stored, err := protectSettingValue(key, value)
+		if err != nil {
+			return err
+		}
+		protected[key] = stored
+	}
+	return getDB().Transaction(func(tx *gorm.DB) error {
+		for key, value := range protected {
+			var count int64
+			if err := tx.Model(&model.Setting{}).Where("`key` = ?", key).Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				if err := tx.Create(&model.Setting{Key: key, Value: value}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+			if err := tx.Model(&model.Setting{}).Where("`key` = ?", key).Update("value", value).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *SettingRepo) CreateIfMissingOrEmpty(key, value string) (bool, error) {
+	protected, err := protectSettingValue(key, value)
+	if err != nil {
+		return false, err
+	}
+	written := false
+	err = getDB().Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Setting{}).
+			Where("`key` = ? AND `value` = ''", key).
+			Update("value", protected)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 1 {
+			written = true
+			return nil
+		}
+		result = tx.Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&model.Setting{Key: key, Value: protected})
+		if result.Error != nil {
+			return result.Error
+		}
+		written = result.RowsAffected == 1
+		return nil
+	})
+	return written, err
 }
 
 func (s *SettingRepo) Delete(opts ...DBOption) error {

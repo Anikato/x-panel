@@ -1,4 +1,5 @@
 import http from '@/api/http'
+import type { ExternalNginxSitePreview, SiteConfContent, WebsiteCertificateHealth } from '@/api/interface'
 
 // --- 网站管理 ---
 export const searchWebsite = (params: { page: number; pageSize: number; info?: string; type?: string; status?: string }) => {
@@ -7,6 +8,26 @@ export const searchWebsite = (params: { page: number; pageSize: number; info?: s
 
 export const createWebsite = (params: { primaryDomain: string; alias?: string; domains?: string; type: string; remark?: string; siteDir?: string; proxyPass?: string; configMode?: string; accessLogPath?: string; errorLogPath?: string; httpPort?: number; httpsPort?: number }) => {
   return http.post('/websites', params)
+}
+
+export const inspectExternalNginxSite = (path: string) => {
+  return http.post<ExternalNginxSitePreview>('/websites/external/inspect', { path })
+}
+
+export const createExternalNginxSite = (params: { path: string; alias?: string; remark?: string }) => {
+  return http.post('/websites/external', params)
+}
+
+export const refreshExternalNginxSite = (id: number) => {
+  return http.post('/websites/external/refresh', { id })
+}
+
+export const checkWebsiteCertificateHealth = (id: number) => {
+  return http.post<WebsiteCertificateHealth>('/websites/certificate-health', { id })
+}
+
+export const checkWebsiteCertificateHealthBatch = (params: { ids?: number[]; all?: boolean }) => {
+  return http.post<WebsiteCertificateHealth[]>('/websites/certificate-health/batch', params)
 }
 
 export const updateWebsite = (params: Record<string, unknown>) => {
@@ -39,11 +60,11 @@ export const getWebsiteLog = (params: { id: number; type: string; tail?: number 
 
 // --- 源码模式配置编辑 ---
 export const getSiteConfContent = (id: number) => {
-  return http.post('/websites/conf-content', { id })
+  return http.post<SiteConfContent>('/websites/conf-content', { id })
 }
 
-export const saveSiteConfContent = (id: number, content: string) => {
-  return http.post('/websites/conf-content/save', { id, content })
+export const saveSiteConfContent = (id: number, content: string, hash: string) => {
+  return http.post('/websites/conf-content/save', { id, content, hash })
 }
 
 export const switchConfigMode = (id: number, mode: string) => {

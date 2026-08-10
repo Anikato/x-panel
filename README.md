@@ -15,6 +15,7 @@
 - 📁 **文件管理**：多标签浏览、代码编辑、权限管理
 - 💻 **Web 终端**：本地 PTY + SSH 远程终端
 - 📊 **系统监控**：CPU/内存/磁盘/网络实时监控
+- 📡 **哪吒 Agent**：捆绑固定版本的官方 Agent，以独立 systemd 服务连接现有 Dashboard
 - 🔥 **防火墙管理**：ufw 端口/IP 规则管理
 - 🐳 **容器管理**：Docker 容器/镜像/网络/存储卷/Compose 编排
 - ⚖️ **HAProxy 负载均衡**：apt 一键安装，HTTP/TCP 负载均衡向导 + ACL 路由 + 复用 X-Panel SSL 证书 + Runtime Socket 实时上下线不 reload + 三段式安全变更 + 配置历史回滚
@@ -251,6 +252,8 @@ npm run dev
 
 ## 📚 文档
 
+- [捆绑哪吒 Agent 运维说明](docs/nezha-agent.md) - 安全安装、配置、生命周期、冲突处理与升级行为
+- [历史归档](docs/archive/README.md) - 已退役功能的审计与历史资料
 - [开发指南](docs/development-guide.md) - 详细的架构设计和开发规范
 - [工作日志](docs/worklog.md) - 开发进度记录
 - [进度分析](docs/progress-analysis.md) - 项目完成度分析

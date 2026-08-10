@@ -986,20 +986,10 @@ func certificateToInfo(c model.Certificate) dto.CertificateInfo {
 
 // reloadNginxGlobal 全局 reload nginx（供证书申请/续期后调用）
 func reloadNginxGlobal() error {
-	nc := global.CONF.Nginx
-	if !nc.IsInstalled() {
+	if !global.CONF.Nginx.IsInstalled() {
 		return nil
 	}
-	pidPath := nc.GetPidPath()
-	if _, err := os.Stat(pidPath); os.IsNotExist(err) {
-		return nil
-	}
-	if nc.IsSystemMode() {
-		_, err := execCmd("systemctl", "reload", "nginx")
-		return err
-	}
-	_, err := execCmd(nc.GetBinary(), "-p", nc.InstallDir, "-s", "reload")
-	return err
+	return NewINginxService().Operate(dto.NginxOperateReq{Operation: "reload"})
 }
 
 func execCmd(name string, args ...string) (string, error) {

@@ -17,15 +17,12 @@ type SettingInfo struct {
 	AgentToken          string `json:"-"`
 	AgentTokenSet       bool   `json:"agentTokenSet"`
 	AutoUpgrade         string `json:"autoUpgrade"`
-	// FleetAutoUpgrade 是 Fleet Center 远程下发的自动升级开关（"enable" / "disable" / ""）。
-	// 本地 AutoUpgrade 与 FleetAutoUpgrade 任一为 enable 即视为开启。
-	FleetAutoUpgrade string `json:"fleetAutoUpgrade"`
-	AppearanceConfig string `json:"appearanceConfig"`
-	ProxyEnable      string `json:"proxyEnable"`
-	ProxyType        string `json:"proxyType"`
-	ProxyAddress     string `json:"-"`
-	ProxyAddressSet  bool   `json:"proxyAddressSet"`
-	ProxyNoProxy     string `json:"proxyNoProxy"`
+	AppearanceConfig    string `json:"appearanceConfig"`
+	ProxyEnable         string `json:"proxyEnable"`
+	ProxyType           string `json:"proxyType"`
+	ProxyAddress        string `json:"-"`
+	ProxyAddressSet     bool   `json:"proxyAddressSet"`
+	ProxyNoProxy        string `json:"proxyNoProxy"`
 }
 
 // ProxyTest 代理连通性测试请求

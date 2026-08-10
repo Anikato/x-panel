@@ -31,16 +31,15 @@ var FieldSpecs = []FieldSpec{
 }
 
 var SecretSettingKeys = map[string]struct{}{
-	"MFASecret":            {},
-	"GitHubToken":          {},
-	"AgentToken":           {},
-	"CertServerToken":      {},
-	"FleetInstanceToken":   {},
-	"FleetEnrollmentToken": {},
-	"HAProxyStatsPass":     {},
-	"GostAPIPass":          {},
-	"ProxyAddress":         {},
-	"SecurityEntrance":     {},
+	"MFASecret":         {},
+	"GitHubToken":       {},
+	"AgentToken":        {},
+	"CertServerToken":   {},
+	"HAProxyStatsPass":  {},
+	"GostAPIPass":       {},
+	"ProxyAddress":      {},
+	"SecurityEntrance":  {},
+	"NezhaClientSecret": {},
 }
 
 func IsSecretSetting(key string) bool {

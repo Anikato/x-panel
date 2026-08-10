@@ -1,0 +1,15 @@
+[Unit]
+Description=Nezha Agent managed by X-Panel
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/xpanel/nezha-agent
+ExecStart=/opt/xpanel/nezha-agent/nezha-agent -c /opt/xpanel/nezha-agent/config.yml
+Restart=always
+RestartSec=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

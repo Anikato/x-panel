@@ -23,17 +23,22 @@ for file in "$ARTIFACT_DIR"/xpanel-"$VERSION"-linux-*.tar.gz "$ARTIFACT_DIR"/xpa
     fi
 done
 
-python3 << PY
+XPANEL_MANIFEST_VERSION="$VERSION" \
+XPANEL_MANIFEST_RELEASE_NOTE="$RELEASE_NOTE" \
+XPANEL_MANIFEST_BASE_URL="$BASE_URL" \
+XPANEL_MANIFEST_PUBLISH_DATE="$PUBLISH_DATE" \
+XPANEL_MANIFEST_OUT_DIR="$OUT_DIR" \
+python3 << 'PY'
 import glob
 import json
 import os
 from pathlib import Path
 
-version = ${VERSION@Q}
-release_note = ${RELEASE_NOTE@Q}
-base_url = ${BASE_URL@Q}
-publish_date = ${PUBLISH_DATE@Q}
-out_dir = Path(${OUT_DIR@Q})
+version = os.environ["XPANEL_MANIFEST_VERSION"]
+release_note = os.environ["XPANEL_MANIFEST_RELEASE_NOTE"]
+base_url = os.environ["XPANEL_MANIFEST_BASE_URL"]
+publish_date = os.environ["XPANEL_MANIFEST_PUBLISH_DATE"]
+out_dir = Path(os.environ["XPANEL_MANIFEST_OUT_DIR"])
 release_dir = out_dir / "releases" / version
 
 assets = {}
@@ -58,11 +63,12 @@ manifest = {
 }
 (out_dir / "releases").mkdir(parents=True, exist_ok=True)
 (out_dir / "releases" / "latest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-(out_dir / "version.json").write_text(json.dumps({
+legacy = {
     "version": version,
     "releaseNote": release_note,
     "publishDate": publish_date,
-}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+}
+(out_dir / "version.json").write_text(json.dumps(legacy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 
 echo "Generated update manifest under $OUT_DIR"

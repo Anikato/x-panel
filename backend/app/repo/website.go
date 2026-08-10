@@ -124,6 +124,12 @@ func WithByAlias(alias string) DBOption {
 	}
 }
 
+func WithByNginxConfPath(path string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("nginx_conf_path = ?", path)
+	}
+}
+
 func WithLikeWebsite(info string) DBOption {
 	return func(db *gorm.DB) *gorm.DB {
 		if info == "" {

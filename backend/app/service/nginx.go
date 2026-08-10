@@ -155,6 +155,10 @@ func (s *NginxService) GetIncludeTree() (*dto.NginxIncludeNode, error) {
 }
 
 func (s *NginxService) buildIncludeNode(path string, visited map[string]bool, depth int) dto.NginxIncludeNode {
+	return s.buildIncludeNodeWithPrefix(path, filepath.Dir(filepath.Clean(path)), visited, depth)
+}
+
+func (s *NginxService) buildIncludeNodeWithPrefix(path, confPrefix string, visited map[string]bool, depth int) dto.NginxIncludeNode {
 	path = filepath.Clean(path)
 	node := dto.NginxIncludeNode{Path: path}
 	if depth > 8 || visited[path] {
@@ -167,8 +171,7 @@ func (s *NginxService) buildIncludeNode(path string, visited map[string]bool, de
 		return node
 	}
 	node.Exists = true
-	baseDir := filepath.Dir(path)
-	for _, inc := range parseIncludeLines(string(data), baseDir) {
+	for _, inc := range parseIncludeLines(string(data), confPrefix) {
 		matches, err := filepath.Glob(inc)
 		if err != nil || len(matches) == 0 {
 			node.Children = append(node.Children, dto.NginxIncludeNode{Path: inc, Exists: false})
@@ -176,7 +179,7 @@ func (s *NginxService) buildIncludeNode(path string, visited map[string]bool, de
 		}
 		for _, match := range matches {
 			if info, err := os.Stat(match); err == nil && !info.IsDir() {
-				node.Children = append(node.Children, s.buildIncludeNode(match, visited, depth+1))
+				node.Children = append(node.Children, s.buildIncludeNodeWithPrefix(match, confPrefix, visited, depth+1))
 			}
 		}
 	}

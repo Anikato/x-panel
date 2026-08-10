@@ -244,3 +244,93 @@ func TestOperationLogRedactsErrorMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestNezhaAgentOperationPathsAreSensitive(t *testing.T) {
+	sensitivePaths := []string{
+		"/api/v1/nezha-agent",
+		"/api/v1/nezha-agent/status",
+		"/api/v1/nezha-agent/config",
+		"/api/v1/nezha-agent/operate",
+	}
+	for _, path := range sensitivePaths {
+		if !isSensitiveOperationPath(path) {
+			t.Errorf("nezha agent path is not sensitive: %s", path)
+		}
+	}
+}
+
+func TestOperationLogOmitsNezhaAgentConfigBody(t *testing.T) {
+	secret := "SENTINEL_NEZHA_CLIENT_SECRET_9f2c"
+	body := []byte(
+		`{"dashboardUrl":"https://dashboard.example.com","clientSecret":"` + secret + `","enableAndStart":true}`,
+	)
+
+	received, item := runOperationLogRequest(
+		t,
+		"/api/v1/nezha-agent/config",
+		"application/json",
+		body,
+		nil,
+	)
+
+	if item.Body != sensitiveBodyOmitted {
+		t.Fatalf("nezha config body = %q, want %q", item.Body, sensitiveBodyOmitted)
+	}
+	if strings.Contains(item.Body, secret) {
+		t.Fatalf("nezha config log leaked secret: %q", item.Body)
+	}
+	if !bytes.Equal(received, body) {
+		t.Fatalf("downstream body = %q, want %q", received, body)
+	}
+}
+
+func TestOperationLogOmitsNezhaAgentMalformedJSON(t *testing.T) {
+	secret := "SENTINEL_NEZHA_MALFORMED_SECRET_4d11"
+	body := []byte(`{"clientSecret":"` + secret)
+
+	received, item := runOperationLogRequest(
+		t,
+		"/api/v1/nezha-agent/config",
+		"application/json",
+		body,
+		nil,
+	)
+
+	if item.Body != sensitiveBodyOmitted {
+		t.Fatalf("malformed nezha body = %q, want %q", item.Body, sensitiveBodyOmitted)
+	}
+	if strings.Contains(item.Body, secret) {
+		t.Fatalf("malformed nezha log leaked secret: %q", item.Body)
+	}
+	if !bytes.Equal(received, body) {
+		t.Fatalf("downstream body = %q, want original malformed body", received)
+	}
+}
+
+func TestOperationLogRedactsClientSecretOnOrdinaryPath(t *testing.T) {
+	secret := "SENTINEL_NEZHA_ORDINARY_SECRET_c82e"
+	body := []byte(
+		`{"name":"probe","nested":{"clientSecret":"` + secret + `","enabled":true}}`,
+	)
+
+	received, item := runOperationLogRequest(
+		t,
+		"/api/v1/notifications/preference",
+		"application/json",
+		body,
+		nil,
+	)
+
+	if strings.Contains(item.Body, secret) {
+		t.Fatalf("clientSecret sentinel leaked into log: %q", item.Body)
+	}
+	if !strings.Contains(item.Body, `"clientSecret":"***"`) {
+		t.Fatalf("clientSecret was not redacted to stars: %q", item.Body)
+	}
+	if !strings.Contains(item.Body, `"enabled":true`) {
+		t.Fatalf("non-sensitive fields must remain: %q", item.Body)
+	}
+	if !bytes.Equal(received, body) {
+		t.Fatalf("downstream body = %q, want %q", received, body)
+	}
+}

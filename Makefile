@@ -39,7 +39,7 @@ help:
 	@echo "  make build          - 构建前端 + 后端（完整构建）"
 	@echo "  make build_frontend - 仅构建前端"
 	@echo "  make build_backend  - 仅构建后端（使用现有前端资源）"
-	@echo "  make package        - 构建并打包为 tar.gz"
+	@echo "  make package        - 构建并打包为 tar.gz（需 NEZHA_AGENT_BINARY）"
 	@echo "  make clean          - 清理构建产物"
 	@echo "  make dev_backend    - 开发模式启动后端"
 	@echo ""
@@ -48,6 +48,8 @@ help:
 	@echo "  COMMIT_HASH=$(COMMIT_HASH)"
 	@echo "  BUILD_TIME=$(BUILD_TIME)"
 	@echo "  GOARCH=$(GOARCH)  GOOS=$(GOOS)"
+	@echo "  NEZHA_AGENT_BINARY  - 调用 package 时必填：已校验的官方 nezha-agent 二进制路径"
+	@echo "                        （普通文件、非 symlink、可执行；不联网、不选 latest）"
 
 # 清理
 clean:
@@ -81,10 +83,22 @@ build: build_frontend build_backend
 	@echo ">>> 产物: $(BUILD_PATH)/$(APP_NAME)"
 	@ls -lh $(BUILD_PATH)/$(APP_NAME)
 
-# 打包发布
+# 打包发布（本地需提供已校验的官方 Agent 二进制；不联网、不选 latest）
 package: build
 	@echo ">>> 打包发布..."
-	mkdir -p $(BUILD_PATH)/release
+	@if [ -z "$(NEZHA_AGENT_BINARY)" ]; then \
+		echo "error: NEZHA_AGENT_BINARY is required (path to verified official nezha-agent binary)" >&2; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(NEZHA_AGENT_BINARY)" ] || [ -L "$(NEZHA_AGENT_BINARY)" ]; then \
+		echo "error: NEZHA_AGENT_BINARY must be a regular non-symlink file: $(NEZHA_AGENT_BINARY)" >&2; \
+		exit 1; \
+	fi
+	@if [ ! -x "$(NEZHA_AGENT_BINARY)" ]; then \
+		echo "error: NEZHA_AGENT_BINARY must be executable: $(NEZHA_AGENT_BINARY)" >&2; \
+		exit 1; \
+	fi
+	mkdir -p "$(BUILD_PATH)/release/nezha-agent"
 	# 复制二进制
 	cp $(BUILD_PATH)/$(APP_NAME) $(BUILD_PATH)/release/
 	# 复制配置文件模板
@@ -100,6 +114,11 @@ package: build
 		cp $(BASE_PATH)/scripts/xpctl $(BUILD_PATH)/release/; \
 		chmod +x $(BUILD_PATH)/release/xpctl; \
 	fi
+	# 捆绑已校验的官方 Nezha Agent + 许可证/声明 + unit（0644/0755）
+	install -m 0755 "$(NEZHA_AGENT_BINARY)" "$(BUILD_PATH)/release/nezha-agent/nezha-agent"
+	install -m 0644 "$(BASE_PATH)/third_party/nezha-agent/LICENSE" "$(BUILD_PATH)/release/nezha-agent/LICENSE"
+	install -m 0644 "$(BASE_PATH)/third_party/nezha-agent/NOTICE.md" "$(BUILD_PATH)/release/nezha-agent/NOTICE.md"
+	install -m 0644 "$(BASE_PATH)/scripts/xpanel-nezha-agent.service" "$(BUILD_PATH)/release/xpanel-nezha-agent.service"
 	# 打包
 	cd $(BUILD_PATH) && tar -czf xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz -C release .
 	# 生成 SHA256 校验和

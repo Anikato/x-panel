@@ -102,17 +102,21 @@ type WebsiteSearch struct {
 // --- 响应 ---
 
 type WebsiteInfo struct {
-	ID            uint      `json:"id"`
-	PrimaryDomain string    `json:"primaryDomain"`
-	Domains       string    `json:"domains"`
-	Alias         string    `json:"alias"`
-	Type          string    `json:"type"`
-	Status        string    `json:"status"`
-	SSLEnable     bool      `json:"sslEnable"`
-	ConfigMode    string    `json:"configMode"`
-	Remark        string    `json:"remark"`
-	SiteDir       string    `json:"siteDir"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID                    uint                       `json:"id"`
+	PrimaryDomain         string                     `json:"primaryDomain"`
+	Domains               string                     `json:"domains"`
+	Alias                 string                     `json:"alias"`
+	Type                  string                     `json:"type"`
+	Status                string                     `json:"status"`
+	SSLEnable             bool                       `json:"sslEnable"`
+	ConfigMode            string                     `json:"configMode"`
+	Remark                string                     `json:"remark"`
+	SiteDir               string                     `json:"siteDir"`
+	NginxConfPath         string                     `json:"nginxConfPath"`
+	ConfigActive          bool                       `json:"configActive"`
+	ConfigIssues          []string                   `json:"configIssues"`
+	ConfiguredCertificate *CertificateHealthSnapshot `json:"configuredCertificate,omitempty"`
+	CreatedAt             time.Time                  `json:"createdAt"`
 }
 
 type WebsiteDetail struct {
@@ -168,7 +172,11 @@ type WebsiteDetail struct {
 	DefaultServer bool   `json:"defaultServer"`
 	Remark        string `json:"remark"`
 
-	ConfigMode string `json:"configMode"`
+	ConfigMode            string                     `json:"configMode"`
+	NginxConfPath         string                     `json:"nginxConfPath"`
+	ConfigActive          bool                       `json:"configActive"`
+	ConfigIssues          []string                   `json:"configIssues"`
+	ConfiguredCertificate *CertificateHealthSnapshot `json:"configuredCertificate,omitempty"`
 
 	// 额外信息
 	CertificateDomain string `json:"certificateDomain"`
@@ -192,6 +200,44 @@ type SiteConfContentReq struct {
 type SaveSiteConfReq struct {
 	ID      uint   `json:"id" binding:"required"`
 	Content string `json:"content" binding:"required"`
+	Hash    string `json:"hash" binding:"required"`
+}
+
+type SiteConfContentResp struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Hash    string `json:"hash"`
+}
+
+type ExternalNginxSiteInspectReq struct {
+	Path string `json:"path" binding:"required"`
+}
+
+type ExternalNginxSiteCreateReq struct {
+	Path   string `json:"path" binding:"required"`
+	Alias  string `json:"alias"`
+	Remark string `json:"remark"`
+}
+
+type ExternalNginxSiteRefreshReq struct {
+	ID uint `json:"id" binding:"required"`
+}
+
+type ExternalNginxSitePreview struct {
+	Path          string   `json:"path"`
+	PrimaryDomain string   `json:"primaryDomain"`
+	Domains       []string `json:"domains"`
+	Type          string   `json:"type"`
+	Root          string   `json:"root"`
+	ProxyPass     string   `json:"proxyPass"`
+	HTTPPort      int      `json:"httpPort"`
+	HTTPSPort     int      `json:"httpsPort"`
+	SSL           bool     `json:"ssl"`
+	AccessLogPath string   `json:"accessLogPath"`
+	ErrorLogPath  string   `json:"errorLogPath"`
+	CertPath      string   `json:"certPath"`
+	KeyPath       string   `json:"keyPath"`
+	Warnings      []string `json:"warnings"`
 }
 
 type SwitchConfigModeReq struct {
@@ -241,6 +287,53 @@ type WebsiteHealthResp struct {
 	CertDaysLeft  int                  `json:"certDaysLeft"`
 	CertError     string               `json:"certError"`
 	LastCheckedAt time.Time            `json:"lastCheckedAt"`
+}
+
+type CertificateHealthSnapshot struct {
+	Status            string    `json:"status"`
+	CertPath          string    `json:"certPath"`
+	KeyPath           string    `json:"keyPath"`
+	NotBefore         time.Time `json:"notBefore"`
+	NotAfter          time.Time `json:"notAfter"`
+	DaysLeft          int       `json:"daysLeft"`
+	DomainMatch       bool      `json:"domainMatch"`
+	MismatchedDomains []string  `json:"mismatchedDomains"`
+	KeyMatch          bool      `json:"keyMatch"`
+	FingerprintSHA256 string    `json:"fingerprintSha256"`
+	Error             string    `json:"error"`
+}
+
+type CertificateEndpointHealth struct {
+	Status            string    `json:"status"`
+	Domain            string    `json:"domain"`
+	Address           string    `json:"address"`
+	NotAfter          time.Time `json:"notAfter"`
+	DaysLeft          int       `json:"daysLeft"`
+	DomainMatch       bool      `json:"domainMatch"`
+	ChainTrusted      bool      `json:"chainTrusted"`
+	FingerprintSHA256 string    `json:"fingerprintSha256"`
+	Error             string    `json:"error"`
+}
+
+type WebsiteCertificateHealthReq struct {
+	ID uint `json:"id" binding:"required"`
+}
+
+type WebsiteCertificateHealthBatchReq struct {
+	IDs []uint `json:"ids"`
+	All bool   `json:"all"`
+}
+
+type WebsiteCertificateHealthResp struct {
+	WebsiteID          uint                        `json:"websiteId"`
+	CheckedAt          time.Time                   `json:"checkedAt"`
+	HTTPSPort          int                         `json:"httpsPort"`
+	Configured         CertificateHealthSnapshot   `json:"configured"`
+	Local              CertificateEndpointHealth   `json:"local"`
+	Public             []CertificateEndpointHealth `json:"public"`
+	ConfigMatchesLocal *bool                       `json:"configMatchesLocal"`
+	NginxConfigOK      bool                        `json:"nginxConfigOk"`
+	NginxConfigError   string                      `json:"nginxConfigError"`
 }
 
 type WebsiteInspectResp struct {

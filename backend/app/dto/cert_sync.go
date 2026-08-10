@@ -28,19 +28,20 @@ type CertSourceUpdate struct {
 }
 
 type CertSourceInfo struct {
-	ID              uint       `json:"id"`
-	Name            string     `json:"name"`
-	ServerAddr      string     `json:"serverAddr"`
-	TLSFingerprint  string     `json:"tlsFingerprint"`
-	SyncInterval    int        `json:"syncInterval"`
-	SyncStrategy    string     `json:"syncStrategy"`
-	PostSyncCommand string     `json:"postSyncCommand"`
-	Enabled         bool       `json:"enabled"`
-	ResumeRequired  bool       `json:"resumeRequired"`
-	LastSyncAt      *time.Time `json:"lastSyncAt"`
-	LastSyncStatus  string     `json:"lastSyncStatus"`
-	LastSyncMessage string     `json:"lastSyncMessage"`
-	CreatedAt       time.Time  `json:"createdAt"`
+	ID               uint       `json:"id"`
+	Name             string     `json:"name"`
+	ServerAddr       string     `json:"serverAddr"`
+	TLSFingerprint   string     `json:"tlsFingerprint"`
+	SyncInterval     int        `json:"syncInterval"`
+	SyncStrategy     string     `json:"syncStrategy"`
+	PostSyncCommand  string     `json:"postSyncCommand"`
+	Enabled          bool       `json:"enabled"`
+	ResumeRequired   bool       `json:"resumeRequired"`
+	LastSyncAt       *time.Time `json:"lastSyncAt"`
+	LastSyncStatus   string     `json:"lastSyncStatus"`
+	LastSyncMessage  string     `json:"lastSyncMessage"`
+	RefreshPendingAt *time.Time `json:"refreshPendingAt"`
+	CreatedAt        time.Time  `json:"createdAt"`
 }
 
 // --- 证书服务端暴露给远程拉取的结构 ---

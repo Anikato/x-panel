@@ -83,6 +83,16 @@ ErrWebsiteApplyConfig:
   other: "应用 Nginx 配置失败: {{.detail}}"
 ErrWebsiteNotFound:
   other: "网站不存在"
+ErrWebsiteExternalConfigInvalid:
+  other: "外部 Nginx 配置无效: {{.detail}}"
+ErrWebsiteExternalConfigInactive:
+  other: "该配置文件未被当前 Nginx 配置加载: {{.detail}}"
+ErrWebsiteExternalConfigDuplicate:
+  other: "该 Nginx 配置文件已加入网站管理"
+ErrWebsiteExternalConfigConflict:
+  other: "配置文件已在面板外发生变化，请重新加载后再保存"
+ErrWebsiteExternalOperationDenied:
+  other: "外部配置网站不支持此操作"
 
 # GOST 代理错误
 ErrGostNotInstalled:

@@ -490,6 +490,11 @@ func Setup(mode string) *gin.Engine {
 		// 网站管理
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)
+		privateGroup.POST("/websites/external/inspect", api.InspectExternalNginxSite)
+		privateGroup.POST("/websites/external", api.CreateExternalNginxSite)
+		privateGroup.POST("/websites/external/refresh", api.RefreshExternalNginxSite)
+		privateGroup.POST("/websites/certificate-health", api.CheckWebsiteCertificateHealth)
+		privateGroup.POST("/websites/certificate-health/batch", api.CheckWebsiteCertificateHealthBatch)
 		privateGroup.POST("/websites/update", api.UpdateWebsite)
 		privateGroup.POST("/websites/del", api.DeleteWebsite)
 		privateGroup.POST("/websites/detail", api.GetWebsiteDetail)
@@ -524,6 +529,11 @@ func Setup(mode string) *gin.Engine {
 		// 证书服务端设置
 		privateGroup.GET("/cert-server/setting", api.GetCertServerSetting)
 		privateGroup.POST("/cert-server/setting", api.UpdateCertServerSetting)
+
+		// Nezha Agent（捆绑组件；日志复用 toolbox systemd logs）
+		privateGroup.GET("/nezha-agent/status", api.GetNezhaAgentStatus)
+		privateGroup.PUT("/nezha-agent/config", api.UpdateNezhaAgentConfig)
+		privateGroup.POST("/nezha-agent/operate", api.OperateNezhaAgent)
 	}
 
 	// 证书服务端 API（Token 认证，供其他面板拉取证书）

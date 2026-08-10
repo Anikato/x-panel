@@ -67,5 +67,6 @@ type Website struct {
 	Remark        string `json:"remark"`
 
 	// Config management mode: "managed" (DB-driven) or "source" (direct file edit)
-	ConfigMode string `gorm:"default:'managed'" json:"configMode"`
+	ConfigMode    string `gorm:"default:'managed'" json:"configMode"`
+	NginxConfPath string `gorm:"index" json:"nginxConfPath"`
 }

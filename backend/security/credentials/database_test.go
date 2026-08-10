@@ -48,14 +48,15 @@ func TestRegistryContainsApprovedCredentialFields(t *testing.T) {
 
 	for _, key := range []string{
 		"MFASecret", "GitHubToken", "AgentToken", "CertServerToken",
-		"FleetInstanceToken", "FleetEnrollmentToken", "HAProxyStatsPass",
-		"GostAPIPass", "ProxyAddress", "SecurityEntrance",
+		"HAProxyStatsPass", "GostAPIPass", "ProxyAddress", "SecurityEntrance", "NezhaClientSecret",
 	} {
 		if !IsSecretSetting(key) {
 			t.Errorf("setting %q is not registered as secret", key)
 		}
 	}
-	for _, key := range []string{"Password", "PanelName", "FleetEndpoint"} {
+	for _, key := range []string{
+		"Password", "PanelName",
+	} {
 		if IsSecretSetting(key) {
 			t.Errorf("setting %q must not be registered as reversible secret", key)
 		}

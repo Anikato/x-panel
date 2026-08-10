@@ -93,7 +93,6 @@ export interface SettingInfo {
   userName: string
   agentTokenSet: boolean
   autoUpgrade: string
-  fleetAutoUpgrade: string
   proxyAddressSet: boolean
 }
 
@@ -474,6 +473,7 @@ export interface CertSource {
   lastSyncAt: string | null
   lastSyncStatus: string
   lastSyncMessage: string
+  refreshPendingAt: string | null
   createdAt: string
 }
 
@@ -509,6 +509,71 @@ export interface Website {
   proxyPass: string
   accessLogPath: string
   errorLogPath: string
+  nginxConfPath: string
+  configActive: boolean
+  configIssues: string[]
+  configuredCertificate?: CertificateHealthSnapshot
+}
+
+export interface ExternalNginxSitePreview {
+  path: string
+  primaryDomain: string
+  domains: string[]
+  type: string
+  root: string
+  proxyPass: string
+  httpPort: number
+  httpsPort: number
+  ssl: boolean
+  accessLogPath: string
+  errorLogPath: string
+  certPath: string
+  keyPath: string
+  warnings: string[]
+}
+
+export interface SiteConfContent {
+  path: string
+  content: string
+  hash: string
+}
+
+export interface CertificateHealthSnapshot {
+  status: string
+  certPath: string
+  keyPath: string
+  notBefore: string
+  notAfter: string
+  daysLeft: number
+  domainMatch: boolean
+  mismatchedDomains: string[]
+  keyMatch: boolean
+  fingerprintSha256: string
+  error: string
+}
+
+export interface CertificateEndpointHealth {
+  status: string
+  domain: string
+  address: string
+  notAfter: string
+  daysLeft: number
+  domainMatch: boolean
+  chainTrusted: boolean
+  fingerprintSha256: string
+  error: string
+}
+
+export interface WebsiteCertificateHealth {
+  websiteId: number
+  checkedAt: string
+  httpsPort: number
+  configured: CertificateHealthSnapshot
+  local: CertificateEndpointHealth
+  public: CertificateEndpointHealth[]
+  configMatchesLocal: boolean | null
+  nginxConfigOk: boolean
+  nginxConfigError: string
 }
 
 export interface ConfFile {

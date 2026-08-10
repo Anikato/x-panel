@@ -41,8 +41,8 @@ func Init() {
 		autoUpgrade()
 	})
 
-	// 每 10 分钟检查证书源同步
-	global.CRON.AddFunc("*/10 * * * *", func() {
+	// 每分钟检查证书源同步；各来源仍由 SyncInterval 控制实际拉取频率
+	global.CRON.AddFunc("* * * * *", func() {
 		service.NewICertSourceService().SyncAll()
 	})
 
@@ -53,25 +53,18 @@ func autoUpgrade() {
 	settingService := service.NewISettingService()
 
 	local, _ := settingService.GetValueByKey("AutoUpgrade")
-	fleet, _ := settingService.GetValueByKey("FleetAutoUpgrade")
-	releaseURL, _ := settingService.GetValueByKey("FleetAutoUpgradeReleaseURL")
-
-	enabled := local == "enable" || fleet == "enable"
-	if !enabled {
+	if local != "enable" {
 		return
 	}
 
 	upgradeService := service.NewIUpgradeService()
-	info, err := upgradeService.CheckUpdate(dto.UpgradeCheckReq{ReleaseURL: releaseURL})
+	// ReleaseURL 为空时由升级服务回落到 UpgradeURL / 默认更新源。
+	info, err := upgradeService.CheckUpdate(dto.UpgradeCheckReq{})
 	if err != nil || info == nil || !info.HasUpdate {
 		return
 	}
 
-	source := "local"
-	if fleet == "enable" {
-		source = "fleet"
-	}
-	global.LOG.Infof("Auto-upgrade (%s): new version %s found, starting upgrade...", source, info.LatestVersion)
+	global.LOG.Infof("Auto-upgrade: new version %s found, starting upgrade...", info.LatestVersion)
 	if err := upgradeService.DoUpgrade(dto.UpgradeReq{
 		Version:     info.LatestVersion,
 		DownloadURL: info.DownloadURL,
