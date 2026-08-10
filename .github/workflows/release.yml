@@ -128,7 +128,7 @@ jobs:
             "${RELEASE_DIR}/xpanel-nezha-agent.service"
 
           cd build
-          tar -czf "${PKG_NAME}.tar.gz" -C release .
+          (cd release && tar -czf "../${PKG_NAME}.tar.gz" *)
           sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
           rm -rf release
 

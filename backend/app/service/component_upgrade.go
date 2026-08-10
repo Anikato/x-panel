@@ -192,6 +192,12 @@ func extractComponentArchive(archivePath, destDir string) (xpanelPath, agentPath
 		if err != nil {
 			return "", "", fmt.Errorf("tar read: %w", err)
 		}
+		if hdr.Typeflag == tar.TypeDir {
+			name := strings.TrimSpace(filepath.ToSlash(hdr.Name))
+			if name == "." || name == "./" {
+				continue
+			}
+		}
 
 		rel, nerr := normalizeComponentArchiveName(hdr.Name)
 		if nerr != nil {

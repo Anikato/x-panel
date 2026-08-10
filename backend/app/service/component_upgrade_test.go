@@ -485,6 +485,20 @@ func TestComponentUpgradeExtractAllowsOnlyXPanelAndAgent(t *testing.T) {
 	}
 }
 
+func TestComponentUpgradeExtractAllowsArchiveRootDirectory(t *testing.T) {
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "root-dir.tar.gz")
+	writeGzipTar(t, archive, []tarEntry{
+		{Name: "./", Typeflag: tar.TypeDir},
+		{Name: componentArchiveXPanelName, Body: elfWithMarker(t, runtime.GOARCH, newXPanelMarker)},
+		{Name: componentArchiveAgentName, Body: elfWithMarker(t, runtime.GOARCH, newAgentMarker)},
+	})
+
+	if _, _, err := extractComponentArchive(archive, filepath.Join(dir, "out")); err != nil {
+		t.Fatalf("extractComponentArchive() error = %v, want root directory entry ignored", err)
+	}
+}
+
 func TestComponentUpgradeExtractRejectsPathTraversal(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "bad.tar.gz")

@@ -120,7 +120,7 @@ package: build
 	install -m 0644 "$(BASE_PATH)/third_party/nezha-agent/NOTICE.md" "$(BUILD_PATH)/release/nezha-agent/NOTICE.md"
 	install -m 0644 "$(BASE_PATH)/scripts/xpanel-nezha-agent.service" "$(BUILD_PATH)/release/xpanel-nezha-agent.service"
 	# 打包
-	cd $(BUILD_PATH) && tar -czf xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz -C release .
+	cd $(BUILD_PATH)/release && tar -czf ../xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz *
 	# 生成 SHA256 校验和
 	cd $(BUILD_PATH) && sha256sum xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz > xpanel-$(VERSION)-$(GOOS)-$(GOARCH).tar.gz.sha256
 	rm -rf $(BUILD_PATH)/release
