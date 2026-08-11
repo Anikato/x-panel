@@ -33,6 +33,8 @@ type ICertificateService interface {
 	Update(req dto.CertificateUpdate) error
 	Upload(req dto.CertificateUpload) error
 	Delete(id uint) error
+	BatchDelete(ids []uint) (*dto.CertificateDeleteResult, error)
+	CleanupExpired(now time.Time) (*dto.CertificateDeleteResult, error)
 	SearchWithPage(req dto.SearchCertReq) (int64, []dto.CertificateInfo, error)
 	SearchRenewalPlan(req dto.SearchCertRenewalPlanReq) (int64, []dto.CertificateRenewalPlanItem, error)
 	GetDetail(id uint) (*dto.CertificateDetail, error)
@@ -147,15 +149,23 @@ func (s *CertificateService) Upload(req dto.CertificateUpload) error {
 }
 
 func (s *CertificateService) Delete(id uint) error {
-	cert, err := s.certRepo.Get(repo.WithByID(id))
+	result, err := s.BatchDelete([]uint{id})
 	if err != nil {
-		return buserr.New(constant.ErrRecordNotFound)
+		return err
 	}
-	// 只删除该记录拥有的 ID 目录。旧域名目录可能仍被其他记录或服务配置引用。
-	sslDir := s.GetSSLDir()
-	os.RemoveAll(certDirPath(sslDir, cert))
-
-	return s.certRepo.Delete(repo.WithByID(id))
+	if result.DeletedCount == 1 {
+		return nil
+	}
+	if len(result.Skipped) > 0 {
+		return buserr.WithDetail(constant.ErrInvalidParams, result.Skipped[0].Reason, nil)
+	}
+	if len(result.Failed) > 0 {
+		if result.Failed[0].Reason == "证书不存在" {
+			return buserr.New(constant.ErrRecordNotFound)
+		}
+		return buserr.WithDetail(constant.ErrInternalServer, result.Failed[0].Reason, nil)
+	}
+	return buserr.New(constant.ErrRecordNotFound)
 }
 
 func (s *CertificateService) SearchWithPage(req dto.SearchCertReq) (int64, []dto.CertificateInfo, error) {

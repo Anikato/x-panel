@@ -1,5 +1,7 @@
 # X-Panel Bundled Nezha Agent Implementation Plan
 
+> **Historical record:** This implementation plan preserves the original task context. It is not a current release runbook or source of truth. Use `AGENTS.md`, `RELEASE.md`, and `docs/dashboard-agent-xpanel.md`; references below to an “official Agent” describe the original plan, not the current artifact source.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: use the test-driven-development workflow task-by-task. Grok Build implements one task at a time; Codex performs specification review, code-quality review, and fresh verification before the next task. Do not create branches, worktrees, commits, or pushes.
 
 **Goal:** Bundle the official Nezha Agent v2.3.1 with X-Panel, manage it as an independent `xpanel-nezha-agent.service`, and remove Fleet Center/Fleet Reporter/Fleet v2 from every active X-Panel path without losing unrelated user changes.

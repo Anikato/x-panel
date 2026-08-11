@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ type INodeService interface {
 	TestConnection(id uint) error
 	TestSSH(req dto.NodeSSHTest) error
 	AgentAction(req dto.NodeAgentAction) (string, error)
-	ProxyRequest(nodeID uint, method, path string, body io.Reader) ([]byte, int, error)
+	ProxyRequest(ctx context.Context, nodeID uint, method, path, contentType string, body io.Reader) ([]byte, int, error)
 	StartHeartbeat()
 }
 
@@ -188,29 +189,38 @@ func (s *NodeService) AgentAction(req dto.NodeAgentAction) (string, error) {
 	return string(output), nil
 }
 
-func (s *NodeService) ProxyRequest(nodeID uint, method, path string, body io.Reader) ([]byte, int, error) {
+func (s *NodeService) ProxyRequest(ctx context.Context, nodeID uint, method, path, contentType string, body io.Reader) ([]byte, int, error) {
 	node, err := s.repo.Get(nodeID)
 	if err != nil {
 		return nil, 0, buserr.New(constant.ErrRecordNotFound)
 	}
-	return s.doRequest(node, method, path, body)
+	return s.doProxyRequest(ctx, node, method, path, contentType, body)
 }
 
 func (s *NodeService) doRequest(node *model.Node, method, path string, body io.Reader) ([]byte, int, error) {
+	return s.doNodeRequest(context.Background(), node, method, path, "application/json", body, &http.Client{Timeout: 10 * time.Second})
+}
+
+func (s *NodeService) doProxyRequest(ctx context.Context, node *model.Node, method, path, contentType string, body io.Reader) ([]byte, int, error) {
+	return s.doNodeRequest(ctx, node, method, path, contentType, body, &http.Client{})
+}
+
+func (s *NodeService) doNodeRequest(ctx context.Context, node *model.Node, method, path, contentType string, body io.Reader, client *http.Client) ([]byte, int, error) {
 	addr := node.Address
 	if !strings.HasPrefix(addr, "http") {
 		addr = "http://" + addr
 	}
 	url := addr + path
 
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("X-Agent-Token", node.Token)
-	req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err

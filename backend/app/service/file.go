@@ -47,6 +47,8 @@ type IFileService interface {
 	GetUsersAndGroups() (*dto.UserGroupResp, error)
 	GetDirSize(req dto.DirSizeReq) (*dto.DirSizeResp, error)
 	CheckConflict(srcPaths []string, dstPath string) []string
+	PreflightUpload(req dto.FileUploadPreflightReq) (*dto.FileUploadPreflightResp, error)
+	SaveUpload(targetPath, relativePath string, overwrite bool, src io.Reader) (string, error)
 }
 
 type FileService struct{}

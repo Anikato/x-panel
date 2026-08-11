@@ -27,6 +27,7 @@ type nezhaDashboardOrigin struct {
 type nezhaConfigPatch struct {
 	Server                  *string
 	ClientSecret            *string
+	XPanelName              *string
 	RemoteOperationsEnabled *bool
 	TLS                     *bool
 	InsecureTLS             *bool
@@ -130,6 +131,9 @@ func mergeNezhaConfig(input []byte, patch nezhaConfigPatch) ([]byte, error) {
 	}
 	if patch.ClientSecret != nil && strings.TrimSpace(*patch.ClientSecret) != "" {
 		cfg["client_secret"] = *patch.ClientSecret
+	}
+	if patch.XPanelName != nil && strings.TrimSpace(*patch.XPanelName) != "" {
+		cfg["xpanel_name"] = strings.TrimSpace(*patch.XPanelName)
 	}
 	if patch.RemoteOperationsEnabled != nil {
 		cfg["disable_command_execute"] = !*patch.RemoteOperationsEnabled

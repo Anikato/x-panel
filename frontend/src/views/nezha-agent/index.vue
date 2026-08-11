@@ -213,6 +213,16 @@
                 {{ status.configured ? $t('nezhaAgent.editConfig') : $t('nezhaAgent.configure') }}
               </el-button>
               <el-button
+                v-if="status.componentAvailable"
+                type="warning"
+                plain
+                size="small"
+                :loading="repairLoading"
+                @click="handleRepair"
+              >
+                {{ $t('nezhaAgent.repair') }}
+              </el-button>
+              <el-button
                 v-if="view.canStart"
                 type="success"
                 size="small"
@@ -377,6 +387,7 @@ const status = ref<NezhaAgentStatus | null>(null)
 const operateLoading = ref('')
 const configVisible = ref(false)
 const configSaving = ref(false)
+const repairLoading = ref(false)
 const installMode = ref(false)
 const formRef = ref<FormInstance>()
 const form = ref<NezhaAgentForm>({
@@ -572,6 +583,29 @@ const handleOperate = async (operation: NezhaAgentOperation) => {
     /* interceptor */
   } finally {
     operateLoading.value = ''
+  }
+}
+
+const handleRepair = async () => {
+  try {
+    await ElMessageBox.confirm(
+      t('nezhaAgent.repairConfirm'),
+      t('nezhaAgent.repair'),
+      { type: 'warning', confirmButtonText: t('commons.confirm'), cancelButtonText: t('commons.cancel') },
+    )
+  } catch {
+    return
+  }
+
+  repairLoading.value = true
+  try {
+    await installNezhaAgent()
+    ElMessage.success(t('commons.operationSuccess'))
+  } catch {
+    /* interceptor surfaces error */
+  } finally {
+    repairLoading.value = false
+    await loadStatus()
   }
 }
 

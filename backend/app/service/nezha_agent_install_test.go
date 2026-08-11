@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExactAgentPackageURLs(t *testing.T) {
@@ -162,6 +163,59 @@ func TestInstallPropagatesBundleFailure(t *testing.T) {
 	})
 	if err := svc.Install(); !errors.Is(err, want) {
 		t.Fatalf("Install error = %v, want %v", err, want)
+	}
+}
+
+func TestInstallRepairsRunningAgentAndRestoresRuntimeState(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "release.tar.gz")
+	writeGzipTar(t, archive, []tarEntry{
+		{Name: "nezha-agent/nezha-agent", Body: elfWithMarker(t, runtime.GOARCH, "new-agent"), Mode: 0o755},
+		{Name: "xpanel-nezha-agent.service", Body: []byte("[Unit]\nDescription=new\n"), Mode: 0o644},
+	})
+	agentPath := filepath.Join(root, "agent", "nezha-agent")
+	unitPath := filepath.Join(root, "systemd", "xpanel-nezha-agent.service")
+	configPath := filepath.Join(root, "agent", "config.yml")
+	if err := os.MkdirAll(filepath.Dir(agentPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(unitPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(agentPath, elfWithMarker(t, runtime.GOARCH, "old-agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unitPath, []byte("[Unit]\nDescription=old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("uuid: keep-me\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := newFakeNezhaRunner("active", "enabled")
+	svc := newNezhaAgentService(nezhaAgentDeps{
+		ConfigPath: configPath,
+		BinaryPath: agentPath,
+		UnitPath:   unitPath,
+		Runner:     runner,
+		Settings:   newFakeNezhaSettings(nil),
+		Sleep:      func(time.Duration) {},
+		Now:        time.Now,
+		InstallBundle: func() (string, func(), error) {
+			return archive, func() {}, nil
+		},
+	})
+
+	if err := svc.Install(); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	runner.assertCalled(t, "systemctl", "stop", NezhaAgentUnitName)
+	runner.assertCalled(t, "systemctl", "start", NezhaAgentUnitName)
+	if runner.active != "active" || runner.enabled != "enabled" {
+		t.Fatalf("state after repair = active:%s enabled:%s", runner.active, runner.enabled)
+	}
+	if got, err := os.ReadFile(configPath); err != nil || string(got) != "uuid: keep-me\n" {
+		t.Fatalf("config after repair = %q, %v", got, err)
 	}
 }
 

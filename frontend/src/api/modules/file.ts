@@ -68,6 +68,15 @@ export const uploadFile = (path: string, file: File, onProgress?: (percent: numb
   })
 }
 
+export interface UploadPreflightResult {
+  conflicts: string[]
+  blocked: { relativePath: string; reason: string }[]
+}
+
+export const preflightUpload = (targetPath: string, relativePaths: string[]) => {
+  return http.post<UploadPreflightResult>('/files/upload/preflight', { targetPath, relativePaths })
+}
+
 export const getDownloadUrl = (path: string) => {
   const token = getToken()
   return `/api/v1/files/download?path=${encodeURIComponent(path)}&token=${token}`

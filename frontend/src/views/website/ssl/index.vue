@@ -35,8 +35,15 @@
             <el-icon><Upload /></el-icon>
             {{ $t('ssl.uploadCert') }}
           </el-button>
+          <el-button size="small" type="danger" plain :disabled="selectedCertIDs.length === 0 || certCleanupBusy" :loading="certCleanupBusy" @click="handleBatchDeleteCerts">
+            删除所选
+          </el-button>
+          <el-button size="small" type="warning" plain :disabled="certCleanupBusy" :loading="certCleanupBusy" @click="handleCleanupExpiredCerts">
+            清理过期证书
+          </el-button>
         </div>
-        <el-table :data="certs" style="width: 100%">
+        <el-table ref="certTableRef" :data="certs" style="width: 100%" @selection-change="handleCertificateSelectionChange">
+          <el-table-column type="selection" width="48" />
           <el-table-column prop="primaryDomain" :label="$t('ssl.domain')" min-width="180">
             <template #default="{ row }">
               <div class="domain-cell">
@@ -626,6 +633,7 @@ import { useI18n } from 'vue-i18n'
 import { Loading } from '@element-plus/icons-vue'
 import {
   searchCertificate, searchCertificateRenewalPlan, createCertificate, uploadCertificate, deleteCertificate,
+  batchDeleteCertificates, cleanupExpiredCertificates,
   getCertificateDetail, applyCertificate, renewCertificate, getCertificateLog,
   listAcmeAccount, createAcmeAccount, deleteAcmeAccount,
   listDnsAccount, createDnsAccount, updateDnsAccount, deleteDnsAccount,
@@ -642,6 +650,12 @@ import type {
   Certificate, CertificateRenewalPlanItem, CertificateRenewalManagementType,
   AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting,
 } from '@/api/interface'
+import {
+  formatCertificateDeleteSummary,
+  pageAfterCertificateDelete,
+  type CertificateDeleteIssue,
+  type CertificateDeleteResult,
+} from './batch-delete'
 
 const activeTab = ref('certs')
 const { t } = useI18n()
@@ -652,6 +666,9 @@ const certTotal = ref(0)
 const certPage = ref(1)
 const certPageSize = ref(20)
 const certSearch = ref('')
+const certTableRef = ref<{ clearSelection: () => void } | null>(null)
+const selectedCertIDs = ref<number[]>([])
+const certCleanupBusy = ref(false)
 const certDialogVisible = ref(false)
 const certSubmitting = ref(false)
 const uploadVisible = ref(false)
@@ -887,6 +904,63 @@ const handleDeleteCert = async (id: number) => {
     ElMessage.success('删除成功')
     loadCerts()
   } catch { ElMessage.error('删除失败') }
+}
+
+const handleCertificateSelectionChange = (rows: Certificate[]) => {
+  selectedCertIDs.value = rows.map((row) => row.id)
+}
+
+const certificateDeleteDetails = (issues: CertificateDeleteIssue[]) => {
+  return issues.map((issue) => `${issue.domain || `#${issue.id}`}: ${issue.reason}`).join('\n')
+}
+
+const finishCertificateDelete = async (result: CertificateDeleteResult, previousPageCount: number) => {
+  const summary = formatCertificateDeleteSummary(result)
+  const issues = [...result.skipped, ...result.failed]
+  if (issues.length > 0) {
+    await ElMessageBox.alert(certificateDeleteDetails(issues), summary, { type: 'warning' })
+  } else {
+    ElMessage.success(summary)
+  }
+  selectedCertIDs.value = []
+  certTableRef.value?.clearSelection()
+  await loadCerts()
+  if (certs.value.length === 0) {
+    const nextPage = pageAfterCertificateDelete(certPage.value, previousPageCount, previousPageCount)
+    if (nextPage !== certPage.value) {
+      certPage.value = nextPage
+      await loadCerts()
+    }
+  }
+}
+
+const handleBatchDeleteCerts = async () => {
+  if (selectedCertIDs.value.length === 0) return
+  await ElMessageBox.confirm('确定删除所选证书吗？使用中或申请中的证书会被跳过，不会自动解绑。', '批量删除证书', { type: 'warning' })
+  certCleanupBusy.value = true
+  const previousPageCount = certs.value.length
+  try {
+    const res = await batchDeleteCertificates(selectedCertIDs.value)
+    await finishCertificateDelete(res.data as CertificateDeleteResult, previousPageCount)
+  } catch {
+    ElMessage.error('批量删除失败')
+  } finally {
+    certCleanupBusy.value = false
+  }
+}
+
+const handleCleanupExpiredCerts = async () => {
+  await ElMessageBox.confirm('确定清理全部分页中的过期证书吗？使用中或申请中的证书会被跳过，不会自动解绑。', '清理过期证书', { type: 'warning' })
+  certCleanupBusy.value = true
+  const previousPageCount = certs.value.length
+  try {
+    const res = await cleanupExpiredCertificates()
+    await finishCertificateDelete(res.data as CertificateDeleteResult, previousPageCount)
+  } catch {
+    ElMessage.error('清理过期证书失败')
+  } finally {
+    certCleanupBusy.value = false
+  }
 }
 
 // --- 日志查看 ---

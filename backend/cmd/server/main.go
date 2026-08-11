@@ -16,32 +16,36 @@ func run(
 	bootstrapConfig func([]string),
 	credentialsCommand func([]string),
 	showVersion func(),
-) {
+	updateCommand func([]string) error,
+) error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "setup":
 			setup(args[1:])
-			return
+			return nil
 		case "bootstrap-config":
 			bootstrapConfig(args[1:])
-			return
+			return nil
 		case "credentials":
 			credentialsCommand(args[1:])
-			return
+			return nil
 		case "migrate":
 			migrate()
-			return
+			return nil
 		case "version", "--version":
 			showVersion()
-			return
+			return nil
+		case "update":
+			return updateCommand(args[1:])
 		}
 	}
 	start()
+	return nil
 }
 
 func main() {
 	initPermission.SetProcessUmask()
-	run(
+	if err := run(
 		os.Args[1:],
 		server.Start,
 		server.Migrate,
@@ -49,7 +53,11 @@ func main() {
 		runBootstrapConfig,
 		runCredentials,
 		printVersion,
-	)
+		runUpdate,
+	); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
 
 func printVersion() {

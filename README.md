@@ -15,7 +15,7 @@
 - 📁 **文件管理**：多标签浏览、代码编辑、权限管理
 - 💻 **Web 终端**：本地 PTY + SSH 远程终端
 - 📊 **系统监控**：CPU/内存/磁盘/网络实时监控
-- 📡 **哪吒 Agent**：捆绑固定版本的官方 Agent，以独立 systemd 服务连接现有 Dashboard
+- 📡 **云控面板**：捆绑固定版本的定制兼容 Agent，以独立 systemd 服务连接现有 Dashboard
 - 🔥 **防火墙管理**：ufw 端口/IP 规则管理
 - 🐳 **容器管理**：Docker 容器/镜像/网络/存储卷/Compose 编排
 - ⚖️ **HAProxy 负载均衡**：apt 一键安装，HTTP/TCP 负载均衡向导 + ACL 路由 + 复用 X-Panel SSL 证书 + Runtime Socket 实时上下线不 reload + 三段式安全变更 + 配置历史回滚
@@ -25,7 +25,7 @@
 - 🖥️ **面板集群**：一个主面板管理多台服务器（Agent 模式）
 - 🛡️ **安全防护**：登录失败自动触发验证码，防暴力破解
 - 🛠️ **系统工具**：SSH 配置、进程管理、磁盘管理
-- 🔄 **自动更新**：GitHub Releases 自动检查更新，一键升级
+- 🔄 **自动更新**：通过 `xpanel.qm.mk` 检查并校验更新，一键升级 X-Panel 与绑定 Agent
 - 🎨 **暗色主题**：科技风 UI 设计
 
 ## 🚀 一键安装
@@ -230,7 +230,7 @@ cd x-panel
 # 完整构建（前端 + 后端）
 make build
 
-# 打包发布
+# 本地打包验证（不是正式发布入口）
 make package
 
 # 安装
@@ -252,7 +252,9 @@ npm run dev
 
 ## 📚 文档
 
-- [捆绑哪吒 Agent 运维说明](docs/nezha-agent.md) - 安全安装、配置、生命周期、冲突处理与升级行为
+- [正式发布手册](RELEASE.md) - GitHub Actions、Agent 绑定版本和 `xpanel.qm.mk` 发布验证
+- [Dashboard、Agent 与 X-Panel 的关系](docs/dashboard-agent-xpanel.md) - 组件职责、通信、升级和当前实现状态
+- [云控 Agent 运维说明](docs/nezha-agent.md) - 安全安装、配置、生命周期、冲突处理与升级行为
 - [历史归档](docs/archive/README.md) - 已退役功能的审计与历史资料
 - [开发指南](docs/development-guide.md) - 详细的架构设计和开发规范
 - [工作日志](docs/worklog.md) - 开发进度记录
@@ -272,7 +274,7 @@ npm run dev
 - [x] 进程/磁盘管理
 - [x] Nginx 管理（安装/状态/操作）
 - [x] 主机管理 + 快速命令
-- [x] 构建系统 + 自更新（GitHub Releases）
+- [x] 构建系统 + 自更新（`xpanel.qm.mk`）
 - [x] 一键安装脚本
 - [x] 计划任务（Shell/URL/网站备份/数据库备份/目录备份）
 - [x] 数据库管理（MySQL/MariaDB + PostgreSQL）

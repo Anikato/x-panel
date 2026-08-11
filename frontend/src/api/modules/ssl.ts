@@ -47,6 +47,14 @@ export const deleteCertificate = (id: number) => {
   return http.post('/certificates/del', { id })
 }
 
+export const batchDeleteCertificates = (ids: number[]) => {
+  return http.post('/certificates/batch-del', { ids })
+}
+
+export const cleanupExpiredCertificates = () => {
+  return http.post('/certificates/cleanup-expired')
+}
+
 export const getCertificateDetail = (id: number) => {
   return http.post('/certificates/detail', { id })
 }

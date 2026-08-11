@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"xpanel/app/dto"
 )
 
 func ptrString(v string) *string { return &v }
@@ -168,6 +170,33 @@ func TestMergeNezhaConfigPreservesRotatedSecretUUIDAndUnknownFields(t *testing.T
 	nested, ok := m["unknown_map"].(map[string]any)
 	if !ok || nested["nested"] != true {
 		t.Fatalf("unknown_map = %#v", m["unknown_map"])
+	}
+}
+
+func TestMergeNezhaConfigWritesXPanelNameAndPreservesIdentity(t *testing.T) {
+	input := []byte("client_secret: rotated\nuuid: existing-agent-uuid\nunknown_key: keep-me\n")
+	updated, err := mergeNezhaConfig(input, nezhaConfigPatch{
+		XPanelName: ptrString("私人面板"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertYAMLValue(t, updated, "xpanel_name", "私人面板")
+	assertYAMLValue(t, updated, "client_secret", "rotated")
+	assertYAMLValue(t, updated, "uuid", "existing-agent-uuid")
+	assertYAMLValue(t, updated, "unknown_key", "keep-me")
+}
+
+func TestBuildConfigPatchReadsPanelName(t *testing.T) {
+	settings := newFakeNezhaSettings(map[string]string{"PanelName": " 私人面板 "})
+	svc := newTestNezhaAgentService(t, newFakeNezhaRunner("inactive", "disabled"), settings)
+
+	patch, err := svc.buildConfigPatch(dto.NezhaAgentConfigUpdate{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch.XPanelName == nil || *patch.XPanelName != "私人面板" {
+		t.Fatalf("XPanelName = %#v, want 私人面板", patch.XPanelName)
 	}
 }
 

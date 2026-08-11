@@ -1,7 +1,11 @@
 package repo
 
 import (
+	"time"
+
 	"xpanel/app/model"
+
+	"gorm.io/gorm"
 )
 
 // --- AcmeAccount Repo ---
@@ -250,6 +254,16 @@ func (r *CertificateRepo) Delete(opts ...DBOption) error {
 		db = opt(db)
 	}
 	return db.Delete(&model.Certificate{}).Error
+}
+
+func GetCertificatesByIDs(ids []uint) ([]model.Certificate, error) {
+	return (&CertificateRepo{}).GetList(func(db *gorm.DB) *gorm.DB { return db.Where("id IN ?", ids) })
+}
+
+func GetExpiredCertificatesBefore(now time.Time) ([]model.Certificate, error) {
+	return (&CertificateRepo{}).GetList(func(db *gorm.DB) *gorm.DB {
+		return db.Where("expire_date IS NOT NULL AND expire_date <> ? AND expire_date < ?", time.Time{}, now)
+	})
 }
 
 func protectAcmeAccount(item *model.AcmeAccount) error {

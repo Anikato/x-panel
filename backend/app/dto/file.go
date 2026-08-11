@@ -164,6 +164,22 @@ type DirSizeResp struct {
 	Size int64 `json:"size"`
 }
 
+// FileUploadPreflightReq checks exact relative upload paths before data transfer.
+type FileUploadPreflightReq struct {
+	TargetPath    string   `json:"targetPath" binding:"required"`
+	RelativePaths []string `json:"relativePaths" binding:"required"`
+}
+
+type FileUploadBlocked struct {
+	RelativePath string `json:"relativePath"`
+	Reason       string `json:"reason"`
+}
+
+type FileUploadPreflightResp struct {
+	Conflicts []string            `json:"conflicts"`
+	Blocked   []FileUploadBlocked `json:"blocked"`
+}
+
 // FileWgetReq 远程下载请求
 type FileWgetReq struct {
 	URL  string `json:"url" binding:"required"`

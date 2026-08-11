@@ -1,16 +1,105 @@
 name: Build & Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'X-Panel version, for example v0.7.83'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: xpanel-production-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: ${{ inputs.version }}
+  UPDATE_BASE_URL: https://xpanel.qm.mk
+
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CUSTOM_AGENT_REPO: ${{ vars.CUSTOM_AGENT_REPO }}
+      CUSTOM_AGENT_VERSION: ${{ vars.CUSTOM_AGENT_VERSION }}
+      UPDATE_SERVER_HOST: ${{ vars.UPDATE_SERVER_HOST }}
+      UPDATE_SERVER_USER: ${{ vars.UPDATE_SERVER_USER || 'root' }}
+      UPDATE_SERVER_PORT: ${{ vars.UPDATE_SERVER_PORT || '22' }}
+      UPDATE_SERVER_PATH: ${{ vars.UPDATE_SERVER_PATH || '/var/www/xpanel' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]
+          [[ "$CUSTOM_AGENT_REPO" =~ ^[0-9A-Za-z_.-]+/[0-9A-Za-z_.-]+$ ]]
+          [[ "$CUSTOM_AGENT_VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]]
+          [[ "$UPDATE_SERVER_HOST" =~ ^(\[[0-9A-Fa-f:]+\]|[0-9A-Za-z][0-9A-Za-z._:-]*)$ ]]
+          [[ "$UPDATE_SERVER_USER" =~ ^[A-Za-z_][0-9A-Za-z_-]*$ ]]
+          [[ "$UPDATE_SERVER_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$UPDATE_SERVER_PORT >= 1 && 10#$UPDATE_SERVER_PORT <= 65535))
+          [[ "$UPDATE_SERVER_PATH" =~ ^/[0-9A-Za-z._/-]+$ ]]
+          test "$UPDATE_SERVER_PATH" != "/"
+          case "$UPDATE_SERVER_PATH" in
+            */./* | */../* | */. | */..) echo "UPDATE_SERVER_PATH must not contain dot path segments" >&2; exit 1 ;;
+          esac
+
+          if release_info="$(gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | @tsv' 2>/dev/null)"; then
+            IFS=$'\t' read -r state target_commit <<<"$release_info"
+            test "$state" = true || { echo "release is already published" >&2; exit 1; }
+            test "$target_commit" = "$GITHUB_SHA" || {
+              echo "draft release belongs to a different commit" >&2
+              exit 1
+            }
+          elif git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "tag exists without a retryable draft release" >&2
+            exit 1
+          fi
+
+          agent_is_draft="$(gh release view "$CUSTOM_AGENT_VERSION" --repo "$CUSTOM_AGENT_REPO" --json isDraft --jq .isDraft)"
+          test "$agent_is_draft" = false || { echo "Agent release must be published; Agent release is a draft" >&2; exit 1; }
+          assets="$(gh release view "$CUSTOM_AGENT_VERSION" --repo "$CUSTOM_AGENT_REPO" --json assets --jq '.assets[].name')"
+          for name in nezha-agent_linux_amd64.zip nezha-agent_linux_arm64.zip checksums.txt; do
+            grep -Fxq "$name" <<<"$assets" || { echo "missing Agent asset: $name" >&2; exit 1; }
+          done
+
+      - name: Test release scripts
+        run: |
+          bash scripts/test-custom-agent-release-workflow.sh
+          bash scripts/test-update-server-release.sh
+          bash scripts/test-release-documentation.sh
+          bash scripts/test-package-nezha-agent.sh
+
+  test-backend:
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache-dependency-path: backend/go.sum
+
+      - name: Test backend
+        run: |
+          cd backend
+          go test -count=1 ./...
+
   # 前端只构建一次，两个架构共享
   build-frontend:
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -19,17 +108,25 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.12.0'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build frontend
+      - name: Test and build frontend
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
         run: |
           cd frontend
           npm ci
-          npx vite build
+          node --test --experimental-strip-types \
+            src/utils/terminal-cwd.test.ts \
+            src/utils/terminal-ws.test.ts \
+            src/store/modules/upload-request.test.ts \
+            src/views/nezha-agent/branding.test.ts \
+            src/views/nezha-agent/state.test.ts \
+            src/views/host/file/upload-selection.test.ts \
+            src/views/website/ssl/batch-delete.test.ts
+          npm run build
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4
@@ -40,11 +137,12 @@ jobs:
 
   # 后端按架构矩阵构建
   build-backend:
-    needs: build-frontend
+    needs: [build-frontend, test-backend]
     runs-on: ubuntu-latest
     env:
-      # Pinned official Nezha Agent release; never use latest.
-      NEZHA_AGENT_VERSION: v2.3.1
+      # Pin the customized public Agent release; never resolve "latest" here.
+      CUSTOM_AGENT_REPO: ${{ vars.CUSTOM_AGENT_REPO }}
+      CUSTOM_AGENT_VERSION: ${{ vars.CUSTOM_AGENT_VERSION }}
     strategy:
       fail-fast: false
       matrix:
@@ -56,7 +154,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.0'
           cache-dependency-path: backend/go.sum
 
       - name: Download frontend dist
@@ -76,10 +174,13 @@ jobs:
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
         run: |
-          VERSION=${GITHUB_REF_NAME}
+          set -euo pipefail
+          VERSION=${RELEASE_VERSION}
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$GITHUB_SHA")
+          BUILD_TIME=$(date -u -d "@${SOURCE_DATE_EPOCH}" '+%Y-%m-%d_%H:%M:%S')
           GO_VERSION=$(go version | awk '{print $3}')
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
 
           cd backend
           go build -trimpath \
@@ -91,14 +192,19 @@ jobs:
             -o ../build/xpanel ./cmd/server/
 
       - name: Package
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSION=${GITHUB_REF_NAME}
+          VERSION=${RELEASE_VERSION}
           ARCH=${{ matrix.arch }}
           RELEASE_DIR=build/release
           PKG_NAME=xpanel-${VERSION}-linux-${ARCH}
           ZIP_NAME=nezha-agent_linux_${ARCH}.zip
-          AGENT_BASE_URL="https://github.com/nezhahq/agent/releases/download/${NEZHA_AGENT_VERSION}"
+
+          test -n "${CUSTOM_AGENT_REPO}"
+          test -n "${CUSTOM_AGENT_VERSION}"
+          test -n "${SOURCE_DATE_EPOCH}"
 
           mkdir -p "${RELEASE_DIR}"
           cp build/xpanel "${RELEASE_DIR}/"
@@ -108,17 +214,16 @@ jobs:
           [ -f scripts/xpctl ] && cp scripts/xpctl "${RELEASE_DIR}/" || true
           [ -f xray-install.sh ] && cp xray-install.sh "${RELEASE_DIR}/" || true
 
-          # Download pinned official Agent assets (exact version + arch; not latest).
-          curl --fail --location --retry 3 \
-            -o "build/${ZIP_NAME}" \
-            "${AGENT_BASE_URL}/${ZIP_NAME}"
-          curl --fail --location --retry 3 \
-            -o "build/checksums.txt" \
-            "${AGENT_BASE_URL}/checksums.txt"
+          # Download the exact customized Agent release and architecture.
+          gh release download "${CUSTOM_AGENT_VERSION}" \
+            --repo "${CUSTOM_AGENT_REPO}" \
+            --pattern "nezha-agent_linux_${ARCH}.zip" \
+            --pattern "checksums.txt" \
+            --dir build
 
-          # Verify official checksums and stage binary + LICENSE + NOTICE.
+          # Verify checksums and stage binary + LICENSE + NOTICE.
           bash scripts/package-nezha-agent.sh \
-            "${NEZHA_AGENT_VERSION}" \
+            "${CUSTOM_AGENT_VERSION}" \
             "${ARCH}" \
             "build/${ZIP_NAME}" \
             "build/checksums.txt" \
@@ -128,7 +233,11 @@ jobs:
             "${RELEASE_DIR}/xpanel-nezha-agent.service"
 
           cd build
-          (cd release && tar -czf "../${PKG_NAME}.tar.gz" *)
+          tar --sort=name \
+            --mtime="@${SOURCE_DATE_EPOCH}" \
+            --owner=0 --group=0 --numeric-owner \
+            -cf "${PKG_NAME}.tar" -C release .
+          gzip -n "${PKG_NAME}.tar"
           sha256sum "${PKG_NAME}.tar.gz" > "${PKG_NAME}.tar.gz.sha256"
           rm -rf release
 
@@ -157,19 +266,19 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f | sort
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Draft Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') }}
+          draft: true
+          prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.sha256
 
       - name: Prepare update server files
-        env:
-          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL || 'https://xpanel.qm.mk' }}
         run: |
           python3 <<'PY'
           import datetime
@@ -179,8 +288,8 @@ jobs:
           import shutil
           from pathlib import Path
 
-          version = os.environ["GITHUB_REF_NAME"]
-          base_url = os.environ.get("UPDATE_BASE_URL", "https://xpanel.qm.mk").rstrip("/")
+          version = os.environ["RELEASE_VERSION"]
+          base_url = os.environ["UPDATE_BASE_URL"]
           publish_dir = Path("publish")
           release_dir = publish_dir / "releases" / version
           release_dir.mkdir(parents=True, exist_ok=True)
@@ -228,32 +337,122 @@ jobs:
           (publish_dir / "version.json").write_text(json.dumps(legacy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           shutil.copy2("scripts/install-online.sh", publish_dir / "install-online.sh")
           shutil.copy2("scripts/install-xpctl.sh", publish_dir / "install-xpctl.sh")
+          shutil.copy2("scripts/update-server-release.sh", publish_dir / "update-server-release.sh")
           PY
 
           find publish -type f | sort
 
       - name: Configure update server SSH
-        if: ${{ vars.UPDATE_SERVER_HOST != '' }}
         env:
           UPDATE_SERVER_HOST: ${{ vars.UPDATE_SERVER_HOST }}
+          UPDATE_SERVER_USER: ${{ vars.UPDATE_SERVER_USER || 'root' }}
           UPDATE_SERVER_PORT: ${{ vars.UPDATE_SERVER_PORT || '22' }}
+          UPDATE_SERVER_PATH: ${{ vars.UPDATE_SERVER_PATH || '/var/www/xpanel' }}
           UPDATE_SERVER_SSH_KEY: ${{ secrets.UPDATE_SERVER_SSH_KEY }}
         run: |
+          set -euo pipefail
           test -n "$UPDATE_SERVER_SSH_KEY"
+          [[ "$UPDATE_SERVER_HOST" =~ ^(\[[0-9A-Fa-f:]+\]|[0-9A-Za-z][0-9A-Za-z._:-]*)$ ]]
+          [[ "$UPDATE_SERVER_USER" =~ ^[A-Za-z_][0-9A-Za-z_-]*$ ]]
+          [[ "$UPDATE_SERVER_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$UPDATE_SERVER_PORT >= 1 && 10#$UPDATE_SERVER_PORT <= 65535))
+          [[ "$UPDATE_SERVER_PATH" =~ ^/[0-9A-Za-z._/-]+$ ]]
+          test "$UPDATE_SERVER_PATH" != "/"
+          case "$UPDATE_SERVER_PATH" in
+            */./* | */../* | */. | */..) echo "UPDATE_SERVER_PATH must not contain dot path segments" >&2; exit 1 ;;
+          esac
           mkdir -p ~/.ssh
           printf '%s\n' "$UPDATE_SERVER_SSH_KEY" > ~/.ssh/xpanel_update_server
           chmod 600 ~/.ssh/xpanel_update_server
           ssh-keyscan -p "$UPDATE_SERVER_PORT" "$UPDATE_SERVER_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy to update server
-        if: ${{ vars.UPDATE_SERVER_HOST != '' }}
+      - name: Upload and stage update server files
         env:
           UPDATE_SERVER_HOST: ${{ vars.UPDATE_SERVER_HOST }}
           UPDATE_SERVER_USER: ${{ vars.UPDATE_SERVER_USER || 'root' }}
           UPDATE_SERVER_PORT: ${{ vars.UPDATE_SERVER_PORT || '22' }}
           UPDATE_SERVER_PATH: ${{ vars.UPDATE_SERVER_PATH || '/var/www/xpanel' }}
         run: |
+          set -euo pipefail
+          STAGE="$UPDATE_SERVER_PATH/.staging/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
-            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" "mkdir -p '$UPDATE_SERVER_PATH/releases'"
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" "mkdir -p '$STAGE'"
           scp -i ~/.ssh/xpanel_update_server -P "$UPDATE_SERVER_PORT" -r publish/. \
-            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST:$UPDATE_SERVER_PATH/"
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST:$STAGE/"
+          ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" \
+            "bash '$STAGE/update-server-release.sh' stage '$UPDATE_SERVER_PATH' '$STAGE' '$RELEASE_VERSION'"
+
+      - name: Activate and verify public update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_SERVER_HOST: ${{ vars.UPDATE_SERVER_HOST }}
+          UPDATE_SERVER_USER: ${{ vars.UPDATE_SERVER_USER || 'root' }}
+          UPDATE_SERVER_PORT: ${{ vars.UPDATE_SERVER_PORT || '22' }}
+          UPDATE_SERVER_PATH: ${{ vars.UPDATE_SERVER_PATH || '/var/www/xpanel' }}
+        run: |
+          set -euo pipefail
+          STAGE="$UPDATE_SERVER_PATH/.staging/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          VERIFY_DIR="$(mktemp -d)"
+          activated=false
+          rollback() {
+            local status=$?
+            if [ "$activated" = true ] && [ "$status" -ne 0 ]; then
+              ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
+                "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" \
+                "bash '$STAGE/update-server-release.sh' rollback '$UPDATE_SERVER_PATH' '$STAGE' '$RELEASE_VERSION'" || true
+            fi
+            rm -rf "$VERIFY_DIR"
+            exit "$status"
+          }
+          trap rollback EXIT
+
+          activated=true
+          ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" \
+            "bash '$STAGE/update-server-release.sh' activate '$UPDATE_SERVER_PATH' '$STAGE' '$RELEASE_VERSION'"
+
+          curl -fsSL "$UPDATE_BASE_URL/releases/latest.json" -o "$VERIFY_DIR/latest.json"
+          python3 - "$VERIFY_DIR/latest.json" "$RELEASE_VERSION" >"$VERIFY_DIR/assets.tsv" <<'PY'
+          import json
+          import sys
+
+          manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+          expected_version = sys.argv[2]
+          if manifest.get("version") != expected_version:
+              raise SystemExit(f"latest version {manifest.get('version')!r} != {expected_version!r}")
+          expected_prefix = f"https://xpanel.qm.mk/releases/{expected_version}/"
+          assets = manifest.get("assets", {})
+          for arch in ("linux-amd64", "linux-arm64"):
+              asset = assets.get(arch) or {}
+              values = (arch, asset.get("url", ""), asset.get("checksumUrl", ""), asset.get("sha256", ""))
+              if not all(values):
+                  raise SystemExit(f"incomplete asset metadata for {arch}")
+              expected_name = f"xpanel-{expected_version}-{arch}.tar.gz"
+              if values[1] != expected_prefix + expected_name:
+                  raise SystemExit(f"unexpected package URL for {arch}: {values[1]!r}")
+              if values[2] != expected_prefix + expected_name + ".sha256":
+                  raise SystemExit(f"unexpected checksum URL for {arch}: {values[2]!r}")
+              if not isinstance(asset.get("size"), int) or asset["size"] <= 0:
+                  raise SystemExit(f"invalid package size for {arch}")
+              print("\t".join(values))
+          PY
+
+          while IFS=$'\t' read -r arch url checksum_url expected_sha; do
+            package="$VERIFY_DIR/$(basename "$url")"
+            checksum="$package.sha256"
+            curl -fsSL "$url" -o "$package"
+            curl -fsSL "$checksum_url" -o "$checksum"
+            (cd "$VERIFY_DIR" && sha256sum -c "$(basename "$checksum")")
+            actual_sha="$(sha256sum "$package" | awk '{print $1}')"
+            test "$actual_sha" = "$expected_sha"
+          done <"$VERIFY_DIR/assets.tsv"
+
+          gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+          activated=false
+          ssh -i ~/.ssh/xpanel_update_server -p "$UPDATE_SERVER_PORT" \
+            "$UPDATE_SERVER_USER@$UPDATE_SERVER_HOST" \
+            "bash '$STAGE/update-server-release.sh' finalize '$UPDATE_SERVER_PATH' '$STAGE' '$RELEASE_VERSION'" || \
+            echo "::warning::release succeeded but staging cleanup failed: $STAGE"
+          trap - EXIT
+          rm -rf "$VERIFY_DIR"

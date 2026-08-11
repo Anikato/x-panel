@@ -1,6 +1,6 @@
-# X-Panel 捆绑哪吒 Agent 运维说明
+# X-Panel 云控 Agent 运维说明
 
-X-Panel 发布包捆绑固定版本的官方 Nezha Agent，并以独立的 `xpanel-nezha-agent.service` 运行。Agent 不是 X-Panel 主进程的一部分；X-Panel 只负责安全配置、systemd 生命周期和随面板版本统一升级。
+X-Panel 发布包捆绑固定版本的定制兼容 Agent，并以独立的 `xpanel-nezha-agent.service` 运行。Agent 不是 X-Panel 主进程的一部分；X-Panel 只负责安全配置、systemd 生命周期和随面板版本统一升级。`nezha-agent` 是为保持上游协议和现有部署兼容而保留的技术标识，不是面向用户的产品名称。
 
 ## 安全边界
 
@@ -8,7 +8,7 @@ X-Panel 发布包捆绑固定版本的官方 Nezha Agent，并以独立的 `xpan
 - AgentSecret 只写入 `/opt/xpanel/nezha-agent/config.yml`，面板和 API 只显示“已配置”，不会回显明文。
 - 开启远程运维后，Dashboard 管理员可以通过 Agent 执行命令、终端、文件操作、配置下发和密钥轮换，等同于获得节点上的 root 级运维能力。只连接受信任并妥善保护的 Dashboard。
 - 默认禁止 Agent 自更新和 Dashboard 强制更新。Agent 版本只能随经过校验的 X-Panel 发布包升级。
-- X-Panel 不接管外部安装的哪吒 Agent。检测到外部 unit、进程或常见安装目录时，捆绑 Agent 的启动、重启和启用操作会被阻止；外部实例不会被停止、覆盖或导入。
+- X-Panel 不接管外部安装的同协议 Agent。检测到外部 unit、进程或常见安装目录时，捆绑 Agent 的启动、重启和启用操作会被阻止；外部实例不会被停止、覆盖或导入。
 
 ## 安装时配置
 
@@ -29,7 +29,7 @@ rm -f /tmp/xpanel-install-online.sh
 
 安装器读取环境变量后会立即取消导出并清空原变量。非交互部署只应通过 CI、配置管理或秘密注入设施设置 `XPANEL_NEZHA_AGENT_SECRET`；不要使用 `sudo env SECRET=...`，因为这会让秘密进入进程参数。
 
-也可以只安装 X-Panel，不提供 Dashboard 或 AgentSecret。此时 Agent 二进制和无凭据的 systemd unit 会安装，但服务保持禁用、停止且不联网。之后在面板左侧进入“哪吒 Agent”完成首次配置。
+也可以只安装 X-Panel，不提供 Dashboard 或 AgentSecret。此时 Agent 二进制和无凭据的 systemd unit 会安装，但服务保持禁用、停止且不联网。之后在面板左侧进入“云控面板”完成首次配置。
 
 ## 面板配置与生命周期
 
@@ -80,7 +80,7 @@ sudo systemctl stop xpanel-nezha-agent
 
 ## 冲突与故障排查
 
-管理页显示“外部冲突”时，检查是否存在官方默认 unit、实例化 unit、外部进程或常见安装目录：
+管理页显示“外部冲突”时，检查是否存在上游默认 unit、实例化 unit、外部进程或常见安装目录：
 
 ```bash
 systemctl list-unit-files 'nezha-agent*.service'
@@ -103,6 +103,10 @@ sudo stat -c '%F %a %n' \
 
 ## 升级行为
 
-X-Panel 发布包同时包含面板和与之绑定的官方 Agent 资产。升级过程先校验 checksum，再按 Agent → X-Panel 顺序替换；任何阶段失败都会回滚对应二进制并恢复原服务状态。已有 `config.yml`、UUID 和启用状态不会被安装器覆盖。
+X-Panel 发布包同时包含面板和与之绑定的定制兼容 Agent 资产。正式 CI 从 `CUSTOM_AGENT_REPO` 的精确 `CUSTOM_AGENT_VERSION` 下载 amd64、arm64 与校验文件，验证后打入相应架构的 X-Panel 包。节点仍只从 `https://xpanel.qm.mk` 获取完整 X-Panel 更新。
+
+升级过程先校验 checksum，再按 Agent → X-Panel 顺序替换；任何阶段失败都会回滚对应二进制并恢复原服务状态。已有 `config.yml`、UUID 和启用状态不会被安装器覆盖。
+
+即使一次发布只修改 Agent，也要先发布可追溯的 Agent 版本，再更新绑定版本并发布一个新的 X-Panel 补丁版本。当前没有独立的 Agent 在线升级入口。
 
 不要单独替换 Agent 二进制、开启 Agent 自更新或从 Dashboard 强制升级，否则会破坏 X-Panel 发布版本的一致性与回滚保证。

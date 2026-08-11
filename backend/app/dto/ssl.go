@@ -72,6 +72,22 @@ type CertificateUpload struct {
 	Description string `json:"description"`
 }
 
+type CertificateBatchDeleteReq struct {
+	IDs []uint `json:"ids" binding:"required,min=1,max=500,dive,gt=0"`
+}
+
+type CertificateDeleteIssue struct {
+	ID     uint   `json:"id"`
+	Domain string `json:"domain"`
+	Reason string `json:"reason"`
+}
+
+type CertificateDeleteResult struct {
+	DeletedCount int                      `json:"deletedCount"`
+	Skipped      []CertificateDeleteIssue `json:"skipped"`
+	Failed       []CertificateDeleteIssue `json:"failed"`
+}
+
 type CertificateInfo struct {
 	ID            uint      `json:"id"`
 	PrimaryDomain string    `json:"primaryDomain"`

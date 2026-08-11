@@ -17,8 +17,6 @@ import (
 
 	"xpanel/app/dto"
 	"xpanel/app/version"
-	"xpanel/buserr"
-	"xpanel/constant"
 )
 
 const (
@@ -37,19 +35,12 @@ type agentBundleInstallDeps struct {
 // Install restores only the bundled Agent assets. Configuration and service
 // lifecycle remain the responsibility of Configure after this call succeeds.
 func (s *NezhaAgentService) Install() error {
-	// Share the upgrade busy flag: both paths replace the bundled Agent binary.
-	upgradeMu.Lock()
-	if upgrading {
-		upgradeMu.Unlock()
-		return buserr.New(constant.ErrUpgradeInProgress)
+	// Share both the in-process guard and cross-process file lock with full upgrades.
+	releaseUpgrade, err := (&UpgradeService{}).beginUpgrade()
+	if err != nil {
+		return err
 	}
-	upgrading = true
-	upgradeMu.Unlock()
-	defer func() {
-		upgradeMu.Lock()
-		upgrading = false
-		upgradeMu.Unlock()
-	}()
+	defer releaseUpgrade()
 
 	// Conflict and target checks must finish before any release request or write.
 	if err := s.ensureNoConflicts(); err != nil {
@@ -61,6 +52,14 @@ func (s *NezhaAgentService) Install() error {
 	if err := preflightLiveBinary(s.unitPath); err != nil {
 		return fmt.Errorf("unit install preflight: %w", err)
 	}
+	wasActive, err := s.isActive()
+	if err != nil {
+		return err
+	}
+	wasEnabled, err := s.isEnabled()
+	if err != nil {
+		return err
+	}
 
 	archivePath, cleanup, err := s.installBundle()
 	if cleanup != nil {
@@ -69,11 +68,41 @@ func (s *NezhaAgentService) Install() error {
 	if err != nil {
 		return err
 	}
-	return applyNezhaAgentBundle(agentBundleInstallDeps{
+	if wasActive {
+		if err := s.systemctl("stop", s.unit); err != nil {
+			return err
+		}
+		if err := s.waitUntilInactive(); err != nil {
+			return s.restoreActive(true, err)
+		}
+	}
+	if err := applyNezhaAgentBundle(agentBundleInstallDeps{
 		AgentPath: s.binaryPath,
 		UnitPath:  s.unitPath,
 		Runner:    s.runner,
-	}, archivePath)
+	}, archivePath); err != nil {
+		return s.restoreActive(wasActive, err)
+	}
+
+	// Replacing a unit file normally preserves its enablement symlink. Repair it
+	// explicitly only if systemd reports that the state changed unexpectedly.
+	enabledNow, err := s.isEnabled()
+	if err != nil {
+		return s.restoreActive(wasActive, err)
+	}
+	if enabledNow != wasEnabled {
+		verb := "disable"
+		if wasEnabled {
+			verb = "enable"
+		}
+		if err := s.systemctl(verb, s.unit); err != nil {
+			return s.restoreActive(wasActive, err)
+		}
+	}
+	if wasActive {
+		return s.systemctl("start", s.unit)
+	}
+	return nil
 }
 
 func exactAgentPackageURLs(baseURL, releaseVersion, arch string) (string, string) {

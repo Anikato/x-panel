@@ -35,7 +35,14 @@ func NodeProxy() gin.HandlerFunc {
 			bodyReader = bytes.NewReader(nil)
 		}
 
-		data, statusCode, err := nodeService.ProxyRequest(uint(nodeID), c.Request.Method, c.Request.URL.Path, bodyReader)
+		data, statusCode, err := nodeService.ProxyRequest(
+			c.Request.Context(),
+			uint(nodeID),
+			c.Request.Method,
+			c.Request.URL.Path,
+			c.GetHeader("Content-Type"),
+			bodyReader,
+		)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"code": 502, "message": "proxy error: " + err.Error()})
 			c.Abort()

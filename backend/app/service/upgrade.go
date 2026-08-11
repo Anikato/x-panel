@@ -37,10 +37,17 @@ type IUpgradeService interface {
 	GetCurrentVersion() *dto.VersionInfo
 	CheckUpdate(req dto.UpgradeCheckReq) (*dto.UpgradeInfo, error)
 	DoUpgrade(req dto.UpgradeReq) error
+	DoUpgradeSync(req dto.UpgradeReq) error
+	UpgradeLatest() error
 	GetUpgradeLog() (string, error)
 }
 
-type UpgradeService struct{}
+type UpgradeService struct {
+	lockPath      string
+	logPath       string
+	checkUpdateFn func(dto.UpgradeCheckReq) (*dto.UpgradeInfo, error)
+	runUpgradeFn  func(dto.UpgradeReq, func(string, ...any)) error
+}
 
 // 升级互斥锁，防止并发升级
 var upgradeMu sync.Mutex
@@ -309,39 +316,116 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// DoUpgrade 执行升级
+// DoUpgrade keeps the web API asynchronous while sharing the same verified
+// upgrade core and cross-process lock as the CLI.
 func (s *UpgradeService) DoUpgrade(req dto.UpgradeReq) error {
-	if req.DownloadURL == "" {
+	if err := validateUpgradeRequest(req); err != nil {
+		return err
+	}
+	release, err := s.beginUpgrade()
+	if err != nil {
+		return err
+	}
+
+	if global.LOG != nil {
+		global.LOG.Infof("Starting upgrade from %s to %s, download: %s", version.Version, req.Version, req.DownloadURL)
+	}
+	go func() {
+		defer release()
+		_ = s.executeUpgrade(req)
+	}()
+	return nil
+}
+
+// DoUpgradeSync runs the complete upgrade before returning. Dashboard remote
+// tasks use this through `xpanel update --latest`, so the process exit status is
+// the authoritative success/failure signal.
+func (s *UpgradeService) DoUpgradeSync(req dto.UpgradeReq) error {
+	if err := validateUpgradeRequest(req); err != nil {
+		return err
+	}
+	release, err := s.beginUpgrade()
+	if err != nil {
+		return err
+	}
+	defer release()
+	return s.executeUpgrade(req)
+}
+
+// UpgradeLatest resolves the configured update source and applies the exact
+// asset URLs returned by the release manifest. Being current is a success.
+func (s *UpgradeService) UpgradeLatest() error {
+	check := s.checkUpdateFn
+	if check == nil {
+		check = s.CheckUpdate
+	}
+	info, err := check(dto.UpgradeCheckReq{})
+	if err != nil {
+		return err
+	}
+	if info == nil {
+		return fmt.Errorf("update check returned no release information")
+	}
+	if !info.HasUpdate {
+		return nil
+	}
+	return s.DoUpgradeSync(dto.UpgradeReq{
+		Version:     info.LatestVersion,
+		DownloadURL: info.DownloadURL,
+		ChecksumURL: info.ChecksumURL,
+	})
+}
+
+func validateUpgradeRequest(req dto.UpgradeReq) error {
+	if strings.TrimSpace(req.Version) == "" {
+		return buserr.WithDetail(constant.ErrInvalidParams, "version is required", nil)
+	}
+	if strings.TrimSpace(req.DownloadURL) == "" {
 		return buserr.WithDetail(constant.ErrInvalidParams, "download URL is required", nil)
 	}
-	// Component packages require a checksum URL; reject before taking the upgrade lock.
 	if strings.TrimSpace(req.ChecksumURL) == "" {
 		return buserr.WithDetail(constant.ErrInvalidParams, "checksum URL is required", nil)
 	}
-	// 加互斥锁，防止并发升级
+	return nil
+}
+
+func (s *UpgradeService) beginUpgrade() (func(), error) {
 	upgradeMu.Lock()
 	if upgrading {
 		upgradeMu.Unlock()
-		return buserr.New(constant.ErrUpgradeInProgress)
+		return nil, buserr.New(constant.ErrUpgradeInProgress)
 	}
 	upgrading = true
 	upgradeMu.Unlock()
 
-	global.LOG.Infof("Starting upgrade from %s to %s, download: %s", version.Version, req.Version, req.DownloadURL)
-	logFile := s.getLogPath()
-	githubToken := s.getGitHubToken()
+	path := s.lockPath
+	if path == "" {
+		var err error
+		path, err = defaultUpgradeLockPath()
+		if err != nil {
+			s.finishUpgrade(nil)
+			return nil, err
+		}
+	}
+	lock, err := acquireUpgradeFileLock(path)
+	if err != nil {
+		s.finishUpgrade(nil)
+		return nil, err
+	}
 
-	// 在后台执行升级
-	go func() {
-		defer func() {
-			upgradeMu.Lock()
-			upgrading = false
-			upgradeMu.Unlock()
-		}()
-		s.doUpgradeAsync(req.DownloadURL, req.ChecksumURL, req.Version, logFile, githubToken)
-	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { s.finishUpgrade(lock) })
+	}, nil
+}
 
-	return nil
+func (s *UpgradeService) finishUpgrade(lock *upgradeFileLock) {
+	if lock != nil {
+		_ = lock.Release()
+	}
+	upgradeMu.Lock()
+	upgrading = false
+	upgradeMu.Unlock()
 }
 
 // GetUpgradeLog 获取升级日志
@@ -358,27 +442,45 @@ func (s *UpgradeService) GetUpgradeLog() (string, error) {
 }
 
 func (s *UpgradeService) getLogPath() string {
+	if s.logPath != "" {
+		return s.logPath
+	}
 	dataDir := global.CONF.System.DataDir
 	return filepath.Join(dataDir, "log", "upgrade.log")
 }
 
-func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, logFile, githubToken string) {
-	logger := s.openLog(logFile)
+func (s *UpgradeService) executeUpgrade(req dto.UpgradeReq) error {
+	logger := s.openLog(s.getLogPath())
 	defer logger.Close()
 
-	writeLog := func(format string, args ...interface{}) {
+	writeLog := func(format string, args ...any) {
 		msg := fmt.Sprintf("[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
-		logger.WriteString(msg)
-		global.LOG.Info(strings.TrimSpace(msg))
+		_, _ = logger.WriteString(msg)
+		if global.LOG != nil {
+			global.LOG.Info(strings.TrimSpace(msg))
+		}
 	}
 
-	writeLog("开始升级到 %s", newVersion)
+	writeLog("开始升级到 %s", req.Version)
+	run := s.runUpgradeFn
+	if run == nil {
+		run = s.runUpgrade
+	}
+	if err := run(req, writeLog); err != nil {
+		writeLog("错误：升级失败: %v", err)
+		return err
+	}
+	writeLog("升级完成！新版本: %s", req.Version)
+	return nil
+}
+
+func (s *UpgradeService) runUpgrade(req dto.UpgradeReq, writeLog func(string, ...any)) error {
+	githubToken := s.getGitHubToken()
 
 	// 1. 获取当前二进制路径
 	execPath, err := os.Executable()
 	if err != nil {
-		writeLog("错误：无法获取当前程序路径: %v", err)
-		return
+		return fmt.Errorf("无法获取当前程序路径: %w", err)
 	}
 	execPath, _ = filepath.EvalSymlinks(execPath)
 	writeLog("当前程序路径: %s", execPath)
@@ -386,30 +488,26 @@ func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, lo
 	// 2. 创建临时目录
 	tmpDir, err := os.MkdirTemp("", "xpanel-upgrade-*")
 	if err != nil {
-		writeLog("错误：创建临时目录失败: %v", err)
-		return
+		return fmt.Errorf("创建临时目录失败: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	// 3. 下载新版本组件包
-	writeLog("正在下载: %s", downloadURL)
+	writeLog("正在下载: %s", req.DownloadURL)
 	tarball := filepath.Join(tmpDir, "xpanel-update.tar.gz")
-	if err := downloadFile(downloadURL, tarball, githubToken); err != nil {
-		writeLog("错误：下载失败: %v", err)
-		return
+	if err := downloadFile(req.DownloadURL, tarball, githubToken); err != nil {
+		return fmt.Errorf("下载失败: %w", err)
 	}
 	writeLog("下载完成")
 
 	// 4. 校验 SHA256（组件包强制要求；下载失败不再跳过）
 	writeLog("正在验证 SHA256 校验和...")
 	checksumFile := filepath.Join(tmpDir, "checksum.sha256")
-	if err := downloadFile(checksumURL, checksumFile, githubToken); err != nil {
-		writeLog("错误：下载校验文件失败: %v", err)
-		return
+	if err := downloadFile(req.ChecksumURL, checksumFile, githubToken); err != nil {
+		return fmt.Errorf("下载校验文件失败: %w", err)
 	}
 	if err := verifySHA256(tarball, checksumFile); err != nil {
-		writeLog("错误：SHA256 校验失败: %v", err)
-		return
+		return fmt.Errorf("SHA256 校验失败: %w", err)
 	}
 	writeLog("SHA256 校验通过")
 
@@ -418,12 +516,11 @@ func (s *UpgradeService) doUpgradeAsync(downloadURL, checksumURL, newVersion, lo
 	writeLog("新版本二进制已就绪")
 	deps := productionComponentUpgradeDeps(execPath)
 	if err := applyComponentPackage(deps, tarball); err != nil {
-		writeLog("错误：组件升级失败: %v", err)
-		return
+		return fmt.Errorf("组件升级失败: %w", err)
 	}
 
 	writeLog("正在重启服务...")
-	writeLog("升级完成！新版本: %s", newVersion)
+	return nil
 }
 
 // openLog 打开升级日志文件

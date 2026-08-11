@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"time"
+
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
 	"xpanel/app/service"
@@ -91,6 +93,29 @@ func (a *SSLAPI) DeleteCertificate(c *gin.Context) {
 		return
 	}
 	helper.SuccessWithOutData(c)
+}
+
+func (a *SSLAPI) BatchDeleteCertificate(c *gin.Context) {
+	var req dto.CertificateBatchDeleteReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	result, err := service.NewICertificateService().BatchDelete(req.IDs)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+func (a *SSLAPI) CleanupExpiredCertificate(c *gin.Context) {
+	result, err := service.NewICertificateService().CleanupExpired(time.Now())
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
 }
 
 func (a *SSLAPI) GetCertificateDetail(c *gin.Context) {

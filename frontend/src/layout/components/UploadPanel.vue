@@ -21,7 +21,7 @@
           <!-- 状态行 -->
           <div class="upload-item-meta">
             <template v-if="item.error">
-              <span class="meta-error">上传失败</span>
+              <span class="meta-error" :title="item.errorMessage">{{ item.errorMessage || t('file.uploadFailed') }}</span>
             </template>
             <template v-else-if="item.progress >= 100">
               <span class="meta-done">✓ {{ formatBytes(item.bytesTotal) }}</span>

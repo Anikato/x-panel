@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage official nezha-agent binary + checked-in license/notice into a release directory.
+# Stage a verified compatible Agent binary + checked-in license/notice into a release directory.
 # Usage: package-nezha-agent.sh VERSION ARCH ZIP CHECKSUMS RELEASE_DIR
 set -euo pipefail
 
@@ -28,17 +28,10 @@ die() {
 	exit 1
 }
 
-# Reusable pinned-style version: v + dotted numeric (e.g. v2.3.1). CI pins the value.
-case "${VERSION}" in
-v[0-9]* )
-	if ! printf '%s' "${VERSION}" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
-		die "invalid VERSION (want vNUMERIC, e.g. v2.3.1): ${VERSION}"
-	fi
-	;;
-*)
-	die "invalid VERSION (want vNUMERIC, e.g. v2.3.1): ${VERSION}"
-	;;
-esac
+# Accept versioned upstream-compatible tags and customized Agent release tags used by CI.
+if ! printf '%s' "${VERSION}" | grep -Eq '^(agent-)?v[0-9]+(\.[0-9]+)*(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$'; then
+	die "invalid VERSION tag: ${VERSION}"
+fi
 
 case "${ARCH}" in
 amd64 | arm64) ;;
@@ -83,7 +76,7 @@ if [ -e "${RELEASE_DIR}" ] || [ -L "${RELEASE_DIR}" ]; then
 fi
 
 # Exactly one checksum line for this filename; first field is 64-hex hash.
-# Official checksums.txt format: HASH space filename
+# checksums.txt format: HASH space filename
 MATCH_COUNT="$(
 	awk -v name="${EXPECTED_NAME}" '
 		NF >= 2 && $2 == name { count++ }

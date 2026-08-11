@@ -2,12 +2,13 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
@@ -342,6 +343,21 @@ func (a *FileAPI) CheckConflict(c *gin.Context) {
 	})
 }
 
+// PreflightUpload validates exact relative paths and reports upload conflicts.
+func (a *FileAPI) PreflightUpload(c *gin.Context) {
+	var req dto.FileUploadPreflightReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	result, err := service.NewIFileService().PreflightUpload(req)
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
 // WgetFile 远程下载文件（异步执行，返回 taskID）
 func (a *FileAPI) WgetFile(c *gin.Context) {
 	var req dto.FileWgetReq
@@ -361,14 +377,16 @@ func (a *FileAPI) WgetFile(c *gin.Context) {
 
 // UploadFile 上传文件（流式写盘，支持大文件）
 func (a *FileAPI) UploadFile(c *gin.Context) {
-	// 使用 multipart.Reader 流式读取，避免将文件加载进内存
 	mr, err := c.Request.MultipartReader()
 	if err != nil {
 		helper.ErrorWithDetail(c, http.StatusBadRequest, "failed to parse multipart: "+err.Error())
 		return
 	}
 
-	var dstPath, fileName string
+	var targetPath, relativePath string
+	overwrite := true
+	batch := false
+	svc := service.NewIFileService()
 
 	for {
 		part, err := mr.NextPart()
@@ -381,67 +399,67 @@ func (a *FileAPI) UploadFile(c *gin.Context) {
 		}
 
 		fieldName := part.FormName()
-
-		if fieldName == "path" {
-			b, _ := io.ReadAll(part)
-			dstPath = string(b)
+		if fieldName != "file" {
+			value, readErr := io.ReadAll(io.LimitReader(part, 64*1024))
 			part.Close()
+			if readErr != nil {
+				helper.ErrorWithDetail(c, http.StatusBadRequest, "failed to read multipart field: "+readErr.Error())
+				return
+			}
+			switch fieldName {
+			case "path":
+				targetPath = string(value)
+			case "relativePath":
+				relativePath = string(value)
+			case "overwrite":
+				overwrite, err = strconv.ParseBool(string(value))
+			case "batch":
+				batch, err = strconv.ParseBool(string(value))
+			}
+			if err != nil {
+				helper.ErrorWithDetail(c, http.StatusBadRequest, "invalid "+fieldName+": "+err.Error())
+				return
+			}
 			continue
 		}
 
-		if fieldName == "file" {
-			if dstPath == "" {
-				// path 字段还没收到（顺序问题），先继续
-				part.Close()
-				continue
-			}
-
-			fileName = filepath.Base(part.FileName())
-			if fileName == "" || fileName == "." {
-				helper.ErrorWithDetail(c, http.StatusBadRequest, "invalid filename")
-				return
-			}
-
-			dst := filepath.Join(filepath.Clean(dstPath), fileName)
-			cleanBase := filepath.Clean(dstPath)
-			if !strings.HasPrefix(dst, cleanBase+"/") && dst != cleanBase {
-				helper.ErrorWithDetail(c, http.StatusBadRequest, "invalid filename")
-				return
-			}
-
-			f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-			if err != nil {
-				helper.ErrorWithDetail(c, http.StatusInternalServerError, "failed to create file: "+err.Error())
-				return
-			}
-
-			// 流式复制：直接从 HTTP body 写到磁盘，内存占用约 32KB
-			buf := make([]byte, 32*1024)
-			if _, err := io.CopyBuffer(f, part, buf); err != nil {
-				f.Close()
-				_ = os.Remove(dst)
-				helper.ErrorWithDetail(c, http.StatusInternalServerError, "write failed: "+err.Error())
-				return
-			}
-			f.Close()
+		if targetPath == "" {
 			part.Close()
+			helper.ErrorWithDetail(c, http.StatusBadRequest, "path must be provided before file")
+			return
 		}
-	}
+		if relativePath == "" {
+			relativePath = part.FileName()
+		}
+		savedPath, saveErr := svc.SaveUpload(targetPath, relativePath, overwrite, part)
+		part.Close()
+		if saveErr != nil {
+			switch {
+			case errors.Is(saveErr, service.ErrUploadConflict):
+				helper.ErrorWithDetail(c, http.StatusConflict, saveErr.Error())
+			case errors.Is(saveErr, service.ErrInvalidUploadPath):
+				helper.ErrorWithDetail(c, http.StatusBadRequest, saveErr.Error())
+			default:
+				helper.ErrorWithDetail(c, http.StatusInternalServerError, "upload failed: "+saveErr.Error())
+			}
+			return
+		}
 
-	if fileName == "" {
-		helper.ErrorWithDetail(c, http.StatusBadRequest, "file is required")
+		if !batch {
+			service.CreateNotification(dto.NotificationCreate{
+				Type:      "success",
+				Event:     "file.upload.completed",
+				Title:     fmt.Sprintf("文件「%s」上传完成", filepath.Base(savedPath)),
+				Content:   filepath.Join(filepath.Clean(targetPath), filepath.FromSlash(savedPath)),
+				Source:    "file",
+				TargetURL: "/host/files",
+			})
+		}
+		helper.SuccessWithOutData(c)
 		return
 	}
 
-	service.CreateNotification(dto.NotificationCreate{
-		Type:      "success",
-		Event:     "file.upload.completed",
-		Title:     fmt.Sprintf("文件「%s」上传完成", fileName),
-		Content:   filepath.Join(filepath.Clean(dstPath), fileName),
-		Source:    "file",
-		TargetURL: "/host/files",
-	})
-	helper.SuccessWithOutData(c)
+	helper.ErrorWithDetail(c, http.StatusBadRequest, "file is required")
 }
 
 // DownloadFile 下载文件

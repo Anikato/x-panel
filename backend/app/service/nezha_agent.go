@@ -1087,6 +1087,14 @@ func (s *NezhaAgentService) validateConfigure(req dto.NezhaAgentConfigUpdate, fi
 
 func (s *NezhaAgentService) buildConfigPatch(req dto.NezhaAgentConfigUpdate, firstConfig bool) (nezhaConfigPatch, error) {
 	patch := nezhaConfigPatch{FirstConfig: firstConfig}
+	if s.settings != nil {
+		if panelName, err := s.settings.GetValueByKey("PanelName"); err == nil {
+			panelName = strings.TrimSpace(panelName)
+			if panelName != "" {
+				patch.XPanelName = &panelName
+			}
+		}
+	}
 	if req.DashboardURL != nil {
 		origin, err := normalizeNezhaDashboardOrigin(*req.DashboardURL)
 		if err != nil {

@@ -38,6 +38,7 @@ docs/*
 !docs/worklog.md
 !docs/versioning.md
 !docs/nezha-agent.md
+!docs/dashboard-agent-xpanel.md
 !docs/archive/
 docs/archive/*
 !docs/archive/README.md

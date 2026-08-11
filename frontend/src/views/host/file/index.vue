@@ -2,9 +2,10 @@
   <div
     class="file-manager"
     @contextmenu="handleRootContextMenu"
+    @dragenter.prevent="handleDragenter"
     @dragover.prevent="handleDragover"
     @drop.prevent="handleDrop"
-    @dragleave.prevent="isDragging = false"
+    @dragleave.prevent="handleDragleave"
   >
     <!-- 多标签 -->
     <el-tabs
@@ -68,15 +69,26 @@
           </template>
         </el-dropdown>
         <!-- 上传 -->
-        <el-upload
-          :show-file-list="false"
-          :before-upload="() => false"
-          :auto-upload="false"
-          @change="handleUploadChange"
+        <el-dropdown trigger="click" @command="handleUploadCommand">
+          <el-button size="small">
+            <el-icon><Upload /></el-icon>{{ t('file.upload') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="files"><el-icon><Document /></el-icon>{{ t('file.uploadFiles') }}</el-dropdown-item>
+              <el-dropdown-item command="folder"><el-icon><Folder /></el-icon>{{ t('file.uploadFolder') }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <input ref="fileUploadInput" class="upload-input" type="file" multiple @change="handleUploadInput" />
+        <input
+          ref="folderUploadInput"
+          class="upload-input"
+          type="file"
           multiple
-        >
-          <el-button size="small"><el-icon><Upload /></el-icon>{{ t('file.upload') }}</el-button>
-        </el-upload>
+          webkitdirectory
+          @change="handleUploadInput"
+        />
         <!-- 远程下载 -->
         <el-button size="small" @click="showRemoteDownload">
           <el-icon><Download /></el-icon>{{ t('file.remoteDownload') }}
@@ -159,10 +171,10 @@
     </div>
 
     <!-- 拖拽上传覆盖层 -->
-    <div v-if="isDragging" class="drop-overlay">
+    <div v-if="isDragging || isCollectingUpload" class="drop-overlay" role="status" aria-live="polite">
       <div class="drop-text">
         <el-icon :size="48"><Upload /></el-icon>
-        <p>{{ t('file.dropHere') }}</p>
+        <p>{{ isCollectingUpload ? t('file.readingDirectory') : t('file.dropHere', { path: currentTab?.path || '/' }) }}</p>
       </div>
     </div>
 
@@ -384,8 +396,9 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listFiles, createFile, deleteFile, batchDeleteFile, renameFile,
-  moveFile, getDownloadUrl, uploadFile, getDirSize, checkConflict,
+  moveFile, getDownloadUrl, getDirSize, checkConflict, preflightUpload,
 } from '@/api/modules/file'
+import type { UploadPreflightResult } from '@/api/modules/file'
 import { useI18n } from 'vue-i18n'
 import type { FileInfo } from '@/api/interface'
 import { useUploadStore } from '@/store/modules/upload'
@@ -402,6 +415,12 @@ import PermissionDialog from './permission-dialog.vue'
 import ChownDialog from './chown-dialog.vue'
 import DetailDrawer from './detail-drawer.vue'
 import FilePreview from './FilePreview.vue'
+import {
+  collectDroppedCandidates,
+  collectSelectedCandidates,
+  excludeConflicts,
+  type UploadCandidate,
+} from './upload-selection'
 import { useFileTaskStore } from '@/store/modules/fileTask'
 import { useGlobalStore } from '@/store/modules/global'
 
@@ -810,17 +829,94 @@ const handleCreate = async () => {
 // ===================== 上传 =====================
 
 const uploadStore = useUploadStore()
+const fileUploadInput = ref<HTMLInputElement>()
+const folderUploadInput = ref<HTMLInputElement>()
 
-async function doUploadFiles(files: File[]) {
-  const dir = currentTab.value?.path || '/'
-  await uploadStore.addFiles(dir, files)
-  refreshFiles()
-  // 全局上传面板会自动显示进度
+function handleUploadCommand(command: string) {
+  const input = command === 'folder' ? folderUploadInput.value : fileUploadInput.value
+  if (!input) return
+  input.value = ''
+  input.click()
 }
 
-const handleUploadChange = async (file: { raw?: File }) => {
-  if (!file?.raw) return
-  await doUploadFiles([file.raw])
+async function handleUploadInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  if (!files?.length) {
+    input.value = ''
+    return
+  }
+  try {
+    await uploadCandidates(collectSelectedCandidates(files), currentTab.value?.path || '/')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('file.uploadReadFailed'))
+  } finally {
+    input.value = ''
+  }
+}
+
+async function uploadCandidates(candidates: UploadCandidate[], targetPath: string) {
+  if (candidates.length === 0) {
+    ElMessage.info(t('file.uploadEmpty'))
+    return
+  }
+
+  const uploadNodeID = globalStore.currentNodeID
+  const batch = candidates.length > 1 || candidates.some((item) => item.relativePath.includes('/'))
+
+  let preflight: UploadPreflightResult
+  try {
+    const response = await preflightUpload(targetPath, candidates.map((item) => item.relativePath))
+    preflight = response.data
+  } catch {
+    return
+  }
+
+  if (preflight.blocked.length > 0) {
+    const first = preflight.blocked[0]
+    ElMessage.error(t('file.uploadBlocked', { path: first.relativePath, reason: first.reason }))
+    return
+  }
+
+  let overwrite = false
+  let requests = candidates
+  let skipped = 0
+  if (preflight.conflicts.length > 0) {
+    try {
+      await ElMessageBox.confirm(
+        t('file.uploadConflictMessage', {
+          count: preflight.conflicts.length,
+          files: preflight.conflicts.slice(0, 5).join('、'),
+        }),
+        t('file.conflictTitle'),
+        {
+          distinguishCancelAndClose: true,
+          confirmButtonText: t('file.conflictOverwrite'),
+          cancelButtonText: t('file.conflictSkip'),
+          type: 'warning',
+        },
+      )
+      overwrite = true
+    } catch (action) {
+      if (action !== 'cancel') return
+      requests = excludeConflicts(candidates, preflight.conflicts)
+      skipped = candidates.length - requests.length
+    }
+  }
+
+  if (requests.length === 0) {
+    ElMessage.info(t('file.uploadAllSkipped'))
+    return
+  }
+
+  const summary = await uploadStore.addFiles(targetPath, requests, overwrite, uploadNodeID, batch)
+  if (currentTab.value?.path === targetPath) await refreshFiles()
+  const params = { success: summary.success, skipped, failed: summary.failed }
+  if (summary.failed === 0) {
+    ElMessage.success(t('file.uploadSummarySuccess', params))
+  } else {
+    ElMessage.warning(t('file.uploadSummaryPartial', params))
+  }
 }
 
 // ===================== 远程下载 =====================
@@ -860,19 +956,41 @@ function openBatchPermission() {
 
 // ===================== 拖拽上传 =====================
 
-const isDragging = ref(false)
+const dragDepth = ref(0)
+const isCollectingUpload = ref(false)
+const isDragging = computed(() => dragDepth.value > 0)
+
+function isFileDrag(event: DragEvent): boolean {
+  return event.dataTransfer?.types.includes('Files') ?? false
+}
+
+function handleDragenter(event: DragEvent) {
+  if (isFileDrag(event)) dragDepth.value++
+}
 
 function handleDragover(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('Files')) {
-    isDragging.value = true
-  }
+  if (isFileDrag(e) && e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+}
+
+function handleDragleave() {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
 }
 
 async function handleDrop(e: DragEvent) {
-  isDragging.value = false
-  const files = e.dataTransfer?.files
-  if (!files || files.length === 0) return
-  await doUploadFiles(Array.from(files))
+  dragDepth.value = 0
+  if (!e.dataTransfer) return
+  const targetPath = currentTab.value?.path || '/'
+  isCollectingUpload.value = true
+  let candidates: UploadCandidate[]
+  try {
+    candidates = await collectDroppedCandidates(e.dataTransfer)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('file.uploadReadFailed'))
+    return
+  } finally {
+    isCollectingUpload.value = false
+  }
+  await uploadCandidates(candidates, targetPath)
 }
 
 // ===================== 剪贴板（复制/移动） =====================
@@ -1214,6 +1332,10 @@ onBeforeUnmount(() => {
       }
     }
   }
+}
+
+.upload-input {
+  display: none;
 }
 
 .file-breadcrumb {

@@ -1,5 +1,7 @@
 # X-Panel 捆绑 Nezha Agent 与 Fleet 退役设计
 
+> **历史记录：** 本文保留最初实施背景，不能作为当前发布或组件关系的权威依据。当前规则以仓库根目录的 `AGENTS.md`、`RELEASE.md` 和 `docs/dashboard-agent-xpanel.md` 为准；其中“官方 Agent”等旧表述不代表当前制品来源。
+
 - **日期：** 2026-08-09
 - **状态：** 已批准并实施；本地自动化验证完成，Linux/systemd/Dashboard 实机验收待部署环境执行
 - **适用范围：** `x-panel` 及其安装、升级、发布流程

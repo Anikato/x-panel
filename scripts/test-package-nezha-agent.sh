@@ -229,6 +229,14 @@ else
 	fail "arm64 success path: helper failed: $(cat "${TMP_ROOT}/helper.stderr" 2>/dev/null || true)"
 fi
 
+# --- success: customized release tag ---
+REL_CUSTOM_TAG="$(mktemp -d "${TMP_ROOT}/release-custom-tag.XXXXXX")"
+if run_helper "agent-v2.3.1-xpanel.1" "amd64" "${AMD64_ZIP}" "${CHECKSUMS}" "${REL_CUSTOM_TAG}"; then
+	check_success_layout "${REL_CUSTOM_TAG}" "amd64" "custom release tag success"
+else
+	fail "custom release tag should be accepted: $(cat "${TMP_ROOT}/helper.stderr" 2>/dev/null || true)"
+fi
+
 # --- wrong checksum ---
 BAD_DIR="$(mktemp -d "${TMP_ROOT}/bad-checksum.XXXXXX")"
 BAD_ZIP="$(make_fixture_zip "${BAD_DIR}" amd64 ok)"
