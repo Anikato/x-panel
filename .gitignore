@@ -5,7 +5,7 @@ node_modules/
 frontend/dist/
 build/
 backend/xpanel
-backend/cmd/server/web/assets/
+backend/cmd/server/web/assets/*
 !backend/cmd/server/web/assets/index.html
 
 # Backend data (local dev)
