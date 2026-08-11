@@ -20,15 +20,18 @@
           />
           <!-- 状态行 -->
           <div class="upload-item-meta">
+            <span :class="item.error ? 'meta-error' : item.progress >= 100 ? 'meta-done' : 'meta-percent'">
+              {{ item.progress }}%
+            </span>
             <template v-if="item.error">
               <span class="meta-error" :title="item.errorMessage">{{ item.errorMessage || t('file.uploadFailed') }}</span>
             </template>
             <template v-else-if="item.progress >= 100">
-              <span class="meta-done">✓ {{ formatBytes(item.bytesTotal) }}</span>
+              <span class="meta-done">· ✓ {{ formatBytes(item.bytesTotal) }}</span>
             </template>
             <template v-else>
               <span class="meta-bytes">{{ formatBytes(item.bytesDone) }} / {{ formatBytes(item.bytesTotal) }}</span>
-              <span v-if="item.speed > 0" class="meta-speed">{{ formatBytes(item.speed) }}/s</span>
+              <span class="meta-speed">{{ item.speed > 0 ? `${formatBytes(item.speed)}/s` : '计算中…' }}</span>
               <span v-if="item.speed > 0 && item.bytesTotal > item.bytesDone" class="meta-eta">
                 · 约{{ formatEta(item.bytesTotal - item.bytesDone, item.speed) }}
               </span>
@@ -141,6 +144,7 @@ function formatEta(remainingBytes: number, speed: number): string {
 }
 
 .meta-bytes { color: var(--xp-text-muted); }
+.meta-percent { color: var(--xp-text-secondary); font-variant-numeric: tabular-nums; }
 .meta-speed { color: var(--xp-accent); font-weight: 500; }
 .meta-eta   { color: var(--xp-text-muted); }
 .meta-done  { color: var(--el-color-success); }

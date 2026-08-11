@@ -121,6 +121,7 @@ jobs:
           node --test --experimental-strip-types \
             src/utils/terminal-cwd.test.ts \
             src/utils/terminal-ws.test.ts \
+            src/store/modules/upload-chunks.test.ts \
             src/store/modules/upload-request.test.ts \
             src/views/nezha-agent/branding.test.ts \
             src/views/nezha-agent/state.test.ts \

@@ -180,6 +180,32 @@ type FileUploadPreflightResp struct {
 	Blocked   []FileUploadBlocked `json:"blocked"`
 }
 
+type FileUploadChunkReq struct {
+	TargetPath   string `json:"targetPath"`
+	RelativePath string `json:"relativePath"`
+	UploadID     string `json:"uploadID"`
+	ChunkIndex   int    `json:"chunkIndex"`
+	ChunkCount   int    `json:"chunkCount"`
+	TotalSize    int64  `json:"totalSize"`
+	Checksum     string `json:"checksum"`
+}
+
+type FileUploadChunkCompleteReq struct {
+	TargetPath   string `json:"targetPath" binding:"required"`
+	RelativePath string `json:"relativePath" binding:"required"`
+	UploadID     string `json:"uploadID" binding:"required"`
+	TotalSize    int64  `json:"totalSize" binding:"required"`
+	Overwrite    bool   `json:"overwrite"`
+	Batch        bool   `json:"batch"`
+}
+
+type FileUploadChunkAbortReq struct {
+	TargetPath   string `json:"targetPath" binding:"required"`
+	RelativePath string `json:"relativePath" binding:"required"`
+	UploadID     string `json:"uploadID" binding:"required"`
+	TotalSize    int64  `json:"totalSize" binding:"required"`
+}
+
 // FileWgetReq 远程下载请求
 type FileWgetReq struct {
 	URL  string `json:"url" binding:"required"`

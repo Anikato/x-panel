@@ -2,6 +2,14 @@ import { defineStore } from 'pinia'
 import { getToken } from '@/utils/auth'
 import { ref, computed } from 'vue'
 import { buildUploadRequestHeaders } from './upload-request'
+import {
+  calculateChunkUploadProgress,
+  createUploadID,
+  getUploadChunkBounds,
+  getUploadChunkCount,
+  sha256Hex,
+  shouldUseChunkedUpload,
+} from './upload-chunks'
 
 export interface UploadItem {
   id: number
@@ -13,8 +21,6 @@ export interface UploadItem {
   bytesDone: number
   bytesTotal: number
   speed: number           // bytes/s
-  _lastBytes: number      // 内部：上次采样字节数
-  _lastTime: number       // 内部：上次采样时间戳
 }
 
 export interface UploadRequest {
@@ -52,8 +58,6 @@ export const useUploadStore = defineStore('upload', () => {
       bytesDone: 0,
       bytesTotal: file.size,
       speed: 0,
-      _lastBytes: 0,
-      _lastTime: Date.now(),
     }))
     queue.value.push(...items)
     let success = 0
@@ -72,19 +76,11 @@ export const useUploadStore = defineStore('upload', () => {
           overwrite,
           batch,
           nodeID,
-          (loaded: number, total: number) => {
+          ({ loaded, total, percentage, speed }) => {
             item.bytesDone = loaded
             item.bytesTotal = total || fileSize
-            item.progress = total ? Math.round(loaded / total * 100) : 0
-
-            // 速度：500ms 采样一次
-            const now = Date.now()
-            const elapsed = (now - item._lastTime) / 1000
-            if (elapsed >= 0.5) {
-              item.speed = Math.round((loaded - item._lastBytes) / elapsed)
-              item._lastBytes = loaded
-              item._lastTime = now
-            }
+            item.progress = percentage
+            if (speed !== undefined) item.speed = speed
           }
         )
         item.progress = 100
@@ -106,7 +102,15 @@ export const useUploadStore = defineStore('upload', () => {
   return { queue, doneCount, allDone, hasActive, addFiles, clear }
 })
 
-// 内部：封装 XHR，传递 loaded/total（不依赖 axios 的百分比转换）
+interface UploadProgress {
+  loaded: number
+  total: number
+  percentage: number
+  speed?: number
+}
+
+type UploadProgressHandler = (progress: UploadProgress) => void
+
 function uploadFileWithProgress(
   path: string,
   relativePath: string,
@@ -114,10 +118,25 @@ function uploadFileWithProgress(
   overwrite: boolean,
   batch: boolean,
   nodeID: number,
-  onProgress: (loaded: number, total: number) => void
+  onProgress: UploadProgressHandler,
+): Promise<void> {
+  const cryptoProvider = globalThis.crypto
+  if (shouldUseChunkedUpload(file.size, cryptoProvider)) {
+    return uploadFileInChunks(path, relativePath, file, overwrite, batch, nodeID, cryptoProvider, onProgress)
+  }
+  return uploadSingleFile(path, relativePath, file, overwrite, batch, nodeID, onProgress)
+}
+
+function uploadSingleFile(
+  path: string,
+  relativePath: string,
+  file: File,
+  overwrite: boolean,
+  batch: boolean,
+  nodeID: number,
+  onProgress: UploadProgressHandler,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const token = getToken()
     const formData = new FormData()
     formData.append('path', path)
     formData.append('relativePath', relativePath)
@@ -127,27 +146,148 @@ function uploadFileWithProgress(
 
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/v1/files/upload')
-    for (const [name, value] of Object.entries(buildUploadRequestHeaders(token, nodeID))) {
+    for (const [name, value] of Object.entries(buildUploadRequestHeaders(getToken(), nodeID))) {
       xhr.setRequestHeader(name, value)
     }
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(e.loaded, e.total)
+    const rate = createRateSampler()
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return
+      const loaded = Math.min(file.size, Math.round(event.loaded / event.total * file.size))
+      const percentage = Math.min(99, file.size ? Math.round(loaded / file.size * 100) : 0)
+      onProgress({ loaded, total: file.size, percentage, speed: rate.sample(loaded) })
     }
-
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress({ loaded: file.size, total: file.size, percentage: 100, speed: rate.average(file.size) })
         resolve()
       } else {
-        let message = `HTTP ${xhr.status}`
-        try {
-          message = JSON.parse(xhr.responseText)?.message || message
-        } catch { /* ignore invalid error response */ }
-        reject(new Error(message))
+        reject(uploadResponseError(xhr))
       }
     }
-
-    xhr.onerror = () => reject(new Error('Network error'))
+    xhr.onerror = () => reject(new Error('网络错误'))
+    xhr.onabort = () => reject(new Error('上传已取消'))
     xhr.send(formData)
   })
+}
+
+async function uploadFileInChunks(
+  path: string,
+  relativePath: string,
+  file: File,
+  overwrite: boolean,
+  batch: boolean,
+  nodeID: number,
+  cryptoProvider: Crypto,
+  onProgress: UploadProgressHandler,
+): Promise<void> {
+  const uploadID = createUploadID(cryptoProvider)
+  const chunkCount = getUploadChunkCount(file.size)
+  const headers = buildUploadRequestHeaders(getToken(), nodeID)
+  let confirmedBytes = 0
+  let lastSpeed = 0
+
+  try {
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+      const { start, end } = getUploadChunkBounds(file.size, chunkIndex)
+      const chunk = file.slice(start, end)
+      const checksum = await sha256Hex(chunk, cryptoProvider)
+      const rate = createRateSampler()
+      const formData = new FormData()
+      formData.append('path', path)
+      formData.append('relativePath', relativePath)
+      formData.append('uploadID', uploadID)
+      formData.append('chunkIndex', String(chunkIndex))
+      formData.append('chunkCount', String(chunkCount))
+      formData.append('totalSize', String(file.size))
+      formData.append('checksum', checksum)
+      formData.append('file', chunk, file.name)
+
+      await sendXHR('/api/v1/files/upload/chunk', formData, headers, (loaded, total) => {
+        const chunkLoaded = total > 0 ? Math.min(chunk.size, Math.round(loaded / total * chunk.size)) : 0
+        const progress = calculateChunkUploadProgress(confirmedBytes, chunkLoaded, file.size)
+        const speed = rate.sample(chunkLoaded)
+        if (speed !== undefined) lastSpeed = speed
+        onProgress({ ...progress, total: file.size, speed })
+      })
+
+      confirmedBytes += chunk.size
+      lastSpeed = rate.average(chunk.size)
+      const progress = calculateChunkUploadProgress(confirmedBytes, 0, file.size)
+      onProgress({ ...progress, total: file.size, speed: lastSpeed })
+    }
+
+    await sendJSON('/api/v1/files/upload/chunk/complete', {
+      targetPath: path,
+      relativePath,
+      uploadID,
+      totalSize: file.size,
+      overwrite,
+      batch,
+    }, headers)
+    const progress = calculateChunkUploadProgress(file.size, 0, file.size, true)
+    onProgress({ ...progress, total: file.size, speed: lastSpeed })
+  } catch (error) {
+    await sendJSON('/api/v1/files/upload/chunk/abort', {
+      targetPath: path,
+      relativePath,
+      uploadID,
+      totalSize: file.size,
+    }, headers).catch(() => undefined)
+    throw error
+  }
+}
+
+function sendXHR(
+  url: string,
+  body: XMLHttpRequestBodyInit,
+  headers: Record<string, string>,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value)
+    if (onProgress) {
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable) onProgress(event.loaded, event.total)
+      }
+    }
+    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(uploadResponseError(xhr))
+    xhr.onerror = () => reject(new Error('网络错误'))
+    xhr.onabort = () => reject(new Error('上传已取消'))
+    xhr.send(body)
+  })
+}
+
+function sendJSON(url: string, body: object, headers: Record<string, string>): Promise<void> {
+  return sendXHR(url, JSON.stringify(body), { ...headers, 'Content-Type': 'application/json' })
+}
+
+function uploadResponseError(xhr: XMLHttpRequest): Error {
+  let message = `HTTP ${xhr.status}`
+  try {
+    message = JSON.parse(xhr.responseText)?.message || message
+  } catch { /* ignore invalid error response */ }
+  return new Error(message)
+}
+
+function createRateSampler() {
+  const startedAt = performance.now()
+  let lastTime = startedAt
+  let lastBytes = 0
+  return {
+    sample(bytes: number): number | undefined {
+      const now = performance.now()
+      const elapsed = now - lastTime
+      if (elapsed < 500) return undefined
+      const speed = Math.max(0, Math.round((bytes - lastBytes) * 1000 / elapsed))
+      lastTime = now
+      lastBytes = bytes
+      return speed
+    },
+    average(bytes: number): number {
+      const elapsed = Math.max(1, performance.now() - startedAt)
+      return Math.max(0, Math.round(bytes * 1000 / elapsed))
+    },
+  }
 }

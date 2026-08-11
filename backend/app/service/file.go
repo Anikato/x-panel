@@ -49,6 +49,9 @@ type IFileService interface {
 	CheckConflict(srcPaths []string, dstPath string) []string
 	PreflightUpload(req dto.FileUploadPreflightReq) (*dto.FileUploadPreflightResp, error)
 	SaveUpload(targetPath, relativePath string, overwrite bool, src io.Reader) (string, error)
+	SaveUploadChunk(req dto.FileUploadChunkReq, src io.Reader) error
+	CompleteUploadChunks(req dto.FileUploadChunkCompleteReq) (string, error)
+	AbortUploadChunks(req dto.FileUploadChunkAbortReq) error
 }
 
 type FileService struct{}

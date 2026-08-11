@@ -2,7 +2,9 @@ package v1
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -70,6 +72,43 @@ func performUpload(t *testing.T, fields map[string]string, filename, content str
 	}
 
 	return performFileHandler(http.MethodPost, "/files/upload", writer.FormDataContentType(), &body, (&FileAPI{}).UploadFile)
+}
+
+func performChunkUpload(t *testing.T, fields map[string]string, filename string, content []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for _, key := range []string{"path", "relativePath", "uploadID", "chunkIndex", "chunkCount", "totalSize", "checksum"} {
+		if value, ok := fields[key]; ok {
+			if err := writer.WriteField(key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return performFileHandler(http.MethodPost, "/files/upload/chunk", writer.FormDataContentType(), &body, (&FileAPI{}).UploadFileChunk)
+}
+
+func chunkFields(root, relativePath, uploadID string, content []byte) map[string]string {
+	sum := sha256.Sum256(content)
+	return map[string]string{
+		"path":         root,
+		"relativePath": relativePath,
+		"uploadID":     uploadID,
+		"chunkIndex":   "0",
+		"chunkCount":   "1",
+		"totalSize":    fmt.Sprintf("%d", len(content)),
+		"checksum":     fmt.Sprintf("%x", sum),
+	}
 }
 
 func decodeFileResponse(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
@@ -170,5 +209,91 @@ func TestFileUploadBatchSuppressesNotification(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("notifications=%d", count)
+	}
+}
+
+func TestFileUploadChunkLifecycle(t *testing.T) {
+	installFileHandlerDatabase(t)
+	root := t.TempDir()
+	content := []byte("chunked upload")
+	uploadID := "66666666666666666666666666666666"
+
+	chunkRecorder := performChunkUpload(t, chunkFields(root, "nested/archive.bin", uploadID, content), "archive.bin", content)
+	if chunkRecorder.Code != http.StatusOK {
+		t.Fatalf("chunk status=%d body=%s", chunkRecorder.Code, chunkRecorder.Body.String())
+	}
+	completeBody := strings.NewReader(`{"targetPath":` + strconvQuote(root) + `,"relativePath":"nested/archive.bin","uploadID":"` + uploadID + `","totalSize":14,"overwrite":false,"batch":true}`)
+	completeRecorder := performFileHandler(
+		http.MethodPost, "/files/upload/chunk/complete", "application/json",
+		completeBody, (&FileAPI{}).CompleteFileChunks,
+	)
+	if completeRecorder.Code != http.StatusOK {
+		t.Fatalf("complete status=%d body=%s", completeRecorder.Code, completeRecorder.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(root, "nested", "archive.bin"))
+	if err != nil || !bytes.Equal(data, content) {
+		t.Fatalf("data=%q err=%v", data, err)
+	}
+}
+
+func TestFileUploadChunkRejectsInvalidChecksum(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("chunk")
+	fields := chunkFields(root, "archive.bin", "77777777777777777777777777777777", content)
+	fields["checksum"] = strings.Repeat("0", 64)
+	recorder := performChunkUpload(t, fields, "archive.bin", content)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "archive.bin")); !os.IsNotExist(err) {
+		t.Fatalf("target stat err=%v", err)
+	}
+}
+
+func TestFileUploadChunkRejectsMalformedChecksumAsBadRequest(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("chunk")
+	fields := chunkFields(root, "archive.bin", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", content)
+	fields["checksum"] = "not-a-sha256"
+	recorder := performChunkUpload(t, fields, "archive.bin", content)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestFileUploadChunkRejectsMalformedUploadIDAsBadRequest(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("chunk")
+	fields := chunkFields(root, "archive.bin", "invalid-upload-id", content)
+	recorder := performChunkUpload(t, fields, "archive.bin", content)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestCompleteFileChunksSizeMismatchPreservesExistingFile(t *testing.T) {
+	installFileHandlerDatabase(t)
+	root := t.TempDir()
+	target := filepath.Join(root, "archive.bin")
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("new")
+	uploadID := "88888888888888888888888888888888"
+	chunkRecorder := performChunkUpload(t, chunkFields(root, "archive.bin", uploadID, content), "archive.bin", content)
+	if chunkRecorder.Code != http.StatusOK {
+		t.Fatalf("chunk status=%d body=%s", chunkRecorder.Code, chunkRecorder.Body.String())
+	}
+	completeBody := strings.NewReader(`{"targetPath":` + strconvQuote(root) + `,"relativePath":"archive.bin","uploadID":"` + uploadID + `","totalSize":4,"overwrite":true,"batch":true}`)
+	completeRecorder := performFileHandler(
+		http.MethodPost, "/files/upload/chunk/complete", "application/json",
+		completeBody, (&FileAPI{}).CompleteFileChunks,
+	)
+	if completeRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("complete status=%d body=%s", completeRecorder.Code, completeRecorder.Body.String())
+	}
+	data, err := os.ReadFile(target)
+	if err != nil || string(data) != "old" {
+		t.Fatalf("target data=%q err=%v", data, err)
 	}
 }

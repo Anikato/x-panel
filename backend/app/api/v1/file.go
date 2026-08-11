@@ -462,6 +462,125 @@ func (a *FileAPI) UploadFile(c *gin.Context) {
 	helper.ErrorWithDetail(c, http.StatusBadRequest, "file is required")
 }
 
+// UploadFileChunk streams one verified chunk into a root-confined temporary file.
+func (a *FileAPI) UploadFileChunk(c *gin.Context) {
+	mr, err := c.Request.MultipartReader()
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "failed to parse multipart: "+err.Error())
+		return
+	}
+	var req dto.FileUploadChunkReq
+	for {
+		part, partErr := mr.NextPart()
+		if partErr == io.EOF {
+			break
+		}
+		if partErr != nil {
+			helper.ErrorWithDetail(c, http.StatusBadRequest, "multipart error: "+partErr.Error())
+			return
+		}
+		fieldName := part.FormName()
+		if fieldName != "file" {
+			value, readErr := io.ReadAll(io.LimitReader(part, 64*1024))
+			part.Close()
+			if readErr != nil {
+				helper.ErrorWithDetail(c, http.StatusBadRequest, "failed to read multipart field: "+readErr.Error())
+				return
+			}
+			if err := assignUploadChunkField(&req, fieldName, string(value)); err != nil {
+				helper.ErrorWithDetail(c, http.StatusBadRequest, "invalid "+fieldName+": "+err.Error())
+				return
+			}
+			continue
+		}
+
+		if err := service.NewIFileService().SaveUploadChunk(req, part); err != nil {
+			part.Close()
+			handleFileUploadError(c, err)
+			return
+		}
+		part.Close()
+		helper.SuccessWithOutData(c)
+		return
+	}
+	helper.ErrorWithDetail(c, http.StatusBadRequest, "file is required")
+}
+
+func assignUploadChunkField(req *dto.FileUploadChunkReq, name, value string) error {
+	var err error
+	switch name {
+	case "path":
+		req.TargetPath = value
+	case "relativePath":
+		req.RelativePath = value
+	case "uploadID":
+		req.UploadID = value
+	case "checksum":
+		req.Checksum = value
+	case "chunkIndex":
+		req.ChunkIndex, err = strconv.Atoi(value)
+	case "chunkCount":
+		req.ChunkCount, err = strconv.Atoi(value)
+	case "totalSize":
+		req.TotalSize, err = strconv.ParseInt(value, 10, 64)
+	}
+	return err
+}
+
+// CompleteFileChunks validates and atomically publishes a chunked upload.
+func (a *FileAPI) CompleteFileChunks(c *gin.Context) {
+	var req dto.FileUploadChunkCompleteReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	savedPath, err := service.NewIFileService().CompleteUploadChunks(req)
+	if err != nil {
+		handleFileUploadError(c, err)
+		return
+	}
+	if !req.Batch {
+		service.CreateNotification(dto.NotificationCreate{
+			Type:      "success",
+			Event:     "file.upload.completed",
+			Title:     fmt.Sprintf("文件「%s」上传完成", filepath.Base(savedPath)),
+			Content:   filepath.Join(filepath.Clean(req.TargetPath), filepath.FromSlash(savedPath)),
+			Source:    "file",
+			TargetURL: "/host/files",
+		})
+	}
+	helper.SuccessWithOutData(c)
+}
+
+// AbortFileChunks removes an unfinished chunked upload if it still exists.
+func (a *FileAPI) AbortFileChunks(c *gin.Context) {
+	var req dto.FileUploadChunkAbortReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFileService().AbortUploadChunks(req); err != nil {
+		handleFileUploadError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func handleFileUploadError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrUploadConflict):
+		helper.ErrorWithDetail(c, http.StatusConflict, err.Error())
+	case errors.Is(err, service.ErrInvalidUploadPath),
+		errors.Is(err, service.ErrInvalidUploadMetadata),
+		errors.Is(err, service.ErrUploadChecksum),
+		errors.Is(err, service.ErrUploadChunkOrder),
+		errors.Is(err, service.ErrUploadSizeMismatch):
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+	default:
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, "upload failed: "+err.Error())
+	}
+}
+
 // DownloadFile 下载文件
 func (a *FileAPI) DownloadFile(c *gin.Context) {
 	filePath := c.Query("path")
