@@ -429,7 +429,7 @@ const darkTheme = () => {
   return !bg || bg === '#000000' || bg === '#141414' || bg === '#0a0a0a'
 }
 
-const baseChartOption = (): echarts.EChartsOption => ({
+const baseChartOption = (): echarts.EChartsCoreOption => ({
   backgroundColor: 'transparent',
   grid: { top: 30, right: 20, bottom: 60, left: 50 },
   tooltip: { trigger: 'axis', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: 'transparent', textStyle: { color: '#fff', fontSize: 12 } },
