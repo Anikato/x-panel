@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
@@ -247,6 +248,46 @@ func (a *ContainerAPI) OperateCompose(c *gin.Context) {
 		return
 	}
 	helper.SuccessWithOutData(c)
+}
+
+func (a *ContainerAPI) GetComposeContent(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Query("id"), 10, 64)
+	if err != nil || id == 0 {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "id is required")
+		return
+	}
+	content, err := composeService.GetComposeContent(uint(id))
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, content)
+}
+
+func (a *ContainerAPI) UpdateComposeContent(c *gin.Context) {
+	var req dto.ComposeContentReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := composeService.UpdateComposeContent(req.ID, req.Content); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *ContainerAPI) DeleteCompose(c *gin.Context) {
+	var req dto.ComposeDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := composeService.DeleteCompose(req.ID); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithMsg(c, "MsgDeleteSuccess")
 }
 
 // ======================== 新增功能 ========================

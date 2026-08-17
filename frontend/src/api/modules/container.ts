@@ -30,10 +30,16 @@ export const createVolume = (data: VolumeCreateForm) => http.post('/containers/v
 export const removeVolume = (data: { name: string }) => http.post('/containers/volume/del', data)
 
 export const listCompose = () => http.get('/containers/compose')
-export const createCompose = (data: { name: string; path: string; content: string }) =>
-  http.post('/containers/compose', data)
-export const operateCompose = (data: { name: string; operation: string }) =>
-  http.post('/containers/compose/operate', data)
+export const createCompose = (data: { name: string; path?: string; content?: string }) =>
+  http.post('/containers/compose', data, { timeout: 0 })
+export const operateCompose = (data: { id?: number; name?: string; path?: string; operation: string }) =>
+  http.post('/containers/compose/operate', data, { timeout: 0 })
+export const getComposeContent = (id: number) =>
+  http.get('/containers/compose/content', { params: { id } })
+export const updateComposeContent = (data: { id: number; content: string }) =>
+  http.post('/containers/compose/content', data)
+export const deleteCompose = (data: { id: number }) =>
+  http.post('/containers/compose/del', data, { timeout: 0 })
 
 // 新增功能
 export const inspectDocker = (data: { type: string; id: string }) => http.post('/containers/inspect', data)

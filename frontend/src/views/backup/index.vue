@@ -49,6 +49,7 @@
           <el-table-column :label="t('backup.path')" min-width="260" show-overflow-tooltip>
             <template #default="{ row }">{{ fullRecordPath(row) || '-' }}</template>
           </el-table-column>
+          <el-table-column prop="sha256" label="SHA256" min-width="180" show-overflow-tooltip />
           <el-table-column prop="status" :label="t('backup.status')" width="100">
             <template #default="{ row }">
               <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status === 'Success' ? t('backup.success') : t('backup.failed') }}</el-tag>
@@ -57,8 +58,9 @@
           <el-table-column prop="createdAt" :label="t('backup.time')" width="180">
             <template #default="{ row }">{{ new Date(row.createdAt).toLocaleString() }}</template>
           </el-table-column>
-          <el-table-column :label="t('commons.actions')" width="150">
+          <el-table-column :label="t('commons.actions')" width="220">
             <template #default="{ row }">
+              <el-button link type="primary" :disabled="!row.message" @click="showBackupLog(row.message)">{{ t('cronjob.viewLog') }}</el-button>
               <el-button link type="primary" :disabled="!fullRecordPath(row)" @click="copyRecordPath(row)">{{ t('backup.copyPath') }}</el-button>
               <el-button link type="danger" @click="handleDeleteRecord(row)">{{ t('commons.delete') }}</el-button>
             </template>
@@ -491,6 +493,13 @@ const handleDeleteRecord = async (row: BackupRecord) => {
   await loadRecords()
 }
 
+const showBackupLog = (message: string) => {
+  ElMessageBox.alert(message || '-', t('cronjob.message'), {
+    customClass: 'cronjob-log-box',
+    confirmButtonText: t('commons.confirm'),
+  })
+}
+
 const copyRecordPath = async (row: BackupRecord) => {
   const path = fullRecordPath(row)
   if (!path) return
@@ -646,5 +655,16 @@ onMounted(() => loadAccounts())
     justify-content: center;
     gap: 6px;
   }
+}
+</style>
+
+<style>
+.cronjob-log-box .el-message-box__message {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 60vh;
+  overflow: auto;
 }
 </style>

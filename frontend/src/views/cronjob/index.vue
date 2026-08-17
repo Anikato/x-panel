@@ -163,6 +163,18 @@
           <el-form-item v-if="form.type === 'directory'" :label="t('cronjob.sourceDir')">
             <el-input v-model="form.sourceDir" placeholder="/data/myapp" />
           </el-form-item>
+          <el-form-item v-if="form.type === 'compose'" :label="t('cronjob.composeProject')">
+            <el-select v-model="form.composeName" style="width:100%" filterable :placeholder="t('cronjob.composeProjectEmpty')">
+              <el-option v-for="p in composeProjects" :key="p.name" :label="p.name" :value="p.name" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.type === 'compose'" :label="t('cronjob.composeOperation')">
+            <el-select v-model="form.composeOperation" style="width:100%">
+              <el-option :label="t('cronjob.composeOpPull')" value="pull" />
+              <el-option :label="t('cronjob.composeOpUpdate')" value="update" />
+            </el-select>
+            <div class="form-tip">{{ t('cronjob.composeOpUpdate') }}</div>
+          </el-form-item>
         </div>
 
         <div v-if="['website','database','directory'].includes(form.type)" class="drawer-section">
@@ -173,8 +185,12 @@
           <el-form-item :label="t('backup.account')">
             <el-select v-model="form.targetAccountID" style="width:100%" :placeholder="t('cronjob.localBackup')">
               <el-option :label="t('cronjob.localBackup')" :value="0" />
-              <el-option v-for="a in backupAccounts" :key="a.id" :label="a.name" :value="a.id" />
+              <el-option v-for="a in backupAccounts" :key="a.id" :label="a.name + ' (' + a.type + ')'" :value="a.id" />
             </el-select>
+          </el-form-item>
+          <el-form-item v-if="form.targetAccountID > 0" :label="t('cronjob.deleteLocalAfterUpload')">
+            <el-switch v-model="form.deleteLocalAfterUpload" />
+            <div class="form-tip">{{ t('cronjob.deleteLocalAfterUploadHint') }}</div>
           </el-form-item>
           <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.compressFormat')">
             <el-select v-model="form.compressFormat" style="width:100%">
@@ -195,6 +211,15 @@
           <el-form-item v-if="['website','directory'].includes(form.type)" :label="t('cronjob.exclusionRules')">
             <el-input v-model="form.exclusionRules" type="textarea" :rows="3" :placeholder="t('cronjob.exclusionRulesHint')" />
           </el-form-item>
+          <template v-if="form.type === 'directory'">
+            <el-form-item :label="t('cronjob.preCommand')">
+              <el-input v-model="form.preCommand" type="textarea" :rows="3" :placeholder="t('cronjob.preCommandHint')" />
+            </el-form-item>
+            <el-form-item :label="t('cronjob.postCommand')">
+              <el-input v-model="form.postCommand" type="textarea" :rows="3" :placeholder="t('cronjob.postCommandHint')" />
+              <div class="form-tip">{{ t('cronjob.postCommandAlwaysHint') }}</div>
+            </el-form-item>
+          </template>
         </div>
       </el-form>
       <template #footer>
@@ -217,7 +242,11 @@
             <el-tag :type="row.status === 'Success' ? 'success' : 'danger'" size="small">{{ row.status === 'Success' ? t('cronjob.success') : t('cronjob.failed') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="message" :label="t('cronjob.message')" min-width="240" show-overflow-tooltip />
+        <el-table-column :label="t('cronjob.message')" min-width="240">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="showJobLog(row.message)">{{ t('cronjob.viewLog') }}</el-button>
+          </template>
+        </el-table-column>
         <el-table-column prop="file" :label="t('backup.path')" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <el-button v-if="row.file" link type="primary" @click="copyFile(row.file)">{{ row.file }}</el-button>
@@ -241,23 +270,25 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import type { BackupAccount, Cronjob, CronjobRecord, DatabaseInstance, DatabaseServer } from '@/api/interface'
+import type { BackupAccount, ComposeItem, Cronjob, CronjobRecord, DatabaseInstance, DatabaseServer } from '@/api/interface'
 import {
   searchCronjob, createCronjob, updateCronjob, deleteCronjob,
   updateCronjobStatus, handleOnceCronjob, searchCronjobRecords
 } from '@/api/modules/cronjob'
 import { listBackupAccounts } from '@/api/modules/backup'
 import { searchDatabaseServer, searchDatabaseInstance } from '@/api/modules/database'
+import { listCompose } from '@/api/modules/container'
 
 const { t } = useI18n()
-const typeOptions = ['shell', 'curl', 'website', 'database', 'directory']
+const typeOptions = ['shell', 'curl', 'website', 'database', 'directory', 'compose']
 const typeTagMap: Record<string, string> = {
-  shell: '', curl: 'warning', website: 'success', database: 'danger', directory: 'info',
+  shell: '', curl: 'warning', website: 'success', database: 'danger', directory: 'info', compose: 'warning',
 }
 const backupAccounts = ref<BackupAccount[]>([])
 type DatabaseOption = DatabaseInstance & { serverName: string; serverAddress: string }
 const databaseOptions = ref<DatabaseOption[]>([])
 const databaseLoading = ref(false)
+const composeProjects = ref<ComposeItem[]>([])
 
 const loading = ref(false)
 const data = ref<Cronjob[]>([])
@@ -275,7 +306,8 @@ const defaultForm = () => ({
   id: 0, name: '', type: 'shell', spec: '0 2 * * *', script: '', url: '',
   website: '', dbType: 'mysql', dbName: '', dbInstanceID: 0, sourceDir: '',
   targetAccountID: 0, retainCopies: 7, exclusionRules: '',
-  compressFormat: 'gzip', encryptPassword: '',
+  compressFormat: 'gzip', encryptPassword: '', deleteLocalAfterUpload: true,
+  preCommand: '', postCommand: '', composeName: '', composeOperation: 'update',
 })
 const form = reactive(defaultForm())
 const rules: FormRules = {
@@ -398,6 +430,7 @@ const openCreate = () => {
   parseCronToBuilder(form.spec)
   drawerVisible.value = true
   loadBackupAccounts()
+  loadComposeProjects()
   databaseOptions.value = []
 }
 
@@ -410,6 +443,7 @@ const openEdit = (row: Cronjob) => {
   parseCronToBuilder(row.spec)
   drawerVisible.value = true
   loadBackupAccounts()
+  loadComposeProjects()
   if (form.type === 'database') loadDatabaseOptions()
 }
 
@@ -422,6 +456,10 @@ const submit = async () => {
   }
   if (form.type === 'database' && form.dbInstanceID === 0 && !form.dbName) {
     form.dbName = '__all__'
+  }
+  if (form.type === 'compose' && !form.composeName.trim()) {
+    ElMessage.warning(t('cronjob.composeProjectEmpty'))
+    return
   }
   submitting.value = true
   try {
@@ -447,6 +485,13 @@ const toggleStatus = async (row: Cronjob, val: boolean) => {
   await updateCronjobStatus({ id: row.id, status: val ? 'Enable' : 'Disable' })
   ElMessage.success(t('commons.success'))
   await search()
+}
+
+const showJobLog = (message: string) => {
+  ElMessageBox.alert(message || '-', t('cronjob.message'), {
+    customClass: 'cronjob-log-box',
+    confirmButtonText: t('commons.confirm'),
+  })
 }
 
 const handleOnce = async (row: Cronjob) => {
@@ -480,6 +525,15 @@ const loadBackupAccounts = async () => {
     backupAccounts.value = res.data || []
   } catch {
     backupAccounts.value = []
+  }
+}
+
+const loadComposeProjects = async () => {
+  try {
+    const res = await listCompose()
+    composeProjects.value = (res.data || []).filter((p: ComposeItem) => p.source !== 'unmanaged')
+  } catch {
+    composeProjects.value = []
   }
 }
 
@@ -552,6 +606,9 @@ watch(() => form.type, (type) => {
     if (!form.dbName) form.dbName = '__all__'
     loadDatabaseOptions()
   }
+  if (type === 'compose') {
+    loadComposeProjects()
+  }
 })
 </script>
 
@@ -612,5 +669,16 @@ watch(() => form.type, (type) => {
   color: var(--xp-text-muted);
   font-size: 12px;
   line-height: 1.4;
+}
+</style>
+
+<style>
+.cronjob-log-box .el-message-box__message {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 60vh;
+  overflow: auto;
 }
 </style>

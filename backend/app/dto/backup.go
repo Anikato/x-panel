@@ -51,17 +51,19 @@ type BackupRecordSearch struct {
 }
 
 type BackupRecordInfo struct {
-	ID        uint      `json:"id"`
-	CreatedAt time.Time `json:"createdAt"`
-	Type      string    `json:"type"`
-	Name      string    `json:"name"`
-	AccountID uint      `json:"accountID"`
-	CronjobID uint      `json:"cronjobID"`
-	FileName  string    `json:"fileName"`
-	FileDir   string    `json:"fileDir"`
-	Size      int64     `json:"size"`
-	Status    string    `json:"status"`
-	Message   string    `json:"message"`
+	ID         uint      `json:"id"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Type       string    `json:"type"`
+	Name       string    `json:"name"`
+	AccountID  uint      `json:"accountID"`
+	CronjobID  uint      `json:"cronjobID"`
+	FileName   string    `json:"fileName"`
+	FileDir    string    `json:"fileDir"`
+	Size       int64     `json:"size"`
+	SHA256     string    `json:"sha256"`
+	SourcePath string    `json:"sourcePath"`
+	Status     string    `json:"status"`
+	Message    string    `json:"message"`
 }
 
 type BackupCreate struct {

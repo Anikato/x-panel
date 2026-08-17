@@ -13,13 +13,15 @@ type BackupAccount struct {
 
 type BackupRecord struct {
 	BaseModel
-	CronjobID uint   `gorm:"index" json:"cronjobID"`
-	Type      string `json:"type"` // website / database / directory
-	Name      string `json:"name"`
-	AccountID uint   `json:"accountID"`
-	FileName  string `json:"fileName"`
-	FileDir   string `json:"fileDir"`
-	Size      int64  `json:"size"`
-	Status    string `json:"status"` // success / failed
-	Message   string `json:"message"`
+	CronjobID  uint   `gorm:"index" json:"cronjobID"`
+	Type       string `json:"type"` // website / database / directory
+	Name       string `json:"name"`
+	AccountID  uint   `json:"accountID"`
+	FileName   string `json:"fileName"`
+	FileDir    string `json:"fileDir"`
+	Size       int64  `json:"size"`
+	SHA256     string `json:"sha256"`
+	SourcePath string `json:"sourcePath"`
+	Status     string `json:"status"` // success / failed
+	Message    string `json:"message"`
 }

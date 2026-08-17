@@ -41,3 +41,18 @@ func TestCronjobEmptyPasswordUpdateRetainsExistingSecret(t *testing.T) {
 		t.Fatalf("updated password = %q, want existing secret", updated.EncryptPassword)
 	}
 }
+
+func TestBackupJobOptionsCopyCronSettings(t *testing.T) {
+	svc := &CronjobService{}
+	opts := svc.backupJobOptions(&model.Cronjob{
+		CompressFormat:         "zstd",
+		EncryptPassword:        "secret",
+		ExclusionRules:         "*.log\ncache",
+		DeleteLocalAfterUpload: true,
+		SourceDir:              "/var/www/app",
+	})
+	if opts.CompressFormat != "zstd" || opts.EncryptPassword != "secret" ||
+		opts.ExclusionRules != "*.log\ncache" || !opts.DeleteLocal || opts.SourcePath != "/var/www/app" {
+		t.Fatalf("backup options mismatch: %#v", opts)
+	}
+}

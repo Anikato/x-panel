@@ -259,9 +259,12 @@ export interface VolumeCreateForm {
 }
 
 export interface ComposeItem {
+  id: number
   name: string
-  status: string
   path: string
+  source: 'created' | 'attached' | 'unmanaged'
+  status: string
+  created?: string
 }
 
 // ======================== Cronjob ========================
@@ -284,6 +287,11 @@ export interface Cronjob {
   exclusionRules: string
   compressFormat: string
   encryptPasswordSet: boolean
+  deleteLocalAfterUpload: boolean
+  preCommand: string
+  postCommand: string
+  composeName: string
+  composeOperation: string
 }
 
 /** 与后端 dto.CronjobCreate 对齐（创建不传 id/status） */
@@ -303,6 +311,11 @@ export interface CronjobCreateForm {
   exclusionRules: string
   compressFormat: string
   encryptPassword: string
+  deleteLocalAfterUpload: boolean
+  preCommand: string
+  postCommand: string
+  composeName: string
+  composeOperation: string
 }
 
 /** 与后端 dto.CronjobUpdate 对齐 */
@@ -374,6 +387,8 @@ export interface BackupRecord {
   fileName: string
   fileDir: string
   size: number
+  sha256: string
+  sourcePath: string
   status: string
   message: string
   createdAt: string

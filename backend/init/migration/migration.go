@@ -49,6 +49,7 @@ func Init() {
 		&model.HAProxyACLRule{},
 		&model.HAProxyConfigVersion{},
 		&model.Notification{},
+		&model.ComposeProject{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

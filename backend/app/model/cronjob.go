@@ -4,23 +4,28 @@ import "time"
 
 type Cronjob struct {
 	BaseModel
-	Name            string `gorm:"not null" json:"name"`
-	Type            string `gorm:"not null" json:"type"` // shell / website / database / directory / curl
-	Spec            string `gorm:"not null" json:"spec"`
-	Status          string `gorm:"default:Enable" json:"status"`
-	EntryID         int    `json:"entryID"`
-	Script          string `json:"script"`
-	URL             string `json:"url"`
-	Website         string `json:"website"`
-	DBType          string `json:"dbType"`
-	DBName          string `json:"dbName"`
-	DBInstanceID    uint   `gorm:"index" json:"dbInstanceID"`
-	SourceDir       string `json:"sourceDir"`
-	TargetAccountID uint   `json:"targetAccountID"`
-	RetainCopies    uint   `gorm:"default:7" json:"retainCopies"`
-	ExclusionRules  string `json:"exclusionRules"`
-	CompressFormat  string `gorm:"default:gzip" json:"compressFormat"` // gzip / zstd / xz
-	EncryptPassword string `json:"-"`
+	Name                   string `gorm:"not null" json:"name"`
+	Type                   string `gorm:"not null" json:"type"` // shell / website / database / directory / curl / compose
+	Spec                   string `gorm:"not null" json:"spec"`
+	Status                 string `gorm:"default:Enable" json:"status"`
+	EntryID                int    `json:"entryID"`
+	Script                 string `json:"script"`
+	URL                    string `json:"url"`
+	Website                string `json:"website"`
+	DBType                 string `json:"dbType"`
+	DBName                 string `json:"dbName"`
+	DBInstanceID           uint   `gorm:"index" json:"dbInstanceID"`
+	SourceDir              string `json:"sourceDir"`
+	TargetAccountID        uint   `json:"targetAccountID"`
+	RetainCopies           uint   `gorm:"default:7" json:"retainCopies"`
+	ExclusionRules         string `json:"exclusionRules"`
+	CompressFormat         string `gorm:"default:gzip" json:"compressFormat"` // gzip / zstd / xz
+	EncryptPassword        string `json:"-"`
+	DeleteLocalAfterUpload bool   `gorm:"default:true" json:"deleteLocalAfterUpload"`
+	PreCommand             string `gorm:"type:text" json:"preCommand"`
+	PostCommand            string `gorm:"type:text" json:"postCommand"`
+	ComposeName            string `json:"composeName"`
+	ComposeOperation       string `json:"composeOperation"` // pull / update
 }
 
 type CronjobRecord struct {

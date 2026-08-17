@@ -3,40 +3,50 @@ package dto
 import "time"
 
 type CronjobCreate struct {
-	Name            string `json:"name" binding:"required"`
-	Type            string `json:"type" binding:"required"`
-	Spec            string `json:"spec" binding:"required"`
-	Script          string `json:"script"`
-	URL             string `json:"url"`
-	Website         string `json:"website"`
-	DBType          string `json:"dbType"`
-	DBName          string `json:"dbName"`
-	DBInstanceID    uint   `json:"dbInstanceID"`
-	SourceDir       string `json:"sourceDir"`
-	TargetAccountID uint   `json:"targetAccountID"`
-	RetainCopies    uint   `json:"retainCopies"`
-	ExclusionRules  string `json:"exclusionRules"`
-	CompressFormat  string `json:"compressFormat"`
-	EncryptPassword string `json:"encryptPassword"`
+	Name                   string `json:"name" binding:"required"`
+	Type                   string `json:"type" binding:"required"`
+	Spec                   string `json:"spec" binding:"required"`
+	Script                 string `json:"script"`
+	URL                    string `json:"url"`
+	Website                string `json:"website"`
+	DBType                 string `json:"dbType"`
+	DBName                 string `json:"dbName"`
+	DBInstanceID           uint   `json:"dbInstanceID"`
+	SourceDir              string `json:"sourceDir"`
+	TargetAccountID        uint   `json:"targetAccountID"`
+	RetainCopies           uint   `json:"retainCopies"`
+	ExclusionRules         string `json:"exclusionRules"`
+	CompressFormat         string `json:"compressFormat"`
+	EncryptPassword        string `json:"encryptPassword"`
+	DeleteLocalAfterUpload bool   `json:"deleteLocalAfterUpload"`
+	PreCommand             string `json:"preCommand"`
+	PostCommand            string `json:"postCommand"`
+	ComposeName            string `json:"composeName"`
+	ComposeOperation       string `json:"composeOperation"`
 }
 
 type CronjobUpdate struct {
-	ID              uint   `json:"id" binding:"required"`
-	Name            string `json:"name" binding:"required"`
-	Type            string `json:"type" binding:"required"`
-	Spec            string `json:"spec" binding:"required"`
-	Script          string `json:"script"`
-	URL             string `json:"url"`
-	Website         string `json:"website"`
-	DBType          string `json:"dbType"`
-	DBName          string `json:"dbName"`
-	DBInstanceID    uint   `json:"dbInstanceID"`
-	SourceDir       string `json:"sourceDir"`
-	TargetAccountID uint   `json:"targetAccountID"`
-	RetainCopies    uint   `json:"retainCopies"`
-	ExclusionRules  string `json:"exclusionRules"`
-	CompressFormat  string `json:"compressFormat"`
-	EncryptPassword string `json:"encryptPassword"`
+	ID                     uint   `json:"id" binding:"required"`
+	Name                   string `json:"name" binding:"required"`
+	Type                   string `json:"type" binding:"required"`
+	Spec                   string `json:"spec" binding:"required"`
+	Script                 string `json:"script"`
+	URL                    string `json:"url"`
+	Website                string `json:"website"`
+	DBType                 string `json:"dbType"`
+	DBName                 string `json:"dbName"`
+	DBInstanceID           uint   `json:"dbInstanceID"`
+	SourceDir              string `json:"sourceDir"`
+	TargetAccountID        uint   `json:"targetAccountID"`
+	RetainCopies           uint   `json:"retainCopies"`
+	ExclusionRules         string `json:"exclusionRules"`
+	CompressFormat         string `json:"compressFormat"`
+	EncryptPassword        string `json:"encryptPassword"`
+	DeleteLocalAfterUpload bool   `json:"deleteLocalAfterUpload"`
+	PreCommand             string `json:"preCommand"`
+	PostCommand            string `json:"postCommand"`
+	ComposeName            string `json:"composeName"`
+	ComposeOperation       string `json:"composeOperation"`
 }
 
 type CronjobSearch struct {
@@ -47,25 +57,30 @@ type CronjobSearch struct {
 }
 
 type CronjobInfo struct {
-	ID                 uint      `json:"id"`
-	CreatedAt          time.Time `json:"createdAt"`
-	Name               string    `json:"name"`
-	Type               string    `json:"type"`
-	Spec               string    `json:"spec"`
-	Status             string    `json:"status"`
-	EntryID            int       `json:"entryID"`
-	Script             string    `json:"script"`
-	URL                string    `json:"url"`
-	Website            string    `json:"website"`
-	DBType             string    `json:"dbType"`
-	DBName             string    `json:"dbName"`
-	DBInstanceID       uint      `json:"dbInstanceID"`
-	SourceDir          string    `json:"sourceDir"`
-	TargetAccountID    uint      `json:"targetAccountID"`
-	RetainCopies       uint      `json:"retainCopies"`
-	ExclusionRules     string    `json:"exclusionRules"`
-	CompressFormat     string    `json:"compressFormat"`
-	EncryptPasswordSet bool      `json:"encryptPasswordSet"`
+	ID                     uint      `json:"id"`
+	CreatedAt              time.Time `json:"createdAt"`
+	Name                   string    `json:"name"`
+	Type                   string    `json:"type"`
+	Spec                   string    `json:"spec"`
+	Status                 string    `json:"status"`
+	EntryID                int       `json:"entryID"`
+	Script                 string    `json:"script"`
+	URL                    string    `json:"url"`
+	Website                string    `json:"website"`
+	DBType                 string    `json:"dbType"`
+	DBName                 string    `json:"dbName"`
+	DBInstanceID           uint      `json:"dbInstanceID"`
+	SourceDir              string    `json:"sourceDir"`
+	TargetAccountID        uint      `json:"targetAccountID"`
+	RetainCopies           uint      `json:"retainCopies"`
+	ExclusionRules         string    `json:"exclusionRules"`
+	CompressFormat         string    `json:"compressFormat"`
+	EncryptPasswordSet     bool      `json:"encryptPasswordSet"`
+	DeleteLocalAfterUpload bool      `json:"deleteLocalAfterUpload"`
+	PreCommand             string    `json:"preCommand"`
+	PostCommand            string    `json:"postCommand"`
+	ComposeName            string    `json:"composeName"`
+	ComposeOperation       string    `json:"composeOperation"`
 }
 
 type CronjobRecordSearch struct {

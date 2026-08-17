@@ -108,22 +108,34 @@ type VolumeCreate struct {
 
 // Compose
 type ComposeInfo struct {
+	ID      uint   `json:"id"`
 	Name    string `json:"name"`
 	Path    string `json:"path"`
+	Source  string `json:"source"`
 	Status  string `json:"status"`
 	Created string `json:"created"`
 }
 
 type ComposeCreate struct {
 	Name    string `json:"name" binding:"required"`
-	Path    string `json:"path" binding:"required"`
+	Path    string `json:"path"`
 	Content string `json:"content"`
 }
 
 type ComposeOperate struct {
-	Name      string `json:"name" binding:"required"`
-	Path      string `json:"path" binding:"required"`
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
 	Operation string `json:"operation" binding:"required"`
+}
+
+type ComposeContentReq struct {
+	ID      uint   `json:"id" binding:"required"`
+	Content string `json:"content"`
+}
+
+type ComposeDelete struct {
+	ID uint `json:"id" binding:"required"`
 }
 
 // Inspect

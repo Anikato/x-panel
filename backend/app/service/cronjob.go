@@ -34,31 +34,40 @@ type ICronjobService interface {
 func NewICronjobService() ICronjobService {
 	return &CronjobService{
 		cronjobRepo: repo.NewICronjobRepo(),
+		operateCompose: func(req dto.ComposeOperate) error {
+			return NewIComposeService().OperateCompose(req)
+		},
 	}
 }
 
 type CronjobService struct {
-	cronjobRepo repo.ICronjobRepo
+	cronjobRepo    repo.ICronjobRepo
+	operateCompose func(dto.ComposeOperate) error
 }
 
 func (s *CronjobService) Create(req dto.CronjobCreate) error {
 	job := &model.Cronjob{
-		Name:            req.Name,
-		Type:            req.Type,
-		Spec:            req.Spec,
-		Status:          constant.StatusEnable,
-		Script:          req.Script,
-		URL:             req.URL,
-		Website:         req.Website,
-		DBType:          req.DBType,
-		DBName:          req.DBName,
-		DBInstanceID:    req.DBInstanceID,
-		SourceDir:       req.SourceDir,
-		TargetAccountID: req.TargetAccountID,
-		RetainCopies:    req.RetainCopies,
-		ExclusionRules:  req.ExclusionRules,
-		CompressFormat:  req.CompressFormat,
-		EncryptPassword: req.EncryptPassword,
+		Name:                   req.Name,
+		Type:                   req.Type,
+		Spec:                   req.Spec,
+		Status:                 constant.StatusEnable,
+		Script:                 req.Script,
+		URL:                    req.URL,
+		Website:                req.Website,
+		DBType:                 req.DBType,
+		DBName:                 req.DBName,
+		DBInstanceID:           req.DBInstanceID,
+		SourceDir:              req.SourceDir,
+		TargetAccountID:        req.TargetAccountID,
+		RetainCopies:           req.RetainCopies,
+		ExclusionRules:         req.ExclusionRules,
+		CompressFormat:         req.CompressFormat,
+		EncryptPassword:        req.EncryptPassword,
+		DeleteLocalAfterUpload: req.DeleteLocalAfterUpload,
+		PreCommand:             req.PreCommand,
+		PostCommand:            req.PostCommand,
+		ComposeName:            req.ComposeName,
+		ComposeOperation:       req.ComposeOperation,
 	}
 	if err := s.validateJobConfig(job); err != nil {
 		return err
@@ -96,20 +105,25 @@ func (s *CronjobService) Update(req dto.CronjobUpdate) error {
 
 func buildCronjobUpdate(job *model.Cronjob, req dto.CronjobUpdate) (map[string]interface{}, model.Cronjob) {
 	fields := map[string]interface{}{
-		"name":              req.Name,
-		"type":              req.Type,
-		"spec":              req.Spec,
-		"script":            req.Script,
-		"url":               req.URL,
-		"website":           req.Website,
-		"db_type":           req.DBType,
-		"db_name":           req.DBName,
-		"db_instance_id":    req.DBInstanceID,
-		"source_dir":        req.SourceDir,
-		"target_account_id": req.TargetAccountID,
-		"retain_copies":     req.RetainCopies,
-		"exclusion_rules":   req.ExclusionRules,
-		"compress_format":   req.CompressFormat,
+		"name":                      req.Name,
+		"type":                      req.Type,
+		"spec":                      req.Spec,
+		"script":                    req.Script,
+		"url":                       req.URL,
+		"website":                   req.Website,
+		"db_type":                   req.DBType,
+		"db_name":                   req.DBName,
+		"db_instance_id":            req.DBInstanceID,
+		"source_dir":                req.SourceDir,
+		"target_account_id":         req.TargetAccountID,
+		"retain_copies":             req.RetainCopies,
+		"exclusion_rules":           req.ExclusionRules,
+		"compress_format":           req.CompressFormat,
+		"delete_local_after_upload": req.DeleteLocalAfterUpload,
+		"pre_command":               req.PreCommand,
+		"post_command":              req.PostCommand,
+		"compose_name":              req.ComposeName,
+		"compose_operation":         req.ComposeOperation,
 	}
 	updatedJob := *job
 	updatedJob.Name = req.Name
@@ -126,6 +140,11 @@ func buildCronjobUpdate(job *model.Cronjob, req dto.CronjobUpdate) (map[string]i
 	updatedJob.RetainCopies = req.RetainCopies
 	updatedJob.ExclusionRules = req.ExclusionRules
 	updatedJob.CompressFormat = req.CompressFormat
+	updatedJob.DeleteLocalAfterUpload = req.DeleteLocalAfterUpload
+	updatedJob.PreCommand = req.PreCommand
+	updatedJob.PostCommand = req.PostCommand
+	updatedJob.ComposeName = req.ComposeName
+	updatedJob.ComposeOperation = req.ComposeOperation
 	if req.EncryptPassword != "" {
 		fields["encrypt_password"] = req.EncryptPassword
 		updatedJob.EncryptPassword = req.EncryptPassword
@@ -273,6 +292,13 @@ func (s *CronjobService) validateJobConfig(job *model.Cronjob) error {
 		if strings.TrimSpace(job.SourceDir) == "" {
 			return fmt.Errorf("source directory is empty")
 		}
+	case "compose":
+		if strings.TrimSpace(job.ComposeName) == "" {
+			return fmt.Errorf("compose project is empty")
+		}
+		if job.ComposeOperation != "pull" && job.ComposeOperation != "update" {
+			return fmt.Errorf("compose operation must be pull or update")
+		}
 	default:
 		return fmt.Errorf("unsupported job type: %s", job.Type)
 	}
@@ -302,6 +328,8 @@ func (s *CronjobService) executeJob(job *model.Cronjob) {
 		msg, status, file = s.execWebsiteBackup(job)
 	case "directory":
 		msg, status, file = s.execDirectoryBackup(job)
+	case "compose":
+		msg, status = s.execCompose(job)
 	default:
 		msg = fmt.Sprintf("unsupported job type: %s", job.Type)
 		status = constant.StatusFailed
@@ -443,13 +471,8 @@ func (s *CronjobService) execDatabaseBackup(job *model.Cronjob) (string, string,
 
 func (s *CronjobService) backupOneDatabase(job *model.Cronjob, backupService IBackupService, instanceID uint, dbName string) (string, string, string) {
 	if job.TargetAccountID > 0 {
-		output, err := backupService.PerformDatabaseInstanceBackupWithInfo(instanceID, job.TargetAccountID)
-		if err != nil {
-			_ = backupService.CreateRecordForFile("database", dbName, job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
-			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
-		}
-		_ = backupService.CreateRecordForFile("database", dbName, job.TargetAccountID, job.ID, output.Path, output.Size, constant.StatusSuccess, output.Path)
-		return fmt.Sprintf("backup uploaded: %s", output.Path), constant.StatusSuccess, output.Path
+		output, err := backupService.PerformDatabaseInstanceBackupWithOptions(instanceID, job.TargetAccountID, s.backupJobOptions(job))
+		return recordAccountBackup(backupService, "database", dbName, job, output, err)
 	}
 	dbService := NewIDatabaseService()
 	outFile, err := dbService.BackupInstance(instanceID)
@@ -467,13 +490,8 @@ func (s *CronjobService) execWebsiteBackup(job *model.Cronjob) (string, string, 
 	}
 	backupService := NewIBackupService()
 	if job.TargetAccountID > 0 {
-		output, err := backupService.PerformBackupWithInfo("website", job.Website, "", "", job.TargetAccountID)
-		if err != nil {
-			_ = backupService.CreateRecordForFile("website", job.Website, job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
-			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
-		}
-		_ = backupService.CreateRecordForFile("website", job.Website, job.TargetAccountID, job.ID, output.Path, output.Size, constant.StatusSuccess, output.Path)
-		return fmt.Sprintf("backup uploaded: %s", output.Path), constant.StatusSuccess, output.Path
+		output, err := backupService.PerformBackupWithOptions("website", job.Website, "", "", job.TargetAccountID, s.backupJobOptions(job))
+		return recordAccountBackup(backupService, "website", job.Website, job, output, err)
 	}
 	msg, status := s.localBackupTar(job, "website", job.Website, "")
 	file := extractBackupFile(msg)
@@ -486,21 +504,63 @@ func (s *CronjobService) execDirectoryBackup(job *model.Cronjob) (string, string
 		return "source directory is empty", constant.StatusFailed, ""
 	}
 	backupService := NewIBackupService()
-	if job.TargetAccountID > 0 {
-		output, err := backupService.PerformBackupWithInfo("directory", "", "", job.SourceDir, job.TargetAccountID)
-		if err != nil {
-			_ = backupService.CreateRecordForFile("directory", filepath.Base(job.SourceDir), job.TargetAccountID, job.ID, "", 0, constant.StatusFailed, err.Error())
-			return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed, ""
-		}
-		name := filepath.Base(job.SourceDir)
-		_ = backupService.CreateRecordForFile("directory", name, job.TargetAccountID, job.ID, output.Path, output.Size, constant.StatusSuccess, output.Path)
-		return fmt.Sprintf("backup uploaded: %s", output.Path), constant.StatusSuccess, output.Path
-	}
 	name := filepath.Base(job.SourceDir)
-	msg, status := s.localBackupTar(job, "directory", job.SourceDir, job.SourceDir)
-	file := extractBackupFile(msg)
-	_ = backupService.CreateRecordForFile("directory", name, 0, job.ID, file, 0, status, msg)
-	return msg, status, file
+
+	var packMsg, packFile string
+	hooks := runDirectoryBackupHooks(job.PreCommand, job.PostCommand, func() error {
+		msg, status := s.localBackupTar(job, "directory", job.SourceDir, job.SourceDir)
+		packMsg = msg
+		packFile = extractBackupFile(msg)
+		if status != constant.StatusSuccess {
+			return fmt.Errorf("%s", msg)
+		}
+		return nil
+	})
+
+	log := hooks.Log
+	if packMsg != "" {
+		log = strings.TrimSpace(log + "\n" + packMsg)
+	}
+	if !hooks.OK {
+		_ = backupService.CreateRecordForFile("directory", name, job.TargetAccountID, job.ID, packFile, 0, constant.StatusFailed, log+"\n"+hooks.Err.Error())
+		return log + "\n" + hooks.Err.Error(), constant.StatusFailed, packFile
+	}
+
+	if job.TargetAccountID == 0 {
+		_ = backupService.CreateRecordForFile("directory", name, 0, job.ID, packFile, 0, constant.StatusSuccess, log)
+		return log, constant.StatusSuccess, packFile
+	}
+
+	targetPath := filepath.ToSlash(filepath.Join("directory", name, filepath.Base(packFile)))
+	output, err := backupService.UploadExistingFile(job.TargetAccountID, packFile, targetPath, s.backupJobOptions(job))
+	if output != nil && output.Log != "" {
+		log = strings.TrimSpace(log + "\n" + output.Log)
+	}
+	if err != nil {
+		_ = backupService.CreateRecordFromOutput("directory", name, job.TargetAccountID, job.ID, output, constant.StatusFailed, backupFailureMessage(&BackupOutput{Log: log}, err))
+		return backupFailureMessage(&BackupOutput{Log: log}, err), constant.StatusFailed, packFile
+	}
+	_ = backupService.CreateRecordFromOutput("directory", name, job.TargetAccountID, job.ID, output, constant.StatusSuccess, log)
+	return log, constant.StatusSuccess, output.Path
+}
+
+func (s *CronjobService) backupJobOptions(job *model.Cronjob) BackupJobOptions {
+	return BackupJobOptions{
+		CompressFormat:  job.CompressFormat,
+		EncryptPassword: job.EncryptPassword,
+		ExclusionRules:  job.ExclusionRules,
+		DeleteLocal:     job.DeleteLocalAfterUpload,
+		SourcePath:      job.SourceDir,
+	}
+}
+
+func recordAccountBackup(backupService IBackupService, backupType, name string, job *model.Cronjob, output *BackupOutput, err error) (string, string, string) {
+	if err != nil {
+		_ = backupService.CreateRecordFromOutput(backupType, name, job.TargetAccountID, job.ID, output, constant.StatusFailed, backupFailureMessage(output, err))
+		return backupFailureMessage(output, err), constant.StatusFailed, ""
+	}
+	_ = backupService.CreateRecordFromOutput(backupType, name, job.TargetAccountID, job.ID, output, constant.StatusSuccess, output.Log)
+	return output.Log, constant.StatusSuccess, output.Path
 }
 
 func (s *CronjobService) localBackupTar(job *model.Cronjob, backupType, name, sourceDir string) (string, string) {
@@ -536,7 +596,8 @@ func (s *CronjobService) localBackupTar(job *model.Cronjob, backupType, name, so
 	if err != nil {
 		return fmt.Sprintf("backup failed: %v", err), constant.StatusFailed
 	}
-	return fmt.Sprintf("backup saved: %s", outFile), constant.StatusSuccess
+	return fmt.Sprintf("backup saved: %s\nsource=%s format=%s excludes=%q",
+		outFile, tarDir, defaultCompress(job.CompressFormat), compactSpace(job.ExclusionRules)), constant.StatusSuccess
 }
 
 func isAllDatabases(name string) bool {
@@ -546,32 +607,52 @@ func isAllDatabases(name string) bool {
 
 func extractBackupFile(message string) string {
 	const prefix = "backup saved: "
-	if strings.HasPrefix(message, prefix) {
-		return strings.TrimSpace(strings.TrimPrefix(message, prefix))
+	first, _, _ := strings.Cut(message, "\n")
+	if strings.HasPrefix(first, prefix) {
+		return strings.TrimSpace(strings.TrimPrefix(first, prefix))
 	}
 	return ""
 }
 
 func toCronjobInfo(j *model.Cronjob) *dto.CronjobInfo {
 	return &dto.CronjobInfo{
-		ID:                 j.ID,
-		CreatedAt:          j.CreatedAt,
-		Name:               j.Name,
-		Type:               j.Type,
-		Spec:               j.Spec,
-		Status:             j.Status,
-		EntryID:            j.EntryID,
-		Script:             j.Script,
-		URL:                j.URL,
-		Website:            j.Website,
-		DBType:             j.DBType,
-		DBName:             j.DBName,
-		DBInstanceID:       j.DBInstanceID,
-		SourceDir:          j.SourceDir,
-		TargetAccountID:    j.TargetAccountID,
-		RetainCopies:       j.RetainCopies,
-		ExclusionRules:     j.ExclusionRules,
-		CompressFormat:     j.CompressFormat,
-		EncryptPasswordSet: j.EncryptPassword != "",
+		ID:                     j.ID,
+		CreatedAt:              j.CreatedAt,
+		Name:                   j.Name,
+		Type:                   j.Type,
+		Spec:                   j.Spec,
+		Status:                 j.Status,
+		EntryID:                j.EntryID,
+		Script:                 j.Script,
+		URL:                    j.URL,
+		Website:                j.Website,
+		DBType:                 j.DBType,
+		DBName:                 j.DBName,
+		DBInstanceID:           j.DBInstanceID,
+		SourceDir:              j.SourceDir,
+		TargetAccountID:        j.TargetAccountID,
+		RetainCopies:           j.RetainCopies,
+		ExclusionRules:         j.ExclusionRules,
+		CompressFormat:         j.CompressFormat,
+		EncryptPasswordSet:     j.EncryptPassword != "",
+		DeleteLocalAfterUpload: j.DeleteLocalAfterUpload,
+		PreCommand:             j.PreCommand,
+		PostCommand:            j.PostCommand,
+		ComposeName:            j.ComposeName,
+		ComposeOperation:       j.ComposeOperation,
 	}
+}
+
+func (s *CronjobService) execCompose(job *model.Cronjob) (string, string) {
+	op := s.operateCompose
+	if op == nil {
+		op = func(req dto.ComposeOperate) error {
+			return NewIComposeService().OperateCompose(req)
+		}
+	}
+	err := op(dto.ComposeOperate{Name: job.ComposeName, Operation: job.ComposeOperation})
+	if err != nil {
+		return err.Error(), constant.StatusFailed
+	}
+	return "success", constant.StatusSuccess
 }

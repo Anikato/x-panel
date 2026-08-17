@@ -5,10 +5,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"xpanel/utils/checksum"
 )
 
 type SFTPClient struct {
@@ -72,34 +75,88 @@ func (c *SFTPClient) authMethods() ([]ssh.AuthMethod, error) {
 }
 
 func (c *SFTPClient) Upload(src, target string) error {
-	return retryStorageOp(func() error {
-		client, conn, err := c.connect()
-		if err != nil {
-			return err
-		}
-		defer conn.Close()
-		defer client.Close()
+	return c.UploadLogged(src, target, nil)
+}
 
-		remotePath := filepath.Join(c.basePath, target)
-		if err := client.MkdirAll(filepath.Dir(remotePath)); err != nil {
-			return err
-		}
+func (c *SFTPClient) UploadLogged(src, target string, logf func(string, ...any)) error {
+	localHash, err := checksum.FileSHA256(src)
+	if err != nil {
+		return fmt.Errorf("hash local backup failed: %w", err)
+	}
+	return c.uploadVerified(src, target, localHash, logf)
+}
 
-		srcFile, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer srcFile.Close()
-
-		dstFile, err := client.Create(remotePath)
-		if err != nil {
-			return err
-		}
-		defer dstFile.Close()
-
-		_, err = io.Copy(dstFile, srcFile)
+func (c *SFTPClient) uploadVerified(src, target, localHash string, logf func(string, ...any)) error {
+	store, cleanup, err := c.openStore()
+	if err != nil {
 		return err
-	})
+	}
+	defer cleanup()
+	remoteTarget := path.Join(c.basePath, target)
+	return uploadWithIntegrity(src, remoteTarget, localHash, store, logf)
+}
+
+type sftpRemoteStore struct {
+	sftp *sftp.Client
+	ssh  *ssh.Client
+}
+
+func (c *SFTPClient) openStore() (*sftpRemoteStore, func(), error) {
+	client, conn, err := c.connect()
+	if err != nil {
+		return nil, nil, err
+	}
+	return &sftpRemoteStore{sftp: client, ssh: conn}, func() {
+		_ = client.Close()
+		_ = conn.Close()
+	}, nil
+}
+
+func (s *sftpRemoteStore) put(src, dest string) error {
+	if err := s.sftp.MkdirAll(path.Dir(dest)); err != nil {
+		return err
+	}
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+	dstFile, err := s.sftp.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+func (s *sftpRemoteStore) hash(path string) (string, error) {
+	session, err := s.ssh.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+	output, err := session.CombinedOutput(remoteSHA256Command(path))
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return parseRemoteSHA256(string(output))
+}
+
+func (s *sftpRemoteStore) rename(oldPath, newPath string) error {
+	_ = s.sftp.Remove(newPath)
+	if err := s.sftp.PosixRename(oldPath, newPath); err == nil {
+		return nil
+	}
+	return s.sftp.Rename(oldPath, newPath)
+}
+
+func (s *sftpRemoteStore) remove(path string) error {
+	err := s.sftp.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func (c *SFTPClient) Download(src, target string) error {

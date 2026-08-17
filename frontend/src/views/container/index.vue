@@ -196,6 +196,10 @@
           </el-table>
         </el-tab-pane>
 
+        <el-tab-pane :label="t('container.compose')" name="compose">
+          <ComposeTab v-if="activeTab === 'compose'" />
+        </el-tab-pane>
+
         <el-tab-pane :label="t('container.dockerConfig')" name="config">
           <div class="mirror-config">
             <h4>{{ t('container.registryMirrors') }}</h4>
@@ -353,6 +357,7 @@ import { useI18n } from 'vue-i18n'
 import { Box, Download, WarningFilled, ArrowDown, VideoPlay, VideoPause, RefreshRight } from '@element-plus/icons-vue'
 import type { Container, ContainerImage, ContainerNetwork, ContainerVolume, DockerStatus } from '@/api/interface'
 import ContainerTerminal from './components/container-terminal.vue'
+import ComposeTab from './components/compose-tab.vue'
 import {
   getDockerStatus,
   installDocker, getDockerInstallLog,

@@ -17,6 +17,7 @@ import (
 	"xpanel/constant"
 	"xpanel/global"
 	archiveUtil "xpanel/utils/backup"
+	"xpanel/utils/checksum"
 	cs "xpanel/utils/cloud_storage"
 	dbUtil "xpanel/utils/database"
 )
@@ -34,6 +35,7 @@ type IBackupService interface {
 	DeleteRecord(id uint) error
 	PrepareRecordFile(id uint) (string, func(), error)
 	CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error
+	CreateRecordFromOutput(backupType, name string, accountID uint, cronjobID uint, output *BackupOutput, status, message string) error
 	CleanSuccessfulRecords(cronjobID uint, retainCopies uint) error
 	ListStorageObjects(req dto.BackupStorageReq) ([]dto.BackupStorageObject, error)
 	ReadStorageObject(req dto.BackupStorageReq) (string, error)
@@ -44,12 +46,42 @@ type IBackupService interface {
 
 	PerformBackup(backupType, name, dbType, sourceDir string, accountID uint) (string, error)
 	PerformBackupWithInfo(backupType, name, dbType, sourceDir string, accountID uint) (*BackupOutput, error)
+	PerformBackupWithOptions(backupType, name, dbType, sourceDir string, accountID uint, opts BackupJobOptions) (*BackupOutput, error)
 	PerformDatabaseInstanceBackupWithInfo(instanceID uint, accountID uint) (*BackupOutput, error)
+	PerformDatabaseInstanceBackupWithOptions(instanceID uint, accountID uint, opts BackupJobOptions) (*BackupOutput, error)
+	UploadExistingFile(accountID uint, localFile, targetPath string, opts BackupJobOptions) (*BackupOutput, error)
 }
 
 type BackupOutput struct {
-	Path string
-	Size int64
+	Path      string
+	Size      int64
+	SHA256    string
+	LocalPath string
+	Log       string
+}
+
+type BackupJobOptions struct {
+	CompressFormat  string
+	EncryptPassword string
+	ExclusionRules  string
+	DeleteLocal     bool
+	SourcePath      string
+}
+
+type backupLog struct {
+	lines []string
+}
+
+func (l *backupLog) step(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	l.lines = append(l.lines, time.Now().Format("15:04:05")+" "+msg)
+	if global.LOG != nil {
+		global.LOG.Infof("[backup] %s", msg)
+	}
+}
+
+func (l *backupLog) String() string {
+	return strings.Join(l.lines, "\n")
 }
 
 const (
@@ -306,19 +338,24 @@ func stripStorageBasePath(key, basePath string) string {
 
 func (s *BackupService) Backup(req dto.BackupCreate) error {
 	go func() {
-		output, err := s.PerformBackupWithInfo(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID)
+		output, err := s.PerformBackupWithOptions(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID, BackupJobOptions{
+			DeleteLocal: true,
+			SourcePath:  req.SourceDir,
+		})
 		record := &model.BackupRecord{
 			Type: req.Type, Name: req.Name, AccountID: req.AccountID,
 		}
 		if err != nil {
 			record.Status = constant.StatusFailed
-			record.Message = err.Error()
+			record.Message = backupFailureMessage(output, err)
 		} else {
 			record.Status = constant.StatusSuccess
 			record.FileName = filepath.Base(output.Path)
 			record.FileDir = filepath.Dir(output.Path)
-			record.Message = output.Path
+			record.Message = output.Log
 			record.Size = output.Size
+			record.SHA256 = output.SHA256
+			record.SourcePath = firstFilled(req.SourceDir, output.LocalPath)
 		}
 		if err := s.repo.CreateRecord(record); err != nil {
 			global.LOG.Errorf("save backup record failed: %v", err)
@@ -336,10 +373,29 @@ func (s *BackupService) PerformBackup(backupType, name, dbType, sourceDir string
 }
 
 func (s *BackupService) PerformBackupWithInfo(backupType, name, dbType, sourceDir string, accountID uint) (*BackupOutput, error) {
+	return s.PerformBackupWithOptions(backupType, name, dbType, sourceDir, accountID, BackupJobOptions{DeleteLocal: true, SourcePath: sourceDir})
+}
+
+func (s *BackupService) PerformBackupWithOptions(backupType, name, dbType, sourceDir string, accountID uint, opts BackupJobOptions) (*BackupOutput, error) {
+	log := &backupLog{}
+	output, err := s.performBackupWithOptions(backupType, name, dbType, sourceDir, accountID, opts, log)
+	if output == nil {
+		output = &BackupOutput{}
+	}
+	output.Log = log.String()
+	if err != nil {
+		log.step("backup failed: %v", err)
+		output.Log = log.String()
+	}
+	return output, err
+}
+
+func (s *BackupService) performBackupWithOptions(backupType, name, dbType, sourceDir string, accountID uint, opts BackupJobOptions, log *backupLog) (*BackupOutput, error) {
 	account, err := s.repo.GetAccount(accountID)
 	if err != nil {
 		return nil, buserr.New(constant.ErrRecordNotFound)
 	}
+	log.step("start %s backup name=%s account=%s(%s) path=%s", backupType, name, account.Name, account.Type, account.BackupPath)
 
 	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
 	if err != nil {
@@ -347,40 +403,56 @@ func (s *BackupService) PerformBackupWithInfo(backupType, name, dbType, sourceDi
 	}
 
 	timestamp := time.Now().Format("20060102150405")
-	tmpDir := backupTempDir()
-	os.MkdirAll(tmpDir, 0755)
+	outDir := durableBackupDir(backupType)
+	if err := os.MkdirAll(outDir, 0750); err != nil {
+		return nil, err
+	}
 
 	var localFile string
 	var targetPath string
-
 	switch backupType {
 	case "website":
-		localFile, targetPath, err = s.backupWebsite(name, tmpDir, timestamp)
+		log.step("pack website directory, excludes=%q format=%s", compactSpace(opts.ExclusionRules), defaultCompress(opts.CompressFormat))
+		localFile, targetPath, err = s.backupWebsite(name, outDir, timestamp, opts)
 	case "database":
-		localFile, targetPath, err = s.backupDatabase(name, dbType, tmpDir, timestamp)
+		log.step("dump database %s type=%s", name, dbType)
+		localFile, targetPath, err = s.backupDatabase(name, dbType, outDir, timestamp)
 	case "directory":
-		localFile, targetPath, err = s.backupDirectory(sourceDir, name, tmpDir, timestamp)
+		log.step("pack directory %s, excludes=%q format=%s", sourceDir, compactSpace(opts.ExclusionRules), defaultCompress(opts.CompressFormat))
+		localFile, targetPath, err = s.backupDirectory(sourceDir, name, outDir, timestamp, opts)
 	default:
 		return nil, fmt.Errorf("unsupported backup type: %s", backupType)
 	}
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(localFile)
-	size := fileSize(localFile)
-
-	if err := client.Upload(localFile, targetPath); err != nil {
-		return nil, fmt.Errorf("upload failed: %v", err)
-	}
-
-	return &BackupOutput{Path: targetPath, Size: size}, nil
+	return s.uploadLocalBackup(client, account.Type, localFile, targetPath, opts, log)
 }
 
 func (s *BackupService) PerformDatabaseInstanceBackupWithInfo(instanceID uint, accountID uint) (*BackupOutput, error) {
+	return s.PerformDatabaseInstanceBackupWithOptions(instanceID, accountID, BackupJobOptions{DeleteLocal: true})
+}
+
+func (s *BackupService) PerformDatabaseInstanceBackupWithOptions(instanceID uint, accountID uint, opts BackupJobOptions) (*BackupOutput, error) {
+	log := &backupLog{}
+	output, err := s.performDatabaseInstanceBackup(instanceID, accountID, opts, log)
+	if output == nil {
+		output = &BackupOutput{}
+	}
+	output.Log = log.String()
+	if err != nil {
+		log.step("backup failed: %v", err)
+		output.Log = log.String()
+	}
+	return output, err
+}
+
+func (s *BackupService) performDatabaseInstanceBackup(instanceID uint, accountID uint, opts BackupJobOptions, log *backupLog) (*BackupOutput, error) {
 	account, err := s.repo.GetAccount(accountID)
 	if err != nil {
 		return nil, buserr.New(constant.ErrRecordNotFound)
 	}
+	log.step("start database instance %d backup account=%s(%s)", instanceID, account.Name, account.Type)
 
 	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
 	if err != nil {
@@ -388,26 +460,119 @@ func (s *BackupService) PerformDatabaseInstanceBackupWithInfo(instanceID uint, a
 	}
 
 	timestamp := time.Now().Format("20060102150405")
-	tmpDir := backupTempDir()
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	outDir := durableBackupDir("database")
+	if err := os.MkdirAll(outDir, 0750); err != nil {
 		return nil, err
 	}
 
-	localFile, targetPath, err := s.backupDatabaseInstance(instanceID, tmpDir, timestamp)
+	localFile, targetPath, err := s.backupDatabaseInstance(instanceID, outDir, timestamp)
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(localFile)
-	size := fileSize(localFile)
-
-	if err := client.Upload(localFile, targetPath); err != nil {
-		return nil, fmt.Errorf("upload failed: %v", err)
-	}
-
-	return &BackupOutput{Path: targetPath, Size: size}, nil
+	return s.uploadLocalBackup(client, account.Type, localFile, targetPath, opts, log)
 }
 
-func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, string, error) {
+func (s *BackupService) UploadExistingFile(accountID uint, localFile, targetPath string, opts BackupJobOptions) (*BackupOutput, error) {
+	log := &backupLog{}
+	account, err := s.repo.GetAccount(accountID)
+	if err != nil {
+		return &BackupOutput{LocalPath: localFile, Log: log.String()}, buserr.New(constant.ErrRecordNotFound)
+	}
+	log.step("upload existing file account=%s(%s) dest=%s", account.Name, account.Type, targetPath)
+	client, err := cs.NewClient(account.Type, account.Bucket, account.AccessKey, account.Credential, account.BackupPath, account.Vars)
+	if err != nil {
+		log.step("create storage client failed: %v", err)
+		return &BackupOutput{LocalPath: localFile, Log: log.String()}, fmt.Errorf("create storage client failed: %v", err)
+	}
+	output, err := s.uploadLocalBackup(client, account.Type, localFile, targetPath, opts, log)
+	if output == nil {
+		output = &BackupOutput{LocalPath: localFile}
+	}
+	output.Log = log.String()
+	return output, err
+}
+
+func (s *BackupService) uploadLocalBackup(client cs.CloudStorageClient, accountType, localFile, targetPath string, opts BackupJobOptions, log *backupLog) (*BackupOutput, error) {
+	size := fileSize(localFile)
+	log.step("local archive ready path=%s size=%s", localFile, formatSize(size))
+	hash, err := checksum.FileSHA256(localFile)
+	if err != nil {
+		return &BackupOutput{LocalPath: localFile, Size: size}, fmt.Errorf("hash local backup failed: %v", err)
+	}
+	log.step("local sha256=%s", hash)
+
+	log.step("upload to %s", targetPath)
+	if err := uploadBackupObject(client, localFile, targetPath, log); err != nil {
+		return &BackupOutput{LocalPath: localFile, Size: size, SHA256: hash}, fmt.Errorf("upload failed: %v", err)
+	}
+	log.step("upload finished")
+
+	if err := finalizeUploadedBackup(localFile, accountType, opts.DeleteLocal); err != nil {
+		return &BackupOutput{Path: targetPath, LocalPath: localFile, Size: size, SHA256: hash}, err
+	}
+	if opts.DeleteLocal && accountType != "local" {
+		log.step("deleted local backup %s", localFile)
+		localFile = ""
+	} else {
+		log.step("kept local backup %s", localFile)
+	}
+	return &BackupOutput{Path: targetPath, LocalPath: localFile, Size: size, SHA256: hash}, nil
+}
+
+func uploadBackupObject(client cs.CloudStorageClient, src, target string, log *backupLog) error {
+	if uploader, ok := client.(interface {
+		UploadLogged(src, target string, logf func(string, ...any)) error
+	}); ok {
+		return uploader.UploadLogged(src, target, log.step)
+	}
+	return client.Upload(src, target)
+}
+
+func finalizeUploadedBackup(localFile, accountType string, deleteLocal bool) error {
+	if !deleteLocal || accountType == "local" || localFile == "" {
+		return nil
+	}
+	if err := os.Remove(localFile); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("delete local backup failed: %v", err)
+	}
+	return nil
+}
+
+func durableBackupDir(backupType string) string {
+	if global.CONF.System.DataDir != "" {
+		return filepath.Join(global.CONF.System.DataDir, "backup", backupType)
+	}
+	return filepath.Join(backupTempDir(), backupType)
+}
+
+func defaultCompress(format string) string {
+	if format == "" {
+		return "gzip"
+	}
+	return format
+}
+
+func compactSpace(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func firstFilled(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func backupFailureMessage(output *BackupOutput, err error) string {
+	if output != nil && output.Log != "" {
+		return output.Log + "\n" + err.Error()
+	}
+	return err.Error()
+}
+
+func (s *BackupService) backupWebsite(name, tmpDir, timestamp string, opts BackupJobOptions) (string, string, error) {
 	websiteRepo := repo.NewIWebsiteRepo()
 	website, err := websiteRepo.Get(repo.WithByPrimaryDomain(name))
 	var siteDir string
@@ -422,8 +587,11 @@ func (s *BackupService) backupWebsite(name, tmpDir, timestamp string) (string, s
 		return "", "", err
 	}
 	outFile, err := archiveUtil.CreateArchive(archiveUtil.ArchiveOptions{
-		SourceDir: siteDir,
-		OutFile:   filepath.Join(tmpDir, fileName),
+		SourceDir:       siteDir,
+		OutFile:         filepath.Join(tmpDir, fileName),
+		CompressFormat:  opts.CompressFormat,
+		EncryptPassword: opts.EncryptPassword,
+		ExclusionRules:  opts.ExclusionRules,
 	})
 	if err != nil {
 		return "", "", err
@@ -621,7 +789,7 @@ func (s *BackupService) backupDatabaseInstance(instanceID uint, tmpDir, timestam
 	return localFile, filepath.Join("database", instance.Name, fileName), nil
 }
 
-func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp string) (string, string, error) {
+func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp string, opts BackupJobOptions) (string, string, error) {
 	if name == "" {
 		name = filepath.Base(sourceDir)
 	}
@@ -630,8 +798,11 @@ func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp strin
 		return "", "", err
 	}
 	outFile, err := archiveUtil.CreateArchive(archiveUtil.ArchiveOptions{
-		SourceDir: sourceDir,
-		OutFile:   filepath.Join(tmpDir, fileName),
+		SourceDir:       sourceDir,
+		OutFile:         filepath.Join(tmpDir, fileName),
+		CompressFormat:  opts.CompressFormat,
+		EncryptPassword: opts.EncryptPassword,
+		ExclusionRules:  opts.ExclusionRules,
 	})
 	if err != nil {
 		return "", "", err
@@ -655,7 +826,8 @@ func (s *BackupService) SearchRecords(req dto.BackupRecordSearch) (int64, []dto.
 		items = append(items, dto.BackupRecordInfo{
 			ID: r.ID, CreatedAt: r.CreatedAt, Type: r.Type,
 			Name: r.Name, AccountID: r.AccountID, CronjobID: r.CronjobID, FileName: r.FileName,
-			FileDir: r.FileDir, Size: r.Size, Status: r.Status, Message: r.Message,
+			FileDir: r.FileDir, Size: r.Size, SHA256: r.SHA256, SourcePath: r.SourcePath,
+			Status: r.Status, Message: r.Message,
 		})
 	}
 	return total, items, nil
@@ -675,18 +847,32 @@ func (s *BackupService) DeleteRecord(id uint) error {
 }
 
 func (s *BackupService) CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error {
-	record := &model.BackupRecord{
-		CronjobID: cronjobID,
-		Type:      backupType,
-		Name:      name,
-		AccountID: accountID,
-		Status:    status,
-		Message:   message,
+	return s.CreateRecordFromOutput(backupType, name, accountID, cronjobID, &BackupOutput{
+		Path: filePath,
+		Size: size,
+		Log:  message,
+	}, status, message)
+}
+
+func (s *BackupService) CreateRecordFromOutput(backupType, name string, accountID uint, cronjobID uint, output *BackupOutput, status, message string) error {
+	if output == nil {
+		output = &BackupOutput{}
 	}
+	record := &model.BackupRecord{
+		CronjobID:  cronjobID,
+		Type:       backupType,
+		Name:       name,
+		AccountID:  accountID,
+		Status:     status,
+		Message:    firstFilled(message, output.Log),
+		SHA256:     output.SHA256,
+		SourcePath: output.LocalPath,
+	}
+	filePath := output.Path
 	if filePath != "" {
 		record.FileName = filepath.Base(filePath)
 		record.FileDir = filepath.Dir(filePath)
-		record.Size = size
+		record.Size = output.Size
 		if record.Size == 0 {
 			record.Size = s.recordFileSize(accountID, record.FileDir, record.FileName)
 		}
