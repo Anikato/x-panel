@@ -8,9 +8,7 @@
 - [x] 计划任务新增 `compose` 类型，支持定时 pull / pull+up
 - [x] 备份校验和、SFTP 校验、备份 hook、目录任务前后命令一并纳入
 
-### 下一步计划
-
-- 发布 X-Panel `v0.7.87`
+- [x] 发布 X-Panel `v0.7.87`（linux/amd64、linux/arm64，公网 SHA256 通过）
 
 ## 2026-08-17
 
