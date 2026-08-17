@@ -12,6 +12,8 @@
 - [x] 前端：xlsx 按需加载；监控/日志分析改 `echarts/core`；文件管理与终端 `keep-alive`
 - [x] 侧栏不再重复拉版本号；HTTP 拦截器文案走 i18n
 - [x] 首页 hero 改成仪表盘密度；默认字体改为系统栈，不再假装加载了 Inter
+- [x] 发布 `agent-v2.3.1-xpanel.2`（握手带 `node_role`）
+- [x] 绑定后发布 X-Panel `v0.7.86`
 
 ### 关键决策
 
@@ -27,8 +29,8 @@
 
 ### 下一步计划
 
+- 节点升级到 v0.7.86 并重连后，Dashboard X-Panel 页才会出现 `node_role=xpanel` 节点
 - 需要时再加 WebSocket 推送和独立 Alert 通道
-- 发布 `agent-v2.3.1-xpanel.2`，绑定后发 X-Panel `v0.7.86`
 
 ## 2026-08-13
 
