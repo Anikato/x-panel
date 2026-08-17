@@ -202,36 +202,37 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 18px;
+  gap: 16px;
   margin-bottom: 16px;
-  padding: 20px 22px;
+  padding: 14px 18px;
   background:
-    radial-gradient(circle at 10% 20%, rgba(var(--xp-accent-rgb, 34, 211, 238), 0.14), transparent 34%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01)),
+    linear-gradient(180deg, rgba(var(--xp-accent-rgb, 34, 211, 238), 0.06), transparent 42%),
     var(--xp-bg-surface);
   border: 1px solid var(--xp-border-light);
-  border-radius: var(--xp-radius-lg);
+  border-radius: var(--xp-radius);
 
   h2 {
     margin: 0;
     color: var(--xp-text-primary);
-    font-size: clamp(24px, 2vw, 34px);
-    letter-spacing: -0.04em;
+    font-size: clamp(18px, 1.6vw, 22px);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
   }
 
   p {
-    margin: 6px 0 0;
+    margin: 4px 0 0;
     color: var(--xp-text-secondary);
     font-size: 13px;
   }
 }
 
 .xp-hero-eyebrow {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--xp-accent);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .xp-hero-meta {

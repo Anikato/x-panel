@@ -117,7 +117,7 @@ export interface FontPresetDef {
 }
 
 export const FONT_PRESETS: FontPresetDef[] = [
-  { key: 'system', name: '系统默认', family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif" },
+  { key: 'system', name: '系统默认', family: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" },
   { key: 'inter', name: 'Inter', family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
   { key: 'noto', name: 'Noto Sans SC', family: "'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif" },
   {

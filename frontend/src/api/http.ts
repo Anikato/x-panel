@@ -2,6 +2,9 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/routers'
 import { getToken, removeToken } from '@/utils/auth'
+import i18n from '@/i18n'
+
+const t = (key: string) => String(i18n.global.t(key))
 
 // 使用唯一请求 ID（自增）作为 key，避免同名接口互相覆盖 AbortController
 let _reqIdCounter = 0
@@ -69,8 +72,8 @@ http.interceptors.response.use(
     if (res.code === 0) {
       return res
     }
-    ElMessage.error(res.message || '请求失败')
-    return Promise.reject(new Error(res.message || '请求失败'))
+    ElMessage.error(res.message || t('commons.requestFailed'))
+    return Promise.reject(new Error(res.message || t('commons.requestFailed')))
   },
   (error) => {
     if (error.config) {
@@ -87,12 +90,12 @@ http.interceptors.response.use(
       if (status === 401) {
         removeToken()
         router.push('/login')
-        ElMessage.error('登录已过期，请重新登录')
+        ElMessage.error(t('commons.loginExpired'))
       } else {
-        ElMessage.error(data?.message || '服务器错误')
+        ElMessage.error(data?.message || t('commons.serverError'))
       }
     } else if (error.code !== 'ERR_CANCELED') {
-      ElMessage.error('网络连接失败')
+      ElMessage.error(t('commons.networkError'))
     }
     return Promise.reject(error)
   },

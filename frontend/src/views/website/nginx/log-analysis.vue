@@ -419,8 +419,13 @@ import { Refresh } from '@element-plus/icons-vue'
 import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog, drilldownNginxLog } from '@/api/modules/website'
 import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { BarChart, LineChart, PieChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { UAParser } from 'ua-parser-js'
+
+echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const { t } = useI18n()
 

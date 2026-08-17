@@ -242,6 +242,7 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'Terminal' })
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Terminal } from '@xterm/xterm'

@@ -391,6 +391,7 @@
 </template>
 
 <script setup lang="ts">
+defineOptions({ name: 'FileManager' })
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'

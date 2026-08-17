@@ -77,7 +77,6 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDownloadUrl } from '@/api/modules/file'
 import { Headset, Download } from '@element-plus/icons-vue'
-import { read, utils } from 'xlsx'
 
 const { t } = useI18n()
 
@@ -137,8 +136,10 @@ const acceptParams = async (row: { name: string; path?: string }) => {
 const loadExcel = async () => {
   loading.value = true
   try {
-    const url = getDownloadUrl(filePath.value)
-    const resp = await fetch(url)
+    const [{ read, utils }, resp] = await Promise.all([
+      import('xlsx'),
+      fetch(getDownloadUrl(filePath.value)),
+    ])
     const buf = await resp.arrayBuffer()
     const wb = read(buf, { type: 'array' })
 

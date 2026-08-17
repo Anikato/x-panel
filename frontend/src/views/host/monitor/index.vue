@@ -271,8 +271,13 @@ import { useI18n } from 'vue-i18n'
 import { Refresh, CopyDocument, Odometer, Connection, DataLine, Box, Setting } from '@element-plus/icons-vue'
 import { getSystemStats, loadMonitorHistory, getIOOptions as fetchIOOptions, getNetworkOptions as fetchNetOptions, getMonitorSetting, updateMonitorSetting, cleanMonitorData } from '@/api/modules/monitor'
 import { ElMessage } from 'element-plus'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import type { SystemStats, SensorTemp } from '@/api/interface'
+
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
 
 const { t } = useI18n()
 const activeTab = ref('realtime')
@@ -433,7 +438,7 @@ const baseChartOption = (): echarts.EChartsOption => ({
 })
 
 const initCharts = () => {
-  const init = (el: HTMLDivElement | undefined) => el ? echarts.init(el, darkTheme() ? 'dark' : undefined) : null
+  const init = (el: HTMLDivElement | undefined) => el ? echarts.init(el) : null
   loadChart = init(loadChartRef.value)
   cpuChart = init(cpuChartRef.value)
   memChart = init(memChartRef.value)

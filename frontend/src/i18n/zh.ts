@@ -43,6 +43,10 @@ export default {
     offline: '离线',
     failed: '失败',
     view: '查看',
+    requestFailed: '请求失败',
+    loginExpired: '登录已过期，请重新登录',
+    serverError: '服务器错误',
+    networkError: '网络连接失败',
   },
   login: {
     title: '服务器管理面板',

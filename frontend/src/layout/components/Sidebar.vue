@@ -59,10 +59,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useGlobalStore } from '@/store/modules/global'
-import { getCurrentVersion } from '@/api/modules/upgrade'
 import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
@@ -89,15 +88,6 @@ interface MenuItem extends MenuLeaf {
 }
 
 const isMenuGroup = (item: MenuChild): item is MenuGroup => 'group' in item
-
-onMounted(async () => {
-  try {
-    const res = await getCurrentVersion()
-    if (res.data) {
-      globalStore.setVersion(res.data.version === 'dev' ? 'dev' : res.data.version)
-    }
-  } catch { /* ignore */ }
-})
 
 const menuList = computed<MenuItem[]>(() => [
   { path: '/home', title: t('menu.home'), icon: 'HomeFilled' },
