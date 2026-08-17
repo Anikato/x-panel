@@ -244,6 +244,12 @@ func extractNezhaAgentBundle(archivePath, destDir string) (agentPath, unitPath s
 		if nextErr != nil {
 			return "", "", nextErr
 		}
+		if hdr.Typeflag == tar.TypeDir {
+			name := strings.TrimSpace(filepath.ToSlash(hdr.Name))
+			if name == "." || name == "./" {
+				continue
+			}
+		}
 		rel, normalizeErr := normalizeComponentArchiveName(hdr.Name)
 		if normalizeErr != nil {
 			return "", "", normalizeErr

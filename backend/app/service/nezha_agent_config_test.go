@@ -187,6 +187,74 @@ func TestMergeNezhaConfigWritesXPanelNameAndPreservesIdentity(t *testing.T) {
 	assertYAMLValue(t, updated, "unknown_key", "keep-me")
 }
 
+func TestMergeNezhaConfigWritesNodeRoleXPanel(t *testing.T) {
+	input := []byte("client_secret: rotated\nuuid: existing-agent-uuid\nunknown_key: keep-me\n")
+	updated, err := mergeNezhaConfig(input, nezhaConfigPatch{
+		XPanelName: ptrString("私人面板"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertYAMLValue(t, updated, "node_role", "xpanel")
+	assertYAMLValue(t, updated, "uuid", "existing-agent-uuid")
+	assertYAMLValue(t, updated, "unknown_key", "keep-me")
+}
+
+func TestMergeNezhaConfigFirstConfigWritesNodeRole(t *testing.T) {
+	updated, err := mergeNezhaConfig(nil, nezhaConfigPatch{FirstConfig: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertYAMLValue(t, updated, "node_role", "xpanel")
+}
+
+func TestStampXPanelNodeRoleMissingIsNoop(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yml")
+	if err := stampXPanelNodeRole(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing config must stay missing, err=%v", err)
+	}
+}
+
+func TestStampXPanelNodeRoleMergesOnlyRole(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yml")
+	input := []byte("client_secret: keep-secret\nuuid: keep-uuid\ncustom_field: preserved\n")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stampXPanelNodeRole(path); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertYAMLValue(t, got, "node_role", "xpanel")
+	assertYAMLValue(t, got, "client_secret", "keep-secret")
+	assertYAMLValue(t, got, "uuid", "keep-uuid")
+	assertYAMLValue(t, got, "custom_field", "preserved")
+}
+
+func TestStampXPanelNodeRoleCorruptLeavesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yml")
+	input := []byte("server: [unterminated")
+	if err := os.WriteFile(path, input, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := stampXPanelNodeRole(path); err == nil {
+		t.Fatal("want parse error")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(input) {
+		t.Fatalf("corrupt file mutated: %q", got)
+	}
+}
+
 func TestBuildConfigPatchReadsPanelName(t *testing.T) {
 	settings := newFakeNezhaSettings(map[string]string{"PanelName": " 私人面板 "})
 	svc := newTestNezhaAgentService(t, newFakeNezhaRunner("inactive", "disabled"), settings)

@@ -334,3 +334,47 @@ func TestOperationLogRedactsClientSecretOnOrdinaryPath(t *testing.T) {
 		t.Fatalf("downstream body = %q, want %q", received, body)
 	}
 }
+
+func TestOperationLogDoesNotCreateNotification(t *testing.T) {
+	db, err := gorm.Open(
+		sqlite.Open(filepath.Join(t.TempDir(), "operation-log-notification.db")),
+		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)},
+	)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&model.OperationLog{}, &model.Notification{}, &model.Setting{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	previous := global.DB
+	global.DB = db
+	t.Cleanup(func() { global.DB = previous })
+	global.LOG = logrus.New()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(OperationLog())
+	router.POST("/api/v1/websites", func(c *gin.Context) {
+		_ = c.Error(fmt.Errorf("invalid params"))
+		c.Status(http.StatusBadRequest)
+	})
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/v1/websites", nil))
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		var logItem model.OperationLog
+		if err := db.First(&logItem).Error; err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	var count int64
+	if err := db.Model(&model.Notification{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("notifications=%d", count)
+	}
+}

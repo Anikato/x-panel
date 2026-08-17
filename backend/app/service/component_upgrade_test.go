@@ -407,6 +407,18 @@ func (h *componentUpgradeHarness) assertConfigUnchanged(t *testing.T) {
 	}
 }
 
+func (h *componentUpgradeHarness) assertConfigStampedXPanelRole(t *testing.T) {
+	t.Helper()
+	got := h.read(t, h.ConfigPath)
+	assertYAMLValue(t, got, "node_role", "xpanel")
+	assertYAMLValue(t, got, "client_secret", "keep-me-byte-for-byte")
+	assertYAMLValue(t, got, "uuid", "fixed-uuid-0001")
+	assertYAMLValue(t, got, "custom_field", "preserved")
+	if bytes.Contains(got, []byte("MUST-NOT-LAND")) {
+		t.Fatal("archive config.yml was applied to live config")
+	}
+}
+
 func (h *componentUpgradeHarness) assertNoDotNew(t *testing.T) {
 	t.Helper()
 	for _, p := range []string{h.XPanelPath + ".new", h.AgentPath + ".new"} {
@@ -701,7 +713,7 @@ func TestComponentUpgradeActiveEnabledStopReplaceRestoreOrder(t *testing.T) {
 	// Binaries upgraded.
 	h.assertContains(t, h.XPanelPath, newXPanelMarker)
 	h.assertContains(t, h.AgentPath, newAgentMarker)
-	h.assertConfigUnchanged(t)
+	h.assertConfigStampedXPanelRole(t)
 	h.assertNoDotNew(t)
 	h.assertNoFixedBackups(t)
 
@@ -748,7 +760,7 @@ func TestComponentUpgradeInactiveEnabledStaysStoppedEnabled(t *testing.T) {
 
 	h.assertContains(t, h.XPanelPath, newXPanelMarker)
 	h.assertContains(t, h.AgentPath, newAgentMarker)
-	h.assertConfigUnchanged(t)
+	h.assertConfigStampedXPanelRole(t)
 
 	verbs := h.Runner.systemctlVerbs()
 	for _, v := range verbs {
@@ -775,7 +787,7 @@ func TestComponentUpgradeInactiveDisabledStaysStoppedDisabled(t *testing.T) {
 
 	h.assertContains(t, h.XPanelPath, newXPanelMarker)
 	h.assertContains(t, h.AgentPath, newAgentMarker)
-	h.assertConfigUnchanged(t)
+	h.assertConfigStampedXPanelRole(t)
 
 	verbs := h.Runner.systemctlVerbs()
 	for _, v := range verbs {
@@ -800,7 +812,7 @@ func TestComponentUpgradeActiveDisabledPreservesBothDimensions(t *testing.T) {
 
 	h.assertContains(t, h.XPanelPath, newXPanelMarker)
 	h.assertContains(t, h.AgentPath, newAgentMarker)
-	h.assertConfigUnchanged(t)
+	h.assertConfigStampedXPanelRole(t)
 	h.Runner.assertNoEnableDisable(t)
 
 	verbs := h.Runner.systemctlVerbs()
@@ -827,27 +839,42 @@ func TestComponentUpgradePreservesConfigBytesExactly(t *testing.T) {
 		{Name: componentArchiveAgentName, Body: elfWithMarker(t, runtime.GOARCH, newAgentMarker)},
 		{Name: "nezha-agent/config.yml", Body: []byte("client_secret: MUST-NOT-LAND\n")},
 	})
-	before := h.read(t, h.ConfigPath)
 
 	if err := applyComponentPackage(h.deps(), archive); err != nil {
-		// Archive may reject the extra config entry entirely — also fine, as long as live config is untouched.
-		if !bytes.Equal(h.read(t, h.ConfigPath), before) {
-			t.Fatalf("config.yml changed after rejected/partial package")
-		}
-		// If extraction rejects unknown members, config preservation still holds.
-		// Prefer success path when implementation ignores non-required members.
-		if strings.Contains(err.Error(), "config") || strings.Contains(strings.ToLower(err.Error()), "unexpected") {
-			h.assertLiveUntouched(t)
-			return
-		}
 		t.Fatalf("applyComponentPackage() error = %v", err)
 	}
-	after := h.read(t, h.ConfigPath)
-	if !bytes.Equal(before, after) {
-		t.Fatalf("config.yml bytes changed:\n before=%q\n after=%q", before, after)
+	h.assertConfigStampedXPanelRole(t)
+}
+
+func TestComponentUpgradeMissingConfigDoesNotInventFile(t *testing.T) {
+	h := newComponentUpgradeHarness(t, "inactive", "disabled")
+	if err := os.Remove(h.ConfigPath); err != nil {
+		t.Fatal(err)
 	}
-	if bytes.Contains(after, []byte("MUST-NOT-LAND")) {
-		t.Fatal("archive config.yml was applied to live config")
+
+	if err := applyComponentPackage(h.deps(), h.newArchive(t)); err != nil {
+		t.Fatalf("applyComponentPackage() error = %v", err)
+	}
+	if _, err := os.Lstat(h.ConfigPath); !os.IsNotExist(err) {
+		t.Fatalf("upgrade must not invent config.yml, err=%v", err)
+	}
+}
+
+func TestComponentUpgradeCorruptConfigDoesNotFailUpgrade(t *testing.T) {
+	h := newComponentUpgradeHarness(t, "inactive", "disabled")
+	corrupt := []byte("server: [unterminated")
+	if err := os.WriteFile(h.ConfigPath, corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := applyComponentPackage(h.deps(), h.newArchive(t)); err != nil {
+		t.Fatalf("applyComponentPackage() error = %v", err)
+	}
+	h.assertContains(t, h.XPanelPath, newXPanelMarker)
+	h.assertContains(t, h.AgentPath, newAgentMarker)
+	got := h.read(t, h.ConfigPath)
+	if !bytes.Equal(got, corrupt) {
+		t.Fatalf("corrupt config.yml mutated:\n got: %q\nwant: %q", got, corrupt)
 	}
 }
 
@@ -910,7 +937,7 @@ func TestComponentUpgradeAgentRestartFailureRollsBackBothAndRestoresActive(t *te
 	// Both binaries rolled back to pre-upgrade content.
 	h.assertContains(t, h.XPanelPath, liveXPanelMarker)
 	h.assertContains(t, h.AgentPath, liveAgentMarker)
-	h.assertConfigUnchanged(t)
+	h.assertConfigStampedXPanelRole(t)
 	h.assertNoDotNew(t)
 	if h.RestartCalls != 0 {
 		t.Fatalf("RestartXPanel must not run when agent restore fails; calls=%d", h.RestartCalls)
@@ -937,7 +964,7 @@ func TestComponentUpgradeXPanelRestartFailureStopsNewAgentBeforeRollback(t *test
 	}
 	h.assertContains(t, h.XPanelPath, liveXPanelMarker)
 	h.assertContains(t, h.AgentPath, liveAgentMarker)
-	h.assertConfigUnchanged(t)
+	h.assertConfigStampedXPanelRole(t)
 	h.assertNoDotNew(t)
 
 	restartIdx := indexOf(h.Timeline, "restart-xpanel")

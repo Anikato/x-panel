@@ -585,6 +585,7 @@ required = [
     "disable_auto_update: true",
     "disable_force_update: true",
     "disable_command_execute: false",
+    "node_role: xpanel",
 ]
 for line in required:
     if line not in text:
@@ -699,6 +700,10 @@ run_upgrade_state_case() {
 	if ! grep -q 'uuid: keep-uuid' "${INSTALL_DIR}/nezha-agent/config.yml" \
 		|| ! grep -q 'client_secret: keep-secret' "${INSTALL_DIR}/nezha-agent/config.yml"; then
 		fail "${label}: config was overwritten"
+		return
+	fi
+	if ! grep -q 'node_role: xpanel' "${INSTALL_DIR}/nezha-agent/config.yml"; then
+		fail "${label}: node_role was not merged"
 		return
 	fi
 	active="$(cat "${CASE}/state/xpanel-nezha-agent.active")"

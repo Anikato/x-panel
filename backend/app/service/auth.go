@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+
 	"xpanel/app/dto"
 	"xpanel/app/model"
 	"xpanel/app/repo"
@@ -155,5 +157,15 @@ func SaveLoginLog(ip, agent string, err error) {
 	}
 	if e := logRepo.CreateLoginLog(log); e != nil {
 		global.LOG.Errorf("Failed to save login log: %v", e)
+	}
+	if err != nil {
+		CreateNotification(dto.NotificationCreate{
+			Type:      "error",
+			Event:     "security.login.failed",
+			Title:     fmt.Sprintf("面板登录失败（%s）", ip),
+			Content:   err.Error(),
+			Source:    "security",
+			TargetURL: "/log/login",
+		})
 	}
 }

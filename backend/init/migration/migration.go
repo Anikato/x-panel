@@ -346,7 +346,7 @@ func initDefaultSettings() {
 		{Key: "NezhaEnabled", Value: "false"},
 		{Key: "NezhaServer", Value: ""},
 		{Key: "NezhaClientSecret", Value: ""},
-		{Key: "NotificationPreferences", Value: `{"defaults":{"center":true,"badge":true,"popup":false},"events":{"file.upload.completed":{"center":true,"badge":false,"popup":false},"file.task.failed":{"center":true,"badge":true,"popup":true},"database.task.failed":{"center":true,"badge":true,"popup":true},"cronjob.failed":{"center":true,"badge":true,"popup":true},"operation.failed":{"center":true,"badge":true,"popup":true},"system.log.error":{"center":true,"badge":true,"popup":false}}}`},
+		{Key: "NotificationPreferences", Value: `{"defaults":{"center":true,"badge":true,"popup":false},"events":{"file.upload.completed":{"center":true,"badge":false,"popup":false},"file.task.success":{"center":true,"badge":false,"popup":false},"file.task.cancelled":{"center":true,"badge":false,"popup":false},"file.task.failed":{"center":true,"badge":true,"popup":true},"database.task.success":{"center":true,"badge":false,"popup":false},"database.task.cancelled":{"center":true,"badge":false,"popup":false},"database.task.failed":{"center":true,"badge":true,"popup":true},"cronjob.success":{"center":true,"badge":false,"popup":false},"cronjob.failed":{"center":true,"badge":true,"popup":true},"ssl.renew.failed":{"center":true,"badge":true,"popup":true},"security.login.failed":{"center":true,"badge":true,"popup":true}}}`},
 	}
 
 	for _, s := range defaults {

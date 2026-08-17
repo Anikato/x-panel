@@ -24,9 +24,11 @@ Agent 是独立的 systemd 服务，不嵌入 X-Panel 主进程。X-Panel 重启
 
 ## 配置与节点身份
 
-- X-Panel 把 Dashboard 地址、AgentSecret 和面板名称写入 `/opt/xpanel/nezha-agent/config.yml`。
+- X-Panel 把 Dashboard 地址、AgentSecret、面板名称和节点角色写入 `/opt/xpanel/nezha-agent/config.yml`。
 - `config.yml` 是 Agent 运行配置的事实来源。X-Panel 修改配置时必须保留 UUID、未知字段和 Dashboard 写入的新字段。
-- Agent 建立连接时通过元数据上报 X-Panel 面板名称。Dashboard 仅在自动创建新节点时将其用作节点名称；已有节点不会被自动重命名。
+- X-Panel 安装包与面板保存配置时写入 `node_role: xpanel`。事务升级只合并这一字段，不整文件替换，也不从发布包套用 `config.yml`。未配置过 Agent 的节点不会因此生成配置文件。
+- Agent 建立连接时通过元数据上报 `node_role` 和 X-Panel 面板名称。Dashboard 只把 `node_role == "xpanel"` 的节点列入 X-Panel 页并允许批量升级；普通节点省略该字段。`openwrt` 由后续独立打包写入，不在本产品路径处理。
+- Dashboard 仅在自动创建新节点时把面板名称用作节点名称；已有节点不会被自动重命名。
 - 新自动注册节点默认设置为对游客隐藏。
 - AgentSecret 不得写入命令参数、systemd unit 或普通日志。X-Panel 的管理接口不回显明文。
 
@@ -82,6 +84,8 @@ Agent 源码和 X-Panel 源码可以分别开发，但节点只从 `https://xpan
 | amd64 与 arm64 定制 Agent | 已实现 |
 | 新节点默认不向游客展示 | 已实现 |
 | 新节点默认采用 X-Panel 面板名称 | 已实现，仅影响首次自动注册 |
+| Agent 声明 `node_role: xpanel` | 已实现；安装、配置保存和升级只合并该字段 |
+| Dashboard 按节点角色过滤 X-Panel 页 | 已实现于 Dashboard / 管理后台；X-Panel 只负责写入角色 |
 | Dashboard 批量触发 X-Panel 更新 | 已实现，固定命令并记录任务状态 |
 | Dashboard 查看 X-Panel 版本 | 已实现，当前需要手动刷新 |
 | 长登录会话与换 IP 保持登录 | 已实现 |
@@ -94,6 +98,7 @@ Agent 源码和 X-Panel 源码可以分别开发，但节点只从 `https://xpan
 - 不在 X-Panel 内实现 Agent 协议客户端、采集器或第二套中心控制面。
 - 不恢复 Agent 自动更新或 Dashboard 强制覆盖 Agent。
 - 协议或配置字段变更必须说明旧 Dashboard、旧 Agent、旧 X-Panel 的兼容或明确拒绝行为。
+- `node_role`：旧 Agent 忽略未知字段；旧 X-Panel 不写入该字段。Dashboard 在握手未声明时保留库中角色。过滤打开后，尚未带上 `node_role: xpanel` 的节点会暂时离开 X-Panel 页，直到升级或保存配置后重连。
 - 跨仓库开发前先阅读 X-Panel 根目录的 `AGENTS.md`、`RELEASE.md` 和本文。
 
 相关实现入口：
@@ -102,5 +107,5 @@ Agent 源码和 X-Panel 源码可以分别开发，但节点只从 `https://xpan
 - X-Panel Agent 配置合并：`backend/app/service/nezha_agent_config.go`
 - X-Panel 事务升级：`backend/app/service/component_upgrade.go`
 - Dashboard X-Panel 升级任务：`Nezha-Server/nezha/cmd/dashboard/controller/xpanel.go`
-- Dashboard 新节点默认策略：`Nezha-Server/nezha/service/rpc/auth.go`
-- Agent X-Panel 名称元数据：`Nezha-Server/agent/model/auth.go`
+- Dashboard 新节点默认策略与角色：`Nezha-Server/nezha/service/rpc/auth.go`
+- Agent 握手元数据（`xpanel_name`、`node_role`）：`Nezha-Server/agent/model/auth.go`

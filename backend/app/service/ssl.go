@@ -1061,6 +1061,7 @@ func AutoRenewCerts() {
 					return
 				}
 				global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", c.PrimaryDomain, err)
+				notifySSLRenewFailed(c.PrimaryDomain, err)
 			} else {
 				global.LOG.Infof("[auto-renew] Successfully renewed %s", c.PrimaryDomain)
 			}

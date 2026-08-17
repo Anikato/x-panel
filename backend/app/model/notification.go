@@ -5,7 +5,7 @@ import "time"
 type Notification struct {
 	BaseModel
 	Type      string     `gorm:"not null;index" json:"type"` // info / success / warning / error
-	Event     string     `gorm:"index" json:"event"`         // file.upload.completed / cronjob.failed / system.log.error
+	Event     string     `gorm:"index" json:"event"`         // file.upload.completed / cronjob.failed / ssl.renew.failed
 	Title     string     `gorm:"not null" json:"title"`
 	Content   string     `json:"content"`
 	Source    string     `gorm:"index" json:"source"` // file / cronjob / system / security

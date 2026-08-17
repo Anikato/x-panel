@@ -1,6 +1,7 @@
 package service
 
 import (
+	"archive/tar"
 	"errors"
 	"os"
 	"path/filepath"
@@ -41,6 +42,19 @@ func TestExtractNezhaAgentBundleOnlyRequiredAssets(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "extract", "xpanel")); !os.IsNotExist(err) {
 		t.Fatal("xpanel binary must not be extracted")
+	}
+}
+
+func TestExtractNezhaAgentBundleAllowsArchiveRootDirectory(t *testing.T) {
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "release.tar.gz")
+	writeGzipTar(t, archive, []tarEntry{
+		{Name: "./", Typeflag: tar.TypeDir},
+		{Name: "nezha-agent/nezha-agent", Body: elfWithMarker(t, runtime.GOARCH, "agent"), Mode: 0o755},
+		{Name: "xpanel-nezha-agent.service", Body: []byte("unit"), Mode: 0o644},
+	})
+	if _, _, err := extractNezhaAgentBundle(archive, filepath.Join(dir, "extract")); err != nil {
+		t.Fatalf("extractNezhaAgentBundle() error = %v, want root directory ignored", err)
 	}
 }
 

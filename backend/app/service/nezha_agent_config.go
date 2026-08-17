@@ -135,6 +135,7 @@ func mergeNezhaConfig(input []byte, patch nezhaConfigPatch) ([]byte, error) {
 	if patch.XPanelName != nil && strings.TrimSpace(*patch.XPanelName) != "" {
 		cfg["xpanel_name"] = strings.TrimSpace(*patch.XPanelName)
 	}
+	cfg["node_role"] = "xpanel"
 	if patch.RemoteOperationsEnabled != nil {
 		cfg["disable_command_execute"] = !*patch.RemoteOperationsEnabled
 	}
@@ -144,6 +145,26 @@ func mergeNezhaConfig(input []byte, patch nezhaConfigPatch) ([]byte, error) {
 		return nil, fmt.Errorf("marshal nezha agent config: %w", err)
 	}
 	return out, nil
+}
+
+// stampXPanelNodeRole merges node_role: xpanel into an existing Agent config.
+// Missing files are a no-op so unconfigured nodes stay unconfigured.
+func stampXPanelNodeRole(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	existing, err := readNezhaConfigFile(path)
+	if err != nil {
+		return err
+	}
+	if len(existing) == 0 {
+		return nil
+	}
+	merged, err := mergeNezhaConfig(existing, nezhaConfigPatch{})
+	if err != nil {
+		return err
+	}
+	return writeNezhaConfigFile(path, merged)
 }
 
 // readNezhaConfigFile loads config.yml. A missing file returns (nil, nil).

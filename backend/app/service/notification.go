@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"xpanel/app/dto"
@@ -36,7 +37,7 @@ type NotificationService struct {
 }
 
 func (s *NotificationService) Create(req dto.NotificationCreate) error {
-	event := strings.TrimSpace(req.Event)
+	event := strings.ToLower(strings.TrimSpace(req.Event))
 	pref, _ := s.GetPreference()
 	rule := notificationRuleFor(pref, event)
 	if !rule.Center {
@@ -150,6 +151,21 @@ func CreateNotification(req dto.NotificationCreate) {
 	}
 }
 
+func notifySSLRenewFailed(domain string, err error) {
+	content := ""
+	if err != nil {
+		content = err.Error()
+	}
+	CreateNotification(dto.NotificationCreate{
+		Type:      "error",
+		Event:     "ssl.renew.failed",
+		Title:     fmt.Sprintf("证书「%s」自动续签失败", domain),
+		Content:   content,
+		Source:    "system",
+		TargetURL: "/website/ssl",
+	})
+}
+
 func normalizeNotificationType(t string) string {
 	switch t {
 	case "success", "warning", "error":
@@ -163,20 +179,22 @@ func defaultNotificationPreference() dto.NotificationPreference {
 	return dto.NotificationPreference{
 		Defaults: dto.NotificationPreferenceRule{Center: true, Badge: true, Popup: false},
 		Events: map[string]dto.NotificationPreferenceRule{
-			"file.upload.completed": {Center: true, Badge: false, Popup: false},
-			"file.task.failed":      {Center: true, Badge: true, Popup: true},
-			"database.task.failed":  {Center: true, Badge: true, Popup: true},
-			"cronjob.failed":        {Center: true, Badge: true, Popup: true},
-			"operation.failed":      {Center: true, Badge: true, Popup: true},
-			"system.log.error":      {Center: true, Badge: true, Popup: false},
+			"file.upload.completed":   {Center: true, Badge: false, Popup: false},
+			"file.task.success":       {Center: true, Badge: false, Popup: false},
+			"file.task.cancelled":     {Center: true, Badge: false, Popup: false},
+			"file.task.failed":        {Center: true, Badge: true, Popup: true},
+			"database.task.success":   {Center: true, Badge: false, Popup: false},
+			"database.task.cancelled": {Center: true, Badge: false, Popup: false},
+			"database.task.failed":    {Center: true, Badge: true, Popup: true},
+			"cronjob.success":         {Center: true, Badge: false, Popup: false},
+			"cronjob.failed":          {Center: true, Badge: true, Popup: true},
+			"ssl.renew.failed":        {Center: true, Badge: true, Popup: true},
+			"security.login.failed":   {Center: true, Badge: true, Popup: true},
 		},
 	}
 }
 
 func normalizeNotificationPreference(pref *dto.NotificationPreference) {
-	if pref.Defaults == (dto.NotificationPreferenceRule{}) {
-		pref.Defaults = dto.NotificationPreferenceRule{Center: true, Badge: true, Popup: false}
-	}
 	if pref.Events == nil {
 		pref.Events = map[string]dto.NotificationPreferenceRule{}
 	}

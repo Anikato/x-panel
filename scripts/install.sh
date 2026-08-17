@@ -275,6 +275,18 @@ write_initial_nezha_config() {
         return 1
     fi
     if [ -f "${config_path}" ]; then
+        local tmp
+        tmp="$(mktemp "${NEZHA_AGENT_DIR}/.config.yml.XXXXXX")"
+        chmod 0600 "${tmp}"
+        if grep -q '^node_role:' "${config_path}"; then
+            sed 's/^node_role:.*/node_role: xpanel/' "${config_path}" >"${tmp}" || { rm -f "${tmp}"; return 0; }
+        else
+            cat "${config_path}" >"${tmp}" || { rm -f "${tmp}"; return 0; }
+            printf 'node_role: xpanel\n' >>"${tmp}" || { rm -f "${tmp}"; return 0; }
+        fi
+        chmod 0600 "${tmp}"
+        mv -f "${tmp}" "${config_path}"
+        chmod 0600 "${config_path}"
         return 0
     fi
     if [ "${NEZHA_CONFIGURE}" != true ]; then
@@ -312,6 +324,7 @@ write_initial_nezha_config() {
         printf 'disable_auto_update: true\n'
         printf 'disable_force_update: true\n'
         printf 'disable_command_execute: false\n'
+        printf 'node_role: xpanel\n'
     } >"${tmp}"
     chmod 0600 "${tmp}"
     mv -f "${tmp}" "${config_path}"
@@ -386,8 +399,8 @@ install_bundled_nezha_agent() {
     mkdir -p "${SYSTEMD_DIR}"
     cp -f "${unit_src}" "${unit_dst}"
     chmod 0644 "${unit_dst}"
-    if [ "${NEZHA_CONFIGURE}" = true ]; then
-        write_initial_nezha_config
+    if ! write_initial_nezha_config; then
+        return 1
     fi
     NEZHA_AGENT_SECRET=""
     return 0

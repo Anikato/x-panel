@@ -36,7 +36,7 @@ type componentCmdRunner interface {
 type componentUpgradeDeps struct {
 	XPanelPath    string
 	AgentPath     string
-	ConfigPath    string // held for DI only — never read or rewritten
+	ConfigPath    string // live Agent config; upgrade merges node_role only
 	AgentUnit     string
 	Runner        componentCmdRunner
 	RestartXPanel func() error
@@ -618,14 +618,14 @@ func restoreAgentRunning(deps componentUpgradeDeps) error {
 }
 
 // applyComponentPackage extracts, preflights, and transactionally replaces Agent
-// then X-Panel. ConfigPath is never read or written. On any post-stop failure:
-// roll back replaced binaries, clean exact .new staging and unique backups,
-// and restore the Agent active dimension (never enable/disable).
+// then X-Panel. Archive members other than the two binaries are ignored, so a
+// decoy config.yml never lands. After both binaries are replaced, existing
+// config.yml is merge-stamped with node_role: xpanel (UUID/secret/unknown
+// fields kept). Stamp failure does not roll back binaries. On any post-stop
+// failure: roll back replaced binaries, clean exact .new staging and unique
+// backups, and restore the Agent active dimension (never enable/disable).
 func applyComponentPackage(deps componentUpgradeDeps, archivePath string) (err error) {
 	deps.withDefaults()
-
-	// ConfigPath must never be read or overwritten by this transaction.
-	_ = deps.ConfigPath
 
 	tmpDir, err := os.MkdirTemp("", "xpanel-component-upgrade-*")
 	if err != nil {
@@ -747,6 +747,10 @@ func applyComponentPackage(deps componentUpgradeDeps, archivePath string) (err e
 		return errors.Join(fmt.Errorf("replace xpanel: %w", err), rbErr, restoreErr)
 	}
 	xpanelReplaced = true
+
+	// Merge-only: existing installs pick up the X-Panel role before Agent start.
+	// Parse/write errors leave the previous file bytes and do not fail the upgrade.
+	_ = stampXPanelNodeRole(deps.ConfigPath)
 
 	// Restore Agent active only if it was active before; never enable/disable.
 	if wasActive {

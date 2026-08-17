@@ -29,7 +29,25 @@ func NewINotificationRepo() INotificationRepo {
 type NotificationRepo struct{}
 
 func (r *NotificationRepo) Create(notification *model.Notification) error {
-	return global.DB.Create(notification).Error
+	now := time.Now()
+	if notification.CreatedAt.IsZero() {
+		notification.CreatedAt = now
+	}
+	notification.UpdatedAt = now
+	// map insert keeps false ShowBadge; struct Create would drop it because the column default is true.
+	return global.DB.Model(&model.Notification{}).Create(map[string]interface{}{
+		"CreatedAt": notification.CreatedAt,
+		"UpdatedAt": notification.UpdatedAt,
+		"Type":      notification.Type,
+		"Event":     notification.Event,
+		"Title":     notification.Title,
+		"Content":   notification.Content,
+		"Source":    notification.Source,
+		"TargetURL": notification.TargetURL,
+		"ShowBadge": notification.ShowBadge,
+		"Popup":     notification.Popup,
+		"ReadAt":    notification.ReadAt,
+	}).Error
 }
 
 func (r *NotificationRepo) Page(page, pageSize int, opts ...DBOption) (int64, []model.Notification, error) {

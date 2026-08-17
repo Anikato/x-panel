@@ -380,7 +380,19 @@ write_initial_nezha_config() {
             log_error "已有 config.yml 不是普通文件，拒绝写入"
             return 1
         fi
-        # Existing regular config is never overwritten.
+        # Existing file: merge only node_role. Never replace UUID/secret/unknown fields.
+        local tmp
+        tmp="$(mktemp "${agent_dir}/.config.yml.XXXXXX")"
+        chmod 0600 "${tmp}"
+        if grep -q '^node_role:' "${config_path}"; then
+            sed 's/^node_role:.*/node_role: xpanel/' "${config_path}" >"${tmp}" || { rm -f "${tmp}"; return 0; }
+        else
+            cat "${config_path}" >"${tmp}" || { rm -f "${tmp}"; return 0; }
+            printf 'node_role: xpanel\n' >>"${tmp}" || { rm -f "${tmp}"; return 0; }
+        fi
+        chmod 0600 "${tmp}"
+        mv -f "${tmp}" "${config_path}"
+        chmod 0600 "${config_path}"
         return 0
     fi
 
@@ -421,6 +433,7 @@ write_initial_nezha_config() {
         printf 'disable_auto_update: true\n'
         printf 'disable_force_update: true\n'
         printf 'disable_command_execute: false\n'
+        printf 'node_role: xpanel\n'
     } >"${tmp}"; then
         rm -f "${tmp}"
         log_error "写入临时 config.yml 失败"
@@ -524,10 +537,8 @@ install_bundled_nezha_agent() {
     cp -f "${unit_src}" "${unit_dst}"
     chmod 0644 "${unit_dst}"
 
-    if [ "${NEZHA_CONFIGURE}" = true ]; then
-        if ! write_initial_nezha_config; then
-            return 1
-        fi
+    if ! write_initial_nezha_config; then
+        return 1
     fi
 
     # Ensure secret is never left in the environment after install attempt.

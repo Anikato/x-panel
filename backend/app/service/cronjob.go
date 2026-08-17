@@ -339,7 +339,7 @@ func (s *CronjobService) notifyJobResult(job *model.Cronjob, status, message str
 	}
 	CreateNotification(dto.NotificationCreate{
 		Type:      notificationType,
-		Event:     "cronjob." + status,
+		Event:     "cronjob." + strings.ToLower(status),
 		Title:     title,
 		Content:   content,
 		Source:    "cronjob",

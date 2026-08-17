@@ -199,11 +199,14 @@ const sourceOptions = computed(() => [
 
 const eventOptions = computed(() => [
   { label: t('notification.eventFileUpload'), value: 'file.upload.completed' },
+  { label: t('notification.eventFileTaskSuccess'), value: 'file.task.success' },
   { label: t('notification.eventFileTaskFailed'), value: 'file.task.failed' },
+  { label: t('notification.eventDatabaseTaskSuccess'), value: 'database.task.success' },
   { label: t('notification.eventDatabaseTaskFailed'), value: 'database.task.failed' },
+  { label: t('notification.eventCronjobSuccess'), value: 'cronjob.success' },
   { label: t('notification.eventCronjobFailed'), value: 'cronjob.failed' },
-  { label: t('notification.eventOperationFailed'), value: 'operation.failed' },
-  { label: t('notification.eventSystemLogError'), value: 'system.log.error' },
+  { label: t('notification.eventSSLRenewFailed'), value: 'ssl.renew.failed' },
+  { label: t('notification.eventLoginFailed'), value: 'security.login.failed' },
 ])
 
 const ensurePreferenceEvents = () => {
@@ -292,7 +295,12 @@ const sourceLabel = (source: string) => {
 
 const eventLabel = (event: string) => {
   const found = eventOptions.value.find((item) => item.value === event)
-  return found?.label || event || '-'
+  if (found) return found.label
+  const legacy: Record<string, string> = {
+    'operation.failed': t('notification.eventOperationFailed'),
+    'system.log.error': t('notification.eventSystemLogError'),
+  }
+  return legacy[event] || event || '-'
 }
 
 const formatTime = (value: string) => {

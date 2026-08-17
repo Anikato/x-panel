@@ -76,6 +76,8 @@ sudo systemctl stop xpanel-nezha-agent
 
 健康的 `config.yml` 是 Agent 配置的事实来源。Dashboard 通过 ApplyConfig 或密钥轮换修改文件后，X-Panel 会从磁盘同步必要字段，不会用数据库旧值覆盖文件，也会保留未知 YAML 字段。
 
+首次配置和之后在面板中保存 Agent 配置时，会写入 `node_role: xpanel`。升级已有节点时只合并这一字段，不会整文件替换，也不会用发布包里的配置覆盖本机文件。未配置过 Agent 的节点升级后仍不会凭空生成 `config.yml`。
+
 修改 Dashboard 地址、停止服务、完全禁用、重新启用或升级 X-Panel 都不会主动更换 UUID。不要删除 `config.yml` 或手工改写 UUID；切换 Dashboard 后，原 UUID 会作为同一节点身份连接新的 Dashboard。
 
 ## 冲突与故障排查
@@ -105,7 +107,7 @@ sudo stat -c '%F %a %n' \
 
 X-Panel 发布包同时包含面板和与之绑定的定制兼容 Agent 资产。正式 CI 从 `CUSTOM_AGENT_REPO` 的精确 `CUSTOM_AGENT_VERSION` 下载 amd64、arm64 与校验文件，验证后打入相应架构的 X-Panel 包。节点仍只从 `https://xpanel.qm.mk` 获取完整 X-Panel 更新。
 
-升级过程先校验 checksum，再按 Agent → X-Panel 顺序替换；任何阶段失败都会回滚对应二进制并恢复原服务状态。已有 `config.yml`、UUID 和启用状态不会被安装器覆盖。
+升级过程先校验 checksum，再按 Agent → X-Panel 顺序替换；任何阶段失败都会回滚对应二进制并恢复原服务状态。已有 UUID、密钥、未知字段和启用状态不会被安装器覆盖；现有 `config.yml` 只会合并 `node_role: xpanel`。
 
 即使一次发布只修改 Agent，也要先发布可追溯的 Agent 版本，再更新绑定版本并发布一个新的 X-Panel 补丁版本。当前没有独立的 Agent 在线升级入口。
 
