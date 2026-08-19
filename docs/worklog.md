@@ -9,6 +9,8 @@
 - [x] X-Panel 增加 `xpanel invoke`，第一期只开放只读 `sites.snapshot`；未知子命令不再误入 `Start()`
 - [x] Dashboard 新表 `xpanel_site_snapshots`、独立并发槽、API `GET/POST /api/v1/xpanel/sites*`、页面 `/dashboard/xpanel/sites`
 - [x] 本机验证：X-Panel `go test ./cmd/server ./app/service`、Dashboard controller/model/singleton、admin-frontend 相关 Vitest 与 `tsc -b` 均通过
+- [x] 发布 X-Panel `v0.7.88`（linux/amd64、linux/arm64，公网 SHA256 通过）
+- [x] Dashboard `v2.3.2-xpanel.2` 二进制已部署到 Tencent-Swift `/data/nezha-dashboard`
 
 ### 关键决策
 
@@ -24,7 +26,7 @@
 
 ### 下一步计划
 
-- 走 `Build & Release` workflow_dispatch 正式发布；Dashboard 二进制部署到 Tencent-Swift
+- 找机器升级到 `v0.7.88` 后，在 Dashboard「网站与证书」页手动刷新验证
 - 不发新 Agent
 
 ## 2026-08-18
