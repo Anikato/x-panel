@@ -89,7 +89,7 @@ Agent 源码和 X-Panel 源码可以分别开发，但节点只从 `https://xpan
 | Dashboard 批量触发 X-Panel 更新 | 已实现，固定命令并记录任务状态 |
 | Dashboard 查看 X-Panel 版本 | 已实现，当前需要手动刷新 |
 | 长登录会话与换 IP 保持登录 | 已实现 |
-| Dashboard 查看 X-Panel 网站和证书剩余时间 | 延后，尚未实现 |
+| Dashboard 查看 X-Panel 网站和证书剩余时间 | 已实现（只读快照，手动刷新）；见 [`docs/superpowers/specs/2026-08-19-xpanel-sites-snapshot-design.md`](superpowers/specs/2026-08-19-xpanel-sites-snapshot-design.md) |
 | Dashboard 独立升级 Agent | 不实现；使用新的 X-Panel 补丁版本统一升级 |
 
 ## 修改边界
@@ -106,6 +106,8 @@ Agent 源码和 X-Panel 源码可以分别开发，但节点只从 `https://xpan
 - X-Panel Agent 管理：`backend/app/service/nezha_agent.go`
 - X-Panel Agent 配置合并：`backend/app/service/nezha_agent_config.go`
 - X-Panel 事务升级：`backend/app/service/component_upgrade.go`
+- X-Panel 只读能力入口：`backend/cmd/server/invoke.go`（`sites.snapshot`）
 - Dashboard X-Panel 升级任务：`Nezha-Server/nezha/cmd/dashboard/controller/xpanel.go`
+- Dashboard 网站/证书快照：`Nezha-Server/nezha/cmd/dashboard/controller/xpanel_inventory.go`、`Nezha-Server/admin-frontend/src/routes/xpanel-sites.tsx`
 - Dashboard 新节点默认策略与角色：`Nezha-Server/nezha/service/rpc/auth.go`
 - Agent 握手元数据（`xpanel_name`、`node_role`）：`Nezha-Server/agent/model/auth.go`

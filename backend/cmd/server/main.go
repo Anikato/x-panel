@@ -17,6 +17,7 @@ func run(
 	credentialsCommand func([]string),
 	showVersion func(),
 	updateCommand func([]string) error,
+	invokeCommand func([]string),
 ) error {
 	if len(args) > 0 {
 		switch args[0] {
@@ -37,6 +38,11 @@ func run(
 			return nil
 		case "update":
 			return updateCommand(args[1:])
+		case "invoke":
+			invokeCommand(args[1:])
+			return nil
+		default:
+			return fmt.Errorf("unknown command: %s", args[0])
 		}
 	}
 	start()
@@ -54,6 +60,7 @@ func main() {
 		runCredentials,
 		printVersion,
 		runUpdate,
+		runInvoke,
 	); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -1,5 +1,32 @@
 # X-Panel 工作日志
 
+## 2026-08-19
+
+### 完成内容
+
+- [x] 写完 Dashboard 只读网站/证书快照设计：`docs/superpowers/specs/2026-08-19-xpanel-sites-snapshot-design.md`
+- [x] 写完实施计划：`docs/superpowers/plans/2026-08-19-xpanel-sites-snapshot.md`
+- [x] X-Panel 增加 `xpanel invoke`，第一期只开放只读 `sites.snapshot`；未知子命令不再误入 `Start()`
+- [x] Dashboard 新表 `xpanel_site_snapshots`、独立并发槽、API `GET/POST /api/v1/xpanel/sites*`、页面 `/dashboard/xpanel/sites`
+- [x] 本机验证：X-Panel `go test ./cmd/server ./app/service`、Dashboard controller/model/singleton、admin-frontend 相关 Vitest 与 `tsc -b` 均通过
+
+### 关键决策
+
+- 第一期只读；主节点发证、其余同步，不做远程续期
+- 按节点查看，按剩余天数排序；同一域名多节点多行
+- 节点侧用稳定 `xpanel invoke` 能力信封，运输层沿用现有 Exec
+- 与现网 Dashboard 隔离：不改 Agent/protobuf/`servers` 表/升级 API；快照用新表、新路由、独立并发槽
+- 打开网站页只读缓存，刷新由管理员手动触发
+
+### 遗留问题
+
+- 旧节点没有 `invoke` 时会误走 `Start()`（常见端口占用），刷新显示为 failed，需先升级 X-Panel
+
+### 下一步计划
+
+- 走 `Build & Release` workflow_dispatch 正式发布；Dashboard 二进制部署到 Tencent-Swift
+- 不发新 Agent
+
 ## 2026-08-18
 
 ### 完成内容
