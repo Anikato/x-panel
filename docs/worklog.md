@@ -8,6 +8,7 @@
 - [x] 源码推到 `Anikato/nezha-agent` `012570b`，制品在 `Anikato/x-panel` Release
 - [x] 绑定仓库变量 `CUSTOM_AGENT_VERSION=agent-v2.3.4-xpanel.1`
 - [x] 发布 X-Panel `v0.8.0`（linux/amd64、linux/arm64，公网 SHA256 通过）
+- [x] 发布 X-Panel `v0.8.1`（首页仪表与外观默认、样式导入导出；linux/amd64、linux/arm64，公网 SHA256 通过）
 
 ### 关键决策
 
@@ -16,7 +17,7 @@
 
 ### 下一步计划
 
-- 节点执行 `xpanel update --latest` 升级到 `v0.8.0`，同时拿到捆绑 Agent v2.3.4
+- 节点执行 `xpanel update --latest` 升级到 `v0.8.1`，Agent 仍为 v2.3.4-xpanel.1
 
 ## 2026-08-19
 
