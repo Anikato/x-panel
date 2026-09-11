@@ -1,5 +1,23 @@
 # X-Panel 工作日志
 
+## 2026-09-11
+
+### 完成内容
+
+- [x] 发布 Agent `agent-v2.3.4-xpanel.1`（对齐官方 v2.3.4，保留 `xpanel_name` / `node_role` 握手）
+- [x] 源码推到 `Anikato/nezha-agent` `012570b`，制品在 `Anikato/x-panel` Release
+- [x] 绑定仓库变量 `CUSTOM_AGENT_VERSION=agent-v2.3.4-xpanel.1`
+- [x] 发布 X-Panel `v0.8.0`（linux/amd64、linux/arm64，公网 SHA256 通过）
+
+### 关键决策
+
+- Agent 必须先有不可变 GitHub Release，X-Panel 工作流才能打包；本地二进制不能直接进正式包
+- 版本号用 `v0.8.0`，不跳到 `v8.0.0`
+
+### 下一步计划
+
+- 节点执行 `xpanel update --latest` 升级到 `v0.8.0`，同时拿到捆绑 Agent v2.3.4
+
 ## 2026-08-19
 
 ### 完成内容
