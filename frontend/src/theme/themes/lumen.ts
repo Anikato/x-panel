@@ -87,6 +87,7 @@ export const lumenTheme: ThemeDefinition = {
     termFont: 'jetbrains',
     termFontSize: 14,
     termBgOpacity: 1,
+    chromeTexture: 'none',
   },
   tokens: {
     fonts: { ui: UI_FONT_STACKS, mono: MONO_FONT_STACK },

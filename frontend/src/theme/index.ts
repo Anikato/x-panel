@@ -16,6 +16,7 @@ export type {
 export { listThemes, getTheme, hasTheme } from './catalog.ts'
 export { resolveAppearance, switchTheme, clonePreference, isCustomized, emptyPreference } from './resolve.ts'
 export { hydrateAppearance, migrateLegacyAppearance, sanitizePreference } from './migrate.ts'
+export { buildAppearancePreset, parseAppearancePreset, APPEARANCE_PRESET_KIND } from './preset-file.ts'
 export {
   beginPreview,
   patchDraft,

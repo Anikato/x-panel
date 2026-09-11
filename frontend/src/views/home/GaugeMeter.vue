@@ -1,28 +1,29 @@
 <template>
-  <div class="gauge-meter" :class="tone" :style="{ '--gauge-base': color }">
+  <div class="gauge-meter" :class="tone" :style="meterStyle">
     <div class="gauge-well">
-      <svg viewBox="0 0 140 112" class="gauge-svg" aria-hidden="true">
+      <svg viewBox="0 0 140 104" class="gauge-svg" aria-hidden="true">
         <path class="gauge-track" :d="arcD" pathLength="100" />
-        <path
-          class="gauge-fill"
-          :d="arcD"
-          pathLength="100"
-          :stroke-dasharray="`${fill} 100`"
-        />
-        <circle
+        <path class="gauge-fill" :d="arcD" pathLength="100" />
+        <line
           v-for="tick in ticks"
           :key="tick.p"
-          class="gauge-tick"
-          :cx="tick.x"
-          :cy="tick.y"
-          r="1.4"
+          :class="tick.major ? 'gauge-tick-maj' : 'gauge-tick'"
+          :x1="tick.x1"
+          :y1="tick.y1"
+          :x2="tick.x2"
+          :y2="tick.y2"
         />
+        <g class="gauge-arm">
+          <polygon class="blade-glow" points="70,12 74.2,56 65.8,56" />
+          <polygon class="blade" points="70,14 72.2,56 67.8,56" />
+          <polygon class="blade-core" points="70,20 70.8,56 69.2,56" />
+          <circle class="hub" cx="70" cy="56" r="3.1" />
+          <circle class="hub-core" cx="70" cy="56" r="1.3" />
+        </g>
       </svg>
-      <div class="gauge-readout">
-        <strong>{{ display }}</strong>
-      </div>
     </div>
     <div class="gauge-caption">
+      <span class="gauge-chip">{{ display }}</span>
       <span class="gauge-label">{{ label }}</span>
       <span v-if="sub" class="gauge-sub">{{ sub }}</span>
     </div>
@@ -30,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   label: string
@@ -46,14 +47,31 @@ const props = withDefaults(defineProps<{
 })
 
 const CX = 70
-const CY = 64
+const CY = 56
 const R = 48
-const START = 135
-const SWEEP = 270
+const START = 150
+const SWEEP = 240
 
 const clamp = computed(() => Math.max(0, Math.min(100, props.percent || 0)))
-const fill = computed(() => (clamp.value < 0.6 && clamp.value > 0 ? 0.6 : clamp.value))
 const display = computed(() => props.value || `${clamp.value.toFixed(1)}%`)
+const shown = ref(0)
+const ready = ref(false)
+
+onMounted(() => {
+  requestAnimationFrame(() => {
+    shown.value = clamp.value
+    ready.value = true
+  })
+})
+
+watch(clamp, (value) => {
+  if (ready.value) shown.value = value
+})
+
+const meterStyle = computed(() => ({
+  '--gauge-base': props.color,
+  '--p': String(shown.value < 0.6 && shown.value > 0 ? 0.6 : shown.value),
+}))
 
 const polar = (deg: number, radius = R) => {
   const a = (deg * Math.PI) / 180
@@ -69,15 +87,30 @@ const arcD = computed(() => {
   return `M ${a0.x.toFixed(2)} ${a0.y.toFixed(2)} A ${R} ${R} 0 1 1 ${a1.x.toFixed(2)} ${a1.y.toFixed(2)}`
 })
 
-const ticks = computed(() => [0, 25, 50, 75, 100].map((p) => {
-  const pt = polar(START + (SWEEP * p) / 100, R + 7)
-  return { p, x: pt.x.toFixed(2), y: pt.y.toFixed(2) }
-}))
+const ticks = computed(() => {
+  const items = []
+  for (let p = 0; p <= 100; p += 5) {
+    const major = p % 25 === 0
+    const deg = START + (SWEEP * p) / 100
+    const inner = polar(deg, major ? 41 : 43.2)
+    const outer = polar(deg, 46.8)
+    items.push({
+      p,
+      major,
+      x1: inner.x.toFixed(2),
+      y1: inner.y.toFixed(2),
+      x2: outer.x.toFixed(2),
+      y2: outer.y.toFixed(2),
+    })
+  }
+  return items
+})
 </script>
 
 <style scoped lang="scss">
 .gauge-meter {
   --gauge-color: var(--gauge-base, var(--xp-accent));
+  --gauge-sweep: 450ms;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -94,46 +127,60 @@ const ticks = computed(() => [0, 25, 50, 75, 100].map((p) => {
   display: block;
   width: 100%;
   height: auto;
-  overflow: hidden;
+  overflow: visible;
   pointer-events: none;
-  contain: paint;
 }
 
 .gauge-track {
   fill: none;
-  stroke: color-mix(in srgb, var(--xp-text-primary) 10%, transparent);
-  stroke-width: var(--gauge-stroke, 9);
+  stroke: color-mix(in srgb, var(--xp-text-primary) 11%, transparent);
+  stroke-width: 2.2;
   stroke-linecap: round;
 }
 
 .gauge-fill {
   fill: none;
   stroke: var(--gauge-color);
-  stroke-width: var(--gauge-stroke, 9);
+  stroke-width: 2.2;
   stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--p, 0));
+  transition: stroke-dashoffset var(--gauge-sweep) cubic-bezier(.2, .8, .2, 1);
 }
 
 .gauge-tick {
-  fill: color-mix(in srgb, var(--xp-text-primary) 28%, transparent);
+  stroke: color-mix(in srgb, var(--xp-text-primary) 28%, transparent);
+  stroke-width: 1;
 }
 
-.gauge-readout {
-  position: absolute;
-  left: 50%;
-  top: 58%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  pointer-events: none;
+.gauge-tick-maj {
+  stroke: color-mix(in srgb, var(--xp-text-primary) 50%, transparent);
+  stroke-width: 1.4;
+}
 
-  strong {
-    display: block;
-    color: var(--xp-text-primary);
-    font-size: clamp(20px, 1.8vw, 28px);
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-  }
+.gauge-arm {
+  transform-box: view-box;
+  transform-origin: 70px 56px;
+  transform: rotate(calc(-120deg + var(--p, 0) * 2.4deg));
+  transition: transform var(--gauge-sweep) cubic-bezier(.2, .8, .2, 1);
+}
+
+.blade-glow {
+  fill: var(--gauge-color);
+  opacity: 0.28;
+}
+
+.blade {
+  fill: var(--gauge-color);
+}
+
+.blade-core,
+.hub {
+  fill: var(--xp-text-primary);
+}
+
+.hub-core {
+  fill: var(--xp-bg-surface);
 }
 
 .gauge-caption {
@@ -141,8 +188,22 @@ const ticks = computed(() => [0, 25, 50, 75, 100].map((p) => {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  margin-top: -4px;
+  margin-top: -6px;
   text-align: center;
+}
+
+.gauge-chip {
+  width: fit-content;
+  padding: 2px 8px;
+  color: var(--xp-text-primary);
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  background: color-mix(in srgb, var(--gauge-color) 12%, var(--xp-bg-inset));
+  border: 1px solid color-mix(in srgb, var(--gauge-color) 30%, transparent);
+  border-radius: 999px;
 }
 
 .gauge-label {

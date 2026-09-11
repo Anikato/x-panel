@@ -742,6 +742,7 @@ export interface TopProcess {
   pid: number
   name: string
   cpuPercent: number
+  memPercent?: number
   memRss: number
 }
 

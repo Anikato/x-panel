@@ -7,10 +7,13 @@
         <div v-if="hasUnapplied" class="appearance-dirty">{{ t('setting.appearanceUnapplied') }}</div>
       </div>
       <div class="appearance-actions">
+        <el-button @click="exportPreset">{{ t('setting.appearanceExport') }}</el-button>
+        <el-button @click="pickPresetFile">{{ t('setting.appearanceImport') }}</el-button>
         <el-button @click="cancel">{{ t('commons.cancel') }}</el-button>
         <el-button @click="appearance.restoreTheme()">{{ t('setting.restoreThemeDefaults') }}</el-button>
         <el-button @click="appearance.restoreAll()">{{ t('setting.restoreAllDefaults') }}</el-button>
         <el-button type="primary" :loading="saving" @click="apply">{{ t('setting.applyAppearance') }}</el-button>
+        <input ref="presetFileRef" type="file" accept="application/json,.json" class="wallpaper-file" @change="onPresetFile" />
       </div>
     </div>
 
@@ -355,6 +358,7 @@ const globalStore = useGlobalStore()
 const saving = ref(false)
 const chromeFileRef = ref<HTMLInputElement | null>(null)
 const termFileRef = ref<HTMLInputElement | null>(null)
+const presetFileRef = ref<HTMLInputElement | null>(null)
 const themes = listThemes()
 const preference = computed(() => appearance.preference)
 const resolved = computed(() => appearance.resolved)
@@ -518,6 +522,38 @@ const cancel = () => {
   appearance.cancelPreview()
   appearance.startPreview()
   ElMessage.info(t('setting.appearanceCancelled'))
+}
+
+const exportPreset = () => {
+  const blob = new Blob([appearance.exportPresetJSON()], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'x-panel-appearance.json'
+  link.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(t('setting.appearanceExportOk'))
+}
+
+const pickPresetFile = () => presetFileRef.value?.click()
+
+const onPresetFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    const ok = await appearance.importPresetJSON(text)
+    if (!ok) {
+      ElMessage.error(t('setting.appearanceImportBad'))
+      return
+    }
+    appearance.startPreview()
+    ElMessage.success(t('setting.appearanceImportOk'))
+  } catch {
+    ElMessage.error(t('setting.appearanceImportBad'))
+  }
 }
 </script>
 

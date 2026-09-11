@@ -187,7 +187,7 @@ func (s *MonitorService) GetCurrentStats() (*dto.SystemStats, error) {
 		}
 	}
 
-	stats.TopProcess = getTopProcesses(5)
+	stats.TopProcess = getTopProcesses(8)
 	stats.Sensors = loadSensorTemps()
 
 	uptime, _ := hostUtil.Uptime()

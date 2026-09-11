@@ -4,9 +4,11 @@ import {
   applyPreview,
   applyResolvedAppearance,
   beginPreview,
+  buildAppearancePreset,
   cancelPreview,
   clonePreference,
   hydrateAppearance,
+  parseAppearancePreset,
   patchDraft,
   readLocalPreference,
   readResolveEnv,
@@ -236,6 +238,21 @@ export const useAppearanceStore = defineStore('appearance', {
       } catch {
         this.applyCurrent()
       }
+    },
+
+    exportPresetJSON() {
+      return JSON.stringify(buildAppearancePreset(this.preference), null, 2)
+    },
+
+    async importPresetJSON(raw: string) {
+      const parsed = parseAppearancePreset(raw)
+      if (!parsed.ok) return false
+      this.session = null
+      this.previewing = false
+      this.preference = parsed.preference
+      this.applyCurrent()
+      await this.persist()
+      return true
     },
   },
 })

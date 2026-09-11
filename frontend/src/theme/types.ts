@@ -146,6 +146,7 @@ export interface ThemeDefinition {
     termFont: string
     termFontSize: number
     termBgOpacity: number
+    chromeTexture: ChromeTexture
   }
   tokens: {
     fonts: { ui: Record<UiFont, string>; mono: string }

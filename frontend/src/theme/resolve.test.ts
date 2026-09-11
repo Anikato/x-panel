@@ -254,9 +254,20 @@ test('restore group and restore all clear the expected override keys', () => {
   assert.deepEqual(session.draft.overridesByTheme, {})
 })
 
-test('steel remains the atelier accent and neon still resolves', () => {
+test('atelier defaults to vermilion ribbon lxgw consolas and half-opaque terminal', () => {
   const atelier = resolveAppearance(DEFAULT_PREFERENCE, env)
-  assert.equal(atelier.accent.primary.toLowerCase(), getPresetByKey('steel')?.primary.toLowerCase())
+  assert.equal(atelier.accent.primary.toLowerCase(), getPresetByKey('vermilion')?.primary.toLowerCase())
+  assert.equal(atelier.accent.primary.toLowerCase(), '#cb2028')
+  assert.equal(atelier.chromeTexture, 'ribbon')
+  assert.equal(atelier.uiFontKey, 'lxgw')
+  assert.equal(atelier.termFont, 'consolas')
+  assert.equal(atelier.termBgOpacity, 0.5)
+  assert.equal(atelier.colors.bgSurface.toLowerCase(), '#191c23')
+})
+
+test('neon still resolves as a custom accent', () => {
+  const atelier = resolveAppearance(DEFAULT_PREFERENCE, env)
+  assert.ok(atelier.accent.primary)
   const neon = resolveAppearance({
     ...DEFAULT_PREFERENCE,
     overridesByTheme: { atelier: { accentKey: 'neon' } },

@@ -143,7 +143,7 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
   const termWallpaper: TermWallpaper = TERM_WALLPAPERS.includes(over.termWallpaper as TermWallpaper)
     ? over.termWallpaper as TermWallpaper
     : 'none'
-  const chromeTexture: ChromeTexture = coerceChromeTexture(over.chromeTexture)
+  const chromeTexture: ChromeTexture = coerceChromeTexture(over.chromeTexture ?? theme.defaults.chromeTexture)
   const chromeImageMode: WallpaperImageMode = WALLPAPER_IMAGE_MODES.includes(over.chromeImageMode as WallpaperImageMode)
     ? over.chromeImageMode as WallpaperImageMode
     : 'none'

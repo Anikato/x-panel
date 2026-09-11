@@ -15,6 +15,16 @@ export interface AccentPalette {
 
 export const ACCENT_PRESETS: AccentPalette[] = [
   {
+    name: '朱红',
+    key: 'vermilion',
+    primary: '#CB2028',
+    hover: '#A81A22',
+    muted: 'rgba(203, 32, 40, 0.16)',
+    glow: '0 0 18px rgba(203, 32, 40, 0.18)',
+    secondary: '#E85A62',
+    elPrimaryLevels: ['#E85A62', '#CB2028', '#A81A22', '#8B161C', '#6E1116'],
+  },
+  {
     name: '钢蓝',
     key: 'steel',
     primary: '#7AA2FF',

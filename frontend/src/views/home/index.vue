@@ -18,7 +18,13 @@
     </div>
 
     <div class="gauge-deck">
-      <article v-for="item in gauges" :key="item.label" class="gauge-card" :class="item.tone">
+      <article
+        v-for="item in gauges"
+        :key="item.label"
+        class="gauge-card"
+        :class="item.tone"
+        :style="{ '--gauge-base': item.color }"
+      >
         <GaugeMeter
           :label="item.label"
           :percent="item.pct"
@@ -34,93 +40,116 @@
       <article v-if="showStorage" class="deck-card storage-card">
         <div class="col-hd"><el-icon><Box /></el-icon><span>{{ t('home.storageAndSensors') }}</span></div>
         <div class="res-list">
-          <div v-if="(stats.memory?.swapTotal ?? 0) > 0" class="res-item">
-            <div class="res-hd">
-              <div class="res-dot mem-dot"></div>
-              <span>{{ t('home.swap') }}</span>
-              <span class="res-pct" :class="pctCls(stats.memory?.swapPercent)">{{ (stats.memory?.swapPercent ?? 0).toFixed(0) }}%</span>
+          <div class="disk-stack">
+            <div v-for="disk in filteredDisks" :key="disk.mountPoint" class="res-item">
+              <div class="res-hd">
+                <div class="res-dot disk-dot"></div>
+                <span>{{ disk.mountPoint }}</span>
+                <span class="res-pct" :class="pctCls(disk.usedPercent)">{{ disk.usedPercent.toFixed(1) }}%</span>
+              </div>
+              <div class="bar-bg"><div class="bar-fg" :style="barSty(disk.usedPercent, 'disk')"></div></div>
+              <div class="disk-pills">
+                <button type="button" class="pill" :title="disk.device" @click="copyText(disk.device)">{{ shortDevice(disk.device) }}</button>
+                <span class="pill">{{ disk.fsType }}</span>
+                <span class="pill">{{ formatBytePair(disk.used, disk.total) }}</span>
+                <span v-if="disk.inodesTotal" class="pill" :class="pctCls(disk.inodesPercent)">inode {{ disk.inodesPercent.toFixed(0) }}%</span>
+              </div>
             </div>
-            <div class="bar-bg"><div class="bar-fg" :style="barSty(stats.memory?.swapPercent, 'mem')"></div></div>
-            <div class="res-foot">{{ formatBytes(stats.memory?.swapUsed) }} / {{ formatBytes(stats.memory?.swapTotal) }}</div>
-          </div>
-          <div v-for="disk in extraDisks" :key="disk.mountPoint" class="res-item">
-            <div class="res-hd">
-              <div class="res-dot disk-dot"></div>
-              <span>{{ disk.mountPoint }}</span>
-              <span class="res-pct" :class="pctCls(disk.usedPercent)">{{ disk.usedPercent.toFixed(1) }}%</span>
-            </div>
-            <div class="bar-bg"><div class="bar-fg" :style="barSty(disk.usedPercent, 'disk')"></div></div>
-            <div class="res-foot">{{ disk.device }} · {{ disk.fsType }} · {{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}</div>
-          </div>
-          <div v-if="stats.sensors?.length" class="res-item">
-            <div class="res-hd"><div class="res-dot temp-dot"></div><span>{{ t('home.sensorTemp') }}</span></div>
-            <div class="temp-grid">
-              <div v-for="s in stats.sensors" :key="s.key" class="temp-cell" :title="s.key">
-                <span class="temp-name">{{ fmtSensorName(s.key) }}</span>
-                <span class="temp-val" :class="tempCls(s)">{{ s.temp.toFixed(0) }}°C</span>
+            <div v-if="(stats.memory?.swapTotal ?? 0) > 0" class="res-item">
+              <div class="res-hd">
+                <div class="res-dot mem-dot"></div>
+                <span>{{ t('home.swap') }}</span>
+                <span class="res-pct" :class="pctCls(stats.memory?.swapPercent)">{{ (stats.memory?.swapPercent ?? 0).toFixed(0) }}%</span>
+              </div>
+              <div class="bar-bg"><div class="bar-fg" :style="barSty(stats.memory?.swapPercent, 'mem')"></div></div>
+              <div class="disk-pills">
+                <span class="pill">{{ formatBytePair(stats.memory?.swapUsed, stats.memory?.swapTotal) }}</span>
               </div>
             </div>
           </div>
+          <div v-if="sensorGroups.length" class="res-item">
+            <div class="res-hd"><div class="res-dot temp-dot"></div><span>{{ t('home.sensorTemp') }}</span></div>
+            <div class="temp-chips">
+              <div v-for="g in sensorGroups" :key="g.id" class="dash-chip" :title="g.keys.join(', ')">
+                <em>{{ g.label }}</em>
+                <b :class="g.tone">{{ g.temp.toFixed(0) }}°C</b>
+                <small v-if="g.hotspot != null">{{ t('home.sensorHotspot', { temp: g.hotspot.toFixed(0) }) }}</small>
+              </div>
+            </div>
+          </div>
+          <div v-else class="sensor-empty">{{ noSensorText }}</div>
         </div>
       </article>
 
       <article class="deck-card net-card">
         <div class="col-hd"><el-icon><Connection /></el-icon><span>{{ t('home.network') }}</span></div>
-        <div class="net-hero">
-          <div class="net-rate">
+        <div class="chip-grid rates">
+          <div class="dash-chip rate-chip">
             <em>{{ t('home.download') }}</em>
-            <strong class="col-down">{{ formatSpeed(headlineNic?.speedDown) }}</strong>
+            <b class="col-down">{{ formatSpeed(headlineNic?.speedDown) }}</b>
             <small>{{ headlineNic?.name || t('home.noNetworkData') }}</small>
           </div>
-          <div class="net-rate">
+          <div class="dash-chip rate-chip">
             <em>{{ t('home.upload') }}</em>
-            <strong class="col-up">{{ formatSpeed(headlineNic?.speedUp) }}</strong>
+            <b class="col-up">{{ formatSpeed(headlineNic?.speedUp) }}</b>
             <small>{{ t('home.totalTraffic') }} {{ formatBytes(stats.network?.bytesRecv) }} / {{ formatBytes(stats.network?.bytesSent) }}</small>
           </div>
         </div>
-        <div v-if="stats.host?.publicIPv4" class="addr-plate" @click="copyText(stats.host.publicIPv4)">
-          <span>{{ t('home.publicIPv4') }}</span>
-          <strong>{{ stats.host.publicIPv4 }}</strong>
-          <el-icon class="copy-btn visible"><CopyDocument /></el-icon>
+        <div v-if="publicAddrs.length" class="chip-grid addrs">
+          <button
+            v-for="item in publicAddrs"
+            :key="item.label"
+            type="button"
+            class="dash-chip addr-chip"
+            :title="item.value"
+            @click="copyText(item.value)"
+          >
+            <em>{{ item.label }}</em>
+            <b>{{ item.value }}</b>
+          </button>
         </div>
-        <div class="net-list">
-          <div v-if="stats.host?.publicIPv6" class="net-row">
-            <span class="net-label">{{ t('home.publicIPv6') }}</span>
-            <span class="net-val mono">{{ stats.host.publicIPv6 }}<el-icon class="copy-btn" @click="copyText(stats.host.publicIPv6)"><CopyDocument /></el-icon></span>
-          </div>
-          <template v-for="iface in stats.host?.interfaces" :key="iface.name">
-            <div v-for="ip in iface.ipv4" :key="ip" class="net-row">
-              <span class="net-label"><el-tag size="small" :type="iface.status === 'up' ? 'success' : 'info'" effect="plain">{{ iface.name }}</el-tag></span>
-              <span class="net-val mono">{{ ip }}<el-icon class="copy-btn" @click="copyText(ip.split('/')[0])"><CopyDocument /></el-icon></span>
-            </div>
-          </template>
-          <div v-if="stats.host?.dnsServers?.length" class="net-row">
-            <span class="net-label">DNS</span>
-            <span class="net-val mono">{{ stats.host.dnsServers.join(', ') }}<el-icon class="copy-btn" @click="copyText(stats.host.dnsServers.join(', '))"><CopyDocument /></el-icon></span>
+        <div v-if="addressIfaces.length" class="chip-grid ifaces">
+          <button
+            v-for="iface in addressIfaces"
+            :key="iface.name"
+            type="button"
+            class="dash-chip addr-chip"
+            @click="copyText((iface.ipv4[0] || '').split('/')[0])"
+          >
+            <em>{{ iface.name }}</em>
+            <b>{{ iface.ipv4[0] }}</b>
+          </button>
+        </div>
+        <div v-if="dnsServers.length" class="chip-grid dns">
+          <button type="button" class="dash-chip addr-chip" @click="copyText(dnsServers.join(', '))">
+            <em>{{ t('home.dns') }}</em>
+            <b>{{ dnsServers.join(' · ') }}</b>
+          </button>
+        </div>
+        <div v-if="trafficNics.length" class="traffic-list">
+          <div v-for="nic in trafficNics" :key="nic.name" class="traffic-row">
+            <span class="td-nic">{{ nic.name }}</span>
+            <span class="col-up">{{ formatSpeed(nic.speedUp) }}</span>
+            <span class="col-down">{{ formatSpeed(nic.speedDown) }}</span>
           </div>
         </div>
-        <table v-if="mainNics.length" class="traffic-tbl">
-          <thead><tr><th></th><th class="col-up">{{ t('home.upload') }}</th><th class="col-down">{{ t('home.download') }}</th></tr></thead>
-          <tbody>
-            <tr v-for="nic in mainNics" :key="nic.name">
-              <td class="td-nic">{{ nic.name }}</td>
-              <td class="col-up">{{ formatSpeed(nic.speedUp) }}</td>
-              <td class="col-down">{{ formatSpeed(nic.speedDown) }}</td>
-            </tr>
-          </tbody>
-        </table>
       </article>
 
       <article class="deck-card sys-card">
         <div class="col-hd"><el-icon><Monitor /></el-icon><span>{{ t('home.systemInfo') }}</span></div>
-        <div class="sys-list">
-          <div v-for="item in sysInfoItems" :key="item.label" class="sys-row">
-            <span class="sys-label">{{ item.label }}</span>
-            <span class="sys-val" :title="item.value">
-              {{ item.value }}
-              <el-icon v-if="item.value && item.value !== '-'" class="copy-btn" @click="copyText(item.value)"><CopyDocument /></el-icon>
-            </span>
-          </div>
+        <div class="chip-grid sys">
+          <button
+            v-for="item in sysInfoItems"
+            :key="item.label"
+            type="button"
+            class="dash-chip sys-chip"
+            :class="{ wide: item.wide }"
+            :title="item.value"
+            @click="item.value && item.value !== '-' && copyText(item.value)"
+          >
+            <em>{{ item.label }}</em>
+            <b>{{ item.value }}</b>
+          </button>
         </div>
       </article>
     </div>
@@ -141,18 +170,35 @@
       </div>
     </article>
 
-    <article class="deck-card">
-      <div class="col-hd"><el-icon><DataLine /></el-icon><span>{{ t('home.topProcess') }}</span></div>
-      <el-table :data="stats.topProcess || []" size="small" :show-header="true" stripe>
-        <el-table-column prop="pid" label="PID" width="70" />
-        <el-table-column prop="name" :label="t('home.processName')" min-width="140" show-overflow-tooltip />
-        <el-table-column label="CPU %" width="90" align="right">
-          <template #default="{ row }"><span :class="row.cpuPercent > 50 ? 'text-danger' : ''">{{ row.cpuPercent.toFixed(1) }}%</span></template>
-        </el-table-column>
-        <el-table-column :label="t('home.memoryUsage')" width="90" align="right">
-          <template #default="{ row }">{{ formatBytes(row.memRss) }}</template>
-        </el-table-column>
-      </el-table>
+    <article class="deck-card proc-card">
+      <div class="col-hd">
+        <el-icon><DataLine /></el-icon>
+        <span>{{ t('home.topProcess') }}</span>
+        <router-link class="card-more" to="/host/process">{{ t('home.viewAllProcesses') }}</router-link>
+      </div>
+      <div v-if="stats.topProcess?.length" class="proc-list">
+        <div v-for="(row, idx) in stats.topProcess" :key="row.pid" class="proc-row">
+          <div class="proc-id">
+            <b :title="row.name">{{ row.name }}</b>
+            <small>#{{ idx + 1 }} · PID {{ row.pid }}</small>
+          </div>
+          <div class="proc-meter">
+            <div class="proc-meter-hd">
+              <em>CPU</em>
+              <b :class="pctCls(row.cpuPercent)">{{ row.cpuPercent.toFixed(1) }}%</b>
+            </div>
+            <div class="bar-bg"><div class="bar-fg" :style="barSty(row.cpuPercent, 'cpu')"></div></div>
+          </div>
+          <div class="proc-meter">
+            <div class="proc-meter-hd">
+              <em>{{ t('home.memory') }}</em>
+              <b :class="pctCls(row.memPercent)">{{ formatBytes(row.memRss) }}</b>
+            </div>
+            <div class="bar-bg"><div class="bar-fg" :style="barSty(row.memPercent, 'mem')"></div></div>
+          </div>
+        </div>
+      </div>
+      <div v-else class="sensor-empty">{{ t('home.waitingForData') }}</div>
     </article>
   </div>
 </template>
@@ -165,8 +211,10 @@ import { useGlobalStore } from '@/store/modules/global'
 import { getSystemStats } from '@/api/modules/monitor'
 import { ElMessage } from 'element-plus'
 import type { SystemStats, HostInfo, SensorTemp } from '@/api/interface'
+import { fallbackSensorName, groupSensors, sensorLabelKey } from './sensors'
+import { filterAddressIfaces, filterDNS, filterTrafficNics, isNoiseIface } from './network'
 import {
-  Monitor, Connection, Compass, DataLine, CopyDocument, Box,
+  Monitor, Connection, Compass, DataLine, Box,
 } from '@element-plus/icons-vue'
 import ShieldIcon from '@/components/icons/ShieldIcon.vue'
 import { chartTokens, onAppearanceChange } from '@/theme'
@@ -213,12 +261,12 @@ const formatUptime = (seconds?: number) => {
 const sysInfoItems = computed(() => {
   const h = stats.value.host ?? ({} as Partial<HostInfo>)
   return [
-    { label: t('home.hostname'), value: h.hostname || '-' },
-    { label: t('home.kernel'), value: h.kernelVersion || '-' },
-    { label: t('home.cpuModel'), value: stats.value.cpu?.modelName || '-' },
-    { label: t('home.cpuCores'), value: stats.value.cpu ? `${stats.value.cpu.cores} ${t('home.physical')} / ${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-' },
-    { label: t('home.totalMemory'), value: formatBytes(stats.value.memory?.total) },
-    { label: t('home.tcpCongestion'), value: h.tcpCongestion || '-' },
+    { label: t('home.hostname'), value: h.hostname || '-', wide: false },
+    { label: t('home.kernel'), value: h.kernelVersion || '-', wide: false },
+    { label: t('home.cpuModel'), value: stats.value.cpu?.modelName || '-', wide: true },
+    { label: t('home.cpuCores'), value: stats.value.cpu ? `${stats.value.cpu.cores} ${t('home.physical')} / ${stats.value.cpu.logicalCores} ${t('home.logical')}` : '-', wide: false },
+    { label: t('home.totalMemory'), value: formatBytes(stats.value.memory?.total), wide: false },
+    { label: t('home.tcpCongestion'), value: h.tcpCongestion || '-', wide: false },
   ]
 })
 
@@ -255,24 +303,46 @@ const primaryDisk = computed(() => {
   return disks.find((d) => d.mountPoint === '/') || disks.slice().sort((a, b) => b.total - a.total)[0] || null
 })
 
-const extraDisks = computed(() => {
-  const primary = primaryDisk.value
-  return filteredDisks.value.filter((d) => d.mountPoint !== primary?.mountPoint)
-})
-
 const showStorage = computed(() =>
-  extraDisks.value.length > 0
+  filteredDisks.value.length > 0
   || (stats.value.memory?.swapTotal ?? 0) > 0
   || Boolean(stats.value.sensors?.length)
 )
 
-const mainNics = computed(() => (stats.value.netIO || []).filter(n => n.name !== 'lo').slice(0, 6))
+const sensorGroups = computed(() =>
+  groupSensors(stats.value.sensors || []).map((group) => ({
+    ...group,
+    label: group.kind === 'other'
+      ? fallbackSensorName(group.keys[0] || group.id)
+      : t(sensorLabelKey(group.kind)),
+    tone: tempCls({
+      key: group.keys[0] || group.id,
+      temp: Math.max(group.temp, group.hotspot ?? 0),
+    }),
+  }))
+)
+
+const noSensorText = computed(() => {
+  const virt = stats.value.host?.virtualization
+  if (virt) return t('home.noSensorVm', { virt })
+  return t('home.noSensor')
+})
+
+const addressIfaces = computed(() => filterAddressIfaces(stats.value.host?.interfaces))
+const dnsServers = computed(() => filterDNS(stats.value.host?.dnsServers))
+const trafficNics = computed(() => filterTrafficNics(stats.value.netIO))
+const publicAddrs = computed(() => {
+  const items: { label: string, value: string }[] = []
+  if (stats.value.host?.publicIPv4) items.push({ label: t('home.publicIPv4'), value: stats.value.host.publicIPv4 })
+  if (stats.value.host?.publicIPv6) items.push({ label: t('home.publicIPv6'), value: stats.value.host.publicIPv6 })
+  return items
+})
 
 const headlineNic = computed(() => {
-  const nics = mainNics.value
+  const nics = (stats.value.netIO || []).filter((n) => n.name !== 'lo' && !isNoiseIface(n.name))
   if (!nics.length) return null
   return nics.reduce((best, nic) =>
-    (nic.speedDown + nic.speedUp) > (best.speedDown + best.speedUp) ? nic : best
+    ((nic.speedDown || 0) + (nic.speedUp || 0)) > ((best.speedDown || 0) + (best.speedUp || 0)) ? nic : best
   )
 })
 
@@ -358,7 +428,6 @@ const barSty = (pct?: number, type = 'cpu') => {
 const pctCls = (pct?: number) => (pct || 0) >= 90 ? 'c-danger' : (pct || 0) >= 70 ? 'c-warn' : 'c-ok'
 const fmtPct = (v?: number) => `${(v ?? 0).toFixed(1)}%`
 
-const fmtSensorName = (key: string) => key.replace(/_/g, ' ')
 const tempCls = (s: SensorTemp) => {
   const high = s.high && s.high > 0 ? s.high : 80
   const warn = Math.min(high - 15, 65)
@@ -373,6 +442,16 @@ const formatBytes = (b?: number) => {
   const i = Math.floor(Math.log(b) / Math.log(1024))
   return (b / 1024 ** i).toFixed(1) + ' ' + u[i]
 }
+
+const formatBytePair = (used?: number, total?: number) => {
+  if (!total) return formatBytes(used)
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.min(Math.floor(Math.log(total) / Math.log(1024)), units.length - 1)
+  const div = 1024 ** i
+  return `${((used || 0) / div).toFixed(1)} / ${(total / div).toFixed(1)} ${units[i]}`
+}
+
+const shortDevice = (dev?: string) => (dev || '-').replace(/^\/dev\//, '')
 
 const formatSpeed = (s?: number) => {
   if (!s || s < 0) return '0 B/s'
@@ -430,11 +509,11 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 6px 10px;
   color: var(--xp-text-primary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  background: var(--xp-bg-inset);
+  background: color-mix(in srgb, var(--xp-accent) 8%, var(--xp-bg-inset));
   border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius-sm);
 
@@ -459,24 +538,63 @@ onUnmounted(() => {
   background: var(--xp-bg-surface);
   border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--xp-accent) 16%, transparent);
 }
 
 .gauge-card {
+  --gauge-color: var(--gauge-base, var(--xp-accent));
   padding: 12px 12px 16px;
   contain: layout paint;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--gauge-color) 16%, transparent);
+
+  &.c-warn { --gauge-color: var(--xp-warning); }
+  &.c-danger { --gauge-color: var(--xp-danger); }
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  &:nth-child(1)::before {
+    background: radial-gradient(130px 90px at 6% -18%, color-mix(in srgb, var(--gauge-color) 14%, transparent), transparent 72%);
+  }
+  &:nth-child(2)::before {
+    background: radial-gradient(120px 80px at 108% 118%, color-mix(in srgb, var(--gauge-color) 12%, transparent), transparent 70%);
+  }
+  &:nth-child(3)::before {
+    background: radial-gradient(90px 70px at 92% 8%, color-mix(in srgb, var(--gauge-color) 11%, transparent), transparent 70%);
+  }
+  &:nth-child(4)::before {
+    background:
+      radial-gradient(100px 70px at 12% 110%, color-mix(in srgb, var(--gauge-color) 10%, transparent), transparent 68%),
+      radial-gradient(circle at 78% 24%, color-mix(in srgb, var(--gauge-color) 32%, transparent) 0 0.55px, transparent 0.95px);
+    background-size: auto, 132px 120px;
+  }
 }
 
 .overview-grid {
   display: grid;
+  align-items: stretch;
   grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
   gap: 16px;
 
   &.has-storage {
     grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
   }
+
+  > .deck-card {
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .col-hd {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -490,32 +608,38 @@ onUnmounted(() => {
 }
 
 .storage-card {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--xp-info) 7%, var(--xp-bg-surface)), var(--xp-bg-surface));
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--xp-info) 16%, transparent);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 22% 30%, color-mix(in srgb, var(--xp-info) 28%, transparent) 0 0.55px, transparent 0.9px);
+    background-size: 140px 120px;
+    opacity: 0.7;
+    pointer-events: none;
+  }
 }
 
 .net-card {
-  background:
-    radial-gradient(420px 180px at 108% -8%, color-mix(in srgb, var(--xp-info) 22%, transparent), transparent 58%),
-    linear-gradient(165deg, color-mix(in srgb, var(--xp-info) 8%, var(--xp-bg-surface)), var(--xp-bg-surface));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--xp-info) 16%, transparent);
 
   &::before {
     content: '';
     position: absolute;
     inset: 0;
     background-image:
-      linear-gradient(color-mix(in srgb, var(--xp-text-primary) 7%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--xp-text-primary) 7%, transparent) 1px, transparent 1px);
+      linear-gradient(color-mix(in srgb, var(--xp-info) 10%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--xp-info) 10%, transparent) 1px, transparent 1px);
     background-size: 22px 22px;
-    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.28), transparent 72%);
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22), transparent 70%);
     pointer-events: none;
   }
 }
 
 .sys-card {
-  background:
-    radial-gradient(280px 160px at -8% 112%, color-mix(in srgb, var(--xp-accent) 20%, transparent), transparent 60%),
-    linear-gradient(155deg, color-mix(in srgb, var(--xp-accent) 8%, var(--xp-bg-surface)), var(--xp-bg-surface));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--xp-accent) 16%, transparent);
 
   &::after {
     content: '';
@@ -524,27 +648,36 @@ onUnmounted(() => {
     bottom: -42px;
     width: 150px;
     height: 150px;
-    border: 16px solid color-mix(in srgb, var(--xp-accent) 14%, transparent);
+    border: 14px solid color-mix(in srgb, var(--xp-accent) 12%, transparent);
     border-radius: 50%;
     pointer-events: none;
   }
 }
 
-.net-hero {
+.chip-grid {
   position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
+
+  &.rates { grid-template-columns: 1fr 1fr; }
+  &.addrs,
+  &.ifaces { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  &.dns { grid-template-columns: 1fr; }
+  &.sys { grid-template-columns: 1fr 1fr; flex: 1; }
 }
 
-.net-rate {
+.dash-chip {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 2px;
   min-width: 0;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--xp-bg-inset) 82%, transparent);
+  padding: 8px 10px;
+  color: inherit;
+  text-align: left;
+  background: color-mix(in srgb, var(--xp-info) 8%, var(--xp-bg-inset));
   border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius-sm);
 
@@ -554,56 +687,105 @@ onUnmounted(() => {
     font-style: normal;
   }
 
-  strong {
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: -0.03em;
+  b {
+    color: var(--xp-text-primary);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
-    line-height: 1.1;
+    overflow-wrap: anywhere;
   }
 
   small {
     color: var(--xp-text-muted);
-    font-size: 11px;
+    font-size: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 100%;
   }
 }
 
-.addr-plate {
-  position: relative;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 10px 12px;
-  color: var(--xp-text-primary);
-  background: color-mix(in srgb, var(--xp-accent) 10%, var(--xp-bg-inset));
-  border: 1px solid color-mix(in srgb, var(--xp-accent) 28%, var(--xp-border-light));
-  border-radius: var(--xp-radius-sm);
+button.dash-chip {
   cursor: pointer;
-
-  span {
-    color: var(--xp-text-muted);
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  strong {
-    flex: 1;
-    min-width: 0;
-    font-family: var(--xp-font-mono);
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+  &:hover {
+    border-color: color-mix(in srgb, var(--xp-accent) 40%, var(--xp-border-light));
+    background: color-mix(in srgb, var(--xp-accent) 10%, var(--xp-bg-inset));
   }
 }
 
-.res-list { display: flex; flex-direction: column; gap: 14px; }
+.rate-chip b {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.addr-chip b {
+  font-family: var(--xp-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sys-chip {
+  background: color-mix(in srgb, var(--xp-accent) 8%, var(--xp-bg-inset));
+  &.wide { grid-column: 1 / -1; }
+  b {
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  &.wide b { white-space: normal; }
+}
+
+.res-list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.disk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
 .res-hd {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
   span:first-of-type { flex: 1; color: var(--xp-text-primary); font-size: 13px; font-weight: 600; }
+}
+.disk-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.pill {
+  padding: 2px 8px;
+  color: var(--xp-text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--xp-info) 8%, var(--xp-bg-inset));
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius-sm);
+  &.c-warn { color: var(--xp-warning); }
+  &.c-danger { color: var(--xp-danger); }
+}
+button.pill {
+  font-family: var(--xp-font-mono);
+  cursor: pointer;
+  &:hover {
+    color: var(--xp-text-primary);
+    border-color: color-mix(in srgb, var(--xp-accent) 40%, var(--xp-border-light));
+  }
 }
 .res-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .mem-dot { background: var(--xp-accent-secondary); }
@@ -619,73 +801,118 @@ onUnmounted(() => {
   border-radius: 99px; overflow: hidden;
 }
 .bar-fg { height: 100%; min-width: 2px; border-radius: 99px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-.res-foot { font-size: 11px; color: var(--xp-text-secondary); }
 
-.temp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-  gap: 4px 12px;
+.temp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  .dash-chip {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 8px;
+    b { font-size: 13px; font-weight: 750; }
+    small { margin-left: 2px; }
+  }
 }
-.temp-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; }
-.temp-name { color: var(--xp-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.temp-val { flex-shrink: 0; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-.net-list {
+.sensor-empty {
   position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 10px;
-  align-items: baseline;
-}
-.net-row { display: contents; }
-.net-label { color: var(--xp-text-muted); font-size: 12px; white-space: nowrap; }
-.net-val {
-  display: inline-flex; align-items: center; gap: 4px; min-width: 0;
-  color: var(--xp-text-primary); font-size: 13px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  &.mono { font-family: var(--xp-font-mono); font-size: 12px; }
+  z-index: 1;
+  color: var(--xp-text-muted);
+  font-size: 12px;
 }
 
-.copy-btn {
-  flex-shrink: 0; color: var(--xp-text-muted); opacity: 0; cursor: pointer;
-  transition: opacity 0.15s, color 0.15s;
-  &:hover { color: var(--xp-accent); }
-  &.visible { opacity: 0.7; }
-}
-.net-row:hover .copy-btn,
-.sys-row:hover .copy-btn,
-.addr-plate:hover .copy-btn { opacity: 1; }
-
-.traffic-tbl {
+.traffic-list {
   position: relative;
-  width: 100%;
-  margin-top: 12px;
-  border-collapse: collapse;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.traffic-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 8px;
   font-family: var(--xp-font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  th, td { padding: 3px 0; }
-  th { color: var(--xp-text-muted); font-size: 11px; font-weight: 500; }
-  th:first-child, td:first-child { text-align: left; }
-  .td-nic { color: var(--xp-text-secondary); font-weight: 500; }
+  background: color-mix(in srgb, var(--xp-bg-inset) 70%, transparent);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius-sm);
+}
+.td-nic { color: var(--xp-text-secondary); font-weight: 500; }
+
+.col-up { color: var(--xp-color-up, var(--xp-success)); text-align: right; }
+.col-down { color: var(--xp-color-down, var(--xp-accent-secondary)); text-align: right; }
+
+.card-more {
+  margin-left: auto;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  &:hover { color: var(--xp-accent); }
 }
 
-.col-up { text-align: right; color: var(--xp-color-up, var(--xp-success)); }
-.col-down { text-align: right; color: var(--xp-color-down, var(--xp-accent-secondary)); }
-
-.sys-list {
+.proc-list {
   position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 12px;
-  align-items: baseline;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.sys-row { display: contents; }
-.sys-label { color: var(--xp-text-muted); font-size: 12px; white-space: nowrap; }
-.sys-val {
-  display: inline-flex; align-items: center; gap: 4px; min-width: 0;
-  color: var(--xp-text-primary); font-size: 13px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.proc-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.15fr) minmax(0, 1.15fr);
+  gap: 12px 16px;
+  align-items: center;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--xp-bg-inset) 70%, transparent);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius-sm);
+}
+.proc-id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  b {
+    color: var(--xp-text-primary);
+    font-size: 13px;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  small {
+    color: var(--xp-text-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+.proc-meter {
+  min-width: 0;
+  .bar-bg { margin-bottom: 0; }
+}
+.proc-meter-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  em {
+    color: var(--xp-text-muted);
+    font-size: 11px;
+    font-style: normal;
+  }
+  b {
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 .quick-rail { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -717,7 +944,6 @@ onUnmounted(() => {
 
   .gauge-card {
     padding: 10px 12px;
-    --gauge-stroke: 7;
 
     :deep(.gauge-meter) {
       flex-direction: row;
@@ -739,8 +965,8 @@ onUnmounted(() => {
       min-width: 0;
     }
 
+    :deep(.gauge-chip) { font-size: 14px; }
     :deep(.gauge-sub) { white-space: normal; }
-    :deep(.gauge-readout strong) { font-size: 18px; }
   }
 }
 
@@ -758,20 +984,18 @@ onUnmounted(() => {
   .hero-aside { align-items: flex-start; }
   .hero-chips { gap: 6px; }
   .hero-chip { padding: 3px 8px; font-size: 11px; }
-  .net-hero { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .net-rate strong { font-size: 16px; }
-  .addr-plate {
-    flex-wrap: wrap;
-    strong { font-size: 13px; overflow-wrap: anywhere; }
-  }
-  .sys-label { white-space: normal; }
-  .traffic-tbl { display: block; overflow-x: auto; }
+  .chip-grid.rates,
+  .chip-grid.sys { grid-template-columns: 1fr 1fr; }
+  .rate-chip b { font-size: 16px; }
   .quick-chip { min-height: 32px; padding: 0 10px; font-size: 12px; }
+  .proc-row { grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .proc-id { grid-column: 1 / -1; }
 }
 
 @media (max-width: 560px) {
   .gauge-deck { gap: 8px; }
   .gauge-card { padding: 8px; }
-  .net-hero { grid-template-columns: 1fr; }
+  .chip-grid.rates,
+  .chip-grid.sys { grid-template-columns: 1fr; }
 }
 </style>

@@ -472,18 +472,46 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   min-width: 0;
+  height: 100%;
   gap: 8px;
 }
 
+.header-right {
+  :deep(.el-tooltip__trigger),
+  :deep(.el-only-child__content),
+  :deep(.el-dropdown) {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    line-height: 1;
+  }
+}
+
 .icon-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 32px;
   height: 32px;
+  line-height: 1;
   color: var(--xp-text-secondary);
   border-radius: var(--xp-radius-sm);
   cursor: pointer;
+
+  :deep(.el-badge) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    height: 16px;
+  }
+
+  :deep(.el-icon) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 
   &:hover,
   &.active {
@@ -493,12 +521,14 @@ onUnmounted(() => {
 }
 
 .server-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   min-width: 0;
   max-width: 360px;
-  padding: 4px 10px;
+  height: 32px;
+  padding: 0 10px;
   gap: 8px;
+  line-height: 1;
   color: var(--xp-text-primary);
   background: transparent;
   border: 1px solid var(--xp-border);
@@ -525,12 +555,13 @@ onUnmounted(() => {
 }
 
 .search-entry {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   min-width: 180px;
   height: 32px;
   padding: 0 10px;
   gap: 8px;
+  line-height: 1;
   color: var(--xp-text-muted);
   background: var(--xp-bg-inset);
   border: 1px solid var(--xp-border);
@@ -541,19 +572,23 @@ onUnmounted(() => {
     flex: 1;
     text-align: left;
     font-size: 13px;
+    line-height: 1;
   }
 
   kbd {
     color: var(--xp-text-muted);
     font-size: 11px;
+    line-height: 1;
   }
 }
 
 .user-dropdown {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  height: 32px;
+  padding: 0 8px;
   gap: 8px;
+  line-height: 1;
   border-radius: var(--xp-radius-sm);
   cursor: pointer;
 
@@ -578,6 +613,7 @@ onUnmounted(() => {
   overflow: hidden;
   color: var(--xp-text-secondary);
   font-size: 13px;
+  line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
