@@ -64,6 +64,7 @@ type SystemConfig struct {
 	CredentialKeyPath string    `mapstructure:"credential_key_path"`
 	JwtSecret         string    `mapstructure:"jwt_secret"`
 	SessionTimeout    int       `mapstructure:"session_timeout"`
+	TrustedProxies    []string  `mapstructure:"trusted_proxies"`
 	SSL               SSLConfig `mapstructure:"ssl"`
 }
 

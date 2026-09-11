@@ -28,29 +28,54 @@
 
     <!-- 导航栏 -->
     <div class="file-nav">
-      <el-tooltip :content="t('file.back')" placement="top">
-        <el-button @click="goBack" :disabled="!canGoBack" :icon="Back" circle size="small" />
-      </el-tooltip>
-      <el-tooltip :content="t('file.forward')" placement="top">
-        <el-button @click="goForward" :disabled="!canGoForward" :icon="Right" circle size="small" />
-      </el-tooltip>
-      <el-tooltip :content="t('file.goUp')" placement="top">
-        <el-button @click="goUp" :disabled="currentTab?.path === '/'" :icon="Top" circle size="small" />
-      </el-tooltip>
-      <el-tooltip :content="t('file.refresh')" placement="top">
-        <el-button @click="refreshFiles" :icon="Refresh" circle size="small" />
-      </el-tooltip>
-      <el-input
-        v-model="pathInput"
-        class="path-input"
-        @keyup.enter="navigateTo(pathInput)"
-        :placeholder="t('file.enterPath')"
-        size="default"
+      <div class="xp-cluster file-nav-cluster">
+        <el-tooltip :content="t('file.back')" placement="top">
+          <el-button :disabled="!canGoBack" :icon="Back" @click="goBack" />
+        </el-tooltip>
+        <el-tooltip :content="t('file.forward')" placement="top">
+          <el-button :disabled="!canGoForward" :icon="Right" @click="goForward" />
+        </el-tooltip>
+        <el-tooltip :content="t('file.goUp')" placement="top">
+          <el-button :disabled="currentTab?.path === '/'" :icon="Top" @click="goUp" />
+        </el-tooltip>
+        <el-tooltip :content="t('file.refresh')" placement="top">
+          <el-button :icon="Refresh" @click="refreshFiles" />
+        </el-tooltip>
+      </div>
+      <div
+        class="path-bar"
+        :class="{ 'is-editing': pathEditing }"
+        :title="t('file.pathBarHint')"
+        @click="startPathEdit"
       >
-        <template #prefix>
-          <el-icon><FolderOpened /></el-icon>
-        </template>
-      </el-input>
+        <el-icon v-if="pathEditing" class="path-bar-icon"><FolderOpened /></el-icon>
+        <el-input
+          v-if="pathEditing"
+          ref="pathInputRef"
+          v-model="pathInput"
+          class="path-input"
+          :placeholder="t('file.enterPath')"
+          @keyup.enter="commitPath"
+          @keydown.escape.prevent="cancelPathEdit"
+          @blur="commitPath"
+          @click.stop
+        />
+        <div v-else class="path-crumbs">
+          <template v-for="(seg, idx) in pathSegments" :key="seg.path">
+            <span v-if="idx > 0" class="path-sep">/</span>
+            <button
+              type="button"
+              class="path-crumb"
+              :class="{ 'is-current': idx === pathSegments.length - 1, 'is-root': idx === 0 }"
+              :title="idx === 0 ? t('file.root') : undefined"
+              @click.stop="idx === pathSegments.length - 1 ? startPathEdit() : navigateTo(seg.path)"
+            >
+              <el-icon v-if="idx === 0"><HomeFilled /></el-icon>
+              <template v-else>{{ seg.name }}</template>
+            </button>
+          </template>
+        </div>
+      </div>
     </div>
 
     <!-- 工具栏（参考 1Panel 布局） -->
@@ -127,47 +152,36 @@
         </el-button-group>
       </div>
       <div class="toolbar-right">
-        <!-- 显示隐藏文件 -->
-        <el-tooltip :content="showHidden ? t('file.hiddenFiles') : t('file.hiddenFiles')" placement="top">
-          <el-button
-            circle
-            size="small"
-            :type="showHidden ? 'primary' : ''"
-            :icon="showHidden ? View : Hide"
-            @click="showHidden = !showHidden; refreshFiles()"
-          />
+        <el-tooltip :content="showHidden ? t('file.hideHiddenFiles') : t('file.hiddenFiles')" placement="top">
+          <div class="xp-cluster">
+            <el-button
+              class="xp-cluster-btn"
+              :class="{ 'is-active': showHidden }"
+              :icon="showHidden ? View : Hide"
+              @click="showHidden = !showHidden; refreshFiles()"
+            />
+          </div>
         </el-tooltip>
-        <!-- 搜索（带子目录勾选） -->
-        <el-input
-          v-model="searchKeyword"
-          :placeholder="t('file.searchPlaceholder')"
-          clearable
-          size="small"
-          class="search-input"
-          @clear="handleSearchClear"
-          @keydown.enter="refreshFiles"
-        >
-          <template #prepend>
-            <el-checkbox v-model="containSub" size="small">{{ t('file.containSub') }}</el-checkbox>
-          </template>
-          <template #append>
-            <el-button :icon="Search" @click="refreshFiles" />
-          </template>
-        </el-input>
+        <div class="xp-search-cluster">
+          <button
+            type="button"
+            class="xp-cluster-btn"
+            :class="{ 'is-active': containSub }"
+            @click="containSub = !containSub"
+          >
+            {{ t('file.containSub') }}
+          </button>
+          <el-input
+            v-model="searchKeyword"
+            :placeholder="t('file.searchPlaceholder')"
+            clearable
+            class="xp-search-field"
+            @clear="handleSearchClear"
+            @keydown.enter="refreshFiles"
+          />
+          <el-button class="xp-search-submit" :icon="Search" @click="refreshFiles" />
+        </div>
       </div>
-    </div>
-
-    <!-- 面包屑路径 -->
-    <div class="file-breadcrumb">
-      <span
-        v-for="(seg, idx) in pathSegments"
-        :key="idx"
-        class="breadcrumb-item"
-        @click="navigateTo(seg.path)"
-      >
-        <span class="breadcrumb-separator" v-if="idx > 0">/</span>
-        <span class="breadcrumb-text">{{ seg.name }}</span>
-      </span>
     </div>
 
     <!-- 拖拽上传覆盖层 -->
@@ -392,7 +406,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FileManager' })
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -405,6 +419,7 @@ import type { FileInfo } from '@/api/interface'
 import { useUploadStore } from '@/store/modules/upload'
 import {
   Back, Right, Top, Refresh, FolderOpened, FolderAdd, DocumentAdd, Upload, Monitor, Search,
+  HomeFilled,
   Delete, Download, EditPen, CopyDocument, DocumentCopy, InfoFilled, User,
   Lock, Box, Files, ArrowDown, Document, Folder, Picture, VideoPlay,
   Headset, SetUp, Tickets, Memo, Rank, Close, View, Hide, Loading,
@@ -436,8 +451,10 @@ const fileList = ref<FileInfo[]>([])
 const selectedRows = ref<FileInfo[]>([])
 const tableHeight = ref(500)
 const pathInput = ref('/')
+const pathEditing = ref(false)
+const pathInputRef = ref<{ focus: () => void; input?: HTMLInputElement } | null>(null)
 const searchKeyword = ref('')
-const containSub = ref(false)
+const containSub = ref(true)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 const LAST_FILE_PATH_KEY = 'xpanel:file-manager:last-path'
 
@@ -616,8 +633,40 @@ function handleSearchInput() {
 }
 
 function handleSearchClear() {
-  containSub.value = false
   refreshFiles()
+}
+
+function normalizePath(raw: string) {
+  let next = (raw || '/').trim()
+  if (!next.startsWith('/')) next = `/${next}`
+  next = next.replace(/\/+/g, '/')
+  if (next.length > 1 && next.endsWith('/')) next = next.slice(0, -1)
+  return next || '/'
+}
+
+function startPathEdit() {
+  if (pathEditing.value) return
+  pathInput.value = currentTab.value?.path || '/'
+  pathEditing.value = true
+  nextTick(() => {
+    const input = pathInputRef.value
+    input?.focus?.()
+    const native = input?.input
+    native?.select?.()
+  })
+}
+
+function cancelPathEdit() {
+  pathEditing.value = false
+  pathInput.value = currentTab.value?.path || '/'
+}
+
+function commitPath() {
+  if (!pathEditing.value) return
+  const next = normalizePath(pathInput.value)
+  pathEditing.value = false
+  if (next !== (currentTab.value?.path || '/')) navigateTo(next)
+  else pathInput.value = currentTab.value?.path || '/'
 }
 
 // ===================== 核心操作 =====================
@@ -745,9 +794,9 @@ const openTerminal = () => {
 
 // ===================== 下载 =====================
 
-const handleDownload = (row: FileInfo | null) => {
+const handleDownload = async (row: FileInfo | null) => {
   if (!row || row.isDir) return
-  const url = getDownloadUrl(row.path)
+  const url = await getDownloadUrl(row.path)
   window.open(url, '_blank')
 }
 
@@ -1219,8 +1268,7 @@ const selectedSizeTotal = computed(() => selectedRows.value.reduce((sum, f) => s
 // ===================== 表格高度自适应 =====================
 
 function updateTableHeight() {
-  // tabs ~42 + toolbar ~50 + breadcrumb ~40 + footer ~36 + padding ~70
-  tableHeight.value = window.innerHeight - 330
+  tableHeight.value = window.innerHeight - 290
 }
 
 // ===================== 生命周期 =====================
@@ -1273,11 +1321,93 @@ onBeforeUnmount(() => {
 .file-nav {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 10px;
+
+  .file-nav-cluster {
+    flex-shrink: 0;
+  }
+}
+
+.path-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: var(--xp-control-height, 36px);
+  padding: 0 10px 0 8px;
+  background: var(--xp-bg-input);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius-sm);
+  cursor: text;
+
+  &.is-editing {
+    border-color: var(--xp-accent);
+  }
+
+  .path-bar-icon {
+    flex-shrink: 0;
+    margin-right: 6px;
+    color: var(--xp-text-muted);
+  }
+
+  .path-crumbs {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .path-sep {
+    margin: 0 2px;
+    color: var(--xp-text-muted);
+    pointer-events: none;
+  }
+
+  .path-crumb {
+    display: inline-flex;
+    align-items: center;
+    max-width: 220px;
+    padding: 2px 6px;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--xp-radius-sm);
+    background: none;
+    color: var(--xp-text-secondary);
+    font: inherit;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--xp-accent);
+      background: var(--xp-accent-muted);
+    }
+
+    &.is-current {
+      color: var(--xp-text-primary);
+      font-weight: 650;
+      cursor: text;
+    }
+
+    &.is-root {
+      padding: 2px 5px;
+      font-size: 15px;
+    }
+  }
 
   .path-input {
     flex: 1;
+
+    :deep(.el-input__wrapper) {
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+    }
   }
 }
 
@@ -1313,63 +1443,15 @@ onBeforeUnmount(() => {
   .toolbar-right {
     display: flex;
     align-items: center;
-    gap: 6px;
-
-    .search-input {
-      width: 320px;
-
-      :deep(.el-input-group__prepend) {
-        padding: 0 8px;
-        background: var(--xp-bg-surface);
-      }
-
-      :deep(.el-input-group__append) {
-        padding: 0 8px;
-      }
-
-      :deep(.el-checkbox) {
-        height: auto;
-        margin-right: 0;
-      }
-    }
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+    min-width: 280px;
   }
 }
 
 .upload-input {
   display: none;
-}
-
-.file-breadcrumb {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  background: var(--xp-bg-surface);
-  border: 1px solid var(--xp-border-light);
-  border-radius: var(--xp-radius-sm);
-  margin-bottom: 10px;
-  font-size: 13px;
-  overflow-x: auto;
-  white-space: nowrap;
-
-  .breadcrumb-item {
-    cursor: pointer;
-    color: var(--xp-text-secondary);
-    transition: color 0.2s;
-
-    &:hover .breadcrumb-text {
-      color: var(--xp-accent);
-    }
-
-    &:last-child .breadcrumb-text {
-      color: var(--xp-text-primary);
-      font-weight: 500;
-    }
-  }
-
-  .breadcrumb-separator {
-    margin: 0 4px;
-    color: var(--xp-text-muted);
-  }
 }
 
 // 拖拽上传覆盖层
@@ -1379,7 +1461,7 @@ onBeforeUnmount(() => {
   z-index: 100;
   background: var(--xp-accent-muted);
   border: 2px dashed var(--xp-accent);
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;

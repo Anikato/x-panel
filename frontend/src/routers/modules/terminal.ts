@@ -5,7 +5,7 @@ const terminalRoutes: RouteRecordRaw[] = [
     path: '/terminal',
     name: 'Terminal',
     component: () => import('@/views/terminal/index.vue'),
-    meta: { title: 'menu.terminal', icon: 'Monitor', requiresAuth: true },
+    meta: { title: 'menu.terminal', icon: 'Monitor', requiresAuth: true, template: 'workbench' },
   },
 ]
 

@@ -7,6 +7,7 @@ import (
 	"xpanel/app/dto"
 	"xpanel/app/service"
 	"xpanel/global"
+	"xpanel/utils/accessticket"
 	"xpanel/utils/captcha"
 
 	"github.com/gin-gonic/gin"
@@ -114,9 +115,61 @@ func (a *AuthAPI) UpdatePassword(c *gin.Context) {
 	helper.SuccessWithMsg(c, "MsgUpdateSuccess")
 }
 
-// Logout 退出登录
 func (a *AuthAPI) Logout(c *gin.Context) {
-	// JWT 是无状态的，客户端直接删除 token 即可
-	// 如需要服务端 token 黑名单，可在此实现
+	sessionID, _ := c.Get("sessionID")
+	id, _ := sessionID.(string)
+	if err := service.RevokeSession(id); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
 	helper.SuccessWithMsg(c, "MsgLogoutSuccess")
+}
+
+func (a *AuthAPI) LogoutOthers(c *gin.Context) {
+	userName, _ := c.Get("userName")
+	sessionID, _ := c.Get("sessionID")
+	if err := service.RevokeOtherSessions(userName.(string), sessionID.(string)); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithMsg(c, "MsgLogoutSuccess")
+}
+
+func (a *AuthAPI) LogoutAll(c *gin.Context) {
+	userName, _ := c.Get("userName")
+	if err := service.RevokeUserSessions(userName.(string)); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithMsg(c, "MsgLogoutSuccess")
+}
+
+func (a *AuthAPI) IssueAccessTicket(c *gin.Context) {
+	if src, _ := c.Get("authSource"); src != "jwt" {
+		helper.ErrorWithDetail(c, http.StatusUnauthorized, "login session required")
+		return
+	}
+	var req dto.AccessTicketRequest
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Scope == "download" && req.Path == "" {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "path is required")
+		return
+	}
+	userName, _ := c.Get("userName")
+	sessionID, _ := c.Get("sessionID")
+	name, _ := userName.(string)
+	sid, _ := sessionID.(string)
+	spec := accessticket.TerminalSpec(name, sid)
+	if req.Scope == "download" {
+		spec = accessticket.DownloadSpec(name, sid, req.Path)
+	}
+	ticket, err := accessticket.Default.Issue(spec)
+	if err != nil {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	helper.SuccessWithData(c, dto.AccessTicketResponse{Ticket: ticket})
 }

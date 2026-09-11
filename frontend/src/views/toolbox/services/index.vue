@@ -1,70 +1,99 @@
 <template>
   <div class="services-page">
-    <!-- 工具栏 -->
-    <el-card shadow="never" style="margin-bottom: 16px;">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <el-input v-model="searchKey" :placeholder="$t('toolbox.services.search')" clearable size="small" style="width: 240px" />
-          <el-checkbox v-model="showAll" @change="loadServices" size="small">{{ $t('toolbox.services.showAll') }}</el-checkbox>
-          <el-checkbox v-model="showSystemOnly" size="small">{{ $t('toolbox.services.showSystemOnly') }}</el-checkbox>
-        </div>
-        <div class="toolbar-right">
-          <el-button type="primary" size="small" @click="openCreate">{{ $t('toolbox.services.createService') }}</el-button>
-          <el-button size="small" :icon="Refresh" @click="loadServices" :loading="loading">{{ $t('commons.refresh') }}</el-button>
-        </div>
-      </div>
-    </el-card>
+    <div class="app-toolbar">
+      <el-input
+        v-model="searchKey"
+        :placeholder="$t('toolbox.services.search')"
+        prefix-icon="Search"
+        clearable
+        class="search-input"
+      />
+      <el-checkbox v-model="showAll" @change="loadServices">{{ $t('toolbox.services.showAll') }}</el-checkbox>
+      <el-checkbox v-model="showSystemOnly">{{ $t('toolbox.services.showSystemOnly') }}</el-checkbox>
+      <div class="toolbar-spacer" />
+      <el-button :icon="Refresh" :loading="loading" @click="loadServices">{{ $t('commons.refresh') }}</el-button>
+      <el-button type="primary" :icon="Plus" @click="openCreate">{{ $t('toolbox.services.createService') }}</el-button>
+    </div>
 
-    <!-- 服务列表 -->
-    <el-card shadow="never">
-      <el-table :data="filteredServices" v-loading="loading" stripe size="small" :default-sort="{ prop: 'name', order: 'ascending' }">
-        <el-table-column prop="name" :label="$t('toolbox.services.name')" min-width="200" sortable>
-          <template #default="{ row }">
-            <span>{{ row.name }}</span>
-            <el-tag v-if="row.isPanel" type="success" size="small" style="margin-left: 6px;">{{ $t('toolbox.services.panelCreated') }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" :label="$t('toolbox.services.description')" min-width="160" show-overflow-tooltip />
-        <el-table-column :label="$t('toolbox.services.status')" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag :type="stateType(row.activeState)" size="small">{{ row.subState }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('toolbox.services.memory')" width="90" align="center">
-          <template #default="{ row }">
-            <span style="font-size:12px;">{{ row.memoryCurrent || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('toolbox.services.restarts')" width="65" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.restartCount > 0" type="warning" size="small">{{ row.restartCount }}</el-tag>
-            <span v-else style="font-size:12px;">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('toolbox.services.autoStart')" width="75" align="center">
-          <template #default="{ row }">
-            <el-switch v-model="row.enabled" size="small" @change="(v: boolean) => handleToggleEnabled(row, v)" />
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('commons.actions')" width="300" align="center">
-          <template #default="{ row }">
-            <el-button-group size="small">
-              <el-button text @click="handleOp(row.name, 'start')" :disabled="row.activeState === 'active'">{{ $t('toolbox.services.start') }}</el-button>
-              <el-button text @click="handleOp(row.name, 'stop')" :disabled="row.activeState !== 'active'">{{ $t('toolbox.services.stop') }}</el-button>
-              <el-button text @click="handleOp(row.name, 'restart')">{{ $t('toolbox.services.restart') }}</el-button>
-            </el-button-group>
-            <el-button text size="small" @click="openEdit(row.name)">{{ $t('toolbox.services.edit') }}</el-button>
-            <el-button text size="small" @click="openLogs(row.name)">{{ $t('toolbox.services.logs') }}</el-button>
-            <el-button text size="small" @click="openUnitEditor(row.name)">Unit</el-button>
-            <el-popconfirm v-if="row.isPanel" :title="$t('toolbox.services.deleteConfirm')" @confirm="handleDelete(row.name)">
-              <template #reference>
-                <el-button text type="danger" size="small">{{ $t('commons.delete') }}</el-button>
+    <el-table
+      :data="filteredServices"
+      v-loading="loading"
+      stripe
+      style="width: 100%"
+      :default-sort="{ prop: 'name', order: 'ascending' }"
+    >
+      <el-table-column prop="name" :label="$t('toolbox.services.name')" min-width="240" sortable>
+        <template #default="{ row }">
+          <div class="svc-cell">
+            <div class="svc-title">
+              <button type="button" class="svc-name" @click="openDetail(row.name)">{{ row.name }}</button>
+              <el-tag v-if="row.isPanel" type="success" size="small" effect="plain">{{ $t('toolbox.services.panelCreated') }}</el-tag>
+            </div>
+            <div v-if="row.description" class="svc-desc" :title="row.description">{{ row.description }}</div>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('toolbox.services.status')" width="110">
+        <template #default="{ row }">
+          <el-tag :type="stateType(row.activeState)" size="small" :title="row.subState">
+            {{ stateLabel(row.activeState) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('toolbox.services.memory')" width="100">
+        <template #default="{ row }">
+          <span class="svc-metric">{{ row.memoryCurrent || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('toolbox.services.restarts')" width="72" align="right">
+        <template #default="{ row }">
+          <span class="svc-metric" :class="{ 'is-warn': row.restartCount > 0 }">{{ row.restartCount || 0 }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('toolbox.services.autoStart')" width="88" align="center">
+        <template #default="{ row }">
+          <el-switch v-model="row.enabled" size="small" @change="(v: boolean) => handleToggleEnabled(row, v)" />
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('commons.actions')" width="200" fixed="right">
+        <template #default="{ row }">
+          <div class="svc-actions">
+            <el-button
+              v-if="row.activeState !== 'active'"
+              link
+              type="primary"
+              @click="handleOp(row.name, 'start')"
+            >{{ $t('toolbox.services.start') }}</el-button>
+            <el-button
+              v-else
+              link
+              type="primary"
+              @click="handleOp(row.name, 'stop')"
+            >{{ $t('toolbox.services.stop') }}</el-button>
+            <el-button link type="primary" @click="handleOp(row.name, 'restart')">{{ $t('toolbox.services.restart') }}</el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => handleMore(cmd, row)">
+              <el-button link type="primary">
+                {{ $t('toolbox.services.more') }}
+                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="logs">{{ $t('toolbox.services.logs') }}</el-dropdown-item>
+                  <el-dropdown-item command="edit">{{ $t('toolbox.services.edit') }}</el-dropdown-item>
+                  <el-dropdown-item command="unit">Unit</el-dropdown-item>
+                  <el-dropdown-item v-if="row.isPanel" command="delete" divided>
+                    <span class="svc-danger">{{ $t('commons.delete') }}</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
               </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+            </el-dropdown>
+          </div>
+        </template>
+      </el-table-column>
+      <template #empty>
+        <el-empty :description="$t('commons.noData')" />
+      </template>
+    </el-table>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog v-model="editVisible" :title="isEdit ? $t('toolbox.services.editService') : $t('toolbox.services.createService')" width="600px" :close-on-click-modal="false">
@@ -144,8 +173,8 @@
         <el-descriptions-item :label="$t('toolbox.services.startedAt')">{{ detailData.startedAt || '-' }}</el-descriptions-item>
         <el-descriptions-item :label="$t('toolbox.services.unitFile')" :span="2">{{ detailData.unitFile }}</el-descriptions-item>
       </el-descriptions>
-      <div v-if="detailData?.unitContent" style="margin-top: 16px;">
-        <div style="font-size: 13px; margin-bottom: 8px; font-weight: 500;">{{ $t('toolbox.services.unitContent') }}</div>
+      <div v-if="detailData?.unitContent" class="detail-unit">
+        <div class="detail-unit-title">{{ $t('toolbox.services.unitContent') }}</div>
         <div class="log-viewer"><pre>{{ detailData.unitContent }}</pre></div>
       </div>
       <template #footer>
@@ -159,9 +188,9 @@
     </el-dialog>
 
     <!-- Unit 源码编辑对话框 -->
-    <el-dialog v-model="unitVisible" :title="unitServiceName + ' — Unit 文件'" width="760px" :close-on-click-modal="false">
-      <div style="font-size:12px;color:var(--xp-text-muted);margin-bottom:8px;">{{ $t('toolbox.services.unitEditorHint') }}</div>
-      <el-input v-model="unitContent" type="textarea" :rows="22" style="font-family:monospace;font-size:12px;" />
+    <el-dialog v-model="unitVisible" :title="$t('toolbox.services.unitEditorTitle', { name: unitServiceName })" width="760px" :close-on-click-modal="false">
+      <div class="unit-hint">{{ $t('toolbox.services.unitEditorHint') }}</div>
+      <el-input v-model="unitContent" type="textarea" :rows="22" class="unit-editor" />
       <template #footer>
         <el-button @click="unitVisible = false">{{ $t('commons.cancel') }}</el-button>
         <el-button type="primary" :loading="unitSaving" @click="handleSaveUnit">{{ $t('commons.save') }}</el-button>
@@ -170,17 +199,17 @@
 
     <!-- 日志对话框 -->
     <el-dialog v-model="logVisible" :title="$t('toolbox.services.serviceLogs') + ' - ' + logServiceName" width="860px" @closed="stopLogPoll">
-      <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;">
-        <el-select v-model="logLines" size="small" style="width:110px" @change="loadLogs">
-          <el-option label="100行" :value="100" />
-          <el-option label="200行" :value="200" />
-          <el-option label="500行" :value="500" />
-          <el-option label="1000行" :value="1000" />
+      <div class="log-toolbar">
+        <el-select v-model="logLines" style="width:120px" @change="loadLogs">
+          <el-option :label="$t('toolbox.services.logLineCount', { n: 100 })" :value="100" />
+          <el-option :label="$t('toolbox.services.logLineCount', { n: 200 })" :value="200" />
+          <el-option :label="$t('toolbox.services.logLineCount', { n: 500 })" :value="500" />
+          <el-option :label="$t('toolbox.services.logLineCount', { n: 1000 })" :value="1000" />
         </el-select>
-        <el-switch v-model="logAutoRefresh" active-text="自动刷新(3s)" size="small" @change="toggleLogPoll" />
-        <el-button size="small" :icon="Refresh" @click="loadLogs" :loading="logLoading">{{ $t('commons.refresh') }}</el-button>
+        <el-switch v-model="logAutoRefresh" :active-text="$t('toolbox.services.autoRefresh')" @change="toggleLogPoll" />
+        <el-button :icon="Refresh" :loading="logLoading" @click="loadLogs">{{ $t('commons.refresh') }}</el-button>
       </div>
-      <div class="log-viewer" style="max-height:520px;" ref="logViewerRef">
+      <div class="log-viewer log-viewer-tall" ref="logViewerRef">
         <pre v-html="colorizedLog || $t('toolbox.services.noLogs')" />
       </div>
     </el-dialog>
@@ -189,14 +218,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { ArrowDown, Plus, Refresh } from '@element-plus/icons-vue'
 import {
   listSystemdServices, getSystemdServiceDetail,
   createSystemdService, updateSystemdService, deleteSystemdService,
   operateSystemdService, getSystemdServiceLogs,
   getServiceUnitContent, saveServiceUnitContent,
 } from '@/api/modules/toolbox'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -223,6 +252,15 @@ const stateType = (state: string) => {
   if (state === 'failed') return 'danger'
   if (state === 'inactive') return 'info'
   return 'warning'
+}
+
+const stateLabel = (state: string) => {
+  if (state === 'active') return t('toolbox.services.running')
+  if (state === 'failed') return t('commons.failed')
+  if (state === 'inactive') return t('toolbox.services.stopped')
+  if (state === 'activating') return t('toolbox.services.activating')
+  if (state === 'deactivating') return t('toolbox.services.deactivating')
+  return state || '-'
 }
 
 const loadServices = async () => {
@@ -362,6 +400,22 @@ const handleDelete = async (name: string) => {
   } catch {}
 }
 
+const handleMore = (cmd: string, row: { name: string; isPanel?: boolean }) => {
+  if (cmd === 'logs') openLogs(row.name)
+  else if (cmd === 'edit') openEdit(row.name)
+  else if (cmd === 'unit') openUnitEditor(row.name)
+  else if (cmd === 'delete' && row.isPanel) confirmDelete(row.name)
+}
+
+const confirmDelete = async (name: string) => {
+  try {
+    await ElMessageBox.confirm(t('toolbox.services.deleteConfirm'), t('commons.tip'), { type: 'warning' })
+  } catch {
+    return
+  }
+  await handleDelete(name)
+}
+
 // Unit 源码编辑
 const unitVisible = ref(false)
 const unitServiceName = ref('')
@@ -403,10 +457,10 @@ const colorizedLog = computed(() => {
   if (!logContent.value) return ''
   return logContent.value
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/(\bERROR\b|\berror\b|\bERR\b|\bFailed\b|\bfailed\b)/g, '<span style="color:#f56c6c">$1</span>')
-    .replace(/(\bWARN\b|\bwarning\b|\bWARNING\b)/g, '<span style="color:#e6a23c">$1</span>')
-    .replace(/(\bINFO\b|\binfo\b|\bStarted\b|\bactive\b)/g, '<span style="color:#67c23a">$1</span>')
-    .replace(/(\bDEBUG\b|\bdebug\b)/g, '<span style="color:#909399">$1</span>')
+    .replace(/(\bERROR\b|\berror\b|\bERR\b|\bFailed\b|\bfailed\b)/g, '<span class="log-err">$1</span>')
+    .replace(/(\bWARN\b|\bwarning\b|\bWARNING\b)/g, '<span class="log-warn">$1</span>')
+    .replace(/(\bINFO\b|\binfo\b|\bStarted\b|\bactive\b)/g, '<span class="log-info">$1</span>')
+    .replace(/(\bDEBUG\b|\bdebug\b)/g, '<span class="log-debug">$1</span>')
 })
 
 const openLogs = (name: string) => {
@@ -446,23 +500,143 @@ onUnmounted(() => stopLogPoll())
 </script>
 
 <style lang="scss" scoped>
-.toolbar {
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+.services-page {
+  min-height: 100%;
 }
-.toolbar-left, .toolbar-right {
-  display: flex; align-items: center; gap: 12px;
+
+.app-toolbar {
+  flex-wrap: wrap;
 }
+
+.search-input {
+  width: 260px;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.svc-cell {
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.svc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.svc-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--xp-accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.svc-desc {
+  margin-top: 2px;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.svc-metric {
+  color: var(--xp-text-secondary);
+  font-variant-numeric: tabular-nums;
+
+  &.is-warn {
+    color: var(--xp-warning);
+    font-weight: 650;
+  }
+}
+
+.svc-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+.svc-danger {
+  color: var(--xp-danger);
+}
+
 .form-hint {
-  margin-left: 8px; font-size: 12px; color: var(--xp-text-muted);
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
 }
+
+.unit-hint {
+  margin-bottom: 8px;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+}
+
+.unit-editor {
+  :deep(.el-textarea__inner) {
+    font-family: var(--xp-font-mono);
+    font-size: 12px;
+  }
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .log-viewer {
-  background: var(--xp-bg-inset); border: 1px solid var(--xp-border-light);
-  border-radius: var(--xp-radius); padding: 12px; overflow: auto;
+  background: var(--xp-bg-inset);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius);
+  padding: 12px;
+  overflow: auto;
 
   pre {
-    margin: 0; font-size: 12px; line-height: 1.5;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    color: var(--xp-text-primary); white-space: pre-wrap; word-break: break-all;
+    margin: 0;
+    color: var(--xp-text-primary);
+    font-family: var(--xp-font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
+
+  :deep(.log-err) { color: var(--xp-danger); }
+  :deep(.log-warn) { color: var(--xp-warning); }
+  :deep(.log-info) { color: var(--xp-success); }
+  :deep(.log-debug) { color: var(--xp-text-muted); }
+}
+
+.log-viewer-tall {
+  max-height: 520px;
+}
+
+.detail-unit {
+  margin-top: 16px;
+}
+
+.detail-unit-title {
+  margin-bottom: 8px;
+  color: var(--xp-text-primary);
+  font-size: 13px;
+  font-weight: 600;
 }
 </style>

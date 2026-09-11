@@ -1,7 +1,6 @@
 <template>
   <div class="nginx-page">
     <div class="page-header">
-      <h3>{{ $t('nginx.title') }}</h3>
       <el-button size="small" :icon="Refresh" @click="loadStatus" :loading="loading">
         {{ $t('commons.refresh') }}
       </el-button>
@@ -745,6 +744,12 @@ onUnmounted(() => stopProgressPolling())
   height: 100%;
 }
 
+.page-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .info-row {
   margin-bottom: 16px;
 }
@@ -814,7 +819,7 @@ onUnmounted(() => stopProgressPolling())
   .config-output {
     margin-top: 12px;
     padding: 12px;
-    background: var(--xp-bg-darker, #0d1117);
+    background: var(--xp-bg-base);
     border-radius: var(--xp-radius-sm);
     color: var(--xp-text-secondary);
     font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;

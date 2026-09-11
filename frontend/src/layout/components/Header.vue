@@ -2,7 +2,7 @@
   <div class="header">
     <div class="header-left">
       <div
-        class="collapse-btn"
+        class="icon-btn"
         role="button"
         tabindex="0"
         :aria-label="globalStore.menuCollapse ? t('header.expandMenu') : t('header.collapseMenu')"
@@ -15,92 +15,70 @@
           <Expand v-else />
         </el-icon>
       </div>
-      <!-- 服务器信息 -->
-      <div class="server-info" v-if="globalStore.serverInfo">
-        <div class="server-identity">
-          <el-icon :size="16" color="var(--xp-accent)"><Monitor /></el-icon>
-          <span class="server-hostname">{{ globalStore.serverInfo.hostname }}</span>
-        </div>
-        <el-tag size="small" effect="dark" round>{{ globalStore.version || '...' }}</el-tag>
-        <el-tag size="small" effect="plain" round type="info">
-          {{ globalStore.serverInfo.platform }} {{ globalStore.serverInfo.platformVersion }}
-        </el-tag>
-        <el-tag size="small" effect="plain" round type="info">
-          {{ globalStore.serverInfo.kernelArch }}
-        </el-tag>
-        <el-tag v-if="globalStore.serverInfo.virtualization" size="small" effect="plain" round type="warning">
-          {{ globalStore.serverInfo.virtualization }}
-        </el-tag>
-        <div class="server-uptime">
-          <el-icon :size="12"><Clock /></el-icon>
-          <span>{{ t('home.uptime') }}: {{ formatUptime(globalStore.serverInfo.uptime) }}</span>
-        </div>
-        <el-tooltip v-if="globalStore.showServerClock && serverClock" :content="globalStore.serverInfo.timezone" placement="bottom">
-          <div class="server-clock">
-            <el-icon :size="12"><Timer /></el-icon>
-            <span>{{ serverClock }}</span>
-          </div>
-        </el-tooltip>
-        <el-button-group size="small" class="server-actions">
-          <el-button type="warning" text size="small" @click="handleRestartPanel">
-            <el-icon><RefreshRight /></el-icon>{{ t('home.restartPanel') }}
-          </el-button>
-          <el-button type="danger" text size="small" @click="handleRebootServer">
-            <el-icon><SwitchButton /></el-icon>{{ t('home.rebootServer') }}
-          </el-button>
-        </el-button-group>
-      </div>
-    </div>
-    <div class="header-right">
-      <!-- 节点切换：多节点功能待完善后恢复
-      <el-select
-        v-model="currentNode"
-        size="small"
-        style="width: 160px; margin-right: 4px"
-        @change="onNodeChange"
-      >
-        <el-option :label="t('node.local')" :value="0" />
-        <el-option v-for="n in nodes" :key="n.id" :label="n.name" :value="n.id" />
-      </el-select>
-      -->
 
-      <!-- 主题色选择 -->
-      <el-popover placement="bottom" :width="240" trigger="click" :show-arrow="true">
+      <el-popover placement="bottom-start" :width="360" trigger="click">
         <template #reference>
-          <div class="theme-btn" role="button" tabindex="0" :aria-label="t('header.accentColor')">
-            <div class="accent-dot" :style="{ background: currentAccentColor }"></div>
-          </div>
+          <button type="button" class="server-chip" :aria-label="t('header.serverSummary')">
+            <span class="status-dot" :class="serverReachable ? 'online' : 'offline'" />
+            <span class="server-name">{{ globalStore.serverInfo?.hostname || globalStore.panelName || 'X-Panel' }}</span>
+            <span class="server-state">{{ serverReachable ? t('commons.online') : t('header.connectionLost') }}</span>
+          </button>
         </template>
-        <div class="accent-panel">
-          <div class="accent-section">
-            <div class="accent-panel-title">{{ t('header.accentColor') }}</div>
-            <div class="accent-grid">
-              <div
-                v-for="preset in ACCENT_PRESETS"
-                :key="preset.key"
-                class="accent-swatch"
-                :class="{ active: globalStore.accentKey === preset.key }"
-                :style="{ background: preset.primary }"
-                :title="preset.name"
-                @click="selectAccent(preset.key)"
-              >
-                <el-icon v-if="globalStore.accentKey === preset.key" :size="12"><Check /></el-icon>
-              </div>
-            </div>
+        <div class="server-summary">
+          <div class="summary-row"><span>{{ t('home.hostname') }}</span><strong>{{ globalStore.serverInfo?.hostname || '—' }}</strong></div>
+          <div class="summary-row"><span>{{ t('home.os') }}</span><strong>{{ osLabel }}</strong></div>
+          <div class="summary-row"><span>{{ t('home.arch') }}</span><strong>{{ globalStore.serverInfo?.kernelArch || '—' }}</strong></div>
+          <div class="summary-row"><span>{{ t('home.uptime') }}</span><strong>{{ formatUptime(globalStore.serverInfo?.uptime || 0) }}</strong></div>
+          <div v-if="globalStore.showServerClock && serverClock" class="summary-row">
+            <span>{{ t('header.serverClock') }}</span><strong class="mono">{{ serverClock }}</strong>
           </div>
-          <div class="accent-custom-row">
-            <span class="accent-custom-label">{{ t('header.customColor') }}</span>
-            <input
-              type="color"
-              class="accent-color-input"
-              :value="globalStore.accentCustom || '#22d3ee'"
-              @input="onCustomColor"
-            />
+          <div class="summary-row"><span>{{ t('home.panelVersion') }}</span><strong>{{ globalStore.version || '—' }}</strong></div>
+          <div class="summary-actions">
+            <el-button size="small" @click="handleRestartPanel">{{ t('home.restartPanel') }}</el-button>
+            <el-button size="small" type="danger" plain @click="handleRebootServer">{{ t('home.rebootServer') }}</el-button>
           </div>
         </div>
       </el-popover>
+    </div>
 
-      <!-- 通知中心 -->
+    <div class="header-right">
+      <button type="button" class="search-entry" @click="searchOpen = true">
+        <el-icon><Search /></el-icon>
+        <span>{{ t('header.search') }}</span>
+        <kbd>⌘K</kbd>
+      </button>
+
+      <el-tooltip :content="t('header.quickTerminal')" placement="bottom">
+        <div
+          class="icon-btn"
+          :class="{ active: globalStore.floatTermVisible }"
+          role="button"
+          tabindex="0"
+          :aria-label="t('header.quickTerminal')"
+          @click="toggleFloatTerm"
+          @keydown.enter.prevent="toggleFloatTerm"
+          @keydown.space.prevent="toggleFloatTerm"
+        >
+          <el-icon :size="16"><Monitor /></el-icon>
+        </div>
+      </el-tooltip>
+
+      <el-tooltip :content="t('header.tasks')" placement="bottom">
+        <div
+          class="icon-btn"
+          role="button"
+          tabindex="0"
+          :aria-label="t('header.tasks')"
+          @click="taskOpen = true"
+          @keydown.enter.prevent="taskOpen = true"
+          @keydown.space.prevent="taskOpen = true"
+        >
+          <el-badge :value="taskCount" :hidden="taskCount <= 0" :max="99">
+            <el-icon :size="16"><List /></el-icon>
+          </el-badge>
+        </div>
+      </el-tooltip>
+
       <el-popover
         placement="bottom-end"
         :width="380"
@@ -111,12 +89,10 @@
       >
         <template #reference>
           <div
-            class="theme-btn notification-btn"
+            class="icon-btn"
             role="button"
             tabindex="0"
             :aria-label="t('notification.title')"
-            @keydown.enter.prevent="fetchRecentNotifications"
-            @keydown.space.prevent="fetchRecentNotifications"
           >
             <el-badge :value="unreadNotifications" :hidden="unreadNotifications <= 0" :max="99">
               <el-icon :size="16"><Bell /></el-icon>
@@ -126,31 +102,7 @@
         <div class="notification-panel">
           <div class="notification-panel-head">
             <strong>{{ t('notification.title') }}</strong>
-            <div class="notification-panel-actions">
-              <el-tooltip :content="t('notification.markAllRead')" placement="top">
-                <el-button
-                  link
-                  type="primary"
-                  :disabled="unreadNotifications === 0"
-                  @click="handleMarkAllRead"
-                >
-                  <el-icon :size="14"><CircleCheck /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip :content="t('notification.clearAll')" placement="top">
-                <el-button
-                  link
-                  type="danger"
-                  :disabled="recentNotifications.length === 0"
-                  @click="handleClearAll"
-                >
-                  <el-icon :size="14"><Delete /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-button link type="primary" @click="openNotifications">
-                {{ t('notification.viewAll') }}
-              </el-button>
-            </div>
+            <el-button link type="primary" @click="openNotifications">{{ t('notification.viewAll') }}</el-button>
           </div>
           <div v-if="recentNotifications.length === 0" class="notification-empty">{{ t('commons.noData') }}</div>
           <div v-else class="notification-recent-list">
@@ -165,43 +117,25 @@
               <div class="notification-recent-main">
                 <div class="notification-recent-title">{{ item.title }}</div>
                 <div v-if="item.content" class="notification-recent-content">{{ item.content }}</div>
-                <div class="notification-recent-meta">{{ formatNotificationTime(item.createdAt) }}</div>
               </div>
             </div>
           </div>
         </div>
       </el-popover>
 
-      <!-- 悬浮终端按钮 -->
-      <el-tooltip :content="t('header.quickTerminal')" placement="bottom">
-        <div
-          class="theme-btn"
-          :class="{ 'term-btn-active': globalStore.floatTermVisible }"
-          role="button"
-          tabindex="0"
-          :aria-label="t('header.quickTerminal')"
-          @click="toggleFloatTerm"
-          @keydown.enter.prevent="toggleFloatTerm"
-          @keydown.space.prevent="toggleFloatTerm"
-        >
-          <el-icon :size="16"><Monitor /></el-icon>
-        </div>
-      </el-tooltip>
-
-      <!-- 深浅模式切换 -->
       <el-tooltip :content="themeLabel" placement="bottom">
         <div
-          class="theme-btn"
+          class="icon-btn"
           role="button"
           tabindex="0"
           :aria-label="themeLabel"
-          @click="globalStore.cycleTheme()"
-          @keydown.enter.prevent="globalStore.cycleTheme()"
-          @keydown.space.prevent="globalStore.cycleTheme()"
+          @click="cycleColorMode"
+          @keydown.enter.prevent="cycleColorMode"
+          @keydown.space.prevent="cycleColorMode"
         >
           <el-icon :size="16">
-            <Moon v-if="globalStore.theme === 'dark'" />
-            <Sunny v-else-if="globalStore.theme === 'light'" />
+            <Moon v-if="appearanceStore.preference.mode === 'dark'" />
+            <Sunny v-else-if="appearanceStore.preference.mode === 'light'" />
             <Monitor v-else />
           </el-icon>
         </div>
@@ -213,10 +147,12 @@
             <el-icon :size="14"><UserFilled /></el-icon>
           </div>
           <span class="username">{{ userStore.name || 'admin' }}</span>
-          <el-icon :size="12" class="arrow"><ArrowDown /></el-icon>
         </div>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="appearance">
+              <el-icon><Brush /></el-icon>{{ t('setting.appearance') }}
+            </el-dropdown-item>
             <el-dropdown-item command="password">
               <el-icon><Lock /></el-icon>{{ t('header.changePassword') }}
             </el-dropdown-item>
@@ -227,17 +163,45 @@
         </template>
       </el-dropdown>
     </div>
+
+    <el-dialog v-model="searchOpen" :show-close="false" width="520px" append-to-body class="command-search-dialog" @opened="focusSearch">
+      <el-input
+        ref="searchInput"
+        v-model="searchKeyword"
+        :placeholder="t('header.searchPlaceholder')"
+        prefix-icon="Search"
+        @keydown.enter.prevent="openHit(searchHits[0])"
+      />
+      <div class="search-hits">
+        <button
+          v-for="hit in searchHits"
+          :key="hit.id + hit.path"
+          type="button"
+          class="search-hit"
+          @click="openHit(hit)"
+        >
+          <span>{{ t(hit.titleKey) }}</span>
+          <code>{{ hit.path }}</code>
+        </button>
+        <div v-if="searchKeyword && searchHits.length === 0" class="search-empty">{{ t('header.searchEmpty') }}</div>
+      </div>
+    </el-dialog>
+
+    <TaskDrawer v-model="taskOpen" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useGlobalStore } from '@/store/modules/global'
+import { useAppearanceStore } from '@/store/modules/appearance'
+import type { ThemeMode } from '@/theme/types.ts'
 import { useUserStore } from '@/store/modules/user'
+import { useUploadStore } from '@/store/modules/upload'
+import { useFileTaskStore } from '@/store/modules/fileTask'
 import { logout as logoutApi } from '@/api/modules/auth'
-import { listNodes } from '@/api/modules/node'
 import { getSystemStats } from '@/api/modules/monitor'
 import { getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
@@ -245,65 +209,53 @@ import {
   getNotificationSummary,
   getRecentNotifications,
   markNotificationsRead,
-  markAllNotificationsRead,
-  clearAllNotifications,
 } from '@/api/modules/notification'
 import { useI18n } from 'vue-i18n'
-import type { NodeItem, NotificationItem } from '@/api/interface'
-import { Moon, Sunny, Check, Clock, RefreshRight, Timer, Monitor, Bell, CircleCheck, Delete } from '@element-plus/icons-vue'
-import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
+import type { NotificationItem } from '@/api/interface'
+import { searchNavigation, type NavHit } from '@/navigation/registry'
+import TaskDrawer from './TaskDrawer.vue'
 
-const route = useRoute()
 const router = useRouter()
 const globalStore = useGlobalStore()
+const appearanceStore = useAppearanceStore()
 const userStore = useUserStore()
+const uploadStore = useUploadStore()
+const fileTaskStore = useFileTaskStore()
 const { t } = useI18n()
 
-const themeLabel = computed(() => {
-  const labels = { dark: t('header.themeDark'), light: t('header.themeLight'), auto: t('header.themeAuto') }
-  return labels[globalStore.theme] || labels.dark
-})
-
-const currentAccentColor = computed(() => {
-  if (globalStore.accentKey === 'custom' && globalStore.accentCustom) return globalStore.accentCustom
-  return getPresetByKey(globalStore.accentKey)?.primary || '#22d3ee'
-})
-
-const selectAccent = (key: string) => {
-  globalStore.setAccent(key)
-  const preset = getPresetByKey(key)
-  if (preset) applyAccentPalette(preset)
-}
-
-const onCustomColor = (e: Event) => {
-  const hex = (e.target as HTMLInputElement).value
-  globalStore.setAccent('custom', hex)
-  applyAccentPalette(generatePaletteFromHex(hex))
-}
-
-const nodes = ref<NodeItem[]>([])
-const currentNode = ref(globalStore.currentNodeID || 0)
-
-const loadNodes = async () => {
-  try {
-    const res = await listNodes()
-    nodes.value = res.data || []
-  } catch { /* ignore */ }
-}
-
-const onNodeChange = (val: number) => {
-  const node = nodes.value.find((n: NodeItem) => n.id === val)
-  globalStore.setCurrentNode(val, node ? node.name : '')
-  window.location.reload()
-}
-
-let serverInfoTimer: ReturnType<typeof setInterval> | null = null
-let clockTimer: ReturnType<typeof setInterval> | null = null
-let notificationTimer: ReturnType<typeof setInterval> | null = null
+const searchOpen = ref(false)
+const searchKeyword = ref('')
+const searchInput = ref<{ focus?: () => void } | null>(null)
+const taskOpen = ref(false)
 const serverClock = ref('')
+const serverReachable = ref(true)
 const unreadNotifications = ref(0)
 const recentNotifications = ref<NotificationItem[]>([])
 const popupShown = new Set<number>()
+
+const themeLabel = computed(() => {
+  const labels = { dark: t('header.themeDark'), light: t('header.themeLight'), auto: t('header.themeAuto') }
+  return labels[appearanceStore.preference.mode] || labels.dark
+})
+
+const cycleColorMode = () => {
+  const order: ThemeMode[] = ['dark', 'light', 'auto']
+  const idx = order.indexOf(appearanceStore.preference.mode)
+  appearanceStore.applyImmediate({ mode: order[(idx + 1) % order.length] })
+}
+
+const osLabel = computed(() => {
+  const info = globalStore.serverInfo
+  if (!info) return '—'
+  return `${info.platform} ${info.platformVersion}`.trim()
+})
+
+const searchHits = computed(() => searchNavigation(searchKeyword.value).slice(0, 12))
+
+const taskCount = computed(() => {
+  const uploads = uploadStore.queue.filter((item) => !item.error && item.progress < 100).length
+  return uploads + fileTaskStore.runningCount
+})
 
 const extractIANA = (tz: string): string => {
   const match = tz.match(/^([A-Za-z_/]+)/)
@@ -342,8 +294,11 @@ const fetchServerInfo = async () => {
         timezone: h.timezone || '',
       })
       updateClock()
+      serverReachable.value = true
     }
-  } catch { /* ignore */ }
+  } catch {
+    serverReachable.value = false
+  }
 }
 
 const fetchVersion = async () => {
@@ -384,50 +339,13 @@ const fetchRecentNotifications = async () => {
   } catch { /* ignore */ }
 }
 
-const handleMarkAllRead = async (e?: Event) => {
-  e?.stopPropagation()
-  try {
-    await markAllNotificationsRead()
-    await fetchNotificationSummary()
-    await fetchRecentNotifications()
-    ElMessage.success(t('notification.markAllReadSuccess'))
-  } catch { /* ignore */ }
-}
-
-const handleClearAll = async (e?: Event) => {
-  e?.stopPropagation()
-  try {
-    await ElMessageBox.confirm(t('notification.clearAllConfirm'), t('commons.tip'), {
-      type: 'warning',
-      confirmButtonText: t('commons.confirm'),
-      cancelButtonText: t('commons.cancel'),
-    })
-  } catch {
-    return
-  }
-  try {
-    await clearAllNotifications()
-    popupShown.clear()
-    await fetchNotificationSummary()
-    await fetchRecentNotifications()
-    ElMessage.success(t('notification.clearAllSuccess'))
-  } catch { /* ignore */ }
-}
-
 const openNotificationItem = async (item: NotificationItem) => {
   if (!item.readAt) {
     await markNotificationsRead({ ids: [item.id] })
     await fetchNotificationSummary()
     await fetchRecentNotifications()
   }
-  if (item.targetUrl) {
-    router.push(item.targetUrl)
-  }
-}
-
-const formatNotificationTime = (value: string) => {
-  if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+  if (item.targetUrl) router.push(item.targetUrl)
 }
 
 const formatUptime = (seconds: number) => {
@@ -454,35 +372,6 @@ const handleRestartPanel = async () => {
   ElMessage.success(t('home.restartPanelSuccess'))
 }
 
-onMounted(() => {
-  loadNodes()
-  fetchServerInfo()
-  fetchVersion()
-  fetchNotificationSummary()
-  fetchRecentNotifications()
-  serverInfoTimer = setInterval(fetchServerInfo, 30000)
-  clockTimer = setInterval(updateClock, 1000)
-  notificationTimer = setInterval(() => {
-    fetchNotificationSummary()
-    fetchRecentNotifications()
-  }, 30000)
-})
-
-onUnmounted(() => {
-  if (serverInfoTimer) clearInterval(serverInfoTimer)
-  if (clockTimer) clearInterval(clockTimer)
-  if (notificationTimer) clearInterval(notificationTimer)
-})
-
-const breadcrumbs = computed(() => {
-  return route.matched
-    .filter((item) => item.meta?.title)
-    .map((item) => ({
-      path: item.path,
-      title: t(item.meta.title as string),
-    }))
-})
-
 const handleCommand = async (command: string) => {
   if (command === 'logout') {
     try {
@@ -498,6 +387,8 @@ const handleCommand = async (command: string) => {
     } catch {
       // cancelled
     }
+  } else if (command === 'appearance') {
+    router.push({ path: '/setting', hash: '#setting-appearance' })
   } else if (command === 'password') {
     router.push('/setting')
   }
@@ -512,367 +403,313 @@ const toggleFloatTerm = () => {
   }
 }
 
-const openNotifications = () => {
-  router.push('/notifications')
+const openNotifications = () => router.push('/notifications')
+
+const focusSearch = () => searchInput.value?.focus?.()
+
+const openHit = (hit?: NavHit) => {
+  if (!hit) return
+  searchOpen.value = false
+  searchKeyword.value = ''
+  router.push({ path: hit.path, query: hit.query })
 }
+
+const isEditableTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return true
+  return Boolean(target.closest('.xterm, .monaco-editor, textarea, input'))
+}
+
+const onGlobalKeydown = (event: KeyboardEvent) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    if (isEditableTarget(event.target)) return
+    event.preventDefault()
+    searchOpen.value = true
+  }
+}
+
+let serverInfoTimer: ReturnType<typeof setInterval> | null = null
+let clockTimer: ReturnType<typeof setInterval> | null = null
+let notificationTimer: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  fetchServerInfo()
+  fetchVersion()
+  fetchNotificationSummary()
+  fetchRecentNotifications()
+  serverInfoTimer = setInterval(fetchServerInfo, 30000)
+  clockTimer = setInterval(updateClock, 1000)
+  notificationTimer = setInterval(() => {
+    fetchNotificationSummary()
+    fetchRecentNotifications()
+  }, 30000)
+  window.addEventListener('keydown', onGlobalKeydown)
+})
+
+onUnmounted(() => {
+  if (serverInfoTimer) clearInterval(serverInfoTimer)
+  if (clockTimer) clearInterval(clockTimer)
+  if (notificationTimer) clearInterval(notificationTimer)
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
 </script>
 
 <style lang="scss" scoped>
 .header {
-  height: var(--xp-header-height);
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  height: var(--xp-header-height);
+  padding: 0 16px 0 12px;
   background: var(--xp-bg-header);
-  backdrop-filter: blur(16px) saturate(1.8);
-  border-bottom: 1px solid var(--xp-border-light);
-  flex-shrink: 0;
-  position: relative;
+  border-bottom: 1px solid var(--xp-border);
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  overflow: hidden;
-  flex: 1;
-  min-width: 0;
-
-  .server-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    overflow: hidden;
-    flex-wrap: nowrap;
-    min-width: 0;
-  }
-
-  .server-identity {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .server-hostname {
-    font-weight: 700;
-    font-size: 14px;
-    color: var(--xp-text-primary);
-    white-space: nowrap;
-  }
-
-  .server-uptime {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--xp-accent);
-    background: var(--xp-accent-muted);
-    padding: 2px 10px;
-    border-radius: 12px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .server-clock {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--xp-text-secondary);
-    background: rgba(255, 255, 255, 0.04);
-    padding: 2px 10px;
-    border-radius: 12px;
-    white-space: nowrap;
-    flex-shrink: 0;
-    font-family: var(--xp-font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .server-actions {
-    flex-shrink: 0;
-  }
-
-  .collapse-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--xp-radius-sm);
-    color: var(--xp-text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-
-    &:hover {
-      background: var(--xp-accent-muted);
-      color: var(--xp-accent);
-    }
-
-    &.term-btn-active {
-      color: var(--xp-accent);
-      background: var(--xp-accent-muted);
-      box-shadow: inset 0 0 0 1px var(--xp-accent-muted);
-    }
-  }
-}
-
+.header-left,
 .header-right {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 8px;
+}
 
-  .theme-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--xp-radius-sm);
-    color: var(--xp-text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--xp-text-secondary);
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
 
-    &:hover {
-      background: var(--xp-accent-muted);
-      color: var(--xp-accent);
-    }
-
-    .accent-dot {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-      transition: all 0.2s;
-    }
+  &:hover,
+  &.active {
+    color: var(--xp-accent);
+    background: var(--xp-accent-muted);
   }
+}
 
-  .notification-btn :deep(.el-badge__content) {
-    border: none;
-    box-shadow: 0 0 0 1px var(--xp-bg-header);
+.server-chip {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 360px;
+  padding: 4px 10px;
+  gap: 8px;
+  color: var(--xp-text-primary);
+  background: transparent;
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--xp-accent);
   }
+}
 
-  .notification-panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    color: var(--xp-text-primary);
-    gap: 8px;
-  }
+.server-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .notification-panel-actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
+.server-state {
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
 
-    .el-button {
-      padding: 4px 6px;
-      min-height: auto;
-    }
-  }
+.search-entry {
+  display: flex;
+  align-items: center;
+  min-width: 180px;
+  height: 32px;
+  padding: 0 10px;
+  gap: 8px;
+  color: var(--xp-text-muted);
+  background: var(--xp-bg-inset);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
 
-  .notification-empty {
-    padding: 18px 0;
-    text-align: center;
-    color: var(--xp-text-secondary);
-    font-size: 13px;
-  }
-
-  .notification-recent-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-height: 360px;
-    overflow: auto;
-  }
-
-  .notification-recent-item {
-    display: flex;
-    gap: 10px;
-    padding: 9px 8px;
-    border-radius: var(--xp-radius-sm);
-    cursor: pointer;
-    transition: background 0.2s;
-
-    &:hover {
-      background: var(--xp-accent-muted);
-    }
-
-    &.unread .notification-recent-title {
-      color: var(--xp-text-primary);
-      font-weight: 700;
-    }
-  }
-
-  .type-dot {
-    width: 8px;
-    height: 8px;
-    margin-top: 6px;
-    border-radius: 50%;
-    background: var(--el-color-info);
-    flex: 0 0 auto;
-
-    &.success { background: var(--el-color-success); }
-    &.warning { background: var(--el-color-warning); }
-    &.error { background: var(--el-color-danger); }
-  }
-
-  .notification-recent-main {
-    min-width: 0;
+  span {
     flex: 1;
-  }
-
-  .notification-recent-title,
-  .notification-recent-content {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .notification-recent-title {
-    color: var(--xp-text-secondary);
+    text-align: left;
     font-size: 13px;
   }
 
-  .notification-recent-content,
-  .notification-recent-meta {
-    margin-top: 2px;
+  kbd {
     color: var(--xp-text-muted);
-    font-size: 12px;
-  }
-
-  .user-dropdown {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    padding: 4px 10px;
-    border-radius: var(--xp-radius-sm);
-    transition: all 0.2s;
-
-    &:hover {
-      background: var(--xp-accent-muted);
-    }
-
-    .user-avatar {
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, var(--xp-accent), var(--xp-accent-secondary));
-      border-radius: 50%;
-      color: #0b0e14;
-    }
-
-    .username {
-      font-size: 13px;
-      color: var(--xp-text-secondary);
-      max-width: 100px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .arrow {
-      color: var(--xp-text-muted);
-    }
+    font-size: 11px;
   }
 }
-</style>
 
-<style lang="scss">
-.accent-panel {
-  .accent-section {
-    margin-bottom: 12px;
+.user-dropdown {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  gap: 8px;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--xp-accent-muted);
   }
+}
 
-  .accent-panel-title {
-    font-size: 12px;
+.user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--xp-on-accent, #fff);
+  background: var(--xp-accent);
+  border-radius: 50%;
+}
+
+.username {
+  max-width: 100px;
+  overflow: hidden;
+  color: var(--xp-text-secondary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+
+  strong {
+    color: var(--xp-text-primary);
     font-weight: 600;
-    color: var(--xp-text-muted);
-    letter-spacing: 0.5px;
-    margin-bottom: 10px;
-  }
-
-  .accent-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    justify-items: center;
-  }
-
-  .accent-swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    transition: all 0.2s;
-    border: 2px solid transparent;
-    flex-shrink: 0;
-
-    &:hover {
-      transform: scale(1.15);
-    }
-
-    &.active {
-      border-color: var(--xp-text-primary);
-      box-shadow: 0 0 0 2px var(--xp-bg-surface), 0 0 0 3px var(--xp-accent);
-    }
-  }
-
-  .accent-custom-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 10px;
-    border-top: 1px solid var(--xp-border-light);
-  }
-
-  .accent-custom-label {
-    font-size: 12px;
-    color: var(--xp-text-secondary);
-  }
-
-  .accent-color-input {
-    width: 32px;
-    height: 28px;
-    border: 1px solid var(--xp-border);
-    border-radius: 6px;
-    padding: 2px;
-    background: transparent;
-    cursor: pointer;
-
-    &::-webkit-color-swatch-wrapper { padding: 2px; }
-    &::-webkit-color-swatch { border-radius: 4px; border: none; }
   }
 }
-</style>
 
-<style lang="scss">
-@media (max-width: 900px) {
-  .header {
-    padding: 0 12px;
+.summary-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.notification-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.notification-empty {
+  padding: 18px 0;
+  color: var(--xp-text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.notification-recent-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow: auto;
+  gap: 4px;
+}
+
+.notification-recent-item {
+  display: flex;
+  padding: 8px;
+  gap: 10px;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--xp-accent-muted);
+  }
+}
+
+.notification-recent-title {
+  color: var(--xp-text-secondary);
+  font-size: 13px;
+}
+
+.unread .notification-recent-title {
+  color: var(--xp-text-primary);
+  font-weight: 700;
+}
+
+.notification-recent-content {
+  overflow: hidden;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hits {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.search-hit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--xp-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--xp-accent-muted);
   }
 
-  .header-left .server-info {
-    .el-tag,
-    .server-uptime,
-    .server-clock,
-    .server-actions {
-      display: none;
-    }
+  code {
+    color: var(--xp-text-muted);
+    font-size: 12px;
   }
+}
 
-  .header-right .user-dropdown .username,
-  .header-right .user-dropdown .arrow {
+.search-empty {
+  padding: 20px 0;
+  color: var(--xp-text-muted);
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .search-entry span,
+  .search-entry kbd,
+  .server-state,
+  .username {
     display: none;
+  }
+
+  .search-entry {
+    min-width: 32px;
+    width: 32px;
+    padding: 0;
+    justify-content: center;
   }
 }
 </style>

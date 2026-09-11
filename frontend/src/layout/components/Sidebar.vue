@@ -2,175 +2,125 @@
   <div class="sidebar" :class="{ 'is-collapse': globalStore.menuCollapse }">
     <div class="sidebar-logo">
       <div class="logo-icon">
-        <el-icon :size="22"><Monitor /></el-icon>
+        <XPanelLogo />
       </div>
-      <transition name="fade-text">
-        <span v-if="!globalStore.menuCollapse" class="logo-text">
-          {{ globalStore.panelName }}
-        </span>
-      </transition>
+      <span v-if="!globalStore.menuCollapse" class="logo-text">
+        {{ globalStore.panelName || 'X-Panel' }}
+      </span>
     </div>
 
     <el-scrollbar class="sidebar-menu-scroll">
-      <el-menu
-        :default-active="activeMenu"
-        :collapse="globalStore.menuCollapse"
-        :collapse-transition="false"
-        router
-      >
-        <template v-for="item in menuList" :key="item.path">
-          <el-menu-item v-if="!item.children" :index="item.path">
-            <el-icon><component :is="item.icon" /></el-icon>
-            <template #title>{{ item.title }}</template>
-          </el-menu-item>
-
-          <el-sub-menu v-else :index="item.path">
-            <template #title>
-              <el-icon><component :is="item.icon" /></el-icon>
-              <span>{{ item.title }}</span>
-            </template>
-            <template v-for="child in item.children" :key="isMenuGroup(child) ? child.group : child.path">
-              <!-- 分组标签 -->
-              <el-menu-item-group v-if="isMenuGroup(child)" :title="child.group">
-                <el-menu-item
-                  v-for="sub in child.items"
-                  :key="sub.path"
-                  :index="sub.path"
-                >
-                  {{ sub.title }}
-                </el-menu-item>
-              </el-menu-item-group>
-              <!-- 普通菜单项 -->
-              <el-menu-item v-else :index="child.path">
-                {{ child.title }}
-              </el-menu-item>
-            </template>
-          </el-sub-menu>
-        </template>
-      </el-menu>
+      <nav class="nav-tree" aria-label="主导航">
+        <section v-for="group in groups" :key="group.id" class="nav-group">
+          <button
+            v-if="!globalStore.menuCollapse"
+            type="button"
+            class="nav-group-title"
+            :class="{ 'has-active': groupCollapsed[group.id] && groupHasActive(group.id) }"
+            :aria-expanded="!groupCollapsed[group.id]"
+            @click="toggleGroup(group.id)"
+          >
+            <span>{{ t(group.titleKey) }}</span>
+            <el-icon class="group-caret" :class="{ collapsed: groupCollapsed[group.id] }"><ArrowDown /></el-icon>
+          </button>
+          <div v-show="globalStore.menuCollapse || !groupCollapsed[group.id]" class="nav-group-items">
+            <router-link
+              v-for="mod in modulesIn(group.id)"
+              :key="mod.id"
+              :to="toLocation(mod)"
+              class="nav-item"
+              :class="{ active: isActive(mod) }"
+              :title="globalStore.menuCollapse ? t(mod.titleKey) : undefined"
+            >
+              <el-icon><component :is="iconOf(mod)" /></el-icon>
+              <span v-if="!globalStore.menuCollapse" class="nav-item-label">{{ t(mod.titleKey) }}</span>
+            </router-link>
+          </div>
+        </section>
+      </nav>
     </el-scrollbar>
 
     <div class="sidebar-footer">
-      <div class="sidebar-version" v-if="!globalStore.menuCollapse">
-        {{ globalStore.version || '...' }}
-      </div>
+      <router-link
+        v-for="mod in footerModules"
+        :key="mod.id"
+        :to="toLocation(mod)"
+        class="nav-item"
+        :class="{ active: isActive(mod) }"
+        :title="globalStore.menuCollapse ? t(mod.titleKey) : undefined"
+      >
+        <el-icon><component :is="mod.icon" /></el-icon>
+        <span v-if="!globalStore.menuCollapse" class="nav-item-label">{{ t(mod.titleKey) }}</span>
+      </router-link>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
+import { useGlobalStore } from '@/store/modules/global'
+import {
+  NAV_GROUPS,
+  SIDEBAR_FOOTER_MODULES,
+  SIDEBAR_MAIN_MODULES,
+  resolveModule,
+  type NavGroupId,
+  type NavModule,
+} from '@/navigation/registry'
+import { mapNavIcon } from '@/theme'
+import { useAppearanceStore } from '@/store/modules/appearance'
+import ShieldIcon from '@/components/icons/ShieldIcon.vue'
+import XPanelLogo from '@/components/brand/XPanelLogo.vue'
+import { destinationFor, readGroupCollapsed, rememberCurrentRoute, writeGroupCollapsed } from '@/navigation/session'
 
 const route = useRoute()
 const globalStore = useGlobalStore()
+const appearanceStore = useAppearanceStore()
 const { t } = useI18n()
 
-const activeMenu = computed(() => route.path)
+const groups = NAV_GROUPS
+const footerModules = SIDEBAR_FOOTER_MODULES
+const groupCollapsed = reactive<Partial<Record<NavGroupId, boolean>>>(readGroupCollapsed())
 
-interface MenuLeaf {
-  path: string
-  title: string
-  icon?: string
+const currentModule = computed(() => resolveModule(route.path))
+
+const queryRecord = computed(() => {
+  const query: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (typeof value === 'string') query[key] = value
+  }
+  return query
+})
+
+watch(
+  () => [route.path, route.query] as const,
+  () => rememberCurrentRoute(route.path, queryRecord.value),
+  { immediate: true },
+)
+
+const modulesIn = (groupId: NavGroupId) => SIDEBAR_MAIN_MODULES.filter((mod) => mod.group === groupId)
+
+const groupHasActive = (groupId: NavGroupId) => currentModule.value?.group === groupId
+
+const isActive = (mod: NavModule) => currentModule.value?.id === mod.id
+
+const toLocation = (mod: NavModule) => {
+  const dest = destinationFor(mod)
+  return { path: dest.path, query: dest.query }
 }
 
-interface MenuGroup {
-  group: string
-  items: MenuLeaf[]
+const extraIcons: Record<string, unknown> = { ShieldIcon }
+const iconOf = (mod: NavModule) => {
+  const name = mapNavIcon(mod.icon, appearanceStore.resolved.iconSet)
+  return extraIcons[name] || name
 }
 
-type MenuChild = MenuLeaf | MenuGroup
-
-interface MenuItem extends MenuLeaf {
-  children?: MenuChild[]
+const toggleGroup = (groupId: NavGroupId) => {
+  groupCollapsed[groupId] = !groupCollapsed[groupId]
+  writeGroupCollapsed({ ...groupCollapsed })
 }
-
-const isMenuGroup = (item: MenuChild): item is MenuGroup => 'group' in item
-
-const menuList = computed<MenuItem[]>(() => [
-  { path: '/home', title: t('menu.home'), icon: 'HomeFilled' },
-  {
-    path: '/website',
-    title: t('menu.website'),
-    icon: 'ChromeFilled',
-    children: [
-      { path: '/website/websites', title: t('menu.websites') },
-      { path: '/website/nginx', title: t('menu.nginx') },
-      { path: '/website/ssl', title: t('menu.ssl') },
-    ],
-  },
-  {
-    path: '/host',
-    title: t('menu.host'),
-    icon: 'Platform',
-    children: [
-      { path: '/host/files', title: t('menu.fileManager') },
-      { path: '/host/monitor', title: t('menu.monitor') },
-      { path: '/host/firewall', title: t('menu.firewall') },
-      { path: '/host/process', title: t('menu.processManage') },
-      { path: '/host/ssh', title: t('menu.sshManage') },
-      { path: '/host/disk', title: t('menu.diskManage') },
-      { path: '/host/users', title: t('menu.userManage') },
-      { path: '/host/system', title: t('menu.systemSetting') },
-    ],
-  },
-  {
-    path: '/network',
-    title: t('menu.network'),
-    icon: 'Connection',
-    children: [
-      { group: t('menu.networkTraffic'), items: [
-        { path: '/traffic', title: t('menu.trafficOverview') },
-      ]},
-      { group: t('menu.networkLoadBalance'), items: [
-        { path: '/haproxy/status', title: t('menu.haproxyStatus') },
-        { path: '/haproxy/http-lb', title: t('menu.haproxyHTTPLB') },
-        { path: '/haproxy/tcp-lb', title: t('menu.haproxyTCPLB') },
-        { path: '/haproxy/backends', title: t('menu.haproxyBackends') },
-        { path: '/haproxy/stats', title: t('menu.haproxyStats') },
-        { path: '/haproxy/config', title: t('menu.haproxyConfig') },
-        { path: '/haproxy/history', title: t('menu.haproxyHistory') },
-      ]},
-      { group: t('menu.networkProxy'), items: [
-        { path: '/gost/status', title: t('menu.gostStatus') },
-        { path: '/gost/forward', title: t('menu.gostForward') },
-        { path: '/gost/relay', title: t('menu.gostRelay') },
-        { path: '/gost/chain', title: t('menu.gostChain') },
-      ]},
-    ],
-  },
-  {
-    path: '/toolbox',
-    title: t('menu.toolbox'),
-    icon: 'SetUp',
-    children: [
-      { path: '/toolbox/samba', title: t('menu.toolboxSamba') },
-      { path: '/toolbox/nfs', title: t('menu.toolboxNfs') },
-      { path: '/toolbox/fail2ban', title: t('menu.toolboxFail2ban') },
-      { path: '/toolbox/services', title: t('menu.toolboxServices') },
-    ],
-  },
-  { path: '/container', title: t('menu.container'), icon: 'Box' },
-  { path: '/database', title: t('menu.database'), icon: 'Coin' },
-  { path: '/cronjob', title: t('menu.cronjob'), icon: 'Timer' },
-  { path: '/backup', title: t('menu.backup'), icon: 'FolderChecked' },
-  { path: '/terminal', title: t('menu.terminal'), icon: 'Monitor' },
-  { path: '/nezha-agent', title: t('menu.nezhaAgent'), icon: 'Odometer' },
-  {
-    path: '/log',
-    title: t('menu.log'),
-    icon: 'Document',
-    children: [
-      { path: '/log/system', title: t('menu.systemLog') },
-      { path: '/log/login', title: t('menu.loginLog') },
-      { path: '/log/operation', title: t('menu.operationLog') },
-    ],
-  },
-  // { path: '/node', title: t('menu.node'), icon: 'Connection' }, // TODO: 多节点功能待完善后恢复
-  { path: '/setting', title: t('menu.setting'), icon: 'Setting' },
-])
 </script>
 
 <style lang="scss" scoped>
@@ -179,14 +129,14 @@ const menuList = computed<MenuItem[]>(() => [
   top: 0;
   left: 0;
   bottom: 0;
-  width: var(--xp-sidebar-width);
-  background: var(--xp-bg-sidebar);
-  border-right: 1px solid rgba(var(--xp-accent-rgb, 65, 251, 68), 0.2);
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1001;
   display: flex;
   flex-direction: column;
+  width: var(--xp-sidebar-width);
   overflow: hidden;
+  background: var(--xp-bg-sidebar);
+  border-right: 1px solid var(--xp-border);
+  transition: width 180ms cubic-bezier(0.2, 0, 0, 1);
 
   &.is-collapse {
     width: var(--xp-sidebar-collapse-width);
@@ -194,33 +144,34 @@ const menuList = computed<MenuItem[]>(() => [
 }
 
 .sidebar-logo {
-  height: var(--xp-header-height);
   display: flex;
-  align-items: center;
-  padding: 0 16px;
-  gap: 12px;
-  border-bottom: 1px solid var(--xp-border-light);
   flex-shrink: 0;
+  align-items: center;
+  height: var(--xp-header-height);
+  padding: 0 16px;
+  gap: 10px;
+  border-bottom: 1px solid var(--xp-border);
 
   .logo-icon {
-    width: 36px;
-    height: 36px;
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--xp-accent), var(--xp-accent-secondary));
-    border-radius: 10px;
-    color: #fff;
-    flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    width: 32px;
+    height: 32px;
+    padding: 3px;
+    background: var(--xp-accent-muted);
+    border: 1px solid var(--xp-border-light);
+    border-radius: var(--xp-radius-sm);
   }
 
   .logo-text {
+    overflow: hidden;
     color: var(--xp-text-primary);
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
     white-space: nowrap;
-    letter-spacing: -0.3px;
   }
 }
 
@@ -229,141 +180,121 @@ const menuList = computed<MenuItem[]>(() => [
   overflow: hidden;
 }
 
-.sidebar-footer {
-  padding: 10px 16px;
-  border-top: 1px solid var(--xp-border-light);
+.nav-tree {
+  padding: 10px 8px 16px;
+}
 
-  .sidebar-version {
-    font-size: 11px;
-    color: var(--xp-text-muted);
-    text-align: center;
-    letter-spacing: 0.5px;
-    opacity: 0.7;
+.nav-group {
+  margin-bottom: 8px;
+}
+
+.nav-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 6px 10px;
+  color: var(--xp-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  background: transparent;
+  border: 0;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--xp-text-secondary);
+    background: transparent;
+  }
+
+  &.has-active {
+    color: var(--xp-accent);
+  }
+
+  .group-caret {
+    font-size: 12px;
+    transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
+
+    &.collapsed {
+      transform: rotate(-90deg);
+    }
   }
 }
 
-:deep(.el-menu) {
-  border-right: none;
-  background: transparent;
-  padding: 6px 8px;
+.nav-item {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  margin: 1px 0;
+  padding: 0 10px;
+  gap: 10px;
+  color: var(--xp-text-secondary);
+  font-size: 13.5px;
+  line-height: 1.2;
+  border-radius: var(--xp-radius-sm);
+  text-decoration: none;
+  transition:
+    color var(--xp-motion-hover, 100ms) var(--xp-motion-ease, cubic-bezier(0.2, 0, 0, 1)),
+    background-color var(--xp-motion-hover, 100ms) var(--xp-motion-ease, cubic-bezier(0.2, 0, 0, 1)),
+    box-shadow var(--xp-motion-hover, 100ms) var(--xp-motion-ease, cubic-bezier(0.2, 0, 0, 1));
 
-  .el-menu-item,
-  .el-sub-menu__title {
-    color: var(--xp-text-secondary);
-    border-radius: var(--xp-radius-sm);
-    margin: 1px 0;
-    height: 40px;
-    line-height: 40px;
-    font-size: 13.5px;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
+  .el-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: inherit;
+    font-size: 18px;
 
-    &:hover {
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--xp-text-primary);
-    }
-
-    .el-icon {
-      font-size: 17px;
-      transition: transform 0.2s;
-    }
-
-    &:hover .el-icon {
-      transform: scale(1.1);
+    :deep(svg) {
+      display: block;
+      width: 18px;
+      height: 18px;
     }
   }
 
-  .el-menu-item.is-active {
+  &:hover {
+    color: var(--xp-text-primary);
     background: var(--xp-accent-muted);
+  }
+
+  &.active {
     color: var(--xp-accent);
     font-weight: 600;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 8px;
-      bottom: 8px;
-      width: 3px;
-      background: var(--xp-accent);
-      border-radius: 0 3px 3px 0;
-    }
-
-    .el-icon {
-      color: var(--xp-accent);
-    }
-  }
-
-  // Sub-menu children
-  .el-sub-menu .el-menu-item {
-    padding-left: 48px !important;
-    font-size: 13px;
-    height: 36px;
-    line-height: 36px;
-    color: var(--xp-text-muted);
-
-    &:hover {
-      color: var(--xp-text-primary);
-      padding-left: 52px !important;
-    }
-
-    &.is-active {
-      color: var(--xp-accent);
-      padding-left: 52px !important;
-
-      &::before {
-        top: 6px;
-        bottom: 6px;
-      }
-    }
-  }
-
-  // Sub-menu expand arrow
-  .el-sub-menu__icon-arrow {
-    color: var(--xp-text-muted);
-    transition: transform 0.2s;
-  }
-
-  .el-sub-menu.is-opened > .el-sub-menu__title .el-sub-menu__icon-arrow {
-    color: var(--xp-accent);
-  }
-
-  .el-sub-menu .el-menu {
-    background: transparent;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 24px;
-      top: 0;
-      bottom: 0;
-      width: 1px;
-      background: var(--xp-border-light);
-    }
-  }
-
-  // 分组标题样式
-  .el-menu-item-group {
-    :deep(.el-menu-item-group__title) {
-      padding: 6px 10px 4px 48px !important;
-      font-size: 11px;
-      font-weight: 600;
-      color: rgba(var(--xp-accent-rgb, 34, 211, 238), 0.72);
-      letter-spacing: 0.04em;
-      height: auto;
-      line-height: 1.2;
-      margin-top: 4px;
-    }
+    background: var(--xp-accent-muted);
   }
 }
 
-.fade-text-enter-active,
-.fade-text-leave-active {
-  transition: opacity 0.2s;
+:global(html[data-sidebar-variant='marker']) .nav-item.active {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--xp-accent);
+  border-radius: 0 var(--xp-radius-sm) var(--xp-radius-sm) 0;
 }
-.fade-text-enter-from,
-.fade-text-leave-to {
-  opacity: 0;
+
+:global(html[data-sidebar-variant='block']) .nav-item {
+  border-radius: var(--xp-radius-sm);
+}
+
+:global(html[data-sidebar-variant='block']) .nav-item.active {
+  color: var(--xp-on-accent);
+  background: var(--xp-accent);
+}
+
+.nav-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 8px;
+  gap: 2px;
+  border-top: 1px solid var(--xp-border);
 }
 
 @media (max-width: 900px) {
@@ -371,20 +302,12 @@ const menuList = computed<MenuItem[]>(() => [
     width: min(var(--xp-sidebar-width), 82vw);
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
     transform: translateX(0);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 180ms cubic-bezier(0.2, 0, 0, 1);
 
     &.is-collapse {
       width: min(var(--xp-sidebar-width), 82vw);
-      transform: translateX(-100%);
       box-shadow: none;
-    }
-  }
-
-  :deep(.el-menu) {
-    .el-menu-item,
-    .el-sub-menu__title {
-      height: 42px;
-      line-height: 42px;
+      transform: translateX(-100%);
     }
   }
 }

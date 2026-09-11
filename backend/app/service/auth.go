@@ -65,12 +65,15 @@ func (a *AuthService) Login(info dto.Login) (*dto.UserLoginInfo, error) {
 		}, nil
 	}
 
-	// 生成 JWT Token；保持登录用于可信设备，关闭浏览器后仍可恢复登录态。
+	sessionID := CreateSession(nameSetting.Value)
+	if sessionID == "" {
+		return nil, buserr.WithErr(constant.ErrInternalServer, fmt.Errorf("create session"))
+	}
 	var token string
 	if info.Remember {
-		token, err = jwtUtil.GenerateTokenWithTimeout(info.Name, rememberLoginTimeout)
+		token, err = jwtUtil.GenerateSessionToken(info.Name, sessionID, rememberLoginTimeout)
 	} else {
-		token, err = jwtUtil.GenerateToken(info.Name)
+		token, err = jwtUtil.GenerateSessionToken(info.Name, sessionID, 0)
 	}
 	if err != nil {
 		return nil, buserr.WithErr(constant.ErrInternalServer, err)
@@ -128,7 +131,10 @@ func (a *AuthService) UpdatePassword(userName string, info dto.PasswordUpdate) e
 	if err != nil {
 		return buserr.WithErr(constant.ErrInternalServer, err)
 	}
-	return settingRepo.Update("Password", hashed)
+	if err := settingRepo.Update("Password", hashed); err != nil {
+		return err
+	}
+	return RevokeUserSessions(userName)
 }
 
 func (a *AuthService) GetLoginSetting() (*dto.LoginSetting, error) {

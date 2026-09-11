@@ -388,7 +388,7 @@ onMounted(() => {
       display: block;
       background: var(--xp-bg-base);
       padding: 8px 12px;
-      border-radius: 4px;
+      border-radius: var(--xp-radius-sm);
       font-family: 'JetBrains Mono', 'Fira Code', monospace;
       font-size: 12px;
       color: var(--xp-accent);

@@ -32,13 +32,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onBeforeUnmount, nextTick, watch } from 'vue'
 import type * as Monaco from 'monaco-editor'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFileContent, saveFileContent } from '@/api/modules/file'
+import { useAppearanceStore } from '@/store/modules/appearance'
 
 const { t } = useI18n()
+const appearanceStore = useAppearanceStore()
 
 const emit = defineEmits(['saved'])
 const visible = ref(false)
@@ -50,7 +52,7 @@ const editorContainer = ref<HTMLElement>()
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
 let monacoLoader: Promise<typeof Monaco> | null = null
 
-const theme = ref('vs-dark')
+const theme = ref(appearanceStore.resolved.editorTheme || 'vs-dark')
 const language = ref('plaintext')
 
 const loadMonaco = async () => {
@@ -203,6 +205,12 @@ async function updateTheme(t: string) {
   monaco.editor.setTheme(t)
 }
 
+watch(() => appearanceStore.resolved.editorTheme, (next) => {
+  if (!next || next === theme.value) return
+  theme.value = next
+  void updateTheme(next)
+})
+
 function resetContent() {
   if (editor) {
     editor.setValue(originalContent.value)
@@ -284,7 +292,7 @@ defineExpose({
 .editor-container {
   height: calc(100vh - 120px);
   border: 1px solid var(--xp-border-light);
-  border-radius: 4px;
+  border-radius: var(--xp-radius-sm);
   overflow: hidden;
 }
 </style>

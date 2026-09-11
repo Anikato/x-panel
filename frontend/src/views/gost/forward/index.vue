@@ -255,7 +255,7 @@ onMounted(() => search())
 code {
   background: var(--el-fill-color-light);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--xp-radius-sm);
   font-size: 13px;
 }
 </style>

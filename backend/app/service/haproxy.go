@@ -172,7 +172,11 @@ func (s *HAProxyService) CreateLB(req dto.HAProxyLBCreate, operator string) erro
 	if err := repo.NewIHAProxyLBRepo().Create(&item); err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("创建 LB: %s", item.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("创建 LB: %s", item.Name), operator); err != nil {
+		_ = repo.NewIHAProxyLBRepo().Delete(repo.WithByID(item.ID))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) UpdateLB(req dto.HAProxyLBUpdate, operator string) error {
@@ -200,7 +204,11 @@ func (s *HAProxyService) UpdateLB(req dto.HAProxyLBUpdate, operator string) erro
 	if err := repo.NewIHAProxyLBRepo().Update(req.ID, updates); err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("更新 LB: %s", old.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("更新 LB: %s", old.Name), operator); err != nil {
+		_ = repo.NewIHAProxyLBRepo().Update(req.ID, haproxyLBSnapshot(old))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) DeleteLB(id uint, operator string) error {
@@ -231,7 +239,61 @@ func (s *HAProxyService) ToggleLB(req dto.HAProxyLBToggle, operator string) erro
 	if !req.Enabled {
 		state = "禁用"
 	}
-	return s.ApplyChange(fmt.Sprintf("%s LB: %s", state, old.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("%s LB: %s", state, old.Name), operator); err != nil {
+		_ = repo.NewIHAProxyLBRepo().Update(req.ID, map[string]interface{}{"enabled": old.Enabled})
+		return err
+	}
+	return nil
+}
+
+func haproxyLBSnapshot(old model.HAProxyLB) map[string]interface{} {
+	return map[string]interface{}{
+		"name":               old.Name,
+		"mode":               old.Mode,
+		"bind_addr":          old.BindAddr,
+		"bind_port":          old.BindPort,
+		"enable_ssl":         old.EnableSSL,
+		"certificate_id":     old.CertificateID,
+		"ssl_redirect":       old.SSLRedirect,
+		"default_backend_id": old.DefaultBackendID,
+		"x_forwarded_for":    old.XForwardedFor,
+		"max_conn":           old.MaxConn,
+		"timeout_connect":    old.TimeoutConnect,
+		"timeout_client":     old.TimeoutClient,
+		"timeout_server":     old.TimeoutServer,
+		"remark":             old.Remark,
+		"enabled":            old.Enabled,
+	}
+}
+
+func haproxyBackendSnapshot(old model.HAProxyBackend) map[string]interface{} {
+	return map[string]interface{}{
+		"name": old.Name, "mode": old.Mode, "balance": old.Balance,
+		"sticky_type": old.StickyType, "sticky_name": old.StickyName,
+		"health_type": old.HealthType, "health_path": old.HealthPath,
+		"health_method": old.HealthMethod, "health_host": old.HealthHost,
+		"health_expect": old.HealthExpect, "health_inter": old.HealthInter,
+		"health_rise": old.HealthRise, "health_fall": old.HealthFall,
+		"remark": old.Remark,
+	}
+}
+
+func haproxyServerSnapshot(old model.HAProxyServer) map[string]interface{} {
+	return map[string]interface{}{
+		"name": old.Name, "address": old.Address, "port": old.Port,
+		"weight": old.Weight, "max_conn": old.MaxConn,
+		"backup": old.Backup, "disabled": old.Disabled,
+		"ssl": old.SSL, "ssl_verify": old.SSLVerify,
+	}
+}
+
+func haproxyACLSnapshot(old model.HAProxyACLRule) map[string]interface{} {
+	return map[string]interface{}{
+		"priority": old.Priority, "match_type": old.MatchType,
+		"match_header": old.MatchHeader, "match_value": old.MatchValue,
+		"target_backend_id": old.TargetBackendID, "enabled": old.Enabled,
+		"remark": old.Remark,
+	}
 }
 
 func (s *HAProxyService) validateLB(req *dto.HAProxyLBCreate, excludeID uint) error {
@@ -359,16 +421,24 @@ func (s *HAProxyService) CreateBackend(req dto.HAProxyBackendCreate, operator st
 		if err := s.validateServer(&srv); err != nil {
 			continue
 		}
-		s := model.HAProxyServer{
+		row := model.HAProxyServer{
 			BackendID: be.ID, Name: srv.Name,
 			Address: srv.Address, Port: srv.Port,
 			Weight: withDefault(srv.Weight, 100), MaxConn: srv.MaxConn,
 			Backup: srv.Backup, Disabled: srv.Disabled,
 			SSL: srv.SSL, SSLVerify: srv.SSLVerify,
 		}
-		_ = repo.NewIHAProxyServerRepo().Create(&s)
+		_ = repo.NewIHAProxyServerRepo().Create(&row)
 	}
-	return s.ApplyChange(fmt.Sprintf("创建 Backend: %s", be.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("创建 Backend: %s", be.Name), operator); err != nil {
+		servers, _ := repo.NewIHAProxyServerRepo().GetListByBackend(be.ID)
+		for _, srv := range servers {
+			_ = repo.NewIHAProxyServerRepo().Delete(repo.WithByID(srv.ID))
+		}
+		_ = repo.NewIHAProxyBackendRepo().Delete(repo.WithByID(be.ID))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) UpdateBackend(req dto.HAProxyBackendUpdate, operator string) error {
@@ -393,7 +463,11 @@ func (s *HAProxyService) UpdateBackend(req dto.HAProxyBackendUpdate, operator st
 	if err := repo.NewIHAProxyBackendRepo().Update(req.ID, updates); err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("更新 Backend: %s", old.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("更新 Backend: %s", old.Name), operator); err != nil {
+		_ = repo.NewIHAProxyBackendRepo().Update(req.ID, haproxyBackendSnapshot(old))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) DeleteBackend(id uint, operator string) error {
@@ -451,7 +525,11 @@ func (s *HAProxyService) CreateServer(req dto.HAProxyServerCreate, operator stri
 	if err := repo.NewIHAProxyServerRepo().Create(&srv); err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("新增 Server: %s", srv.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("新增 Server: %s", srv.Name), operator); err != nil {
+		_ = repo.NewIHAProxyServerRepo().Delete(repo.WithByID(srv.ID))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) UpdateServer(req dto.HAProxyServerUpdate, operator string) error {
@@ -471,7 +549,11 @@ func (s *HAProxyService) UpdateServer(req dto.HAProxyServerUpdate, operator stri
 	if err := repo.NewIHAProxyServerRepo().Update(req.ID, updates); err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("更新 Server: %s", old.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("更新 Server: %s", old.Name), operator); err != nil {
+		_ = repo.NewIHAProxyServerRepo().Update(req.ID, haproxyServerSnapshot(old))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) DeleteServer(id uint, operator string) error {
@@ -536,11 +618,16 @@ func (s *HAProxyService) CreateACL(req dto.HAProxyACLCreate, operator string) er
 	if err := repo.NewIHAProxyACLRepo().Create(&item); err != nil {
 		return err
 	}
-	return s.ApplyChange("新增 ACL 规则", operator)
+	if err := s.ApplyChange("新增 ACL 规则", operator); err != nil {
+		_ = repo.NewIHAProxyACLRepo().Delete(repo.WithByID(item.ID))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) UpdateACL(req dto.HAProxyACLUpdate, operator string) error {
-	if _, err := repo.NewIHAProxyACLRepo().Get(repo.WithByID(req.ID)); err != nil {
+	old, err := repo.NewIHAProxyACLRepo().Get(repo.WithByID(req.ID))
+	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 	updates := map[string]interface{}{
@@ -555,7 +642,11 @@ func (s *HAProxyService) UpdateACL(req dto.HAProxyACLUpdate, operator string) er
 	if err := repo.NewIHAProxyACLRepo().Update(req.ID, updates); err != nil {
 		return err
 	}
-	return s.ApplyChange("更新 ACL 规则", operator)
+	if err := s.ApplyChange("更新 ACL 规则", operator); err != nil {
+		_ = repo.NewIHAProxyACLRepo().Update(req.ID, haproxyACLSnapshot(old))
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) DeleteACL(id uint, operator string) error {

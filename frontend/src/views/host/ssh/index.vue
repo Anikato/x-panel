@@ -634,7 +634,7 @@ onBeforeUnmount(() => {
 
 .sshd-editor-container {
   flex: 1;
-  border-radius: 6px;
+  border-radius: var(--xp-radius-sm);
   overflow: hidden;
   border: 1px solid var(--xp-border-light);
 }

@@ -49,6 +49,7 @@ func Start() {
 	}
 
 	initDatabaseAndMigrations()
+	service.LoadSessionsFromDB()
 
 	// 4.4 Mirror bundled Nezha Agent config.yml into settings (never start/enable).
 	// Failure is non-fatal: log a safe warning and continue panel startup.

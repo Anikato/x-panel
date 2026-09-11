@@ -1,26 +1,58 @@
 package dto
 
+import "time"
+
 type NginxLogAnalysisReq struct {
-	SiteID uint `json:"siteId" binding:"required"`
-	Days   int  `json:"days"`
+	SiteID  uint `json:"siteId" binding:"required"`
+	Days    int  `json:"days"`
+	Refresh bool `json:"refresh"`
 }
 
 type NginxLogAnalysis struct {
-	TotalRequests   int64             `json:"totalRequests"`
-	UniqueIPs       int               `json:"uniqueIPs"`
-	TotalBytes      int64             `json:"totalBytes"`
-	StatusCodes     map[string]int64  `json:"statusCodes"`
-	TopURLs         []RankItem        `json:"topUrls"`
-	TopIPs          []RankItem        `json:"topIps"`
-	TopUserAgents   []RankItem        `json:"topUserAgents"`
-	HourlyStats     []TimeSeriesPoint `json:"hourlyStats"`
-	DailyStats      []TimeSeriesPoint `json:"dailyStats"`
-	ErrorRate       float64           `json:"errorRate"`
-	ThreatRequests  int64             `json:"threatRequests"`
-	ThreatIPs       []RankItem        `json:"threatIPs"`
-	TopThreats      []RankItem        `json:"topThreats"`
-	CrawlerRequests int64             `json:"crawlerRequests"`
-	TopCrawlers     []RankItem        `json:"topCrawlers"`
+	TotalRequests   int64                `json:"totalRequests"`
+	UniqueIPs       int                  `json:"uniqueIPs"`
+	TotalBytes      int64                `json:"totalBytes"`
+	StatusCodes     map[string]int64     `json:"statusCodes"`
+	TopURLs         []RankItem           `json:"topUrls"`
+	TopIPs          []RankItem           `json:"topIps"`
+	TopUserAgents   []RankItem           `json:"topUserAgents"`
+	HourlyStats     []TimeSeriesPoint    `json:"hourlyStats"`
+	DailyStats      []TimeSeriesPoint    `json:"dailyStats"`
+	ErrorRate       float64              `json:"errorRate"`
+	ThreatRequests  int64                `json:"threatRequests"`
+	ThreatIPs       []RankItem           `json:"threatIPs"`
+	TopThreats      []RankItem           `json:"topThreats"`
+	CrawlerRequests int64                `json:"crawlerRequests"`
+	TopCrawlers     []RankItem           `json:"topCrawlers"`
+	Meta            NginxLogAnalysisMeta `json:"meta"`
+}
+
+type NginxLogAnalysisMeta struct {
+	RequestedFrom  time.Time           `json:"requestedFrom"`
+	RequestedTo    time.Time           `json:"requestedTo"`
+	ObservedFrom   *time.Time          `json:"observedFrom,omitempty"`
+	ObservedTo     *time.Time          `json:"observedTo,omitempty"`
+	GeneratedAt    time.Time           `json:"generatedAt"`
+	ScannedBytes   int64               `json:"scannedBytes"`
+	ScannedLines   int64               `json:"scannedLines"`
+	MatchedLines   int64               `json:"matchedLines"`
+	InvalidLines   int64               `json:"invalidLines"`
+	Partial        bool                `json:"partial"`
+	Reasons        []string            `json:"reasons,omitempty"`
+	FilesTotal     int                 `json:"filesTotal"`
+	FilesSucceeded int                 `json:"filesSucceeded"`
+	FilesFailed    int                 `json:"filesFailed"`
+	FailedFiles    []NginxLogFileIssue `json:"failedFiles,omitempty"`
+	SkippedFiles   []NginxLogFileIssue `json:"skippedFiles,omitempty"`
+	SourceScope    string              `json:"sourceScope"`
+	CacheHit       bool                `json:"cacheHit"`
+	Recalculated   bool                `json:"recalculated,omitempty"`
+	SharedLog      bool                `json:"sharedLog,omitempty"`
+}
+
+type NginxLogFileIssue struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
 }
 
 type RankItem struct {
@@ -49,6 +81,7 @@ type NginxDetectedSite struct {
 type NginxLogAnalyzeReq struct {
 	Site      string `json:"site"`      // 站点名（server_name），空=全部
 	TimeRange string `json:"timeRange"` // 1h, 6h, 24h, 7d, 30d
+	Refresh   bool   `json:"refresh"`
 }
 
 type NginxLogTailReq struct {
@@ -70,6 +103,7 @@ type NginxLogDrilldownReq struct {
 }
 
 type NginxLogDrilldownResp struct {
-	IPs  []RankItem `json:"ips"`
-	URLs []RankItem `json:"urls"`
+	IPs  []RankItem           `json:"ips"`
+	URLs []RankItem           `json:"urls"`
+	Meta NginxLogAnalysisMeta `json:"meta"`
 }

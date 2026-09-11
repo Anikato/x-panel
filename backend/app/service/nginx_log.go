@@ -1,14 +1,13 @@
 package service
 
 import (
-	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,11 +20,11 @@ import (
 )
 
 type INginxLogService interface {
-	Analyze(req dto.NginxLogAnalysisReq) (*dto.NginxLogAnalysis, error)
+	Analyze(ctx context.Context, req dto.NginxLogAnalysisReq) (*dto.NginxLogAnalysis, error)
 	DetectSites() ([]dto.NginxDetectedSite, error)
-	AnalyzeSite(req dto.NginxLogAnalyzeReq) (*dto.NginxLogAnalysis, error)
+	AnalyzeSite(ctx context.Context, req dto.NginxLogAnalyzeReq) (*dto.NginxLogAnalysis, error)
 	TailLog(req dto.NginxLogTailReq) (*dto.NginxLogTailResp, error)
-	Drilldown(req dto.NginxLogDrilldownReq) (*dto.NginxLogDrilldownResp, error)
+	Drilldown(ctx context.Context, req dto.NginxLogDrilldownReq) (*dto.NginxLogDrilldownResp, error)
 }
 
 type NginxLogService struct {
@@ -52,7 +51,7 @@ type logEntry struct {
 }
 
 // Analyze handles legacy site-ID based analysis
-func (s *NginxLogService) Analyze(req dto.NginxLogAnalysisReq) (*dto.NginxLogAnalysis, error) {
+func (s *NginxLogService) Analyze(ctx context.Context, req dto.NginxLogAnalysisReq) (*dto.NginxLogAnalysis, error) {
 	site, err := s.websiteRepo.Get(repo.WithByID(req.SiteID))
 	if err != nil {
 		return nil, buserr.New(constant.ErrRecordNotFound)
@@ -68,20 +67,14 @@ func (s *NginxLogService) Analyze(req dto.NginxLogAnalysisReq) (*dto.NginxLogAna
 	if strings.TrimSpace(site.AccessLogPath) != "" {
 		logPath = strings.TrimSpace(site.AccessLogPath)
 	}
-	if _, err := os.Stat(logPath); err != nil {
-		return &dto.NginxLogAnalysis{StatusCodes: make(map[string]int64)}, nil
-	}
-
 	days := req.Days
 	if days <= 0 {
 		days = 1
 	}
-	cutoff := time.Now().AddDate(0, 0, -days)
-	entries, err := parseAccessLog(logPath, cutoff, 0)
-	if err != nil {
-		return nil, fmt.Errorf("parse log: %v", err)
-	}
-	return aggregate(entries, days, false, nil), nil
+	until := time.Now()
+	cutoff := until.AddDate(0, 0, -days)
+	key := fmt.Sprintf("%s|legacy|%d|%d", logAnalysisStrategyVersion, req.SiteID, days)
+	return runSiteAnalysis(ctx, key, req.Refresh, []string{logPath}, cutoff, until, false, false)
 }
 
 // DetectSites scans Nginx config files and extracts server_name + log paths
@@ -121,58 +114,19 @@ func (s *NginxLogService) DetectSites() ([]dto.NginxDetectedSite, error) {
 }
 
 // AnalyzeSite analyzes logs for a specific site or all sites
-func (s *NginxLogService) AnalyzeSite(req dto.NginxLogAnalyzeReq) (*dto.NginxLogAnalysis, error) {
+func (s *NginxLogService) AnalyzeSite(ctx context.Context, req dto.NginxLogAnalyzeReq) (*dto.NginxLogAnalysis, error) {
 	nc := global.CONF.Nginx
 	if !nc.IsInstalled() {
 		return nil, buserr.New(constant.ErrNginxNotInstalled)
 	}
-
-	cutoff := parseCutoff(req.TimeRange)
-	maxLines := maxLinesForRange(req.TimeRange)
-
-	sites, err := s.DetectSites()
+	until := time.Now()
+	cutoff := parseCutoffAt(req.TimeRange, until)
+	paths, shared, err := s.resolveAccessLogs(req.Site)
 	if err != nil {
 		return nil, err
 	}
-
-	var logPaths []string
-	if req.Site == "" {
-		for _, site := range sites {
-			if site.AccessLog != "" && site.AccessLog != "off" {
-				logPaths = append(logPaths, site.AccessLog)
-			}
-		}
-	} else {
-		for _, site := range sites {
-			if site.Name == req.Site {
-				if site.AccessLog != "" && site.AccessLog != "off" {
-					logPaths = append(logPaths, site.AccessLog)
-				}
-				break
-			}
-		}
-	}
-
-	if len(logPaths) == 0 {
-		return &dto.NginxLogAnalysis{StatusCodes: make(map[string]int64)}, nil
-	}
-
-	dedupPaths := dedupStrings(logPaths)
-	var allEntries []logEntry
-	for _, p := range dedupPaths {
-		if _, err := os.Stat(p); err != nil {
-			continue
-		}
-		entries, err := parseAccessLog(p, cutoff, maxLines)
-		if err != nil {
-			continue
-		}
-		allEntries = append(allEntries, entries...)
-	}
-
-	days := daysFromRange(req.TimeRange)
-	bannedSet := loadBannedIPSet()
-	return aggregate(allEntries, days, true, bannedSet), nil
+	key := fmt.Sprintf("%s|analyze|%s|%s", logAnalysisStrategyVersion, req.Site, req.TimeRange)
+	return runSiteAnalysis(ctx, key, req.Refresh, paths, cutoff, until, true, shared)
 }
 
 // TailLog returns the last N lines of access or error log
@@ -229,79 +183,140 @@ func (s *NginxLogService) TailLog(req dto.NginxLogTailReq) (*dto.NginxLogTailRes
 }
 
 // Drilldown returns detailed IPs/URLs for a given URL or threat category
-func (s *NginxLogService) Drilldown(req dto.NginxLogDrilldownReq) (*dto.NginxLogDrilldownResp, error) {
+func (s *NginxLogService) Drilldown(ctx context.Context, req dto.NginxLogDrilldownReq) (*dto.NginxLogDrilldownResp, error) {
 	nc := global.CONF.Nginx
 	if !nc.IsInstalled() {
 		return nil, buserr.New(constant.ErrNginxNotInstalled)
 	}
-
-	cutoff := parseCutoff(req.TimeRange)
-	maxLines := maxLinesForRange(req.TimeRange)
-
-	sites, err := s.DetectSites()
+	until := time.Now()
+	cutoff := parseCutoffAt(req.TimeRange, until)
+	paths, shared, err := s.resolveAccessLogs(req.Site)
 	if err != nil {
 		return nil, err
 	}
+	key := fmt.Sprintf("%s|drill|%s|%s|%s|%s", logAnalysisStrategyVersion, req.Site, req.TimeRange, req.FilterType, req.FilterValue)
+	if item, ok := logAnalysisCache.get(key); ok && item.drill != nil {
+		out := *item.drill
+		out.Meta.CacheHit = true
+		return &out, nil
+	}
+	return logAnalysisFlights.doDrill(ctx, key, func(runCtx context.Context) (*dto.NginxLogDrilldownResp, error) {
+		if item, ok := logAnalysisCache.get(key); ok && item.drill != nil {
+			out := *item.drill
+			out.Meta.CacheHit = true
+			return &out, nil
+		}
+		limits := defaultScanLimits()
+		sink := newDrillSink(req.FilterType, req.FilterValue, limits.MaxKeys)
+		meta := scanLogFiles(runCtx, paths, cutoff, until, limits, sink)
+		if runCtx.Err() != nil {
+			return nil, runCtx.Err()
+		}
+		if meta.filesTotal > 0 && meta.filesSucceeded == 0 && meta.filesFailed == meta.filesTotal {
+			return nil, buserr.WithDetail(constant.ErrNginxLogAllFailed, "all access logs failed", nil)
+		}
+		if sink.capped {
+			meta.addReason("key_limit")
+		}
+		if shared {
+			meta.addReason("shared_log_unattributed")
+		}
+		resp := &dto.NginxLogDrilldownResp{
+			IPs:  topNWithGeo(sink.ipCount, 50, true),
+			URLs: topN(sink.urlCount, 50),
+			Meta: meta.toMeta(cutoff, until, time.Now()),
+		}
+		resp.Meta.Recalculated = true
+		resp.Meta.SharedLog = shared
+		markBanned(resp.IPs, loadBannedIPSet())
+		logAnalysisCache.put(&analysisCacheItem{
+			key: key, drill: resp, size: estimateDrillSize(resp), expires: time.Now().Add(logCacheTTL),
+		})
+		return resp, nil
+	})
+}
 
-	var logPaths []string
-	if req.Site == "" {
-		for _, site := range sites {
-			if site.AccessLog != "" && site.AccessLog != "off" {
-				logPaths = append(logPaths, site.AccessLog)
+func (s *NginxLogService) resolveAccessLogs(site string) ([]string, bool, error) {
+	sites, err := s.DetectSites()
+	if err != nil {
+		return nil, false, err
+	}
+	if site == "" {
+		var paths []string
+		for _, item := range sites {
+			if item.AccessLog != "" && item.AccessLog != "off" {
+				paths = append(paths, item.AccessLog)
 			}
 		}
-	} else {
-		for _, site := range sites {
-			if site.Name == req.Site {
-				if site.AccessLog != "" && site.AccessLog != "off" {
-					logPaths = append(logPaths, site.AccessLog)
-				}
-				break
-			}
+		return dedupStrings(paths), false, nil
+	}
+	var chosen string
+	for _, item := range sites {
+		if item.Name == site {
+			chosen = item.AccessLog
+			break
 		}
 	}
-
-	dedupPaths := dedupStrings(logPaths)
-	var allEntries []logEntry
-	for _, p := range dedupPaths {
-		if _, err := os.Stat(p); err != nil {
-			continue
-		}
-		entries, err := parseAccessLog(p, cutoff, maxLines)
-		if err != nil {
-			continue
-		}
-		allEntries = append(allEntries, entries...)
+	if chosen == "" || chosen == "off" {
+		return nil, false, nil
 	}
-
-	bannedSet := loadBannedIPSet()
-	ipCount := make(map[string]int64)
-	urlCount := make(map[string]int64)
-
-	for _, e := range allEntries {
-		switch req.FilterType {
-		case "url":
-			if e.URL == req.FilterValue {
-				ipCount[e.IP]++
-			}
-		case "ip":
-			if e.IP == req.FilterValue {
-				urlCount[e.URL]++
-			}
-		case "threat":
-			if classifyThreat(e.URL) == req.FilterValue {
-				ipCount[e.IP]++
-				urlCount[e.URL]++
-			}
+	owners := 0
+	for _, item := range sites {
+		if item.AccessLog == chosen {
+			owners++
 		}
 	}
+	return []string{chosen}, owners > 1, nil
+}
 
-	resp := &dto.NginxLogDrilldownResp{
-		IPs:  topNWithGeo(ipCount, 50, true),
-		URLs: topN(urlCount, 50),
+func runSiteAnalysis(ctx context.Context, key string, refresh bool, paths []string, cutoff, until time.Time, withGeo, shared bool) (*dto.NginxLogAnalysis, error) {
+	if !refresh {
+		if item, ok := logAnalysisCache.get(key); ok && item.result != nil {
+			out := *item.result
+			out.Meta.CacheHit = true
+			return &out, nil
+		}
 	}
-	markBanned(resp.IPs, bannedSet)
-	return resp, nil
+	return logAnalysisFlights.doAnalysis(ctx, key, func(runCtx context.Context) (*dto.NginxLogAnalysis, error) {
+		if !refresh {
+			if item, ok := logAnalysisCache.get(key); ok && item.result != nil {
+				out := *item.result
+				out.Meta.CacheHit = true
+				return &out, nil
+			}
+		}
+		limits := defaultScanLimits()
+		if len(paths) == 0 {
+			res := &dto.NginxLogAnalysis{StatusCodes: map[string]int64{}}
+			empty := scanMetaAcc{}
+			res.Meta = empty.toMeta(cutoff, until, time.Now())
+			return res, nil
+		}
+		sink := newStatsSink(limits.MaxKeys)
+		meta := scanLogFiles(runCtx, paths, cutoff, until, limits, sink)
+		if runCtx.Err() != nil {
+			return nil, runCtx.Err()
+		}
+		if meta.filesTotal > 0 && meta.filesSucceeded == 0 && meta.filesFailed == meta.filesTotal {
+			return nil, buserr.WithDetail(constant.ErrNginxLogAllFailed, "all access logs failed", nil)
+		}
+		if meta.matchedLines == 0 && meta.invalidLines > 0 {
+			return nil, buserr.New(constant.ErrNginxLogUnsupportedFormat)
+		}
+		if sink.capped {
+			meta.addReason("key_limit")
+		}
+		if shared {
+			meta.addReason("shared_log_unattributed")
+		}
+		result := sink.result(withGeo, loadBannedIPSet())
+		result.Meta = meta.toMeta(cutoff, until, time.Now())
+		result.Meta.SharedLog = shared
+		logAnalysisCache.put(&analysisCacheItem{
+			key: key, result: result, size: estimateAnalysisSize(result), expires: time.Now().Add(logCacheTTL),
+		})
+		return result, nil
+	})
 }
 
 // --- Nginx config parsing ---
@@ -399,66 +414,16 @@ func parseNginxConfForSites(confPath, defaultLogDir string) []dto.NginxDetectedS
 // --- Log parsing ---
 
 func parseAccessLog(path string, cutoff time.Time, maxLines int) ([]logEntry, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
+	limits := defaultScanLimits()
+	if maxLines > 0 && int64(maxLines) < limits.MaxLines {
+		limits.MaxLines = int64(maxLines)
 	}
-	defer f.Close()
-
-	var lines []string
-	if maxLines > 0 {
-		lines, err = readLastLines(f, maxLines)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		scanner := bufio.NewScanner(f)
-		buf := make([]byte, 0, 256*1024)
-		scanner.Buffer(buf, 1024*1024)
-		for scanner.Scan() {
-			lines = append(lines, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			return nil, err
-		}
+	sink := &collectSink{}
+	meta := scanLogFiles(context.Background(), []string{path}, cutoff, time.Now(), limits, sink)
+	if meta.filesFailed > 0 && meta.filesSucceeded == 0 {
+		return nil, fmt.Errorf("read log: %s", path)
 	}
-
-	var entries []logEntry
-	for _, line := range lines {
-		m := combinedLogRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-
-		t, err := time.Parse("02/Jan/2006:15:04:05 -0700", m[2])
-		if err != nil {
-			continue
-		}
-		if t.Before(cutoff) {
-			continue
-		}
-
-		status, _ := strconv.Atoi(m[4])
-		bytes, _ := strconv.ParseInt(m[5], 10, 64)
-
-		parts := strings.SplitN(m[3], " ", 3)
-		method, url := "", ""
-		if len(parts) >= 2 {
-			method = parts[0]
-			url = parts[1]
-		}
-
-		entries = append(entries, logEntry{
-			IP:        m[1],
-			Time:      t,
-			Method:    method,
-			URL:       url,
-			Status:    status,
-			Bytes:     bytes,
-			UserAgent: m[6],
-		})
-	}
-	return entries, nil
+	return sink.entries, nil
 }
 
 func readLastLines(f *os.File, n int) ([]string, error) {
@@ -467,43 +432,51 @@ func readLastLines(f *os.File, n int) ([]string, error) {
 		return nil, err
 	}
 	size := stat.Size()
-	if size == 0 {
+	if size == 0 || n <= 0 {
 		return nil, nil
 	}
 
-	chunkSize := int64(64 * 1024)
-	var lines []string
+	const chunkSize = 64 * 1024
+	var chunks [][]byte
 	offset := size
-
-	for offset > 0 && len(lines) < n+1 {
-		readSize := chunkSize
+	newlines := 0
+	for offset > 0 && newlines <= n {
+		readSize := int64(chunkSize)
 		if offset < readSize {
 			readSize = offset
 		}
 		offset -= readSize
-
 		buf := make([]byte, readSize)
 		if _, err := f.ReadAt(buf, offset); err != nil && err != io.EOF {
 			return nil, err
 		}
-
-		chunk := string(buf)
-		chunkLines := strings.Split(chunk, "\n")
-
-		if len(lines) > 0 {
-			chunkLines[len(chunkLines)-1] += lines[0]
-			lines = lines[1:]
+		chunks = append(chunks, buf)
+		for _, b := range buf {
+			if b == '\n' {
+				newlines++
+			}
 		}
-		lines = append(chunkLines, lines...)
 	}
-
-	if len(lines) > 0 && lines[0] == "" {
-		lines = lines[1:]
+	total := 0
+	for _, c := range chunks {
+		total += len(c)
 	}
-	if len(lines) > n {
-		lines = lines[len(lines)-n:]
+	data := make([]byte, 0, total)
+	for i := len(chunks) - 1; i >= 0; i-- {
+		data = append(data, chunks[i]...)
 	}
-	return lines, nil
+	text := string(data)
+	parts := strings.Split(text, "\n")
+	if offset > 0 && len(parts) > 0 {
+		parts = parts[1:]
+	}
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) > n {
+		parts = parts[len(parts)-n:]
+	}
+	return parts, nil
 }
 
 // --- Threat detection ---
@@ -573,89 +546,6 @@ func loadBannedIPSet() map[string]bool {
 	return result
 }
 
-// --- Aggregation ---
-
-func aggregate(entries []logEntry, days int, withGeo bool, bannedIPs map[string]bool) *dto.NginxLogAnalysis {
-	result := &dto.NginxLogAnalysis{
-		TotalRequests: int64(len(entries)),
-		StatusCodes:   make(map[string]int64),
-	}
-
-	if len(entries) == 0 {
-		return result
-	}
-
-	ipSet := make(map[string]struct{})
-	urlCount := make(map[string]int64)
-	ipCount := make(map[string]int64)
-	uaCount := make(map[string]int64)
-	hourlyReqs := make(map[string]int64)
-	hourlyBytes := make(map[string]int64)
-	dailyReqs := make(map[string]int64)
-	dailyBytes := make(map[string]int64)
-	threatCatCount := make(map[string]int64)
-	threatIPCount := make(map[string]int64)
-	crawlerCatCount := make(map[string]int64)
-
-	var errors int64
-
-	for _, e := range entries {
-		ipSet[e.IP] = struct{}{}
-		result.TotalBytes += e.Bytes
-
-		cat := fmt.Sprintf("%dxx", e.Status/100)
-		result.StatusCodes[cat]++
-		if e.Status >= 400 {
-			errors++
-		}
-
-		urlCount[e.URL]++
-		ipCount[e.IP]++
-		uaCount[e.UserAgent]++
-
-		if tc := classifyThreat(e.URL); tc != "" {
-			result.ThreatRequests++
-			threatCatCount[tc]++
-			threatIPCount[e.IP]++
-		}
-
-		if cc := classifyCrawler(e.UserAgent); cc != "" {
-			result.CrawlerRequests++
-			crawlerCatCount[cc]++
-		}
-
-		h := e.Time.Format("2006-01-02 15:00")
-		hourlyReqs[h]++
-		hourlyBytes[h] += e.Bytes
-
-		d := e.Time.Format("2006-01-02")
-		dailyReqs[d]++
-		dailyBytes[d] += e.Bytes
-	}
-
-	result.UniqueIPs = len(ipSet)
-	if result.TotalRequests > 0 {
-		result.ErrorRate = float64(errors) / float64(result.TotalRequests) * 100
-	}
-
-	result.TopURLs = topN(urlCount, 20)
-	result.TopIPs = topNWithGeo(ipCount, 20, withGeo)
-	result.TopUserAgents = topN(uaCount, 10)
-	result.TopThreats = topN(threatCatCount, 20)
-	result.ThreatIPs = topNWithGeo(threatIPCount, 10, withGeo)
-	result.TopCrawlers = topN(crawlerCatCount, 20)
-
-	if bannedIPs != nil {
-		markBanned(result.TopIPs, bannedIPs)
-		markBanned(result.ThreatIPs, bannedIPs)
-	}
-
-	result.HourlyStats = timeSeries(hourlyReqs, hourlyBytes)
-	result.DailyStats = timeSeries(dailyReqs, dailyBytes)
-
-	return result
-}
-
 func markBanned(items []dto.RankItem, bannedIPs map[string]bool) {
 	for i := range items {
 		if bannedIPs[items[i].Name] {
@@ -706,7 +596,10 @@ func timeSeries(reqs, bytes map[string]int64) []dto.TimeSeriesPoint {
 // --- Helpers ---
 
 func parseCutoff(timeRange string) time.Time {
-	now := time.Now()
+	return parseCutoffAt(timeRange, time.Now())
+}
+
+func parseCutoffAt(timeRange string, now time.Time) time.Time {
 	switch timeRange {
 	case "1h":
 		return now.Add(-1 * time.Hour)
@@ -737,19 +630,6 @@ func maxLinesForRange(timeRange string) int {
 		return 1000000
 	default:
 		return 200000
-	}
-}
-
-func daysFromRange(timeRange string) int {
-	switch timeRange {
-	case "1h", "6h", "24h":
-		return 1
-	case "7d":
-		return 7
-	case "30d":
-		return 30
-	default:
-		return 1
 	}
 }
 

@@ -255,8 +255,8 @@ onUnmounted(() => {
 
 .log-container {
   flex: 1;
-  background: #1e1e1e;
-  border-radius: var(--xp-radius-md);
+  background: var(--xp-bg-inset);
+  border-radius: var(--xp-radius);
   padding: 16px;
   overflow: auto;
   border: 1px solid var(--xp-border-light);
@@ -266,7 +266,7 @@ onUnmounted(() => {
     justify-content: center;
     align-items: center;
     height: 100%;
-    color: #666;
+    color: var(--xp-text-muted);
   }
   
   .log-content {
@@ -280,10 +280,10 @@ onUnmounted(() => {
       display: flex;
       gap: 8px;
       padding: 2px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--xp-border-light);
       
       &:hover {
-        background: rgba(255,255,255,0.05);
+        background: var(--xp-accent-muted);
       }
       
       .log-level {
@@ -291,19 +291,19 @@ onUnmounted(() => {
         min-width: 45px;
       }
       .log-time {
-        color: #858585;
+        color: var(--xp-text-muted);
         white-space: nowrap;
       }
       .log-msg {
-        color: #d4d4d4;
+        color: var(--xp-text-primary);
         flex: 1;
         white-space: pre-wrap;
       }
       
-      .log-level-info { color: #4CAF50; }
-      .log-level-warn { color: #FF9800; }
-      .log-level-error { color: #F44336; }
-      .log-level-debug { color: #2196F3; }
+      .log-level-info { color: var(--xp-success); }
+      .log-level-warn { color: var(--xp-warning); }
+      .log-level-error { color: var(--xp-danger); }
+      .log-level-debug { color: var(--xp-info); }
     }
   }
 }

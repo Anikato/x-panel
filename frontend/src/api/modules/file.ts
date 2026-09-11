@@ -1,5 +1,5 @@
 import http from '@/api/http'
-import { getToken } from '@/utils/auth'
+import { issueAccessTicket } from '@/api/modules/auth'
 
 export const listFiles = (params: { path: string; showHidden?: boolean; search?: string; containSub?: boolean; sortBy?: string; sortOrder?: string }) => {
   return http.post('/files/search', params)
@@ -77,9 +77,9 @@ export const preflightUpload = (targetPath: string, relativePaths: string[]) => 
   return http.post<UploadPreflightResult>('/files/upload/preflight', { targetPath, relativePaths })
 }
 
-export const getDownloadUrl = (path: string) => {
-  const token = getToken()
-  return `/api/v1/files/download?path=${encodeURIComponent(path)}&token=${token}`
+export const getDownloadUrl = async (path: string) => {
+  const res = await issueAccessTicket({ scope: 'download', path })
+  return `/api/v1/files/download?path=${encodeURIComponent(path)}&ticket=${res.data.ticket}`
 }
 
 export const getFileTree = (params: { path: string }) => {

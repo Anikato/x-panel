@@ -157,21 +157,45 @@ func (c *PostgresClient) Restore(database, inFile string) error {
 		return c.restoreSQL(database, inFile)
 	}
 
-	cmd := exec.Command("pg_restore",
-		"-h", c.Address,
-		"-p", fmt.Sprintf("%d", c.Port),
-		"-U", c.Username,
-		"--no-owner",
-		"--no-privileges",
-		"-d", database,
-		inFile,
-	)
+	cmd := exec.Command("pg_restore", postgresCustomRestoreArgs(c.Address, c.Port, c.Username, database, inFile)...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", c.Password))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %s", err, string(output))
 	}
 	return nil
+}
+
+func postgresCustomRestoreArgs(address string, port uint, username, database, file string) []string {
+	// --single-transaction wraps the restore in one transaction (and implies
+	// --exit-on-error). A failed restore aborts the transaction, so objects
+	// created by this run are not kept. This is not the same as "stop and
+	// leave a partial database". SQL-file restores still only use
+	// ON_ERROR_STOP; they do not automatically roll back earlier statements.
+	return []string{
+		"-h", address,
+		"-p", fmt.Sprintf("%d", port),
+		"-U", username,
+		"--no-owner",
+		"--no-privileges",
+		"--single-transaction",
+		"--exit-on-error",
+		"-d", database,
+		file,
+	}
+}
+
+func postgresSQLRestoreArgs(address string, port uint, username, database, file string) []string {
+	// ON_ERROR_STOP aborts the psql script on the first SQL error. Statements
+	// already executed remain applied; this is not a transaction rollback.
+	return []string{
+		"-h", address,
+		"-p", fmt.Sprintf("%d", port),
+		"-U", username,
+		"-d", database,
+		"-v", "ON_ERROR_STOP=1",
+		"-f", file,
+	}
 }
 
 func (c *PostgresClient) restoreSQL(database, inFile string) error {
@@ -181,13 +205,7 @@ func (c *PostgresClient) restoreSQL(database, inFile string) error {
 	}
 	defer sqlFile.Cleanup()
 
-	cmd := exec.Command("psql",
-		"-h", c.Address,
-		"-p", fmt.Sprintf("%d", c.Port),
-		"-U", c.Username,
-		"-d", database,
-		"-f", sqlFile.Path,
-	)
+	cmd := exec.Command("psql", postgresSQLRestoreArgs(c.Address, c.Port, c.Username, database, sqlFile.Path)...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", c.Password))
 	output, err := cmd.CombinedOutput()
 	if err != nil {

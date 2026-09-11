@@ -89,7 +89,7 @@ onMounted(() => load())
   margin-bottom: 16px;
   h3 { margin: 0; }
 }
-.total-info { margin-top: 16px; text-align: right; color: #909399; font-size: 13px; }
+.total-info { margin-top: 16px; text-align: right; color: var(--xp-text-muted); font-size: 13px; }
 .code-view :deep(.el-textarea__inner) {
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace; font-size: 13px;
 }

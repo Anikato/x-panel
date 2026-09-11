@@ -1,7 +1,7 @@
 <template>
   <div class="ssl-page">
-    <div class="ssl-header">
-      <h3>{{ $t('ssl.title') }}</h3>
+    <div class="ssl-header page-heading">
+      <h2>{{ $t('ssl.title') }}</h2>
       <div class="header-actions">
         <el-button size="small" type="info" plain @click="sslDirVisible = true">
           <el-icon><FolderOpened /></el-icon>
@@ -22,25 +22,43 @@
       </div>
     </div>
 
-    <el-tabs v-model="activeTab" class="ssl-tabs" @tab-change="handleTabChange">
+    <nav class="ssl-subnav" aria-label="证书分区">
+      <div class="object-nav">
+        <button
+          v-for="item in sslNavItems"
+          :key="item.id"
+          type="button"
+          class="object-nav-item"
+          :class="{ active: activeTab === item.id }"
+          @click="selectSslTab(item.id)"
+        >
+          {{ $t(item.titleKey) }}
+        </button>
+      </div>
+    </nav>
+    <el-tabs v-model="activeTab" class="ssl-tabs ssl-tabs-body">
       <!-- 证书列表 -->
       <el-tab-pane :label="$t('ssl.certificates')" name="certs">
         <div class="tab-toolbar">
           <el-input v-model="certSearch" :placeholder="$t('commons.search')" prefix-icon="Search" size="small" clearable class="search-input" @input="loadCerts" />
-          <el-button size="small" type="primary" @click="openCertDialog()">
-            <el-icon><Plus /></el-icon>
-            {{ $t('ssl.applyCert') }}
-          </el-button>
-          <el-button size="small" type="success" plain @click="uploadVisible = true">
-            <el-icon><Upload /></el-icon>
-            {{ $t('ssl.uploadCert') }}
-          </el-button>
-          <el-button size="small" type="danger" plain :disabled="selectedCertIDs.length === 0 || certCleanupBusy" :loading="certCleanupBusy" @click="handleBatchDeleteCerts">
-            删除所选
-          </el-button>
-          <el-button size="small" type="warning" plain :disabled="certCleanupBusy" :loading="certCleanupBusy" @click="handleCleanupExpiredCerts">
-            清理过期证书
-          </el-button>
+          <div class="toolbar-group">
+            <el-button size="small" type="primary" @click="openCertDialog()">
+              <el-icon><Plus /></el-icon>
+              {{ $t('ssl.applyCert') }}
+            </el-button>
+            <el-button size="small" @click="uploadVisible = true">
+              <el-icon><Upload /></el-icon>
+              {{ $t('ssl.uploadCert') }}
+            </el-button>
+          </div>
+          <div class="toolbar-group">
+            <el-button size="small" type="danger" plain :disabled="selectedCertIDs.length === 0 || certCleanupBusy" :loading="certCleanupBusy" @click="handleBatchDeleteCerts">
+              删除所选
+            </el-button>
+            <el-button size="small" plain :disabled="certCleanupBusy" :loading="certCleanupBusy" @click="handleCleanupExpiredCerts">
+              清理过期证书
+            </el-button>
+          </div>
         </div>
         <el-table ref="certTableRef" :data="certs" style="width: 100%" @selection-change="handleCertificateSelectionChange">
           <el-table-column type="selection" width="48" />
@@ -659,6 +677,20 @@ import {
 
 const activeTab = ref('certs')
 const { t } = useI18n()
+const sslNavItems = [
+  { id: 'certs', titleKey: 'ssl.certificates' },
+  { id: 'renewal-plan', titleKey: 'ssl.renewalPlan' },
+  { id: 'acme', titleKey: 'ssl.acmeAccounts' },
+  { id: 'dns', titleKey: 'ssl.dnsAccounts' },
+  { id: 'sync', titleKey: 'ssl.certSync' },
+  { id: 'server', titleKey: 'ssl.certServer' },
+] as const
+
+const selectSslTab = (id: string) => {
+  if (activeTab.value === id) return
+  activeTab.value = id
+  handleTabChange(id)
+}
 
 // --- 证书 ---
 const certs = ref<Certificate[]>([])
@@ -1461,12 +1493,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 
-  h3 {
+  h2 {
     margin: 0;
-    font-size: 16px;
     color: var(--xp-text-primary);
+    font-size: 18px;
+    font-weight: 650;
   }
 
   .header-actions {
@@ -1475,23 +1509,36 @@ onUnmounted(() => {
   }
 }
 
+.ssl-subnav {
+  margin-bottom: 4px;
+}
+
 .ssl-tabs {
   flex: 1;
 
   :deep(.el-tabs__header) {
-    margin-bottom: 12px;
+    display: none;
   }
 }
 
 .tab-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   margin-bottom: 12px;
   gap: 8px;
 
   .search-input {
-    width: 240px;
+    width: min(320px, 100%);
+    flex: 1 1 220px;
+    max-width: 320px;
+  }
+
+  .toolbar-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 
@@ -1503,7 +1550,7 @@ onUnmounted(() => {
   padding: 9px 12px;
   border: 1px solid var(--xp-border);
   border-left: 3px solid var(--xp-accent);
-  border-radius: 5px;
+  border-radius: var(--xp-radius-sm);
   background: var(--xp-bg-inset);
   color: var(--xp-text-secondary);
   font-size: 12px;
@@ -1586,7 +1633,7 @@ onUnmounted(() => {
 
 .ssl-log-container {
   background: var(--xp-bg-inset);
-  border-radius: 6px;
+  border-radius: var(--xp-radius-sm);
   padding: 16px;
   max-height: 450px;
   overflow-y: auto;

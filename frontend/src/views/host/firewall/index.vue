@@ -3,7 +3,7 @@
     <div class="page-header">
       <h3>{{ $t('firewall.title') }}</h3>
       <div class="header-actions">
-        <el-tag :type="baseInfo.isActive ? 'success' : 'danger'" size="default">
+        <el-tag :type="baseInfo.isActive ? 'success' : 'danger'" size="small">
           {{ baseInfo.isExist ? (baseInfo.isActive ? $t('firewall.enabled') : $t('firewall.disabled')) : $t('firewall.notInstalled') }}
         </el-tag>
         <template v-if="baseInfo.isExist">

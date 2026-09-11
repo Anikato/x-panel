@@ -16,10 +16,10 @@
     <div class="summary-cards" v-if="summary.length > 0">
       <el-card
         v-for="item in summary"
-        :key="item.interfaceName"
         shadow="never"
         class="summary-card"
         :class="{ 'is-disabled': !item.enabled }"
+        :key="item.interfaceName + '-' + themeTick"
       >
         <div class="card-header">
           <span class="iface-name">{{ item.interfaceName }}</span>
@@ -147,13 +147,13 @@ import * as echarts from 'echarts/core'
 import { BarChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { chartTokens, onAppearanceChange } from '@/theme'
 
 echarts.use([BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
 const { t } = useI18n()
 
-const getCS = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim()
-
+const themeTick = ref(0)
 const loading = ref(false)
 const summary = ref<TrafficSummaryItem[]>([])
 const configDialogRef = ref<InstanceType<typeof ConfigDialog>>()
@@ -226,9 +226,13 @@ const renderChart = () => {
   const sentData = statsItems.value.map(i => i.bytesSent)
   const recvData = statsItems.value.map(i => i.bytesRecv)
 
+  const tokens = chartTokens()
   chart.setOption({
     tooltip: {
       trigger: 'axis',
+      backgroundColor: tokens.tooltipBg,
+      borderColor: 'transparent',
+      textStyle: { color: tokens.tooltipText },
       formatter: (params: Record<string, unknown>[]) => {
         const first = params[0] as Record<string, unknown> | undefined
         const time = (first?.axisValue as string) || ''
@@ -242,14 +246,14 @@ const renderChart = () => {
     legend: {
       data: [t('traffic.upload'), t('traffic.download')],
       bottom: 0,
-      textStyle: { color: 'var(--xp-text-muted, #999)' },
+      textStyle: { color: tokens.muted },
     },
     grid: { left: 60, right: 20, top: 20, bottom: 40 },
     xAxis: {
       type: 'category',
       data: xData,
       axisLabel: {
-        color: getCS('--xp-text-muted') || '#999',
+        color: tokens.muted,
         rotate: xData.length > 15 ? 45 : 0,
         fontSize: 11,
       },
@@ -257,10 +261,10 @@ const renderChart = () => {
     yAxis: {
       type: 'value',
       axisLabel: {
-        color: getCS('--xp-text-muted') || '#999',
+        color: tokens.muted,
         formatter: (v: number) => formatBytes(v),
       },
-      splitLine: { lineStyle: { color: getCS('--xp-border-light') || 'rgba(255,255,255,0.06)' } },
+      splitLine: { lineStyle: { color: tokens.borderLight } },
     },
     series: [
       {
@@ -268,7 +272,7 @@ const renderChart = () => {
         type: 'bar',
         stack: 'traffic',
         data: sentData,
-        itemStyle: { color: getCS('--xp-color-up') || '#22d3ee', borderRadius: [0, 0, 0, 0] },
+        itemStyle: { color: tokens.up, borderRadius: [0, 0, 0, 0] },
         barMaxWidth: 32,
       },
       {
@@ -276,7 +280,7 @@ const renderChart = () => {
         type: 'bar',
         stack: 'traffic',
         data: recvData,
-        itemStyle: { color: getCS('--xp-color-down') || '#a78bfa', borderRadius: [4, 4, 0, 0] },
+        itemStyle: { color: tokens.down, borderRadius: [4, 4, 0, 0] },
         barMaxWidth: 32,
       },
     ],
@@ -284,9 +288,10 @@ const renderChart = () => {
 }
 
 const progressColor = (percentage: number) => {
-  if (percentage < 50) return getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#22d3ee'
-  if (percentage < 80) return getComputedStyle(document.documentElement).getPropertyValue('--xp-warning').trim() || '#f59e0b'
-  return getComputedStyle(document.documentElement).getPropertyValue('--xp-danger').trim() || '#ef4444'
+  const tokens = chartTokens()
+  if (percentage < 50) return tokens.accent
+  if (percentage < 80) return tokens.warning
+  return tokens.danger
 }
 
 const formatBytes = (bytes?: number) => {
@@ -330,15 +335,21 @@ const handleDelete = (interfaceName: string) => {
 
 let resizeHandler: (() => void) | null = null
 
+let stopAppearance: (() => void) | undefined
 onMounted(() => {
   loadAll()
   resizeHandler = () => chart?.resize()
   window.addEventListener('resize', resizeHandler)
+  stopAppearance = onAppearanceChange(() => {
+    themeTick.value++
+    if (chart) renderChart()
+  })
 })
 
 onUnmounted(() => {
   chart?.dispose()
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
+  stopAppearance?.()
 })
 
 watch(selectedInterface, () => {

@@ -41,3 +41,12 @@ type PasswordUpdate struct {
 	OldPassword string `json:"oldPassword" binding:"required"`
 	NewPassword string `json:"newPassword" binding:"required,min=6"`
 }
+
+type AccessTicketRequest struct {
+	Scope string `json:"scope" binding:"required,oneof=download terminal"`
+	Path  string `json:"path"`
+}
+
+type AccessTicketResponse struct {
+	Ticket string `json:"ticket"`
+}

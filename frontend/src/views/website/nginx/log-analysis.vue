@@ -10,7 +10,7 @@
             <span class="site-conf-hint">{{ site.confFile.split('/').pop() }}</span>
           </el-option>
         </el-select>
-        <el-select v-model="timeRange" style="width: 160px" @change="handleAnalyze">
+        <el-select v-model="timeRange" style="width: 160px" @change="() => handleAnalyze()">
           <el-option :label="$t('nginx.last1h')" value="1h" />
           <el-option :label="$t('nginx.last6h')" value="6h" />
           <el-option :label="$t('nginx.last24h')" value="24h" />
@@ -18,16 +18,22 @@
           <el-option :label="$t('nginx.last30d')" value="30d" />
         </el-select>
       </div>
-      <el-button :icon="Refresh" @click="handleAnalyze" :loading="analyzing" size="small">
+      <el-button :icon="Refresh" @click="() => handleAnalyze(true)" :loading="analyzing" size="small">
         {{ $t('nginx.refreshLog') }}
       </el-button>
     </div>
+
+    <LogAnalysisMetaBanner :meta="analysis.meta" :view="analysisView" :error="analyzeError" />
 
     <!-- 子 Tab -->
     <el-tabs v-model="subTab" class="log-tabs">
       <!-- 统计概览 -->
       <el-tab-pane :label="$t('nginx.overview')" name="overview">
-        <div v-loading="analyzing" class="overview-content">
+        <div v-if="analysisView === 'error'" class="overview-content">
+          <el-empty :description="analyzeError || $t('nginx.logAnalyzeFailed')" />
+        </div>
+        <div v-else-if="analysisView === 'loading'" v-loading="true" class="overview-content overview-loading" />
+        <div v-else v-loading="analysisView === 'updating'" class="overview-content">
           <!-- 概要卡片 -->
           <el-row :gutter="16" class="summary-row">
             <el-col :xs="12" :sm="6" :md="5">
@@ -164,6 +170,7 @@
                 <template #header>
                   <div class="threat-header">
                     <span class="chart-title">{{ $t('nginx.attackTypes') }}</span>
+                    <span class="muted-text">{{ $t('nginx.threatHint') }}</span>
                     <el-tag type="danger" size="small" effect="plain">{{ formatNumber(analysis.threatRequests) }} {{ $t('nginx.requests') }}</el-tag>
                   </div>
                 </template>
@@ -228,6 +235,7 @@
                 <template #header>
                   <div class="threat-header">
                     <span class="chart-title">{{ $t('nginx.crawlerDetection') }}</span>
+                    <span class="muted-text">{{ $t('nginx.crawlerHint') }}</span>
                     <el-tag type="info" size="small" effect="plain">{{ formatNumber(analysis.crawlerRequests) }} {{ $t('nginx.requests') }}</el-tag>
                   </div>
                 </template>
@@ -419,11 +427,14 @@ import { Refresh } from '@element-plus/icons-vue'
 import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog, drilldownNginxLog } from '@/api/modules/website'
 import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
+import LogAnalysisMetaBanner from './LogAnalysisMetaBanner.vue'
+import { analysisViewState, abortAnalysisRequest, beginAnalysisRequest, createAnalysisRequestState, isCurrentAnalysisRequest } from './log-analysis-request'
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { UAParser } from 'ua-parser-js'
+import { chartTokens, colorAlpha, onAppearanceChange } from '@/theme'
 
 echarts.use([BarChart, LineChart, PieChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -451,6 +462,15 @@ const selectedSite = ref('')
 const timeRange = ref('24h')
 const subTab = ref('overview')
 const analyzing = ref(false)
+const analyzeError = ref<string | null>(null)
+const hasAnalysisResult = ref(false)
+const analyzeReq = createAnalysisRequestState()
+const drillReq = createAnalysisRequestState()
+const analysisView = computed(() => analysisViewState({
+  hasData: hasAnalysisResult.value,
+  loading: analyzing.value,
+  error: analyzeError.value,
+}))
 
 const sites = ref<any[]>([])
 const analysis = reactive<any>({
@@ -523,19 +543,34 @@ const emptyAnalysis = {
   hourlyStats: [], dailyStats: [],
   threatRequests: 0, threatIPs: [], topThreats: [],
   crawlerRequests: 0, topCrawlers: [],
+  meta: null,
 }
 
-const handleAnalyze = async () => {
+const handleAnalyze = async (refresh = false) => {
+  const { seq, signal } = beginAnalysisRequest(analyzeReq)
   analyzing.value = true
+  if (!hasAnalysisResult.value) {
+    analyzeError.value = null
+  }
   try {
-    const res = await analyzeNginxSiteLog({ site: selectedSite.value, timeRange: timeRange.value })
+    const res = await analyzeNginxSiteLog({ site: selectedSite.value, timeRange: timeRange.value, refresh }, signal)
+    if (!isCurrentAnalysisRequest(analyzeReq, seq)) return
     Object.assign(analysis, { ...emptyAnalysis, ...res.data })
+    hasAnalysisResult.value = true
+    analyzeError.value = null
     await nextTick()
     renderCharts()
-  } catch {
-    Object.assign(analysis, emptyAnalysis)
+  } catch (err: any) {
+    if (!isCurrentAnalysisRequest(analyzeReq, seq)) return
+    if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') return
+    analyzeError.value = err?.message || t('nginx.logAnalyzeFailed')
+    if (!hasAnalysisResult.value) {
+      Object.assign(analysis, emptyAnalysis)
+    }
   } finally {
-    analyzing.value = false
+    if (isCurrentAnalysisRequest(analyzeReq, seq)) {
+      analyzing.value = false
+    }
   }
 }
 
@@ -569,17 +604,23 @@ const handleDrilldown = async (filterType: string, filterValue: string) => {
   drilldownURLs.value = []
   drilldownVisible.value = true
   drilldownLoading.value = true
+  const { seq, signal } = beginAnalysisRequest(drillReq)
   try {
     const res = await drilldownNginxLog({
       site: selectedSite.value,
       timeRange: timeRange.value,
       filterType,
       filterValue,
-    })
+    }, signal)
+    if (!isCurrentAnalysisRequest(drillReq, seq)) return
     drilldownIPs.value = res.data?.ips || []
     drilldownURLs.value = res.data?.urls || []
-  } catch { /* empty */ }
-  finally { drilldownLoading.value = false }
+  } catch (err: any) {
+    if (!isCurrentAnalysisRequest(drillReq, seq)) return
+    if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') return
+  } finally {
+    if (isCurrentAnalysisRequest(drillReq, seq)) drilldownLoading.value = false
+  }
 }
 
 const loadAccessLog = async () => {
@@ -607,11 +648,15 @@ watch(subTab, (val) => {
   if (val === 'error' && !errorLogContent.value) loadErrorLog()
 })
 
-const statusColors: Record<string, string> = {
-  '2xx': '#67c23a', '3xx': '#e6a23c', '4xx': '#f56c6c', '5xx': '#909399',
+const statusColors = () => {
+  const t = chartTokens()
+  return t.status
 }
 
-const threatColors = ['#f56c6c', '#e6a23c', '#ff8c6b', '#c45656', '#fab6b6', '#b88230', '#f89898']
+const threatColors = () => {
+  const t = chartTokens()
+  return [t.danger, t.warning, t.accent, t.secondary, t.info, t.success, t.muted]
+}
 
 const renderCharts = () => {
   renderTrendChart()
@@ -640,23 +685,24 @@ const renderTrendChart = () => {
   const reqData = stats.map((s: any) => s.requests)
   const byteData = stats.map((s: any) => +(s.bytes / 1024).toFixed(1))
 
+  const tokens = chartTokens()
   trendChart.setOption({
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, backgroundColor: tokens.tooltipBg, borderColor: 'transparent', textStyle: { color: tokens.tooltipText } },
     grid: { left: 50, right: 50, top: 30, bottom: 30 },
-    xAxis: { type: 'category', data: xData, axisLabel: { fontSize: 11 } },
+    xAxis: { type: 'category', data: xData, axisLabel: { fontSize: 11, color: tokens.muted } },
     yAxis: [
-      { type: 'value', name: t('nginx.requests'), axisLabel: { fontSize: 11 } },
-      { type: 'value', name: 'KB', axisLabel: { fontSize: 11 } },
+      { type: 'value', name: t('nginx.requests'), axisLabel: { fontSize: 11, color: tokens.muted }, splitLine: { lineStyle: { color: tokens.borderLight } } },
+      { type: 'value', name: 'KB', axisLabel: { fontSize: 11, color: tokens.muted }, splitLine: { show: false } },
     ],
     series: [
       {
         name: t('nginx.requests'), type: 'bar', data: reqData,
-        itemStyle: { color: '#409eff', borderRadius: [3, 3, 0, 0] }, barMaxWidth: 20,
+        itemStyle: { color: tokens.accent, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 20,
       },
       {
         name: t('nginx.totalTraffic'), type: 'line', yAxisIndex: 1, data: byteData,
-        smooth: true, lineStyle: { color: '#e6a23c', width: 2 },
-        itemStyle: { color: '#e6a23c' }, areaStyle: { color: 'rgba(230,162,60,0.1)' },
+        smooth: true, lineStyle: { color: tokens.warning, width: 2 },
+        itemStyle: { color: tokens.warning }, areaStyle: { color: colorAlpha(tokens.warning, 0.1) },
       },
     ],
   }, true)
@@ -669,8 +715,10 @@ const renderStatusChart = () => {
   }
 
   const codes = analysis.statusCodes || {}
+  const palette = statusColors()
+  const tokens = chartTokens()
   const data = Object.entries(codes).map(([name, value]) => ({
-    name, value, itemStyle: { color: statusColors[name] || '#909399' },
+    name, value, itemStyle: { color: palette[name] || tokens.muted },
   }))
 
   if (data.length === 0) { statusChart.clear(); return }
@@ -706,12 +754,18 @@ const renderThreatChart = () => {
     yAxis: { type: 'category', data: names.reverse(), axisLabel: { fontSize: 11, width: 90, overflow: 'truncate' } },
     series: [{
       type: 'bar', data: values.reverse(), barMaxWidth: 18, cursor: 'pointer',
-      itemStyle: { borderRadius: [0, 3, 3, 0], color: (params: any) => threatColors[params.dataIndex % threatColors.length] },
+      itemStyle: { borderRadius: [0, 3, 3, 0], color: (params: any) => {
+        const colors = threatColors()
+        return colors[params.dataIndex % colors.length]
+      } },
     }],
   }, true)
 }
 
-const crawlerColors = ['#67c23a', '#409eff', '#e6a23c', '#f56c6c', '#909399', '#b37feb', '#36cfc9', '#ff85c0', '#ffc53d', '#597ef7', '#73d13d', '#ff7a45', '#9254de']
+const crawlerColors = () => {
+  const t = chartTokens()
+  return [...t.series, t.up, t.down, t.muted]
+}
 
 const renderCrawlerChart = () => {
   if (!crawlerChartRef.value) return
@@ -721,9 +775,10 @@ const renderCrawlerChart = () => {
   const crawlers = analysis.topCrawlers || []
   if (crawlers.length === 0) { crawlerChart.clear(); return }
 
+  const palette = crawlerColors()
   const data = crawlers.map((c: any, i: number) => ({
     name: c.name, value: c.count,
-    itemStyle: { color: crawlerColors[i % crawlerColors.length] },
+    itemStyle: { color: palette[i % palette.length] },
   }))
 
   crawlerChart.setOption({
@@ -760,18 +815,23 @@ const formatBytes = (bytes: number) => {
   return b.toFixed(i === 0 ? 0 : 1) + ' ' + units[i]
 }
 
+let stopAppearance: (() => void) | undefined
 onMounted(async () => {
   await loadSites()
   handleAnalyze()
   window.addEventListener('resize', handleResize)
+  stopAppearance = onAppearanceChange(() => renderCharts())
 })
 
 onUnmounted(() => {
+  abortAnalysisRequest(analyzeReq)
+  abortAnalysisRequest(drillReq)
   trendChart?.dispose()
   statusChart?.dispose()
   threatChart?.dispose()
   crawlerChart?.dispose()
   window.removeEventListener('resize', handleResize)
+  stopAppearance?.()
 })
 </script>
 
@@ -795,6 +855,10 @@ onUnmounted(() => {
     float: right;
     font-size: 12px;
     color: var(--xp-text-muted);
+  }
+
+  .overview-loading {
+    min-height: 180px;
   }
 
   .summary-row {

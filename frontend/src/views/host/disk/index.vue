@@ -618,9 +618,12 @@ const handleRemoveFstab = async (row: RemoteMountInfo) => {
 }
 
 const progressColor = (percentage: number) => {
-  if (percentage < 50) return getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#22d3ee'
-  if (percentage < 80) return '#f59e0b'
-  return '#ef4444'
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim()
+  const warning = getComputedStyle(document.documentElement).getPropertyValue('--xp-warning').trim()
+  const danger = getComputedStyle(document.documentElement).getPropertyValue('--xp-danger').trim()
+  if (percentage < 50) return accent || '#7AA2FF'
+  if (percentage < 80) return warning || '#f59e0b'
+  return danger || '#ef4444'
 }
 
 const formatBytes = (bytes?: number) => {

@@ -9,8 +9,8 @@ import (
 )
 
 type HostSystemInfo struct {
-	Hostname string `json:"hostname"`
-	Timezone string `json:"timezone"`
+	Hostname string   `json:"hostname"`
+	Timezone string   `json:"timezone"`
 	DNS      []string `json:"dns"`
 	Swap     SwapInfo `json:"swap"`
 }

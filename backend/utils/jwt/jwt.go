@@ -11,7 +11,8 @@ import (
 
 // Claims 自定义 JWT Claims
 type Claims struct {
-	UserName string `json:"userName"`
+	UserName  string `json:"userName"`
+	SessionID string `json:"sessionId"`
 	jwt.RegisteredClaims
 }
 
@@ -26,11 +27,16 @@ func GenerateToken(userName string) (string, error) {
 
 // GenerateTokenWithTimeout 按指定秒数生成 JWT Token
 func GenerateTokenWithTimeout(userName string, timeout int) (string, error) {
+	return GenerateSessionToken(userName, "", timeout)
+}
+
+func GenerateSessionToken(userName, sessionID string, timeout int) (string, error) {
 	if timeout <= 0 {
 		timeout = constant.DefaultSessionTimeout
 	}
 	claims := Claims{
-		UserName: userName,
+		UserName:  userName,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(timeout) * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -42,17 +48,20 @@ func GenerateTokenWithTimeout(userName string, timeout int) (string, error) {
 	return token.SignedString([]byte(global.CONF.System.JwtSecret))
 }
 
-// ParseToken 解析 JWT Token
 func ParseToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrTokenSignatureInvalid
+		}
 		return []byte(global.CONF.System.JwtSecret), nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-		return claims, nil
+	claims, ok := token.Claims.(*Claims)
+	if !ok || !token.Valid {
+		return nil, jwt.ErrTokenNotValidYet
 	}
-	return nil, jwt.ErrTokenNotValidYet
+	return claims, nil
 }

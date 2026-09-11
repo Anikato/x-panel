@@ -7,16 +7,27 @@ import (
 	v1 "xpanel/app/api/v1"
 	"xpanel/app/version"
 	"xpanel/cmd/server/web"
+	"xpanel/global"
 	"xpanel/middleware"
 	sslutil "xpanel/utils/ssl"
 
 	"github.com/gin-gonic/gin"
 )
 
+func applyTrustedProxies(engine *gin.Engine, proxies []string) error {
+	if len(proxies) == 0 {
+		return engine.SetTrustedProxies(nil)
+	}
+	return engine.SetTrustedProxies(proxies)
+}
+
 // Setup 初始化路由
 func Setup(mode string) *gin.Engine {
 	gin.SetMode(mode)
 	r := gin.New()
+	if err := applyTrustedProxies(r, global.CONF.System.TrustedProxies); err != nil {
+		panic(err)
+	}
 	r.MaxMultipartMemory = 32 << 20 // 32MB: 只缓冲 multipart 元数据，文件流由 handler 自行处理
 
 	r.Use(gin.Recovery())
@@ -62,7 +73,10 @@ func Setup(mode string) *gin.Engine {
 	{
 		// 认证
 		privateGroup.POST("/auth/logout", api.Logout)
+		privateGroup.POST("/auth/logout-others", api.LogoutOthers)
+		privateGroup.POST("/auth/logout-all", api.LogoutAll)
 		privateGroup.POST("/auth/password", api.UpdatePassword)
+		privateGroup.POST("/auth/access-ticket", api.IssueAccessTicket)
 
 		// 通知中心
 		privateGroup.GET("/notifications/summary", api.GetNotificationSummary)

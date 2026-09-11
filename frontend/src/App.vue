@@ -11,11 +11,10 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useGlobalStore } from '@/store/modules/global'
-import type { ThemeMode } from '@/store/modules/global'
-import { applyAccentPalette, getPresetByKey, generatePaletteFromHex } from '@/utils/accent-colors'
-import { applyAppearance } from '@/utils/appearance'
+import { useAppearanceStore } from '@/store/modules/appearance'
 
 const globalStore = useGlobalStore()
+const appearanceStore = useAppearanceStore()
 const route = useRoute()
 const { t } = useI18n()
 
@@ -26,83 +25,15 @@ watchEffect(() => {
   document.title = pageTitle ? `${pageTitle} - ${panelName}` : panelName
 })
 
-const applyTheme = (mode: ThemeMode) => {
-  let isDark: boolean
-  if (mode === 'auto') {
-    isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  } else {
-    isDark = mode === 'dark'
-  }
-  document.documentElement.classList.toggle('dark', isDark)
-}
-
-const applyAccent = () => {
-  const key = globalStore.accentKey
-  if (key === 'custom' && globalStore.accentCustom) {
-    applyAccentPalette(generatePaletteFromHex(globalStore.accentCustom))
-  } else {
-    const preset = getPresetByKey(key)
-    if (preset) applyAccentPalette(preset)
-  }
-}
-
-const applyAllAppearance = () => {
-  applyAppearance({
-    bgPreset: globalStore.bgPreset,
-    uiFont: globalStore.uiFont,
-    uiDensity: globalStore.uiDensity,
-    borderRadiusPreset: globalStore.borderRadiusPreset,
-    reduceMotion: globalStore.reduceMotion,
-    cardBorderStyle: globalStore.cardBorderStyle,
-    sidebarWidth: globalStore.sidebarWidth,
-    accentKey: globalStore.accentKey,
-    accentCustom: globalStore.accentCustom,
-  })
-}
-
-watch(() => globalStore.theme, (mode) => applyTheme(mode))
-watch(() => globalStore.accentKey, () => { applyAccent(); applyAllAppearance() })
-watch(() => globalStore.accentCustom, () => { applyAccent(); applyAllAppearance() })
-
-const allAppearanceKeys = [
-  () => globalStore.bgPreset,
-  () => globalStore.uiFont,
-  () => globalStore.uiDensity,
-  () => globalStore.borderRadiusPreset,
-  () => globalStore.reduceMotion,
-  () => globalStore.cardBorderStyle,
-  () => globalStore.sidebarWidth,
-  () => globalStore.termTheme,
-  () => globalStore.termFont,
-  () => globalStore.termFontSize,
-  () => globalStore.termBgOpacity,
-  () => globalStore.theme,
-  () => globalStore.accentKey,
-  () => globalStore.accentCustom,
-  () => globalStore.showServerClock,
-  () => globalStore.dashboardRefreshInterval,
-] as const
-
-let syncTimer: ReturnType<typeof setTimeout> | null = null
-const debouncedSync = () => {
-  if (syncTimer) clearTimeout(syncTimer)
-  syncTimer = setTimeout(() => { globalStore.syncAppearanceToBackend() }, 1500)
-}
-
-for (const getter of allAppearanceKeys) {
-  watch(getter, () => {
-    applyAllAppearance()
-    debouncedSync()
-  })
-}
-
 const router = useRouter()
 const routeLoading = ref(false)
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
 let routeLoadingResetTimer: ReturnType<typeof setTimeout> | null = null
 let colorSchemeQuery: MediaQueryList | null = null
-const handleColorSchemeChange = () => {
-  if (globalStore.theme === 'auto') applyTheme('auto')
+let motionQuery: MediaQueryList | null = null
+
+const handleEnvChange = () => {
+  appearanceStore.applyCurrent()
 }
 
 router.beforeEach((_to, _from, next) => {
@@ -119,22 +50,25 @@ router.afterEach(() => {
   routeLoadingResetTimer = setTimeout(() => { routeLoading.value = false }, 150)
 })
 
-onMounted(async () => {
-  applyTheme(globalStore.theme)
-  applyAccent()
-  applyAllAppearance()
+watch(() => appearanceStore.preference, () => {
+  appearanceStore.applyCurrent()
+}, { deep: true })
 
+onMounted(async () => {
+  appearanceStore.applyCurrent()
   globalStore.loadPanelNameFromBackend()
 
   colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  colorSchemeQuery.addEventListener('change', handleColorSchemeChange)
+  motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  colorSchemeQuery.addEventListener('change', handleEnvChange)
+  motionQuery.addEventListener('change', handleEnvChange)
 })
 
 onUnmounted(() => {
   if (loadingTimer) clearTimeout(loadingTimer)
   if (routeLoadingResetTimer) clearTimeout(routeLoadingResetTimer)
-  if (syncTimer) clearTimeout(syncTimer)
-  colorSchemeQuery?.removeEventListener('change', handleColorSchemeChange)
+  colorSchemeQuery?.removeEventListener('change', handleEnvChange)
+  motionQuery?.removeEventListener('change', handleEnvChange)
 })
 </script>
 
@@ -145,13 +79,14 @@ onUnmounted(() => {
   left: 0;
   height: 2px;
   width: 100%;
-  background: var(--xp-accent, #41FB44);
+  background: var(--xp-accent, #7AA2FF);
   z-index: 99999;
   pointer-events: none;
   transform-origin: left;
   transform: scaleX(0);
   opacity: 0;
-  transition: transform 0.3s ease, opacity 0.2s ease 0.15s;
+  transition: transform var(--xp-motion-menu, 140ms) var(--xp-motion-ease, cubic-bezier(0.2, 0, 0, 1)),
+    opacity var(--xp-motion-hover, 100ms) var(--xp-motion-ease, cubic-bezier(0.2, 0, 0, 1));
 }
 .route-loading-bar.active {
   opacity: 1;

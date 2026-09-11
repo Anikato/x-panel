@@ -571,6 +571,38 @@ func EnsureNginxInclude() error {
 	return insertNginxInclude(mainConf, content, "include conf.d/*.conf;")
 }
 
+const limitConnZoneLine = "limit_conn_zone $binary_remote_addr zone=perip:10m;"
+
+func EnsureLimitConnZone() error {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return fmt.Errorf("nginx not installed")
+	}
+	mainConf := nc.GetMainConf()
+	data, err := os.ReadFile(mainConf)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	if hasPeripLimitConnZone(content) {
+		return nil
+	}
+	return insertNginxInclude(mainConf, content, limitConnZoneLine)
+}
+
+func hasPeripLimitConnZone(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(trimmed, "limit_conn_zone") && strings.Contains(trimmed, "zone=perip:") {
+			return true
+		}
+	}
+	return false
+}
+
 func insertNginxInclude(mainConf, content, includeLine string) error {
 	httpIdx := strings.Index(content, "http {")
 	if httpIdx < 0 {

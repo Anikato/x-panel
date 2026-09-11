@@ -16,10 +16,10 @@ import (
 )
 
 type SSHKeyInfo struct {
-	Name       string `json:"name"`
-	PublicKey  string `json:"publicKey"`
-	KeyType    string `json:"keyType"`
-	Bits       int    `json:"bits"`
+	Name        string `json:"name"`
+	PublicKey   string `json:"publicKey"`
+	KeyType     string `json:"keyType"`
+	Bits        int    `json:"bits"`
 	Fingerprint string `json:"fingerprint"`
 }
 
@@ -142,7 +142,7 @@ func (s *SSHKeyService) Generate(req SSHKeyCreate) (*SSHKeyInfo, string, error) 
 
 	info := &SSHKeyInfo{
 		Name:        req.Name,
-		PublicKey:    strings.TrimSpace(string(pubBytes)),
+		PublicKey:   strings.TrimSpace(string(pubBytes)),
 		KeyType:     pubKey.Type(),
 		Bits:        bits,
 		Fingerprint: ssh.FingerprintSHA256(pubKey),

@@ -28,19 +28,19 @@
         </el-button>
       </div>
 
-      <div ref="terminalRef" class="terminal-surface" @click="focusTerminal" />
+      <div ref="terminalRef" class="terminal-surface xp-term-stage" @click="focusTerminal" />
     </div>
   </el-drawer>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, onBeforeUnmount } from 'vue'
+import { computed, nextTick, reactive, ref, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { Container } from '@/api/interface'
-import { getToken } from '@/utils/auth'
+import { issueAccessTicket } from '@/api/modules/auth'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { useGlobalStore } from '@/store/modules/global'
 
@@ -88,6 +88,7 @@ const initTerminal = () => {
     theme: applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity),
     scrollback: 5000,
     allowProposedApi: true,
+    allowTransparency: true,
   })
 
   fitAddon = new FitAddon()
@@ -119,7 +120,7 @@ const connect = async () => {
   terminal?.clear()
   terminal?.write(`\x1b[36m${t('container.connecting')}\x1b[0m\r\n`)
 
-  ws = new WebSocket(buildWsURL())
+  ws = new WebSocket(await buildWsURL())
   ws.binaryType = 'arraybuffer'
 
   ws.onopen = () => {
@@ -154,10 +155,11 @@ const connect = async () => {
   terminalListeners.push(terminal!.onResize(() => sendResize()))
 }
 
-const buildWsURL = () => {
+const buildWsURL = async () => {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const res = await issueAccessTicket({ scope: 'terminal' })
   const params = new URLSearchParams({
-    token: getToken(),
+    ticket: res.data.ticket,
     containerID: container.value?.id || '',
     command: form.command || '/bin/sh',
   })
@@ -200,6 +202,17 @@ const cleanup = () => {
   terminal = null
   fitAddon = null
 }
+
+watch(
+  () => [globalStore.termTheme, globalStore.termBgOpacity, globalStore.termFont, globalStore.termFontSize] as const,
+  () => {
+    if (!terminal) return
+    terminal.options.theme = applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity)
+    terminal.options.fontFamily = getTermFontByKey(globalStore.termFont)
+    terminal.options.fontSize = globalStore.termFontSize
+    try { fitAddon?.fit() } catch { /* ignore */ }
+  },
+)
 
 onBeforeUnmount(() => cleanup())
 
@@ -244,10 +257,9 @@ defineExpose({ open })
 .terminal-surface {
   flex: 1;
   min-height: 420px;
-  padding: 10px;
+  padding: 0;
   overflow: hidden;
   border-radius: var(--xp-radius);
   border: 1px solid var(--xp-border);
-  background: var(--xp-terminal-bg);
 }
 </style>

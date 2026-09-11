@@ -1,30 +1,6 @@
 <template>
   <div>
-    <el-tabs v-model="activeTab">
-      <el-tab-pane :label="t('backup.accounts')" name="accounts">
-        <div class="app-toolbar">
-          <el-button type="primary" @click="openCreateAccount">{{ t('backup.addAccount') }}</el-button>
-        </div>
-        <el-table :data="accounts" v-loading="accountLoading">
-          <el-table-column prop="name" :label="t('commons.name')" min-width="140" />
-          <el-table-column :label="t('backup.type')" width="120">
-            <template #default="{ row }">
-              <el-tag :type="typeTagMap[row.type]" size="small" effect="plain">{{ typeLabel(row.type) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="backupPath" :label="t('backup.path')" min-width="240" show-overflow-tooltip />
-          <el-table-column :label="t('backup.endpoint')" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">{{ getVarField(row.vars, 'endpoint') || '-' }}</template>
-          </el-table-column>
-          <el-table-column :label="t('commons.actions')" width="180" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openEditAccount(row)">{{ t('commons.edit') }}</el-button>
-              <el-button link type="danger" @click="handleDeleteAccount(row)">{{ t('commons.delete') }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-
+    <el-tabs v-model="activeTab" class="backup-tabs backup-tabs--chrome-hidden">
       <el-tab-pane :label="t('backup.records')" name="records">
         <div class="app-toolbar">
           <el-button type="primary" @click="backupDialog = true">{{ t('backup.createBackup') }}</el-button>
@@ -69,6 +45,30 @@
         <div class="app-pagination">
           <el-pagination v-model:current-page="recordPager.page" v-model:page-size="recordPager.pageSize" :total="recordPager.total" layout="total, prev, pager, next" @current-change="loadRecords" />
         </div>
+      </el-tab-pane>
+
+      <el-tab-pane :label="t('backup.accounts')" name="accounts">
+        <div class="app-toolbar">
+          <el-button type="primary" @click="openCreateAccount">{{ t('backup.addAccount') }}</el-button>
+        </div>
+        <el-table :data="accounts" v-loading="accountLoading">
+          <el-table-column prop="name" :label="t('commons.name')" min-width="140" />
+          <el-table-column :label="t('backup.type')" width="120">
+            <template #default="{ row }">
+              <el-tag :type="typeTagMap[row.type]" size="small" effect="plain">{{ typeLabel(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="backupPath" :label="t('backup.path')" min-width="240" show-overflow-tooltip />
+          <el-table-column :label="t('backup.endpoint')" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ getVarField(row.vars, 'endpoint') || '-' }}</template>
+          </el-table-column>
+          <el-table-column :label="t('commons.actions')" width="180" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEditAccount(row)">{{ t('commons.edit') }}</el-button>
+              <el-button link type="danger" @click="handleDeleteAccount(row)">{{ t('commons.delete') }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
       </el-tab-pane>
 
       <el-tab-pane label="对象文件" name="storage">
@@ -280,6 +280,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { FolderOpened, Cloudy, Connection, Share, Monitor, Coin } from '@element-plus/icons-vue'
@@ -295,7 +296,15 @@ import type { BackupStorageObject } from '@/api/modules/backup'
 import { listRemoteMounts } from '@/api/modules/disk'
 
 const { t } = useI18n()
-const activeTab = ref('accounts')
+const route = useRoute()
+const router = useRouter()
+const allowedTabs = ['records', 'accounts', 'storage']
+const activeTab = ref('records')
+
+const tabFromQuery = () => {
+  const tab = typeof route.query.tab === 'string' ? route.query.tab : 'records'
+  return allowedTabs.includes(tab) ? tab : 'records'
+}
 
 const typeTagMap: Record<string, string> = { local: 'success', s3: '', sftp: 'warning', webdav: 'info' }
 const typeLabel = (type: string) => {
@@ -574,12 +583,29 @@ const handleStorageDelete = async (row: BackupStorageObject) => {
 watch(activeTab, (tab) => {
   if (tab === 'records') loadRecords()
   if (tab === 'storage') loadStorageObjects()
+  if (route.query.tab !== tab) {
+    router.replace({ query: { ...route.query, tab } })
+  }
 })
 
-onMounted(() => loadAccounts())
+watch(() => route.query.tab, () => {
+  const tab = tabFromQuery()
+  if (activeTab.value !== tab) activeTab.value = tab
+})
+
+onMounted(() => {
+  activeTab.value = tabFromQuery()
+  loadAccounts()
+  if (activeTab.value === 'records') loadRecords()
+  if (activeTab.value === 'storage') loadStorageObjects()
+})
 </script>
 
 <style lang="scss" scoped>
+.backup-tabs--chrome-hidden :deep(.el-tabs__header) {
+  display: none;
+}
+
 .drawer-form {
   :deep(.el-form-item__label) {
     font-weight: 500;

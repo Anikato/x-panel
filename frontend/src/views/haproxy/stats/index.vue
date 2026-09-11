@@ -213,7 +213,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   h3 { margin: 0; }
 }
 .metric-card {
-  .metric-label { color: #909399; font-size: 13px; }
-  .metric-value { font-size: 24px; font-weight: 600; margin-top: 8px; color: #303133; }
+  .metric-label { color: var(--xp-text-muted); font-size: 13px; }
+  .metric-value { font-size: 24px; font-weight: 600; margin-top: 8px; color: var(--xp-text-primary); }
 }
 </style>

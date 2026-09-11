@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "id": "atelier",
+  "name": "工坊",
+  "version": "1.0.0",
+  "modes": {
+    "dark": {
+      "colors": {
+        "bgBase": "#111318",
+        "bgSurface": "#191C23",
+        "bgElevated": "#222630",
+        "textPrimary": "#EEF0F4",
+        "textSecondary": "#A4ADBC"
+      },
+      "accentKey": "steel",
+      "terminalTheme": "default",
+      "editorTheme": "vs-dark"
+    },
+    "light": {
+      "colors": {
+        "bgBase": "#F5F6F8",
+        "bgSurface": "#FFFFFF",
+        "textPrimary": "#1D2433",
+        "textSecondary": "#596579"
+      },
+      "accentKey": "steel",
+      "terminalTheme": "paper",
+      "editorTheme": "vs"
+    }
+  },
+  "defaults": {
+    "mode": "dark",
+    "density": "default",
+    "uiFont": "system",
+    "sidebarWidth": "default",
+    "headerHeight": "default",
+    "radius": "default",
+    "reduceMotion": false,
+    "transparency": false,
+    "iconSet": "outline"
+  },
+  "tokens": {
+    "densities": {
+      "compact": { "controlHeight": "32px", "rowHeight": "36px" },
+      "default": { "controlHeight": "36px", "rowHeight": "44px" },
+      "comfortable": { "controlHeight": "40px", "rowHeight": "52px" }
+    }
+  },
+  "variants": {
+    "sidebar": "marker",
+    "subnav": "line",
+    "card": "outline",
+    "iconContainer": "none"
+  },
+  "iconSet": "outline",
+  "terminal": { "dark": "default", "light": "paper" },
+  "editor": { "dark": "vs-dark", "light": "vs" }
+}

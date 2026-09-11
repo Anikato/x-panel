@@ -281,7 +281,7 @@ onMounted(() => search())
 }
 .hop-block {
   background: var(--el-fill-color-lighter);
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   padding: 12px 16px;
   margin-bottom: 12px;
   .hop-header {

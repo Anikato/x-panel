@@ -78,7 +78,7 @@ function formatEta(remainingBytes: number, speed: number): string {
   width: 380px;
   background: var(--xp-bg-card);
   border: 1px solid var(--xp-border);
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
   z-index: 2048;
   overflow: hidden;

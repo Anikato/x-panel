@@ -7,6 +7,8 @@ build/
 backend/xpanel
 backend/cmd/server/web/assets/*
 !backend/cmd/server/web/assets/index.html
+artifacts/
+backend/app/service/nginx-backups/
 
 # Backend data (local dev)
 backend/data/
@@ -35,6 +37,7 @@ backend/data/
 
 # Docs（默认忽略；仅追踪工作日志与版本发版说明）
 docs/*
+!docs/ui-design-system.md
 !docs/worklog.md
 !docs/versioning.md
 !docs/nezha-agent.md

@@ -34,3 +34,7 @@ export const logout = () => {
 export const updatePassword = (data: { oldPassword: string; newPassword: string }) => {
   return http.post('/auth/password', data)
 }
+
+export const issueAccessTicket = (data: { scope: 'download' | 'terminal'; path?: string }) => {
+  return http.post<{ ticket: string }>('/auth/access-ticket', data)
+}

@@ -6,21 +6,21 @@ test('builds a local terminal websocket URL with cwd', () => {
   const url = buildTerminalWsUrl({
     protocol: 'https:',
     host: 'panel.example',
-    token: 'token value',
+    ticket: 'ticket-value',
     cwd: '/etc/apparmor.d',
   })
 
-  assert.equal(url, 'wss://panel.example/api/v1/terminal?token=token+value&cwd=%2Fetc%2Fapparmor.d')
+  assert.equal(url, 'wss://panel.example/api/v1/terminal?ticket=ticket-value&cwd=%2Fetc%2Fapparmor.d')
 })
 
 test('does not attach cwd to remote host terminal URLs', () => {
   const url = buildTerminalWsUrl({
     protocol: 'http:',
     host: 'panel.example',
-    token: 'token',
+    ticket: 'ticket',
     hostId: 12,
     cwd: '/etc/app',
   })
 
-  assert.equal(url, 'ws://panel.example/api/v1/terminal?token=token&id=12')
+  assert.equal(url, 'ws://panel.example/api/v1/terminal?ticket=ticket&id=12')
 })

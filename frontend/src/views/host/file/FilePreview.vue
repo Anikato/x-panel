@@ -108,7 +108,7 @@ const dialogWidth = computed(() => {
   return '60%'
 })
 
-const previewUrl = computed(() => getDownloadUrl(filePath.value))
+const previewUrl = ref('')
 
 // Excel state
 const sheetNames = ref<string[]>([])
@@ -127,6 +127,7 @@ const acceptParams = async (row: { name: string; path?: string }) => {
   sheetColumns.value = []
   workbookSheets = {}
   open.value = true
+  previewUrl.value = filePath.value ? await getDownloadUrl(filePath.value) : ''
 
   if (fileType.value === 'excel') {
     await loadExcel()
@@ -138,7 +139,7 @@ const loadExcel = async () => {
   try {
     const [{ read, utils }, resp] = await Promise.all([
       import('xlsx'),
-      fetch(getDownloadUrl(filePath.value)),
+      fetch(previewUrl.value || await getDownloadUrl(filePath.value)),
     ])
     const buf = await resp.arrayBuffer()
     const wb = read(buf, { type: 'array' })
@@ -187,8 +188,9 @@ const onSheetChange = (name: string | number) => {
   applySheet(String(name))
 }
 
-const handleDownload = () => {
-  window.open(previewUrl.value, '_blank')
+const handleDownload = async () => {
+  const url = previewUrl.value || await getDownloadUrl(filePath.value)
+  window.open(url, '_blank')
 }
 
 defineExpose({ acceptParams, isPreviewable })
@@ -205,14 +207,14 @@ defineExpose({ acceptParams, isPreviewable })
 .preview-image {
   max-width: 100%;
   max-height: 70vh;
-  border-radius: 4px;
+  border-radius: var(--xp-radius-sm);
 }
 
 .preview-video {
   max-width: 100%;
   max-height: 70vh;
-  border-radius: 4px;
-  background: #000;
+  border-radius: var(--xp-radius-sm);
+  background: var(--xp-bg-base);
 }
 
 .audio-wrapper {
@@ -237,7 +239,7 @@ defineExpose({ acceptParams, isPreviewable })
   width: 100%;
   height: 75vh;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--xp-radius-sm);
 }
 
 .excel-wrapper {

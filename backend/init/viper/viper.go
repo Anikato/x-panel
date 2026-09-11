@@ -16,15 +16,14 @@ func Init() {
 	v := viper.New()
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
-	v.AddConfigPath("./configs")
-	v.AddConfigPath("/opt/xpanel/conf")
-	v.AddConfigPath(".")
+	execDir := ""
 	if execPath, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
 			execPath = resolved
 		}
-		v.AddConfigPath(filepath.Dir(execPath))
+		execDir = filepath.Dir(execPath)
 	}
+	addConfigSearchPaths(v, execDir)
 
 	// 设置默认值
 	v.SetDefault("system.port", "7777")
@@ -47,9 +46,9 @@ func Init() {
 	v.SetDefault("nginx.mode", "auto")
 
 	if err := v.ReadInConfig(); err != nil {
-		fmt.Printf("Using default config, config file not found: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Using default config, config file not found: %v\n", err)
 	} else {
-		fmt.Printf("Using config file: %s\n", v.ConfigFileUsed())
+		fmt.Fprintf(os.Stderr, "Using config file: %s\n", v.ConfigFileUsed())
 	}
 
 	var conf global.ServerConfig
@@ -71,6 +70,17 @@ func Init() {
 
 	global.CONF = conf
 	global.Vp = v
+}
+
+func addConfigSearchPaths(v *viper.Viper, execDir string) {
+	// Agent Exec 的 cwd 是 /opt/xpanel/nezha-agent，那里也有 config.yml。
+	// 可执行文件目录必须排在 cwd 前面，否则 invoke 会读到 Agent 配置。
+	if execDir != "" {
+		v.AddConfigPath(execDir)
+	}
+	v.AddConfigPath("/opt/xpanel/conf")
+	v.AddConfigPath("./configs")
+	v.AddConfigPath(".")
 }
 
 func resolveCredentialKeyPath(dataDir, configured string) string {

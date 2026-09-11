@@ -249,7 +249,7 @@ defineExpose({ openCompress, openDecompress })
   max-height: 180px;
   overflow: auto;
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
+  border-radius: var(--xp-radius-sm);
   padding: 8px;
 }
 .archive-preview-count {

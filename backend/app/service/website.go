@@ -186,7 +186,6 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 			return buserr.New(constant.ErrWebsiteDomainExist)
 		}
 		site.PrimaryDomain = req.PrimaryDomain
-		site.Alias = domainToAlias(req.PrimaryDomain)
 	}
 
 	site.Domains = req.Domains
@@ -234,16 +233,23 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 		site.BasicUser = ""
 	}
 
-	if err := s.websiteRepo.Save(&site); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	var rollback func() error
+	if site.Status == "running" && site.ConfigMode != "source" {
+		var applyErr error
+		rollback, applyErr = s.applyConfigWithRollback(site)
+		if applyErr != nil {
+			global.LOG.Warnf("Auto apply config failed for %s: %v", site.PrimaryDomain, applyErr)
+			return buserr.WithDetail(constant.ErrWebsiteApplyConfig, applyErr.Error(), applyErr)
+		}
 	}
 
-	// 如果网站是运行中的且为托管模式，自动重新生成配置并 reload
-	if site.Status == "running" && site.ConfigMode != "source" {
-		if err := s.applyConfig(site); err != nil {
-			global.LOG.Warnf("Auto apply config failed for %s: %v", site.PrimaryDomain, err)
-			return buserr.WithDetail(constant.ErrWebsiteApplyConfig, err.Error(), err)
+	if err := s.websiteRepo.Save(&site); err != nil {
+		if rollback != nil {
+			if rbErr := rollback(); rbErr != nil {
+				global.LOG.Errorf("Rollback website config after save failure: %v", rbErr)
+			}
 		}
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
 	return nil
@@ -818,7 +824,11 @@ func (s *WebsiteService) SaveMainConf(content string) error {
 	}
 	mainConf := nc.GetMainConf()
 
-	backup, _ := os.ReadFile(mainConf)
+	backup, readErr := os.ReadFile(mainConf)
+	existed := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return readErr
+	}
 	_ = s.createConfigBackup(mainConf)
 
 	if err := os.WriteFile(mainConf, []byte(content), 0644); err != nil {
@@ -826,7 +836,11 @@ func (s *WebsiteService) SaveMainConf(content string) error {
 	}
 
 	if err := s.testNginxConfig(); err != nil {
-		os.WriteFile(mainConf, backup, 0644)
+		if existed {
+			_ = os.WriteFile(mainConf, backup, 0644)
+		} else {
+			_ = os.Remove(mainConf)
+		}
 		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
 	}
 
@@ -1186,76 +1200,96 @@ func (s *WebsiteService) GetLogAlerts(req dto.WebsiteLogAlertReq) ([]dto.Website
 // --- 内部方法 ---
 
 func (s *WebsiteService) applyConfig(site model.Website) error {
+	_, err := s.applyConfigWithRollback(site)
+	return err
+}
+
+func (s *WebsiteService) applyConfigWithRollback(site model.Website) (func() error, error) {
+	if site.LimitConn > 0 {
+		if err := EnsureLimitConnZone(); err != nil {
+			return nil, err
+		}
+	}
 	gen := NewNginxConfigGenerator()
 	config, err := gen.Generate(site)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	nc := global.CONF.Nginx
-
-	// System mode: write to sites-available and symlink to sites-enabled
+	var confPath, enabledPath string
 	if nc.IsSystemMode() {
 		availDir := nc.GetSitesAvailableDir()
 		enabledDir := nc.GetSitesDir()
 		os.MkdirAll(availDir, 0755)
 		os.MkdirAll(enabledDir, 0755)
-
-		availPath := filepath.Join(availDir, site.Alias+".conf")
-		enabledPath := filepath.Join(enabledDir, site.Alias+".conf")
-		backup, _ := os.ReadFile(availPath)
-		_ = s.createConfigBackup(availPath)
-
-		if err := os.WriteFile(availPath, []byte(config), 0644); err != nil {
-			return fmt.Errorf("write config failed: %v", err)
-		}
-
-		// Create symlink if not exists
-		if _, err := os.Lstat(enabledPath); os.IsNotExist(err) {
-			os.Symlink(availPath, enabledPath)
-		}
-
-		if site.BasicAuth && site.BasicUser != "" && site.BasicPassword != "" {
-			s.writeHtpasswd(site)
-		}
-
-		if err := s.testNginxConfig(); err != nil {
-			if backup != nil {
-				os.WriteFile(availPath, backup, 0644)
-			} else {
-				os.Remove(enabledPath)
-				os.Remove(availPath)
-			}
-			return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
-		}
-
-		return s.reloadNginx()
+		confPath = filepath.Join(availDir, site.Alias+".conf")
+		enabledPath = filepath.Join(enabledDir, site.Alias+".conf")
+	} else {
+		confPath = GetSiteConfPath(site.Alias)
 	}
 
-	// Prefix mode: write to conf.d
-	confPath := GetSiteConfPath(site.Alias)
-	backup, _ := os.ReadFile(confPath)
+	backup, readErr := os.ReadFile(confPath)
+	existed := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return nil, readErr
+	}
+	htpasswdPath := websiteHtpasswdPath(site.Alias)
+	htpasswdBackup, htpasswdReadErr := os.ReadFile(htpasswdPath)
+	htpasswdExisted := htpasswdReadErr == nil
+	if htpasswdReadErr != nil && !os.IsNotExist(htpasswdReadErr) {
+		return nil, htpasswdReadErr
+	}
 	_ = s.createConfigBackup(confPath)
-
 	os.MkdirAll(filepath.Dir(confPath), 0755)
 	if err := os.WriteFile(confPath, []byte(config), 0644); err != nil {
-		return fmt.Errorf("write config failed: %v", err)
+		return nil, fmt.Errorf("write config failed: %v", err)
 	}
-
+	if enabledPath != "" {
+		if _, err := os.Lstat(enabledPath); os.IsNotExist(err) {
+			_ = os.Symlink(confPath, enabledPath)
+		}
+	}
 	if site.BasicAuth && site.BasicUser != "" && site.BasicPassword != "" {
 		s.writeHtpasswd(site)
 	}
 
-	if err := s.testNginxConfig(); err != nil {
-		if backup != nil {
-			os.WriteFile(confPath, backup, 0644)
+	restoreFiles := func() error {
+		if existed {
+			if err := os.WriteFile(confPath, backup, 0644); err != nil {
+				return err
+			}
 		} else {
-			os.Remove(confPath)
+			_ = os.Remove(confPath)
+			if enabledPath != "" {
+				_ = os.Remove(enabledPath)
+			}
 		}
-		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+		if htpasswdExisted {
+			if err := os.WriteFile(htpasswdPath, htpasswdBackup, 0644); err != nil {
+				return err
+			}
+		} else {
+			_ = os.Remove(htpasswdPath)
+		}
+		return nil
+	}
+	rollback := func() error {
+		if err := restoreFiles(); err != nil {
+			return err
+		}
+		return s.reloadNginx()
 	}
 
-	return s.reloadNginx()
+	if err := s.testNginxConfig(); err != nil {
+		_ = restoreFiles()
+		return nil, buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+	}
+	if err := s.reloadNginx(); err != nil {
+		_ = rollback()
+		return nil, err
+	}
+	return rollback, nil
 }
 
 func (s *WebsiteService) removeConfig(site model.Website) {
@@ -1311,10 +1345,13 @@ func (s *WebsiteService) reloadNginx() error {
 	return err
 }
 
+func websiteHtpasswdPath(alias string) string {
+	return filepath.Join(global.CONF.Nginx.GetConfDir(), "auth", alias+".htpasswd")
+}
+
 func (s *WebsiteService) writeHtpasswd(site model.Website) {
-	authDir := filepath.Join(global.CONF.Nginx.GetConfDir(), "auth")
-	os.MkdirAll(authDir, 0755)
-	htpasswdPath := filepath.Join(authDir, site.Alias+".htpasswd")
+	htpasswdPath := websiteHtpasswdPath(site.Alias)
+	os.MkdirAll(filepath.Dir(htpasswdPath), 0755)
 
 	// 使用 openssl 或 htpasswd 生成密码行
 	// 格式: user:{SHA}base64hash 或 user:$apr1$...

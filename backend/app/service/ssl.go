@@ -141,9 +141,9 @@ func (s *CertificateService) Upload(req dto.CertificateUpload) error {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 
-	// 保存到文件系统
 	if err := s.saveCertFiles(cert); err != nil {
-		global.LOG.Warnf("Save cert files failed: %v", err)
+		_ = s.certRepo.Delete(repo.WithByID(cert.ID))
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 	return nil
 }
@@ -244,6 +244,12 @@ func redactCertificateSecret(detail *dto.CertificateDetail, cert model.Certifica
 }
 
 func (s *CertificateService) Apply(id uint) error {
+	release, err := acquireCertificateRenewal(id)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	cert, err := s.certRepo.Get(repo.WithByID(id))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
@@ -386,14 +392,8 @@ func (s *CertificateService) Apply(id uint) error {
 		}
 	}
 
-	// 如果有网站正在使用此证书，自动 reload nginx
-	if global.CONF.Nginx.IsInstalled() {
-		logger.Printf("[信息] 正在重载 Nginx 配置...")
-		if err := reloadNginxGlobal(); err != nil {
-			logger.Printf("[警告] Nginx 重载失败: %v", err)
-		} else {
-			logger.Printf("[成功] Nginx 已重载")
-		}
+	if err := s.activateCertificateConsumers(id, logger); err != nil {
+		return err
 	}
 
 	logger.Printf("[完成] 证书申请流程结束")
@@ -433,6 +433,10 @@ func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) e
 	}
 
 	logger.Printf("[开始] 续签证书: %s", cert.PrimaryDomain)
+	if shouldRetryCertificateActivation(cert) {
+		logger.Printf("[信息] 证书已签发，正在重试服务激活，不再向 CA 申请")
+		return s.activateCertificateConsumers(id, logger)
+	}
 	s.certRepo.Update(id, map[string]interface{}{"status": "applying", "message": ""})
 
 	acme, err := s.acmeRepo.Get(repo.WithByID(cert.AcmeAccountID))
@@ -551,18 +555,39 @@ func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) e
 		return err
 	}
 
-	// 自动 reload nginx 使新证书生效
-	if global.CONF.Nginx.IsInstalled() {
-		logger.Printf("[信息] 正在重载 Nginx 配置...")
-		if err := reloadNginxGlobal(); err != nil {
-			logger.Printf("[警告] Nginx 重载失败: %v", err)
-		} else {
-			logger.Printf("[成功] Nginx 已重载，新证书已生效")
-		}
+	if err := s.activateCertificateConsumers(id, logger); err != nil {
+		return err
 	}
 
 	logger.Printf("[完成] 证书续签流程结束")
 	global.LOG.Infof("Certificate renewed for: %s", cert.PrimaryDomain)
+	return nil
+}
+
+const certificateActivationFailedPrefix = "服务激活失败: "
+
+func shouldRetryCertificateActivation(cert model.Certificate) bool {
+	return cert.Status == "applied" && strings.HasPrefix(cert.Message, certificateActivationFailedPrefix)
+}
+
+func (s *CertificateService) activateCertificateConsumers(id uint, logger *log.Logger) error {
+	if logger != nil {
+		logger.Printf("[信息] 正在刷新证书消费者...")
+	}
+	if err := refreshUpdatedCertificateConsumers([]uint{id}); err != nil {
+		msg := certificateActivationFailedPrefix + err.Error()
+		if logger != nil {
+			logger.Printf("[警告] %s", msg)
+		}
+		_ = s.certRepo.Update(id, map[string]interface{}{"message": msg})
+		return err
+	}
+	if logger != nil {
+		logger.Printf("[成功] 证书消费者已刷新")
+	}
+	_ = global.DB.Model(&model.Certificate{}).
+		Where("id = ? AND message LIKE ?", id, certificateActivationFailedPrefix+"%").
+		Update("message", "").Error
 	return nil
 }
 

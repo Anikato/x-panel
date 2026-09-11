@@ -56,6 +56,12 @@ const routes: RouteRecordRaw[] = [
       ...nodeRoutes,
       ...settingRoutes,
       {
+        path: '/dev/theme',
+        name: 'ThemeGallery',
+        component: () => import('@/views/dev/theme-gallery.vue'),
+        meta: { title: 'setting.themeGallery', requiresAuth: true, hidden: true },
+      },
+      {
         path: '/404',
         name: 'NotFound',
         component: () => import('@/views/error/not-found.vue'),

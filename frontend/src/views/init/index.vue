@@ -2,11 +2,23 @@
   <div class="login-container">
     <div class="login-bg-grid"></div>
     <div class="login-bg-glow"></div>
+    <button
+      type="button"
+      class="login-mode-toggle"
+      :aria-label="isDark ? t('header.themeLight') : t('header.themeDark')"
+      @click="toggleLoginMode"
+    >
+      <el-icon :size="16">
+        <Sunny v-if="isDark" />
+        <Moon v-else />
+      </el-icon>
+      <span>{{ isDark ? t('header.themeLight') : t('header.themeDark') }}</span>
+    </button>
 
     <div class="login-card">
       <div class="login-header">
         <div class="login-logo">
-          <el-icon :size="32"><Monitor /></el-icon>
+          <XPanelLogo />
         </div>
         <h1 class="login-title">X-Panel</h1>
         <p class="login-desc">{{ t('init.desc') }}</p>
@@ -32,9 +44,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { User, Lock } from '@element-plus/icons-vue'
+import { User, Lock, Moon, Sunny } from '@element-plus/icons-vue'
+import XPanelLogo from '@/components/brand/XPanelLogo.vue'
+import { useAppearanceStore } from '@/store/modules/appearance'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { checkIsInit, initUser } from '@/api/modules/auth'
@@ -43,6 +57,11 @@ import { getToken } from '@/utils/auth'
 
 const router = useRouter()
 const { t } = useI18n()
+const appearanceStore = useAppearanceStore()
+const isDark = computed(() => appearanceStore.resolved.colorMode === 'dark')
+const toggleLoginMode = () => {
+  appearanceStore.applyImmediate({ mode: isDark.value ? 'light' : 'dark' })
+}
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 
@@ -93,7 +112,7 @@ const handleInit = async () => {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--xp-bg-auth);
+  background-color: var(--xp-bg-auth);
   overflow: hidden;
 }
 
@@ -113,18 +132,17 @@ const handleInit = async () => {
   inset: 0;
   background:
     radial-gradient(ellipse 40% 50% at 25% 50%, var(--xp-accent-muted) 0%, transparent 70%),
-    radial-gradient(ellipse 40% 50% at 75% 40%, rgba(129, 140, 248, 0.05) 0%, transparent 70%);
+    radial-gradient(ellipse 40% 50% at 75% 40%, var(--xp-accent-muted) 0%, transparent 70%);
 }
 
 .login-card {
   position: relative;
   width: 440px;
   padding: 40px 36px;
-  background: rgba(17, 24, 39, 0.7);
-  backdrop-filter: blur(24px);
-  border: 1px solid var(--xp-accent-muted);
-  border-radius: 20px;
-  box-shadow: var(--xp-accent-glow), 0 24px 48px rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--xp-bg-surface) 88%, transparent);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-lg);
+  box-shadow: var(--xp-shadow-overlay);
 }
 
 .login-header {
@@ -132,16 +150,16 @@ const handleInit = async () => {
   margin-bottom: 28px;
 
   .login-logo {
-    width: 56px;
-    height: 56px;
+    width: 64px;
+    height: 64px;
     margin: 0 auto 16px;
+    padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--xp-accent-muted), rgba(129, 140, 248, 0.15));
-    border: 1px solid var(--xp-accent-muted);
-    border-radius: 16px;
-    color: var(--xp-accent);
+    background: var(--xp-accent-muted);
+    border: 1px solid var(--xp-border);
+    border-radius: var(--xp-radius-sm);
   }
 
   .login-title {
@@ -163,13 +181,36 @@ const handleInit = async () => {
   height: 44px;
   font-size: 15px;
   font-weight: 600;
-  border-radius: var(--xp-radius);
+  border-radius: var(--xp-radius-sm);
   background: var(--xp-btn-primary-gradient);
   border: none;
 }
 
+.login-mode-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  color: var(--xp-text-primary);
+  font-size: 13px;
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--xp-accent);
+    color: var(--xp-accent);
+  }
+}
+
 :deep(.el-input__wrapper) {
-  border-radius: var(--xp-radius) !important;
+  border-radius: var(--xp-radius-sm) !important;
   height: 44px;
 }
 

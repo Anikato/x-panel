@@ -584,7 +584,6 @@ func (s *Fail2banService) safeWriteConfig(data []byte) error {
 	return fmt.Errorf("fail2ban 重启后未能正常启动，配置已回滚。请检查配置是否合法：systemctl status fail2ban")
 }
 
-
 func (s *Fail2banService) getBannedIPs(jail string) []string {
 	out, err := exec.Command(f2bClient, "status", jail).CombinedOutput()
 	if err != nil {

@@ -2,6 +2,7 @@
 
 ## 必读文档
 
+- 新增或修改前端页面、导航、组件、图标、动效、样式、外观设置前，必须阅读并遵守 `docs/ui-design-system.md`。新功能必须适配主题，不得另建页面专属视觉规则；尚未迁移的旧代码按该文档渐进治理。
 - 发布或修改 `.github/workflows/release.yml` 前，必须阅读 `RELEASE.md`。
 - 修改 X-Panel、Dashboard 或定制 Agent 的职责边界前，必须阅读 `docs/dashboard-agent-xpanel.md`。
 - `RELEASE.md` 是正式发布操作的唯一权威来源；`docs/superpowers/specs` 和 `docs/superpowers/plans` 只记录历史设计与实施背景。

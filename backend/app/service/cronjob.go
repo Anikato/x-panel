@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"xpanel/app/dto"
@@ -43,6 +44,15 @@ func NewICronjobService() ICronjobService {
 type CronjobService struct {
 	cronjobRepo    repo.ICronjobRepo
 	operateCompose func(dto.ComposeOperate) error
+}
+
+var cronLiveEntries sync.Map
+
+func resetCronLiveEntries() {
+	cronLiveEntries.Range(func(key, _ any) bool {
+		cronLiveEntries.Delete(key)
+		return true
+	})
 }
 
 func (s *CronjobService) Create(req dto.CronjobCreate) error {
@@ -86,18 +96,27 @@ func (s *CronjobService) Update(req dto.CronjobUpdate) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
-	s.removeCronJob(job)
 	fields, updatedJob := buildCronjobUpdate(job, req)
 	if err := s.validateJobConfig(&updatedJob); err != nil {
 		return err
 	}
+	wasEnabled := job.Status == constant.StatusEnable
+	s.removeCronJob(job)
 	if err := s.cronjobRepo.Update(req.ID, fields); err != nil {
+		if wasEnabled {
+			s.restoreCronJob(job)
+		}
 		return err
 	}
-	if job.Status == constant.StatusEnable {
-		updated, _ := s.cronjobRepo.Get(req.ID)
-		if updated != nil {
-			_ = s.addCronJob(updated)
+	if wasEnabled {
+		updated, getErr := s.cronjobRepo.Get(req.ID)
+		if getErr != nil {
+			s.restoreCronJob(job)
+			return getErr
+		}
+		if err := s.addCronJob(updated); err != nil {
+			s.restoreCronJob(job)
+			return err
 		}
 	}
 	return nil
@@ -195,7 +214,10 @@ func (s *CronjobService) UpdateStatus(id uint, status string) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 	if status == constant.StatusEnable {
-		_ = s.addCronJob(job)
+		s.removeCronJob(job)
+		if err := s.addCronJob(job); err != nil {
+			return err
+		}
 	} else {
 		s.removeCronJob(job)
 	}
@@ -249,16 +271,63 @@ func (s *CronjobService) StartAllJobs() {
 }
 
 func (s *CronjobService) addCronJob(job *model.Cronjob) error {
+	entryID, err := s.registerCronJob(job)
+	if err != nil {
+		return err
+	}
+	if err := s.persistCronEntry(job, entryID); err != nil {
+		s.dropLiveCronEntry(job.ID, entryID)
+		return err
+	}
+	return nil
+}
+
+func (s *CronjobService) restoreCronJob(job *model.Cronjob) {
+	entryID, err := s.registerCronJob(job)
+	if err != nil {
+		return
+	}
+	if err := s.persistCronEntry(job, entryID); err != nil && global.LOG != nil {
+		global.LOG.Warnf("cron job %s restored in scheduler but entry_id persist failed: %v", job.Name, err)
+	}
+}
+
+func (s *CronjobService) registerCronJob(job *model.Cronjob) (cron.EntryID, error) {
 	if global.CRON == nil {
-		return nil
+		return 0, nil
 	}
 	entryID, err := global.CRON.AddFunc(job.Spec, func() {
 		s.executeJob(job)
 	})
 	if err != nil {
+		return 0, err
+	}
+	if job.ID != 0 {
+		cronLiveEntries.Store(job.ID, entryID)
+	}
+	return entryID, nil
+}
+
+func (s *CronjobService) persistCronEntry(job *model.Cronjob, entryID cron.EntryID) error {
+	if global.CRON == nil {
+		return nil
+	}
+	if err := s.cronjobRepo.Update(job.ID, map[string]interface{}{"entry_id": int(entryID)}); err != nil {
 		return err
 	}
-	return s.cronjobRepo.Update(job.ID, map[string]interface{}{"entry_id": int(entryID)})
+	job.EntryID = int(entryID)
+	return nil
+}
+
+func (s *CronjobService) dropLiveCronEntry(jobID uint, entryID cron.EntryID) {
+	if global.CRON != nil {
+		global.CRON.Remove(entryID)
+	}
+	if jobID != 0 {
+		if live, ok := cronLiveEntries.Load(jobID); ok && live.(cron.EntryID) == entryID {
+			cronLiveEntries.Delete(jobID)
+		}
+	}
 }
 
 func (s *CronjobService) validateJobConfig(job *model.Cronjob) error {
@@ -306,7 +375,14 @@ func (s *CronjobService) validateJobConfig(job *model.Cronjob) error {
 }
 
 func (s *CronjobService) removeCronJob(job *model.Cronjob) {
-	if global.CRON != nil && job.EntryID > 0 {
+	if global.CRON == nil {
+		return
+	}
+	if live, ok := cronLiveEntries.LoadAndDelete(job.ID); ok {
+		global.CRON.Remove(live.(cron.EntryID))
+		return
+	}
+	if job.EntryID > 0 {
 		global.CRON.Remove(cron.EntryID(job.EntryID))
 	}
 }

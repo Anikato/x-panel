@@ -72,8 +72,36 @@ export const switchConfigMode = (id: number, mode: string) => {
 }
 
 // --- 日志分析 ---
-export const analyzeNginxLog = (siteId: number, days: number) => {
-  return http.post('/websites/log-analysis', { siteId, days })
+export type NginxLogFileIssue = {
+  path: string
+  reason: string
+}
+
+export type NginxLogAnalysisMeta = {
+  requestedFrom: string
+  requestedTo: string
+  observedFrom?: string
+  observedTo?: string
+  generatedAt: string
+  scannedBytes: number
+  scannedLines: number
+  matchedLines: number
+  invalidLines: number
+  partial: boolean
+  reasons?: string[]
+  filesTotal: number
+  filesSucceeded: number
+  filesFailed: number
+  failedFiles?: NginxLogFileIssue[]
+  skippedFiles?: NginxLogFileIssue[]
+  sourceScope: string
+  cacheHit: boolean
+  recalculated?: boolean
+  sharedLog?: boolean
+}
+
+export const analyzeNginxLog = (siteId: number, days: number, refresh = false, signal?: AbortSignal) => {
+  return http.post('/websites/log-analysis', { siteId, days, refresh }, signal ? { signal } : undefined)
 }
 
 export const checkWebsiteHealth = (id: number) => {
@@ -97,16 +125,16 @@ export const detectNginxSites = () => {
   return http.get('/nginx/log/sites')
 }
 
-export const analyzeNginxSiteLog = (params: { site: string; timeRange: string }) => {
-  return http.post('/nginx/log/analyze', params)
+export const analyzeNginxSiteLog = (params: { site: string; timeRange: string; refresh?: boolean }, signal?: AbortSignal) => {
+  return http.post('/nginx/log/analyze', params, signal ? { signal } : undefined)
 }
 
 export const tailNginxLog = (params: { site: string; type: string; lines: number }) => {
   return http.post('/nginx/log/tail', params)
 }
 
-export const drilldownNginxLog = (params: { site: string; timeRange: string; filterType: string; filterValue: string }) => {
-  return http.post('/nginx/log/drilldown', params)
+export const drilldownNginxLog = (params: { site: string; timeRange: string; filterType: string; filterValue: string }, signal?: AbortSignal) => {
+  return http.post('/nginx/log/drilldown', params, signal ? { signal } : undefined)
 }
 
 // --- Nginx 配置文件管理 ---

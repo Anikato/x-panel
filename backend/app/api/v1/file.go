@@ -135,16 +135,14 @@ func (a *FileAPI) MoveFile(c *gin.Context) {
 	}
 	svc := service.NewIFileService()
 
-	// 判断是否可以瞬时完成（同分区单文件 rename）
+	// 单文件移动走服务层（含冲突策略与同对象检查），同分区仍是瞬时完成。
 	if !req.IsCopy && len(req.SrcPaths) == 1 {
-		srcClean := filepath.Clean(req.SrcPaths[0])
-		dstClean := filepath.Join(filepath.Clean(req.DstPath), filepath.Base(srcClean))
-		if err := os.Rename(srcClean, dstClean); err == nil {
-			// 同分区 rename：瞬时完成，直接返回成功
-			helper.SuccessWithOutData(c)
+		if err := svc.Move(req); err != nil {
+			helper.HandleError(c, err)
 			return
 		}
-		// rename 失败（跨设备等原因）→ 走异步任务
+		helper.SuccessWithOutData(c)
+		return
 	}
 
 	// 其余情况（多文件、跨分区、复制）→ 异步执行（带进度）

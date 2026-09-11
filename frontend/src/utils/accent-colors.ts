@@ -15,6 +15,16 @@ export interface AccentPalette {
 
 export const ACCENT_PRESETS: AccentPalette[] = [
   {
+    name: '钢蓝',
+    key: 'steel',
+    primary: '#7AA2FF',
+    hover: '#5B86E8',
+    muted: 'rgba(122, 162, 255, 0.16)',
+    glow: '0 0 18px rgba(122, 162, 255, 0.18)',
+    secondary: '#A4B8E8',
+    elPrimaryLevels: ['#9DB8FF', '#7AA2FF', '#5B86E8', '#355FCC', '#2A4CA3'],
+  },
+  {
     name: '青蓝',
     key: 'cyan',
     primary: '#22d3ee',
@@ -115,6 +125,37 @@ function rgbToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')
 }
 
+export function hexLuminance(hex: string): number {
+  const h = hex.replace('#', '')
+  if (h.length < 6) return 0
+  const toLin = (channel: number) => {
+    const s = channel / 255
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  const r = toLin(Number.parseInt(h.slice(0, 2), 16))
+  const g = toLin(Number.parseInt(h.slice(2, 4), 16))
+  const b = toLin(Number.parseInt(h.slice(4, 6), 16))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const l1 = hexLuminance(a)
+  const l2 = hexLuminance(b)
+  const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1]
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+export function ensureContrast(fg: string, bg: string, min = 4.5): string {
+  if (!fg.startsWith('#') || fg.length < 7 || !bg.startsWith('#') || bg.length < 7) return fg
+  if (contrastRatio(fg, bg) >= min) return fg
+  const towards = hexLuminance(bg) > 0.45 ? '#0B0E14' : '#F8FAFC'
+  for (let i = 1; i <= 24; i++) {
+    const mixed = mixColor(fg, towards, 100 - (i / 24) * 100)
+    if (contrastRatio(mixed, bg) >= min) return mixed
+  }
+  return towards
+}
+
 function mixColor(c1: string, c2: string, weight: number): string {
   const [r1, g1, b1] = hexToRgb(c1)
   const [r2, g2, b2] = hexToRgb(c2)
@@ -150,7 +191,9 @@ export function applyAccentPalette(palette: AccentPalette): void {
   const root = document.documentElement
   const [r, g, b] = hexToRgb(palette.primary)
 
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   root.style.setProperty('--xp-accent', palette.primary)
+  root.style.setProperty('--xp-on-accent', luminance > 0.62 ? '#0B0E14' : '#F8FAFC')
   root.style.setProperty('--xp-accent-rgb', `${r}, ${g}, ${b}`)
   root.style.setProperty('--xp-accent-hover', palette.hover)
   root.style.setProperty('--xp-accent-muted', palette.muted)

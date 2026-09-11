@@ -416,40 +416,57 @@ func (s *FileService) MoveWithTracker(req dto.FileMoveReq, tracker *ProgressTrac
 
 	policy := req.ConflictPolicy
 	if policy == "" {
-		if req.Cover {
-			policy = "overwrite"
-		} else {
-			policy = "overwrite"
-		}
+		policy = "overwrite"
 	}
 
 	for _, src := range req.SrcPaths {
 		srcClean := filepath.Clean(src)
 		dstClean := filepath.Join(dstDir, filepath.Base(srcClean))
 
-		if strings.HasPrefix(dstDir, srcClean+"/") || dstDir == srcClean {
+		if strings.HasPrefix(dstDir, srcClean+string(os.PathSeparator)) || dstDir == srcClean {
 			return buserr.WithDetail(constant.ErrInvalidParams, "cannot move to itself", nil)
 		}
 
-		if _, err := os.Stat(dstClean); err == nil {
+		srcInfo, err := os.Lstat(srcClean)
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		if err := ensureSourceAccessible(srcClean, srcInfo); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		if sameFilesystemObject(srcClean, dstClean) {
+			global.LOG.Infof("File operation skipped same object: %s", srcClean)
+			continue
+		}
+		if err := ensureCopyable(srcClean); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+
+		if _, err := os.Lstat(dstClean); err == nil {
 			switch policy {
 			case "skip":
 				global.LOG.Infof("File conflict skipped: %s", dstClean)
 				continue
 			default:
-				if err := os.RemoveAll(dstClean); err != nil {
-					return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+				if err := replacePathKeepingOriginal(srcClean, dstClean, req.IsCopy, tracker); err != nil {
+					return err
 				}
+				if req.IsCopy {
+					global.LOG.Infof("File copied: %s → %s", srcClean, dstClean)
+				} else {
+					global.LOG.Infof("File moved: %s → %s", srcClean, dstClean)
+				}
+				continue
 			}
+		} else if !os.IsNotExist(err) {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 
 		if !req.IsCopy {
-			// 同分区：瞬间 rename，无需进度
 			if err := os.Rename(srcClean, dstClean); err == nil {
 				global.LOG.Infof("File moved (rename): %s → %s", srcClean, dstClean)
 				continue
 			}
-			// 跨分区：回退到流式复制后删除
 			if err := copyPathStreaming(srcClean, dstClean, tracker); err != nil {
 				return err
 			}
@@ -485,45 +502,122 @@ func calcDirBytes(root string) int64 {
 	return total
 }
 
+func sameFilesystemObject(src, dst string) bool {
+	srcClean := filepath.Clean(src)
+	dstClean := filepath.Clean(dst)
+	if srcClean == dstClean {
+		return true
+	}
+
+	srcEval, srcErr := filepath.EvalSymlinks(srcClean)
+	dstParentEval, dstErr := filepath.EvalSymlinks(filepath.Dir(dstClean))
+	if srcErr == nil && dstErr == nil && srcEval == filepath.Join(dstParentEval, filepath.Base(dstClean)) {
+		return true
+	}
+
+	srcInfo, err1 := os.Stat(srcClean)
+	dstInfo, err2 := os.Stat(dstClean)
+	return err1 == nil && err2 == nil && os.SameFile(srcInfo, dstInfo)
+}
+
+func ensureSourceAccessible(path string, info os.FileInfo) error {
+	mode := info.Mode()
+	switch {
+	case mode&os.ModeSymlink != 0:
+		_, err := os.Readlink(path)
+		return err
+	case mode.IsDir():
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		return f.Close()
+	case mode.IsRegular():
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		return f.Close()
+	default:
+		return fmt.Errorf("unsupported file type: %s", path)
+	}
+}
+
+func ensureCopyable(root string) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		mode := d.Type()
+		if mode&os.ModeSymlink != 0 || mode.IsDir() || mode.IsRegular() {
+			return nil
+		}
+		return fmt.Errorf("unsupported file type: %s", path)
+	})
+}
+
 // copyPathStreaming 流式复制单个文件或目录，tracker 可为 nil（不追踪进度）
 func copyPathStreaming(src, dst string, tracker *ProgressTracker) error {
 	info, err := os.Lstat(src)
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
-	if info.IsDir() {
+	mode := info.Mode()
+	switch {
+	case mode&os.ModeSymlink != 0:
+		return copySymlink(src, dst)
+	case mode.IsDir():
 		return copyDirStreaming(src, dst, tracker)
+	case mode.IsRegular():
+		return copyFileStreaming(src, dst, info, tracker)
+	default:
+		return buserr.WithDetail(constant.ErrInternalServer, "unsupported file type: "+src, nil)
 	}
-	return copyFileStreaming(src, dst, info, tracker)
+}
+
+func copySymlink(src, dst string) error {
+	target, err := os.Readlink(src)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := os.Symlink(target, dst); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	return nil
 }
 
 // copyDirStreaming 递归复制目录
 func copyDirStreaming(src, dst string, tracker *ProgressTracker) error {
-	if err := os.MkdirAll(dst, 0755); err != nil {
+	info, err := os.Lstat(src)
+	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	perm := info.Mode().Perm()
+	if err := os.MkdirAll(dst, perm); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := os.Chmod(dst, perm); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		_ = os.Chown(dst, int(stat.Uid), int(stat.Gid))
 	}
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
-		if entry.IsDir() {
-			if err := copyDirStreaming(srcPath, dstPath, tracker); err != nil {
-				return err
-			}
-		} else {
-			info, err := entry.Info()
-			if err != nil {
-				return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-			}
-			if tracker != nil {
-				tracker.task.CurrentFile = entry.Name()
-			}
-			if err := copyFileStreaming(srcPath, dstPath, info, tracker); err != nil {
-				return err
-			}
+		if tracker != nil {
+			tracker.task.CurrentFile = entry.Name()
+		}
+		if err := copyPathStreaming(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), tracker); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -531,7 +625,7 @@ func copyDirStreaming(src, dst string, tracker *ProgressTracker) error {
 
 // copyFileStreaming 流式复制单个文件，每 chunk 后更新 tracker
 func copyFileStreaming(src, dst string, info fs.FileInfo, tracker *ProgressTracker) error {
-	in, err := os.Open(src)
+	in, err := os.OpenFile(src, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
@@ -936,6 +1030,9 @@ func (s *FileService) decompressSingleFile(src, dst, archiveType, conflictPolicy
 	if dstFile == "" {
 		return nil
 	}
+	if err := rejectSymlinkEscape(dst, dstFile); err != nil {
+		return buserr.WithDetail(constant.ErrFileDecompress, err.Error(), err)
+	}
 
 	var cmd *exec.Cmd
 	switch archiveType {
@@ -1086,7 +1183,7 @@ func isSafeArchiveEntry(entry string) bool {
 		return false
 	}
 	clean := path.Clean(entry)
-	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+	return clean != ".." && !strings.HasPrefix(clean, "../")
 }
 
 func mergeExtractedFiles(srcDir, dstDir, conflictPolicy string) error {
@@ -1095,27 +1192,75 @@ func mergeExtractedFiles(srcDir, dstDir, conflictPolicy string) error {
 		return err
 	}
 	for _, entry := range entries {
-		if err := mergeExtractedPath(filepath.Join(srcDir, entry.Name()), filepath.Join(dstDir, entry.Name()), conflictPolicy); err != nil {
+		if err := mergeExtractedPath(filepath.Join(srcDir, entry.Name()), filepath.Join(dstDir, entry.Name()), dstDir, conflictPolicy); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func mergeExtractedPath(src, dst, conflictPolicy string) error {
+func rejectSymlinkEscape(root, target string) error {
+	rootClean, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return err
+	}
+	targetClean, err := filepath.Abs(filepath.Clean(target))
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(rootClean, targetClean)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("extract path escapes destination: %s", target)
+	}
+	if rel == "." {
+		return nil
+	}
+	current := rootClean
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		if part == "." || part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to write through symlink: %s", current)
+		}
+	}
+	return nil
+}
+
+func mergeExtractedPath(src, dst, dstRoot, conflictPolicy string) error {
+	if err := rejectSymlinkEscape(dstRoot, dst); err != nil {
+		return err
+	}
+
 	info, err := os.Lstat(src)
 	if err != nil {
 		return err
 	}
 
 	if info.IsDir() {
-		if _, err := os.Stat(dst); os.IsNotExist(err) {
+		if _, err := os.Lstat(dst); os.IsNotExist(err) {
+			if err := rejectSymlinkEscape(dstRoot, filepath.Dir(dst)); err != nil {
+				return err
+			}
 			if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 				return err
 			}
 			if err := os.Rename(src, dst); err == nil {
 				return nil
 			}
+		} else if err != nil {
+			return err
 		}
 		entries, err := os.ReadDir(src)
 		if err != nil {
@@ -1125,7 +1270,7 @@ func mergeExtractedPath(src, dst, conflictPolicy string) error {
 			return err
 		}
 		for _, entry := range entries {
-			if err := mergeExtractedPath(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), conflictPolicy); err != nil {
+			if err := mergeExtractedPath(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), dstRoot, conflictPolicy); err != nil {
 				return err
 			}
 		}
@@ -1136,10 +1281,11 @@ func mergeExtractedPath(src, dst, conflictPolicy string) error {
 	if target == "" {
 		return nil
 	}
-	if conflictPolicy == "overwrite" {
-		if err := os.RemoveAll(target); err != nil && !os.IsNotExist(err) {
-			return err
-		}
+	if err := rejectSymlinkEscape(dstRoot, target); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(target); err == nil && conflictPolicy == "overwrite" {
+		return replacePathKeepingOriginal(src, target, false, nil)
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return err
@@ -1151,6 +1297,47 @@ func mergeExtractedPath(src, dst, conflictPolicy string) error {
 		return err
 	}
 	return os.RemoveAll(src)
+}
+
+func replacePathKeepingOriginal(src, dst string, keepSource bool, tracker *ProgressTracker) error {
+	parent := filepath.Dir(dst)
+	if err := os.MkdirAll(parent, 0755); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	tmp := filepath.Join(parent, fmt.Sprintf(".%s.xpanel-new-%d", filepath.Base(dst), time.Now().UnixNano()))
+	bak := filepath.Join(parent, fmt.Sprintf(".%s.xpanel-old-%d", filepath.Base(dst), time.Now().UnixNano()))
+
+	if err := copyPathStreaming(src, tmp, tracker); err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
+	}
+
+	hadDest := false
+	if _, err := os.Lstat(dst); err == nil {
+		hadDest = true
+		if err := os.Rename(dst, bak); err != nil {
+			_ = os.RemoveAll(tmp)
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+	} else if !os.IsNotExist(err) {
+		_ = os.RemoveAll(tmp)
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+
+	if err := os.Rename(tmp, dst); err != nil {
+		if hadDest {
+			_ = os.Rename(bak, dst)
+		}
+		_ = os.RemoveAll(tmp)
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	_ = os.RemoveAll(bak)
+	if !keepSource {
+		if err := os.RemoveAll(src); err != nil {
+			global.LOG.Warnf("Failed to remove source after replace: %s", err.Error())
+		}
+	}
+	return nil
 }
 
 func resolveConflictPath(dst, conflictPolicy string) string {

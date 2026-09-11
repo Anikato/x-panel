@@ -834,7 +834,7 @@ onUnmounted(() => {
   background: var(--xp-bg-inset);
   color: var(--xp-text-primary);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   font-family: var(--xp-font-mono);
   font-size: 13px;
   white-space: pre-wrap;

@@ -43,7 +43,10 @@ const (
 	ErrNginxConfigTest       = "ErrNginxConfigTest"
 	ErrNginxInstall          = "ErrNginxInstall"
 	ErrNginxBuildDeps        = "ErrNginxBuildDeps"
-	ErrNginxHasSites         = "ErrNginxHasSites"
+	ErrNginxHasSites              = "ErrNginxHasSites"
+	ErrNginxLogAllFailed          = "ErrNginxLogAllFailed"
+	ErrNginxLogUnsupportedFormat  = "ErrNginxLogUnsupportedFormat"
+	ErrNginxLogBusy               = "ErrNginxLogBusy"
 
 	// Website
 	ErrWebsiteDomainExist             = "ErrWebsiteDomainExist"

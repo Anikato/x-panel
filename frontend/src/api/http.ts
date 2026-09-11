@@ -52,6 +52,14 @@ http.interceptors.request.use(
     } catch { /* ignore */ }
 
     const controller = new AbortController()
+    if (config.signal) {
+      const outer = config.signal
+      if (outer.aborted) {
+        controller.abort()
+      } else {
+        outer.addEventListener?.('abort', () => controller.abort(), { once: true })
+      }
+    }
     config.signal = controller.signal
     // 用唯一 ID 作 key，避免同名接口覆盖彼此的 controller
     const reqId = `${config.method}:${config.url}:${++_reqIdCounter}`

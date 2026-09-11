@@ -50,6 +50,7 @@ func Init() {
 		&model.HAProxyConfigVersion{},
 		&model.Notification{},
 		&model.ComposeProject{},
+		&model.PanelSession{},
 	); err != nil {
 		panic("Failed to auto-migrate database: " + err.Error())
 	}

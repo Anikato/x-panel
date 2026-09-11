@@ -240,7 +240,7 @@ defineExpose({ refresh })
   max-height: 420px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
   z-index: 2000;
   overflow: hidden;

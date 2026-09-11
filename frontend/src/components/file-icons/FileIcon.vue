@@ -120,7 +120,7 @@ const colorMap: Record<string, string> = {
 const iconColor = computed(() => colorMap[ext.value] || '#8b949e')
 const bgColor = computed(() => iconColor.value)
 
-const accentColor = computed(() => getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#22d3ee')
+const accentColor = computed(() => getComputedStyle(document.documentElement).getPropertyValue('--xp-accent').trim() || '#7AA2FF')
 
 const extLabel = computed(() => {
   const e = ext.value

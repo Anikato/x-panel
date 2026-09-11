@@ -2,6 +2,11 @@
   <div class="website-config-page" v-loading="loading">
     <div class="page-header">
       <div class="header-left">
+        <nav class="config-breadcrumb">
+          <el-button link type="primary" @click="router.push('/website/websites')">{{ $t('website.title') }}</el-button>
+          <span class="crumb-sep">/</span>
+          <span>{{ detail.primaryDomain || '...' }}</span>
+        </nav>
         <el-button size="small" :icon="ArrowLeft" @click="router.push('/website/websites')" />
         <h3>{{ detail.primaryDomain || '...' }}</h3>
         <el-tag :type="detail.status === 'running' ? 'success' : 'danger'" size="small" effect="dark" round>
@@ -20,6 +25,9 @@
           <el-radio-button value="managed">{{ $t('website.managedMode') }}</el-radio-button>
           <el-radio-button value="source">{{ $t('website.sourceMode') }}</el-radio-button>
         </el-radio-group>
+        <el-button v-if="detail.siteDir" @click="openSourceDir">{{ $t('website.openInFiles') }}</el-button>
+        <el-button v-if="detail.siteDir" @click="openSiteTerminal">{{ $t('website.openInTerminal') }}</el-button>
+        <el-button @click="goToCerts">{{ $t('website.goToCerts') }}</el-button>
         <el-button v-if="detail.status === 'stopped' && configMode !== 'source'" type="success" size="small" @click="handleEnable">{{ $t('website.enable') }}</el-button>
         <el-button v-else-if="configMode !== 'source'" type="warning" size="small" @click="handleDisable">{{ $t('website.disable') }}</el-button>
       </div>
@@ -77,7 +85,31 @@
       </div>
     </el-card>
 
-    <el-tabs v-if="configMode === 'managed'" v-model="activeTab" class="config-tabs">
+    <nav v-if="configMode === 'managed'" class="object-nav" aria-label="对象分区">
+      <button
+        v-for="group in objectGroups"
+        :key="group.id"
+        type="button"
+        class="object-nav-item"
+        :class="{ active: activeGroup === group.id }"
+        @click="selectObjectGroup(group.id)"
+      >
+        {{ $t(group.titleKey) }}
+      </button>
+    </nav>
+    <div v-if="configMode === 'managed' && activeGroupMeta.sections.length > 1" class="object-sections">
+      <button
+        v-for="section in activeGroupMeta.sections"
+        :key="section.id"
+        type="button"
+        class="object-section-link"
+        :class="{ active: activeTab === section.id }"
+        @click="activeTab = section.id"
+      >
+        {{ $t(section.titleKey) }}
+      </button>
+    </div>
+    <el-tabs v-if="configMode === 'managed'" v-model="activeTab" class="config-tabs is-object-plain">
       <!-- 基本设置 -->
       <el-tab-pane :label="$t('website.basicSetting')" name="basic">
         <el-form :model="detail" label-width="120px" class="config-form">
@@ -171,9 +203,12 @@
           </el-form-item>
           <template v-if="detail.sslEnable">
             <el-form-item :label="$t('website.selectCert')">
-              <el-select v-model="detail.certificateID" style="width: 100%">
-                <el-option v-for="c in certList" :key="c.id" :label="`${c.primaryDomain} (${c.status === 'applied' ? '已签发' : c.status})`" :value="c.id" />
-              </el-select>
+              <div class="cert-select-row">
+                <el-select v-model="detail.certificateID" style="flex:1">
+                  <el-option v-for="c in certList" :key="c.id" :label="`${c.primaryDomain} (${c.status === 'applied' ? '已签发' : c.status})`" :value="c.id" />
+                </el-select>
+                <el-button @click="goToCerts">{{ $t('website.goToCerts') }}</el-button>
+              </div>
             </el-form-item>
             <el-form-item :label="$t('website.httpConfig')">
               <el-select v-model="detail.httpConfig" style="width: 100%">
@@ -350,8 +385,9 @@
               <el-radio-button :value="7">{{ $t('website.last7days') }}</el-radio-button>
               <el-radio-button :value="30">{{ $t('website.last30days') }}</el-radio-button>
             </el-radio-group>
-            <el-button size="small" @click="loadLogAnalysis" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
+            <el-button size="small" @click="() => loadLogAnalysis(true)" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
           </div>
+          <LogAnalysisMetaBanner :meta="logAnalysisData?.meta" :view="analysisView" :error="analysisError" />
 
           <!-- 概览卡片 -->
           <div v-if="logAnalysisData" class="analysis-overview">
@@ -582,8 +618,9 @@
               <el-radio-button :value="7">{{ $t('website.last7days') }}</el-radio-button>
               <el-radio-button :value="30">{{ $t('website.last30days') }}</el-radio-button>
             </el-radio-group>
-            <el-button size="small" @click="loadLogAnalysis" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
+            <el-button size="small" @click="() => loadLogAnalysis(true)" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
           </div>
+          <LogAnalysisMetaBanner :meta="logAnalysisData?.meta" :view="analysisView" :error="analysisError" />
           <div v-if="logAnalysisData" class="analysis-overview">
             <el-row :gutter="16">
               <el-col :span="6"><el-card shadow="never" class="stat-card"><div class="stat-value">{{ formatNumber(logAnalysisData.totalRequests) }}</div><div class="stat-label">{{ $t('website.totalRequests') }}</div></el-card></el-col>
@@ -614,7 +651,7 @@
             @click="selectDir(item.path)"
             @dblclick="enterDir(item.path)"
           >
-            <el-icon color="#f59e0b"><Folder /></el-icon>
+            <el-icon class="dir-folder-icon"><Folder /></el-icon>
             <span>{{ item.name }}</span>
           </div>
           <div v-if="dirList.length === 0 && !dirLoading" class="dir-empty">无子目录（双击目录进入，单击选中）</div>
@@ -635,12 +672,16 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Plus, FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons-vue'
+import { useGlobalStore } from '@/store/modules/global'
 import {
   getWebsiteDetail, updateWebsite, enableWebsite, disableWebsite, getWebsiteLog,
   getSiteConfContent, saveSiteConfContent, switchConfigMode, analyzeNginxLog,
   checkWebsiteHealth, inspectWebsite, detectWebsiteLogPaths, getWebsiteLogAlerts,
   refreshExternalNginxSite, checkWebsiteCertificateHealth,
 } from '@/api/modules/website'
+import type { NginxLogAnalysisMeta } from '@/api/modules/website'
+import LogAnalysisMetaBanner from '@/views/website/nginx/LogAnalysisMetaBanner.vue'
+import { analysisViewState, abortAnalysisRequest, beginAnalysisRequest, createAnalysisRequestState, isCurrentAnalysisRequest } from '@/views/website/nginx/log-analysis-request'
 import { listFiles } from '@/api/modules/file'
 import { searchCertificate } from '@/api/modules/ssl'
 import type { Certificate, CertificateHealthSnapshot, WebsiteCertificateHealth } from '@/api/interface'
@@ -649,6 +690,7 @@ import * as echarts from 'echarts/core'
 import { BarChart, PieChart, LineChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { chartTokens, onAppearanceChange } from '@/theme'
 
 echarts.use([BarChart, PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
@@ -722,6 +764,7 @@ interface LogAnalysisData {
   statusCodes: Record<string, number>
   topUrls: { name: string; count: number }[]
   topIps: { name: string; count: number }[]
+  meta?: NginxLogAnalysisMeta
 }
 
 interface WebsiteHealthData {
@@ -747,10 +790,56 @@ interface WebsiteLogAlert {
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const globalStore = useGlobalStore()
 
 const loading = ref(false)
 const saving = ref(false)
 const activeTab = ref('basic')
+const objectGroups = [
+  { id: 'basic', titleKey: 'website.groupBasic', sections: [{ id: 'basic', titleKey: 'website.basicSetting' }] },
+  {
+    id: 'access',
+    titleKey: 'website.groupAccess',
+    sections: [
+      { id: 'proxy', titleKey: 'website.proxySetting' },
+      { id: 'rewrite', titleKey: 'website.rewriteSetting' },
+      { id: 'redirect', titleKey: 'website.redirectSetting' },
+    ],
+  },
+  { id: 'https', titleKey: 'website.groupHttps', sections: [{ id: 'https', titleKey: 'website.httpsSetting' }] },
+  {
+    id: 'security',
+    titleKey: 'website.groupSecurity',
+    sections: [
+      { id: 'security', titleKey: 'website.securitySetting' },
+      { id: 'traffic', titleKey: 'website.trafficSetting' },
+      { id: 'performance', titleKey: 'website.performanceSetting' },
+    ],
+  },
+  {
+    id: 'logs',
+    titleKey: 'website.groupLogs',
+    sections: [
+      { id: 'log', titleKey: 'website.logSetting' },
+      { id: 'logAnalysis', titleKey: 'website.logAnalysis' },
+      { id: 'diagnostics', titleKey: 'website.diagnostics' },
+    ],
+  },
+  {
+    id: 'advanced',
+    titleKey: 'website.groupAdvanced',
+    sections: [
+      { id: 'custom', titleKey: 'website.customSetting' },
+      { id: 'preview', titleKey: 'website.configPreview' },
+    ],
+  },
+]
+const activeGroup = computed(() => objectGroups.find((group) => group.sections.some((item) => item.id === activeTab.value))?.id || 'basic')
+const activeGroupMeta = computed(() => objectGroups.find((group) => group.id === activeGroup.value) || objectGroups[0])
+const selectObjectGroup = (id: string) => {
+  const group = objectGroups.find((item) => item.id === id)
+  if (group) activeTab.value = group.sections[0].id
+}
 const detail = ref<Partial<WebsiteDetail>>({})
 const certList = ref<Certificate[]>([])
 const redirects = ref<RedirectItem[]>([])
@@ -780,7 +869,14 @@ const logContent = ref<string | null>(null)
 // 日志分析
 const analysisDays = ref(1)
 const analysisLoading = ref(false)
+const analysisError = ref<string | null>(null)
 const logAnalysisData = ref<LogAnalysisData | null>(null)
+const analysisReq = createAnalysisRequestState()
+const analysisView = computed(() => analysisViewState({
+  hasData: Boolean(logAnalysisData.value),
+  loading: analysisLoading.value,
+  error: analysisError.value,
+}))
 const trendChartRef = ref<HTMLElement>()
 const statusChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
@@ -889,6 +985,18 @@ const openSourceDir = () => {
   router.push({ path: '/host/files', query: { path: detail.value.siteDir } })
 }
 
+const openSiteTerminal = () => {
+  if (!detail.value.siteDir) {
+    ElMessage.warning('请先填写网站目录')
+    return
+  }
+  globalStore.openFloatTerminal(detail.value.siteDir)
+}
+
+const goToCerts = () => {
+  router.push('/website/ssl')
+}
+
 const loadCerts = async () => {
   try {
     const res = await searchCertificate({ page: 1, pageSize: 100 })
@@ -942,16 +1050,25 @@ const loadLog = async () => {
 
 // --- 日志分析 ---
 
-const loadLogAnalysis = async () => {
+const loadLogAnalysis = async (refresh = false) => {
+  const { seq, signal } = beginAnalysisRequest(analysisReq)
   analysisLoading.value = true
+  if (!logAnalysisData.value) analysisError.value = null
   try {
-    const res = await analyzeNginxLog(siteId, analysisDays.value)
+    const res = await analyzeNginxLog(siteId, analysisDays.value, Boolean(refresh), signal)
+    if (!isCurrentAnalysisRequest(analysisReq, seq)) return
     logAnalysisData.value = res.data
+    analysisError.value = null
     await nextTick()
     renderTrendChart()
     renderStatusChart()
-  } catch { /* ignore */ }
-  finally { analysisLoading.value = false }
+  } catch (err: any) {
+    if (!isCurrentAnalysisRequest(analysisReq, seq)) return
+    if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') return
+    analysisError.value = err?.message || t('website.logAnalyzeFailed')
+  } finally {
+    if (isCurrentAnalysisRequest(analysisReq, seq)) analysisLoading.value = false
+  }
 }
 
 const loadDiagnostics = async () => {
@@ -992,21 +1109,22 @@ const renderTrendChart = () => {
   const data = analysisDays.value <= 1 ? logAnalysisData.value.hourlyStats : logAnalysisData.value.dailyStats
   if (!data || !data.length) { trendChart.clear(); return }
 
+  const tokens = chartTokens()
   trendChart.setOption({
-    tooltip: { trigger: 'axis' },
+    tooltip: { trigger: 'axis', backgroundColor: tokens.tooltipBg, borderColor: 'transparent', textStyle: { color: tokens.tooltipText } },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
       type: 'category',
       data: data.map((p: TimeStat) => analysisDays.value <= 1 ? p.time.slice(11) : p.time.slice(5)),
-      axisLabel: { fontSize: 11 },
+      axisLabel: { fontSize: 11, color: tokens.muted },
     },
     yAxis: [
-      { type: 'value', name: '请求数', axisLabel: { fontSize: 11 } },
-      { type: 'value', name: '流量', axisLabel: { fontSize: 11, formatter: (v: number) => formatBytes(v) } },
+      { type: 'value', name: '请求数', axisLabel: { fontSize: 11, color: tokens.muted }, splitLine: { lineStyle: { color: tokens.borderLight } } },
+      { type: 'value', name: '流量', axisLabel: { fontSize: 11, color: tokens.muted, formatter: (v: number) => formatBytes(v) } },
     ],
     series: [
-      { name: '请求数', type: 'bar', data: data.map((p: TimeStat) => p.requests), itemStyle: { color: '#409EFF' } },
-      { name: '流量', type: 'line', yAxisIndex: 1, data: data.map((p: TimeStat) => p.bytes), itemStyle: { color: '#67C23A' }, smooth: true },
+      { name: '请求数', type: 'bar', data: data.map((p: TimeStat) => p.requests), itemStyle: { color: tokens.accent } },
+      { name: '流量', type: 'line', yAxisIndex: 1, data: data.map((p: TimeStat) => p.bytes), itemStyle: { color: tokens.success }, smooth: true },
     ],
   })
 }
@@ -1017,11 +1135,12 @@ const renderStatusChart = () => {
   statusChart = echarts.init(statusChartRef.value)
 
   const codes = logAnalysisData.value.statusCodes || {}
-  const colorMap: Record<string, string> = { '2xx': '#67C23A', '3xx': '#409EFF', '4xx': '#E6A23C', '5xx': '#F56C6C' }
+  const tokens = chartTokens()
+  const colorMap = tokens.status
   const data = Object.entries(codes).map(([name, value]) => ({
     name,
     value,
-    itemStyle: { color: colorMap[name] || '#909399' },
+    itemStyle: { color: colorMap[name] || tokens.muted },
   }))
 
   if (!data.length) { statusChart.clear(); return }
@@ -1202,6 +1321,7 @@ watch(activeTab, (val) => {
   }
 })
 
+let stopAppearance: (() => void) | undefined
 onMounted(() => {
   loadDetail().then(() => {
     configMode.value = detail.value.configMode === 'source' ? 'source' : 'managed'
@@ -1210,12 +1330,20 @@ onMounted(() => {
     }
   })
   loadCerts()
+  stopAppearance = onAppearanceChange(() => {
+    if (logAnalysisData.value) {
+      renderTrendChart()
+      renderStatusChart()
+    }
+  })
 })
 
 onBeforeUnmount(() => {
+  abortAnalysisRequest(analysisReq)
   disposeMonacoEditor()
   if (trendChart) { trendChart.dispose(); trendChart = null }
   if (statusChart) { statusChart.dispose(); statusChart = null }
+  stopAppearance?.()
 })
 </script>
 
@@ -1226,13 +1354,33 @@ onBeforeUnmount(() => {
 
 .page-header .header-left {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.config-breadcrumb {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  color: var(--xp-text-muted);
+  font-size: 13px;
+}
+
+.cert-select-row {
+  display: flex;
+  width: 100%;
+  gap: 8px;
 }
 
 .config-tabs {
   :deep(.el-tabs__header) {
     margin-bottom: 16px;
+  }
+
+  &.is-object-plain :deep(.el-tabs__header) {
+    display: none;
   }
 }
 
@@ -1276,7 +1424,7 @@ onBeforeUnmount(() => {
 
   .log-container {
     background: var(--xp-bg-inset);
-    border-radius: 6px;
+    border-radius: var(--xp-radius-sm);
     padding: 16px;
     max-height: 450px;
     overflow-y: auto;
@@ -1319,7 +1467,7 @@ onBeforeUnmount(() => {
 .config-preview {
   .preview-content {
     background: var(--xp-bg-inset);
-    border-radius: 6px;
+    border-radius: var(--xp-radius-sm);
     padding: 16px;
     font-family: var(--xp-font-mono);
     font-size: 13px;
@@ -1374,7 +1522,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   background: var(--el-fill-color-extra-light);
 
   code {
@@ -1494,15 +1642,17 @@ onBeforeUnmount(() => {
       height: 260px;
       overflow-y: auto;
       border: 1px solid var(--el-border-color);
-      border-radius: 6px;
+      border-radius: var(--xp-radius-sm);
       padding: 4px;
+
+      .dir-folder-icon { color: var(--xp-warning); }
 
       .dir-item {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 6px 10px;
-        border-radius: 4px;
+        border-radius: var(--xp-radius-sm);
         cursor: pointer;
         font-size: 13px;
         user-select: none;
@@ -1536,7 +1686,7 @@ onBeforeUnmount(() => {
 .source-editor-container {
   flex: 1;
   min-height: 560px;
-  border-radius: 6px;
+  border-radius: var(--xp-radius-sm);
   overflow: hidden;
   border: 1px solid var(--xp-border-light);
 }

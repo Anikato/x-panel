@@ -1,12 +1,12 @@
 <template>
   <div class="website-page">
     <div class="page-header">
-      <h3>{{ $t('website.title') }}</h3>
       <div class="header-actions">
-        <el-button size="small" :loading="certificateBatchLoading" @click="handleCertificateBatch">
+        <el-button :loading="certificateBatchLoading" @click="handleCertificateBatch">
           {{ $t('website.checkAllCertificates') }}
         </el-button>
-        <el-button size="small" type="primary" @click="openCreateDialog">
+        <el-button @click="openImportDialog">{{ $t('website.importExisting') }}</el-button>
+        <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
           {{ $t('website.create') }}
         </el-button>
@@ -14,75 +14,87 @@
     </div>
 
     <div class="filter-bar">
-      <el-input v-model="searchInfo" :placeholder="$t('commons.search')" prefix-icon="Search" size="small" clearable class="search-input" @input="loadWebsites" />
-      <el-select v-model="filterType" size="small" clearable :placeholder="$t('website.type')" @change="loadWebsites">
+      <el-input v-model="searchInfo" :placeholder="$t('commons.search')" prefix-icon="Search" clearable class="search-input" @input="onFilterChange" />
+      <el-select v-model="filterType" clearable :placeholder="$t('website.type')" class="filter-select" @change="onFilterChange">
         <el-option :label="$t('website.typeStatic')" value="static" />
         <el-option :label="$t('website.typeProxy')" value="reverse_proxy" />
       </el-select>
-      <el-select v-model="filterStatus" size="small" clearable :placeholder="$t('website.status')" @change="loadWebsites">
+      <el-select v-model="filterStatus" clearable :placeholder="$t('website.status')" class="filter-select" @change="onFilterChange">
         <el-option :label="$t('website.running')" value="running" />
         <el-option :label="$t('website.stopped')" value="stopped" />
       </el-select>
+      <span v-if="hasFilters" class="filter-count">{{ $t('website.filterCount', { count: total }) }}</span>
+      <el-button v-if="hasFilters" link type="primary" @click="clearFilters">{{ $t('website.clearFilters') }}</el-button>
     </div>
 
     <el-table :data="websites" style="width: 100%" v-loading="loading">
-      <el-table-column prop="primaryDomain" :label="$t('website.domain')" min-width="200">
+      <el-table-column :label="$t('website.title')" min-width="220">
         <template #default="{ row }">
           <div class="domain-cell">
             <el-link type="primary" @click="goConfig(row.id)">{{ row.primaryDomain }}</el-link>
-            <el-tag v-if="row.configMode === 'source'" type="primary" size="small" effect="plain">{{ $t('website.sourceMode') }}</el-tag>
-            <el-tag v-if="row.nginxConfPath" :type="row.configActive ? 'success' : 'danger'" size="small" effect="plain">
-              {{ row.configActive ? $t('website.configActive') : $t('website.configInactive') }}
-            </el-tag>
-            <el-tag v-if="row.sslEnable" type="success" size="small" effect="plain" class="ssl-badge">SSL</el-tag>
-            <span v-if="additionalDomainCount(row)" class="domain-extra">+{{ additionalDomainCount(row) }}</span>
+            <el-popover v-if="additionalDomainCount(row)" placement="bottom-start" :width="280" trigger="click">
+              <template #reference>
+                <button type="button" class="domain-extra">+{{ additionalDomainCount(row) }}</button>
+              </template>
+              <div>{{ additionalDomains(row).join(', ') }}</div>
+            </el-popover>
           </div>
-          <code v-if="row.nginxConfPath" class="config-path">{{ row.nginxConfPath }}</code>
+          <div v-if="row.remark" class="remark-text">{{ row.remark }}</div>
         </template>
       </el-table-column>
-      <el-table-column :label="$t('website.type')" width="120">
+      <el-table-column :label="$t('website.type')" width="150">
         <template #default="{ row }">
-          <el-tag :type="row.type === 'static' ? 'info' : 'warning'" size="small">
-            {{ row.type === 'static' ? $t('website.typeStatic') : $t('website.typeProxy') }}
-          </el-tag>
+          <div class="type-cell">
+            <el-tag :type="row.type === 'static' ? 'info' : 'warning'" size="small">
+              {{ row.type === 'static' ? $t('website.typeStatic') : $t('website.typeProxy') }}
+            </el-tag>
+            <el-tag size="small" effect="plain">{{ modeLabel(row) }}</el-tag>
+          </div>
         </template>
       </el-table-column>
-      <el-table-column :label="$t('website.certificateHealth')" min-width="150">
+      <el-table-column :label="$t('website.status')" width="110">
         <template #default="{ row }">
-          <el-tag v-if="row.configuredCertificate" :type="certificateTagType(row.configuredCertificate.status)" size="small" effect="plain">
-            {{ certificateStatusLabel(row.configuredCertificate.status) }}
-            <template v-if="Number.isFinite(row.configuredCertificate.daysLeft)"> · {{ row.configuredCertificate.daysLeft }}天</template>
-          </el-tag>
-          <span v-else class="muted-text">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('website.status')" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 'running' ? 'success' : 'danger'" size="small" effect="dark" round>
+          <el-tag :type="row.status === 'running' ? 'success' : 'danger'" size="small">
             {{ row.status === 'running' ? $t('website.running') : $t('website.stopped') }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="remark" :label="$t('commons.description')" min-width="120" show-overflow-tooltip />
-      <el-table-column :label="$t('commons.actions')" width="280" fixed="right">
+      <el-table-column :label="$t('website.https')" min-width="140">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="goConfig(row.id)">
-            {{ $t('commons.edit') }}
-          </el-button>
-          <el-button v-if="row.status === 'stopped' && row.configMode !== 'source'" link type="success" size="small" @click="handleEnable(row)">
-            {{ $t('website.enable') }}
-          </el-button>
-          <el-button v-else-if="row.configMode !== 'source'" link type="warning" size="small" @click="handleDisable(row)">
-            {{ $t('website.disable') }}
-          </el-button>
-          <el-button link type="danger" size="small" @click="handleDelete(row)">
-            {{ $t('commons.delete') }}
-          </el-button>
+          <div>{{ row.sslEnable ? $t('website.httpsOn') : $t('website.httpsOff') }}</div>
+          <div v-if="row.configuredCertificate && Number.isFinite(row.configuredCertificate.daysLeft)" class="muted-text">
+            {{ certificateStatusLabel(row.configuredCertificate.status) }} · {{ row.configuredCertificate.daysLeft }}天
+          </div>
         </template>
       </el-table-column>
+      <el-table-column :label="$t('website.target')" min-width="180">
+        <template #default="{ row }">
+          <code class="target-path" :title="row.proxyPass || row.siteDir || row.nginxConfPath">{{ row.proxyPass || row.siteDir || row.nginxConfPath || '—' }}</code>
+        </template>
+      </el-table-column>
+      <el-table-column :label="$t('commons.actions')" width="160" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="goConfig(row.id)">{{ $t('commons.edit') }}</el-button>
+          <el-dropdown trigger="click" @command="(cmd: string) => handleMore(cmd, row)">
+            <el-button link>{{ $t('website.more') }}</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="row.status === 'stopped' && row.configMode !== 'source'" command="enable">{{ $t('website.enable') }}</el-dropdown-item>
+                <el-dropdown-item v-else-if="row.configMode !== 'source'" command="disable">{{ $t('website.disable') }}</el-dropdown-item>
+                <el-dropdown-item command="delete" divided>{{ $t('commons.delete') }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </template>
+      </el-table-column>
+      <template #empty>
+        <el-empty :description="hasFilters ? $t('website.noFilterResult') : $t('website.emptyHint')">
+          <el-button v-if="hasFilters" @click="clearFilters">{{ $t('website.clearFilters') }}</el-button>
+        </el-empty>
+      </template>
     </el-table>
 
-    <el-pagination v-if="total > 0" class="mt-pagination" :current-page="page" :page-size="pageSize" :total="total" layout="total, prev, pager, next" @current-change="(p: number) => { page = p; loadWebsites() }" />
+    <el-pagination v-if="total > 0" class="mt-pagination" :current-page="page" :page-size="pageSize" :total="total" layout="total, prev, pager, next" @current-change="(p: number) => { page = p }" />
 
     <!-- 创建网站对话框 -->
     <el-dialog v-model="createDialogVisible" :title="$t('website.create')" width="540px" destroy-on-close>
@@ -237,7 +249,7 @@
             @click="selectDir(item.path)"
             @dblclick="enterDir(item.path)"
           >
-            <el-icon color="#f59e0b"><Folder /></el-icon>
+            <el-icon class="dir-folder-icon"><Folder /></el-icon>
             <span>{{ item.name }}</span>
           </div>
           <div v-if="dirList.length === 0 && !dirLoading" class="dir-empty">无子目录（双击目录进入，单击选中）</div>
@@ -253,8 +265,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons-vue'
@@ -266,7 +278,9 @@ import { listFiles } from '@/api/modules/file'
 import type { ExternalNginxSitePreview, Website, WebsiteCertificateHealth } from '@/api/interface'
 
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
+const hasFilters = computed(() => Boolean(searchInfo.value || filterType.value || filterStatus.value))
 
 const loading = ref(false)
 const websites = ref<Website[]>([])
@@ -384,6 +398,43 @@ const openCreateDialog = () => {
   createDialogVisible.value = true
 }
 
+const openImportDialog = () => {
+  openCreateDialog()
+  createForm.value.configMode = 'external'
+}
+
+const onFilterChange = () => {
+  page.value = 1
+  persistQuery()
+  loadWebsites()
+}
+
+const clearFilters = () => {
+  searchInfo.value = ''
+  filterType.value = ''
+  filterStatus.value = ''
+  onFilterChange()
+}
+
+const persistQuery = () => {
+  const query: Record<string, string> = {}
+  if (searchInfo.value) query.q = searchInfo.value
+  if (filterType.value) query.type = filterType.value
+  if (filterStatus.value) query.status = filterStatus.value
+  if (page.value > 1) query.page = String(page.value)
+  router.replace({ query })
+}
+
+const readQuery = () => {
+  if (typeof route.query.q === 'string') searchInfo.value = route.query.q
+  if (typeof route.query.type === 'string') filterType.value = route.query.type
+  if (typeof route.query.status === 'string') filterStatus.value = route.query.status
+  if (typeof route.query.page === 'string') {
+    const next = Number(route.query.page)
+    if (Number.isFinite(next) && next > 0) page.value = next
+  }
+}
+
 const handleInspectExternal = async () => {
   if (!createForm.value.path.trim()) { ElMessage.warning(t('website.configPathRequired')); return }
   inspectLoading.value = true
@@ -459,8 +510,22 @@ const handleDelete = async (row: Website) => {
   } catch {}
 }
 
-const additionalDomainCount = (row: Website) => {
-  return row.domains.split(',').map(item => item.trim()).filter(item => item && item !== row.primaryDomain).length
+const additionalDomains = (row: Website) => {
+  return row.domains.split(',').map(item => item.trim()).filter(item => item && item !== row.primaryDomain)
+}
+
+const additionalDomainCount = (row: Website) => additionalDomains(row).length
+
+const modeLabel = (row: Website) => {
+  if (row.nginxConfPath || row.configMode === 'external') return t('website.modeExternal')
+  if (row.configMode === 'source') return t('website.modeSource')
+  return t('website.modeManaged')
+}
+
+const handleMore = (cmd: string, row: Website) => {
+  if (cmd === 'enable') handleEnable(row)
+  if (cmd === 'disable') handleDisable(row)
+  if (cmd === 'delete') handleDelete(row)
 }
 
 const certificateTagType = (status: string): 'success' | 'warning' | 'info' | 'danger' => {
@@ -492,7 +557,15 @@ const goConfig = (id: number) => {
   router.push(`/website/websites/${id}`)
 }
 
-onMounted(() => loadWebsites())
+watch(page, () => {
+  persistQuery()
+  loadWebsites()
+})
+
+onMounted(() => {
+  readQuery()
+  loadWebsites()
+})
 </script>
 
 <style lang="scss" scoped>
@@ -511,13 +584,33 @@ onMounted(() => loadWebsites())
   width: 100%;
 }
 
+.page-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .filter-bar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   margin-bottom: 12px;
 
   .search-input {
-    width: 240px;
+    flex: 1 1 260px;
+    min-width: 240px;
+    max-width: 320px;
+  }
+
+  .filter-select {
+    flex: 0 0 160px;
+    width: 160px;
+  }
+
+  .filter-count {
+    color: var(--xp-text-muted);
+    font-size: 12px;
   }
 }
 
@@ -541,10 +634,39 @@ onMounted(() => loadWebsites())
   .domain-extra {
     font-size: 11px;
     padding: 1px 5px;
-    border-radius: 3px;
-    background: var(--xp-accent-muted);
     color: var(--xp-accent);
+    background: var(--xp-accent-muted);
+    border: 0;
+    border-radius: 3px;
+    cursor: pointer;
   }
+}
+
+.remark-text,
+.target-path {
+  margin-top: 4px;
+  color: var(--xp-text-muted);
+  font-size: 12px;
+}
+
+.target-path {
+  display: block;
+  overflow: hidden;
+  font-family: var(--xp-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.filter-count {
+  color: var(--xp-text-muted);
+  font-size: 12px;
 }
 
 .config-path {
@@ -603,15 +725,17 @@ onMounted(() => loadWebsites())
     height: 260px;
     overflow-y: auto;
     border: 1px solid var(--el-border-color);
-    border-radius: 6px;
+    border-radius: var(--xp-radius-sm);
     padding: 4px;
+
+    .dir-folder-icon { color: var(--xp-warning); }
 
     .dir-item {
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 6px 10px;
-      border-radius: 4px;
+      border-radius: var(--xp-radius-sm);
       cursor: pointer;
       font-size: 13px;
       user-select: none;

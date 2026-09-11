@@ -345,7 +345,7 @@ func (a *WebsiteAPI) AnalyzeNginxLog(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	data, err := nginxLogService.Analyze(req)
+	data, err := nginxLogService.Analyze(c.Request.Context(), req)
 	if err != nil {
 		helper.HandleError(c, err)
 		return
@@ -368,7 +368,7 @@ func (a *WebsiteAPI) AnalyzeNginxSiteLog(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	data, err := nginxLogService.AnalyzeSite(req)
+	data, err := nginxLogService.AnalyzeSite(c.Request.Context(), req)
 	if err != nil {
 		helper.HandleError(c, err)
 		return
@@ -396,7 +396,7 @@ func (a *WebsiteAPI) DrilldownNginxLog(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	data, err := nginxLogService.Drilldown(req)
+	data, err := nginxLogService.Drilldown(c.Request.Context(), req)
 	if err != nil {
 		helper.HandleError(c, err)
 		return

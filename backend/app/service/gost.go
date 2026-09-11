@@ -48,6 +48,15 @@ func NewIGostService() IGostService {
 	}
 }
 
+type gostRuntime interface {
+	Ping() bool
+	CreateService(gostutil.ServiceConfig) error
+	DeleteService(name string) error
+	SaveConfig() error
+}
+
+var newGostRuntime = func() gostRuntime { return newGostClient() }
+
 // --- Service CRUD ---
 
 func (s *GostService) SearchService(req dto.GostServiceSearch) (int64, []dto.GostServiceInfo, error) {
@@ -165,7 +174,11 @@ func (s *GostService) CreateService(req dto.GostServiceCreate) error {
 	if err := s.serviceRepo.Create(&svc); err != nil {
 		return err
 	}
-	return s.pushServiceToGost(svc)
+	if err := s.pushServiceToGost(svc); err != nil {
+		_ = s.serviceRepo.Delete(repo.WithByID(svc.ID))
+		return err
+	}
+	return nil
 }
 
 func normalizeListenAddr(addr string) string {
@@ -242,16 +255,10 @@ func (s *GostService) UpdateService(req dto.GostServiceUpdate) error {
 	}
 
 	updated, _ := s.serviceRepo.Get(repo.WithByID(req.ID))
-	client := newGostClient()
-	if !client.Ping() {
-		return nil
-	}
-	if updated.Enabled {
-		s.deleteServiceFromGost(client, oldName, existing.Type)
-		for _, cfg := range s.buildServiceConfigs(updated) {
-			client.CreateService(cfg)
-		}
-		client.SaveConfig()
+	if err := s.syncUpdatedGostService(oldName, existing, updated); err != nil {
+		_ = s.serviceRepo.Update(req.ID, gostServiceSnapshot(existing))
+		_ = s.pushServiceToGost(existing)
+		return err
 	}
 	return nil
 }
@@ -282,19 +289,12 @@ func (s *GostService) ToggleService(req dto.GostServiceToggle) error {
 		return err
 	}
 
-	client := newGostClient()
-	if !client.Ping() {
-		return nil
+	updated := existing
+	updated.Enabled = req.Enabled
+	if err := s.syncUpdatedGostService(existing.Name, existing, updated); err != nil {
+		_ = s.serviceRepo.Update(req.ID, map[string]interface{}{"enabled": existing.Enabled})
+		return err
 	}
-	if req.Enabled {
-		existing.Enabled = true
-		for _, cfg := range s.buildServiceConfigs(existing) {
-			client.CreateService(cfg)
-		}
-	} else {
-		s.deleteServiceFromGost(client, existing.Name, existing.Type)
-	}
-	client.SaveConfig()
 	return nil
 }
 
@@ -601,9 +601,9 @@ func (s *GostService) SyncAll() error {
 // --- config builders ---
 
 func (s *GostService) pushServiceToGost(svc model.GostService) error {
-	client := newGostClient()
+	client := newGostRuntime()
 	if !client.Ping() {
-		return nil
+		return fmt.Errorf("gost api unreachable")
 	}
 	for _, cfg := range s.buildServiceConfigs(svc) {
 		if err := client.CreateService(cfg); err != nil {
@@ -613,12 +613,101 @@ func (s *GostService) pushServiceToGost(svc model.GostService) error {
 	return client.SaveConfig()
 }
 
-func (s *GostService) deleteServiceFromGost(client *gostutil.Client, name, svcType string) {
+func (s *GostService) syncUpdatedGostService(oldName string, previous, updated model.GostService) error {
+	client := newGostRuntime()
+	if !client.Ping() {
+		return fmt.Errorf("gost api unreachable")
+	}
+
+	oldNames := gostRuntimeNames(oldName, previous.Type)
+	newCfgs := []gostutil.ServiceConfig{}
+	if updated.Enabled {
+		newCfgs = s.buildServiceConfigs(updated)
+	}
+	created := []string{}
+	for _, cfg := range newCfgs {
+		if err := client.CreateService(cfg); err != nil {
+			for _, name := range created {
+				_ = client.DeleteService(name)
+			}
+			_ = s.restoreGostServices(client, previous, oldName)
+			return err
+		}
+		created = append(created, cfg.Name)
+	}
+
+	newNameSet := map[string]struct{}{}
+	for _, cfg := range newCfgs {
+		newNameSet[cfg.Name] = struct{}{}
+	}
+	if previous.Enabled {
+		for _, name := range oldNames {
+			if _, keep := newNameSet[name]; keep {
+				continue
+			}
+			_ = client.DeleteService(name)
+		}
+	} else if !updated.Enabled {
+		for _, name := range oldNames {
+			_ = client.DeleteService(name)
+		}
+	}
+
+	if err := client.SaveConfig(); err != nil {
+		for _, name := range created {
+			_ = client.DeleteService(name)
+		}
+		if rerr := s.restoreGostServices(client, previous, oldName); rerr != nil {
+			return fmt.Errorf("%v; restore: %w", err, rerr)
+		}
+		return err
+	}
+	return nil
+}
+
+func gostRuntimeNames(name, svcType string) []string {
 	if svcType == "tcp_udp_forward" {
-		client.DeleteService(name + "-tcp")
-		client.DeleteService(name + "-udp")
-	} else {
-		client.DeleteService(name)
+		return []string{name + "-tcp", name + "-udp"}
+	}
+	return []string{name}
+}
+
+func (s *GostService) restoreGostServices(client gostRuntime, previous model.GostService, oldName string) error {
+	if !previous.Enabled {
+		return client.SaveConfig()
+	}
+	prev := previous
+	prev.Name = oldName
+	for _, cfg := range s.buildServiceConfigs(prev) {
+		if err := client.CreateService(cfg); err != nil {
+			return err
+		}
+	}
+	return client.SaveConfig()
+}
+
+func gostServiceSnapshot(item model.GostService) map[string]interface{} {
+	return map[string]interface{}{
+		"name":             item.Name,
+		"type":             item.Type,
+		"listen_addr":      item.ListenAddr,
+		"target_addr":      item.TargetAddr,
+		"listener_type":    item.ListenerType,
+		"auth_user":        item.AuthUser,
+		"auth_pass":        item.AuthPass,
+		"chain_id":         item.ChainID,
+		"certificate_id":   item.CertificateID,
+		"custom_cert_path": item.CustomCertPath,
+		"custom_key_path":  item.CustomKeyPath,
+		"enable_stats":     item.EnableStats,
+		"remark":           item.Remark,
+		"enabled":          item.Enabled,
+	}
+}
+
+func (s *GostService) deleteServiceFromGost(client gostRuntime, name, svcType string) {
+	for _, runtimeName := range gostRuntimeNames(name, svcType) {
+		_ = client.DeleteService(runtimeName)
 	}
 }
 

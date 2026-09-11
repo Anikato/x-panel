@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -74,16 +73,16 @@ func extractZipSQL(inFile string) (*RestoreSQLFile, error) {
 	defer reader.Close()
 
 	var selected *zip.File
+	sqlCount := 0
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() || !isSQLName(file.Name) {
 			continue
 		}
-		if selected == nil || isPreferredSQLName(file.Name) {
-			selected = file
+		sqlCount++
+		if sqlCount > 1 {
+			return nil, fmt.Errorf("multiple sql files in archive; specify a single dump")
 		}
-		if isPreferredSQLName(file.Name) {
-			break
-		}
+		selected = file
 	}
 	if selected == nil {
 		return nil, fmt.Errorf("no sql file found in zip")
@@ -117,6 +116,7 @@ func extractTarSQL(inFile string, gzipped bool) (*RestoreSQLFile, error) {
 	}
 
 	tr := tar.NewReader(reader)
+	var selected *RestoreSQLFile
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -128,18 +128,19 @@ func extractTarSQL(inFile string, gzipped bool) (*RestoreSQLFile, error) {
 		if header.FileInfo().IsDir() || !isSQLName(header.Name) {
 			continue
 		}
-		if isPreferredSQLName(header.Name) {
-			return writeTempSQL(tr)
+		if selected != nil {
+			selected.Cleanup()
+			return nil, fmt.Errorf("multiple sql files in archive; specify a single dump")
 		}
-
-		temp, err := writeTempSQL(tr)
+		selected, err = writeTempSQL(tr)
 		if err != nil {
 			return nil, err
 		}
-		return temp, nil
 	}
-
-	return nil, fmt.Errorf("no sql file found in tar")
+	if selected == nil {
+		return nil, fmt.Errorf("no sql file found in tar")
+	}
+	return selected, nil
 }
 
 func writeTempSQL(reader io.Reader) (*RestoreSQLFile, error) {
@@ -165,8 +166,4 @@ func writeTempSQL(reader io.Reader) (*RestoreSQLFile, error) {
 
 func isSQLName(name string) bool {
 	return strings.HasSuffix(strings.ToLower(name), ".sql")
-}
-
-func isPreferredSQLName(name string) bool {
-	return strings.EqualFold(filepath.Base(name), "test.sql")
 }

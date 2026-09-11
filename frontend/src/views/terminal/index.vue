@@ -173,7 +173,7 @@
             <el-icon :size="14"><Plus /></el-icon>
           </div>
         </div>
-        <div class="terminal-container" @click="focusActiveTerminal">
+        <div class="terminal-container xp-term-stage" @click="focusActiveTerminal">
           <div
             v-for="tab in tabs"
             :key="tab.id"
@@ -254,7 +254,7 @@ import type { HostTreeGroup, CommandItem, CommandGroup } from '@/api/interface'
 import { Search, Minus, RefreshRight } from '@element-plus/icons-vue'
 import HostManage from './host/index.vue'
 import CommandManage from './command/index.vue'
-import { getToken } from '@/utils/auth'
+import { issueAccessTicket } from '@/api/modules/auth'
 import { buildTerminalWsUrl } from '@/utils/terminal-ws'
 
 interface TermTab {
@@ -281,13 +281,7 @@ const termFontSize = computed(() => globalStore.termFontSize)
 const changeFontSize = (delta: number) => {
   const newSize = Math.max(10, Math.min(24, globalStore.termFontSize + delta))
   if (newSize === globalStore.termFontSize) return
-  globalStore.termFontSize = newSize
-  for (const tab of tabs.value) {
-    if (tab.terminal) {
-      tab.terminal.options.fontSize = newSize
-      tab.fitAddon?.fit()
-    }
-  }
+  appearance.setLiveOverride('termFontSize', newSize)
 }
 
 watch(() => globalStore.termTheme, () => {
@@ -301,6 +295,15 @@ watch(() => globalStore.termFont, () => {
   const font = getTermFontByKey(globalStore.termFont)
   for (const tab of tabs.value) {
     if (tab.terminal) { tab.terminal.options.fontFamily = font; tab.fitAddon?.fit() }
+  }
+})
+
+watch(() => globalStore.termFontSize, (size) => {
+  for (const tab of tabs.value) {
+    if (tab.terminal) {
+      tab.terminal.options.fontSize = size
+      tab.fitAddon?.fit()
+    }
   }
 })
 
@@ -400,19 +403,22 @@ const focusActiveTerminal = () => {
   tab?.terminal?.focus()
 }
 
-const getWsUrl = (hostId?: number) => {
+const getWsUrl = async (hostId?: number) => {
+  const res = await issueAccessTicket({ scope: 'terminal' })
   return buildTerminalWsUrl({
     protocol: location.protocol,
     host: location.host,
-    token: getToken(),
+    ticket: res.data.ticket,
     hostId,
   })
 }
 
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { useGlobalStore } from '@/store/modules/global'
+import { useAppearanceStore } from '@/store/modules/appearance'
 
 const globalStore = useGlobalStore()
+const appearance = useAppearanceStore()
 
 const sendResize = (ws: WebSocket, rows: number, cols: number) => {
   const resizeData = JSON.stringify({ rows, cols })
@@ -433,7 +439,7 @@ const clearReconnectTimer = (tab: TermTab) => {
   }
 }
 
-const connectTabSocket = (tab: TermTab, isReconnect = false) => {
+const connectTabSocket = async (tab: TermTab, isReconnect = false) => {
   if (!tab.terminal) return
 
   const terminal = tab.terminal
@@ -446,7 +452,7 @@ const connectTabSocket = (tab: TermTab, isReconnect = false) => {
   }
 
   tab.status = isReconnect ? 'reconnecting' : 'connecting'
-  const ws = new WebSocket(getWsUrl(tab.hostId))
+  const ws = new WebSocket(await getWsUrl(tab.hostId))
   ws.binaryType = 'arraybuffer'
   tab.ws = ws
 
@@ -518,6 +524,7 @@ const createTerminal = async (tab: TermTab) => {
     theme: applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity),
     scrollback: 10000,
     allowProposedApi: true,
+    allowTransparency: true,
   })
 
   // 自定义按键处理：解决 vim/tmux 等程序的快捷键冲突
@@ -765,8 +772,8 @@ onBeforeUnmount(() => {
     cursor: pointer;
     color: var(--xp-text-muted);
     padding: 2px;
-    border-radius: 3px;
-    transition: all 0.15s;
+    border-radius: var(--xp-radius-sm);
+    transition: color 0.15s, background 0.15s;
 
     &:hover {
       color: var(--xp-accent);
@@ -787,8 +794,8 @@ onBeforeUnmount(() => {
   font-size: 10px;
   padding: 1px 5px;
   margin-left: 4px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--xp-radius-sm);
+  background: var(--xp-bg-elevated);
   color: var(--xp-text-muted);
   font-family: monospace;
 }
@@ -951,7 +958,7 @@ onBeforeUnmount(() => {
 
     &:hover {
       color: var(--xp-text-secondary);
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--xp-accent-muted);
     }
 
     &.active {
@@ -992,8 +999,8 @@ onBeforeUnmount(() => {
     .tab-badge {
       font-size: 10px;
       padding: 1px 5px;
-      border-radius: 3px;
-      background: rgba(129, 140, 248, 0.15);
+      border-radius: var(--xp-radius-sm);
+      background: color-mix(in srgb, var(--xp-accent-secondary) 16%, transparent);
       color: var(--xp-accent-secondary);
       font-weight: 600;
     }
@@ -1004,7 +1011,7 @@ onBeforeUnmount(() => {
       padding: 2px;
 
       &:hover {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--xp-accent-muted);
         color: var(--xp-danger);
       }
     }
@@ -1016,7 +1023,7 @@ onBeforeUnmount(() => {
       color: var(--xp-warning);
 
       &:hover {
-        background: rgba(245, 158, 11, 0.12);
+        background: color-mix(in srgb, var(--xp-warning) 12%, transparent);
         color: var(--xp-accent);
       }
     }
@@ -1034,18 +1041,16 @@ onBeforeUnmount(() => {
 
 .terminal-container {
   flex: 1;
-  background: var(--xp-terminal-bg);
   border: 1px solid var(--xp-border-light);
   border-top: none;
   border-radius: 0 0 var(--xp-radius-sm) var(--xp-radius-sm);
   overflow: hidden;
   position: relative;
-  padding: 4px;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 0;
 
   .terminal-instance {
     position: absolute;
-    inset: 4px;
+    inset: 0;
     display: none;
 
     &.active {
@@ -1092,7 +1097,7 @@ onBeforeUnmount(() => {
   align-self: flex-start;
 
   :deep(.el-input__wrapper) {
-    border-radius: 12px 12px 0 0;
+    border-radius: var(--xp-radius) var(--xp-radius) 0 0;
     box-shadow: none !important;
     padding: 8px 16px;
     background: transparent;
@@ -1111,7 +1116,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 2px;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--xp-radius-sm);
   cursor: pointer;
   transition: all 0.15s;
 

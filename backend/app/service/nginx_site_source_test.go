@@ -106,7 +106,7 @@ func TestParseNginxSiteMetadataRejectsMissingDomain(t *testing.T) {
 	}
 }
 
-func writeNginxFixture(t *testing.T, path, content string) string {
+func writeNginxFixture(t testing.TB, path, content string) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("create fixture directory: %v", err)

@@ -1,17 +1,8 @@
 <template>
   <div class="setting-page xp-settings-page">
-    <div class="xp-page-hero">
-      <div>
-        <div class="xp-page-eyebrow">{{ t('setting.pageEyebrow') }}</div>
-        <h2>{{ t('setting.title') }}</h2>
-        <p>{{ t('setting.pageDesc') }}</p>
-      </div>
-      <div class="xp-page-hero-actions">
-        <el-tag effect="plain">{{ versionInfo.version || t('setting.dev') }}</el-tag>
-        <el-button type="primary" :icon="Refresh" :loading="checking" @click="handleCheckUpdate">
-          {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
-        </el-button>
-      </div>
+    <div class="settings-heading">
+      <h2>{{ t('setting.title') }}</h2>
+      <p>{{ t('setting.pageDesc') }}</p>
     </div>
 
     <div class="xp-settings-layout">
@@ -21,7 +12,8 @@
           :key="section.id"
           type="button"
           class="xp-settings-nav-item"
-          @click="scrollToSection(section.id)"
+          :class="{ active: activeSection === section.id }"
+          @click="activeSection = section.id"
         >
           <el-icon><component :is="section.icon" /></el-icon>
           <span>{{ section.title }}</span>
@@ -29,56 +21,57 @@
       </aside>
 
       <main class="xp-settings-content">
-    <!-- Card 1: 版本信息 -->
-    <el-card id="setting-version" class="setting-card xp-section-card">
+    <el-card v-show="activeSection === 'update'" id="setting-version" class="setting-card xp-section-card">
       <template #header>
         <div class="card-header">
           <div class="card-header-title">
             <el-icon><InfoFilled /></el-icon>
-            <span>{{ t('setting.versionInfo') }}</span>
+            <span>{{ t('setting.versionAndUpgrade') }}</span>
           </div>
         </div>
       </template>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item :label="t('setting.currentVersion')">
-          <el-tag v-if="versionInfo.version === 'dev'" type="warning" effect="plain">{{ t('setting.dev') }}</el-tag>
-          <el-tag v-else type="success" effect="plain">{{ versionInfo.version }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item :label="t('setting.buildTime')">{{ versionInfo.buildTime || '-' }}</el-descriptions-item>
-        <el-descriptions-item :label="t('setting.commitHash')">
-          <el-text class="mono-text">{{ versionInfo.commitHash || '-' }}</el-text>
-        </el-descriptions-item>
-        <el-descriptions-item :label="t('setting.goVersion')">{{ versionInfo.goVersion || '-' }}</el-descriptions-item>
-      </el-descriptions>
+      <div class="version-compact">
+        <div>
+          <div class="version-name">{{ versionInfo.version || t('setting.dev') }}</div>
+          <div class="version-meta">
+            {{ [versionInfo.commitHash, versionInfo.buildTime].filter(Boolean).join(' · ') || t('setting.buildDetails') }}
+          </div>
+        </div>
+        <div class="version-actions">
+          <div class="xp-setting-line">
+            <span class="xp-setting-line-label">{{ t('setting.autoUpgrade') }}</span>
+            <el-switch v-model="autoUpgradeEnabled" @change="handleAutoUpgradeChange" />
+          </div>
+          <el-button type="primary" :icon="Refresh" :loading="checking" @click="handleCheckUpdate">
+            {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
+          </el-button>
+        </div>
+      </div>
+      <el-text type="info" size="small">{{ t('setting.autoUpgradeHint') }}</el-text>
 
       <div class="update-section">
         <div v-if="versionInfo.version === 'dev'" class="dev-notice">
           <el-alert :title="t('setting.devTip')" type="info" show-icon :closable="false" />
         </div>
         <template v-else>
-          <div class="xp-inline-form">
-            <el-input v-model="upgradeUrl" :placeholder="t('setting.upgradeUrlPlaceholder')" clearable>
-              <template #prepend>{{ t('setting.upgradeUrl') }}</template>
-            </el-input>
-            <el-button type="primary" :loading="checking" :icon="Refresh" @click="handleCheckUpdate">
-              {{ checking ? t('setting.checking') : t('setting.checkUpdate') }}
-            </el-button>
-          </div>
-          <div class="xp-setting-line">
-            <span class="xp-setting-line-label">{{ t('setting.autoUpgrade') }}</span>
-            <el-switch v-model="autoUpgradeEnabled" @change="handleAutoUpgradeChange" />
-            <el-text type="info" size="small">{{ t('setting.autoUpgradeHint') }}</el-text>
-          </div>
-          <div class="xp-inline-form">
-            <el-input v-model="githubToken" :placeholder="githubTokenSet ? t('setting.secretConfiguredPlaceholder') : t('setting.githubTokenPlaceholder')" clearable show-password>
-              <template #prepend>{{ t('setting.githubToken') }}</template>
-            </el-input>
-            <el-tag v-if="githubTokenSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
-            <el-button :loading="savingToken" :disabled="!githubToken" @click="handleSaveToken">{{ t('setting.save') }}</el-button>
-          </div>
-          <div class="update-url-hint">
-            <el-text type="info" size="small">{{ t('setting.upgradeUrlHint') }}。{{ t('setting.githubTokenHint') }}</el-text>
-          </div>
+          <el-collapse>
+            <el-collapse-item :title="t('setting.advancedUpdate')" name="advanced-update">
+              <div class="xp-inline-form">
+                <el-input v-model="upgradeUrl" :placeholder="t('setting.upgradeUrlPlaceholder')" clearable>
+                  <template #prepend>{{ t('setting.upgradeUrl') }}</template>
+                </el-input>
+              </div>
+              <p class="setting-inline-hint">{{ t('setting.upgradeUrlHint') }}</p>
+              <div class="xp-inline-form">
+                <el-input v-model="githubToken" :placeholder="githubTokenSet ? t('setting.secretConfiguredPlaceholder') : t('setting.githubTokenPlaceholder')" clearable show-password>
+                  <template #prepend>{{ t('setting.githubToken') }}</template>
+                </el-input>
+                <span v-if="githubTokenSet" class="xp-secret-row">{{ t('setting.secretConfigured') }}</span>
+                <el-button :loading="savingToken" :disabled="!githubToken" @click="handleSaveToken">{{ t('setting.save') }}</el-button>
+              </div>
+              <p class="setting-inline-hint">{{ t('setting.githubTokenHint') }}</p>
+            </el-collapse-item>
+          </el-collapse>
           <div v-if="upgradeInfo" class="update-result">
             <el-alert v-if="!upgradeInfo.hasUpdate" :title="t('setting.noUpdate')" type="success" show-icon :closable="false" />
             <el-card v-else shadow="hover" class="update-card">
@@ -102,8 +95,7 @@
       </div>
     </el-card>
 
-    <!-- Card 2: 外观与个性化 -->
-    <el-card id="setting-appearance" class="setting-card xp-section-card">
+    <el-card v-show="activeSection === 'appearance'" id="setting-appearance" class="setting-card xp-section-card">
       <template #header>
         <div class="card-header">
           <div class="card-header-title">
@@ -112,190 +104,20 @@
           </div>
         </div>
       </template>
-      <div class="appearance-section">
-        <!-- 主题模式 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.themeMode') }}</span>
-          <el-radio-group v-model="globalStore.theme" @change="(val: ThemeMode) => globalStore.setTheme(val)">
-            <el-radio-button value="dark"><el-icon><Moon /></el-icon> {{ t('header.themeDark') }}</el-radio-button>
-            <el-radio-button value="light"><el-icon><Sunny /></el-icon> {{ t('header.themeLight') }}</el-radio-button>
-            <el-radio-button value="auto"><el-icon><Monitor /></el-icon> {{ t('header.themeAuto') }}</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <!-- 强调色 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('header.accentColor') }}</span>
-          <div class="accent-grid-large">
-              <button
-              v-for="preset in ACCENT_PRESETS"
-              :key="preset.key"
-                type="button"
-              class="accent-swatch-large"
-              :class="{ active: globalStore.accentKey === preset.key }"
-              :style="{ background: preset.primary }"
-                :aria-label="preset.name"
-              @click="selectPreset(preset.key)"
-            >
-              <el-icon v-if="globalStore.accentKey === preset.key" :size="16"><Check /></el-icon>
-              </button>
-            <div class="accent-swatch-large custom-swatch">
-              <input type="color" class="swatch-color-input" :value="globalStore.accentCustom || '#22d3ee'" @input="onCustomAccent" />
-            </div>
-          </div>
-        </div>
-
-        <!-- 背景预设 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.bgPreset') }}</span>
-          <div class="accent-grid-large">
-            <el-tooltip v-for="bg in BG_PRESETS" :key="bg.key" :content="bgPresetLabel(bg.key)" placement="top">
-              <button
-                type="button"
-                class="bg-swatch"
-                :class="{ active: globalStore.bgPreset === bg.key }"
-                :style="{ background: bg.preview }"
-                :aria-label="bgPresetLabel(bg.key)"
-                @click="globalStore.bgPreset = bg.key"
-              >
-                <el-icon v-if="globalStore.bgPreset === bg.key" :size="14"><Check /></el-icon>
-              </button>
-            </el-tooltip>
-          </div>
-        </div>
-
-        <!-- UI 字体 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.uiFont') }}</span>
-          <el-select v-model="globalStore.uiFont" class="xp-select-md">
-            <el-option v-for="f in FONT_PRESETS" :key="f.key" :label="f.name" :value="f.key" />
-          </el-select>
-        </div>
-
-        <!-- 密度 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.uiDensity') }}</span>
-          <el-radio-group v-model="globalStore.uiDensity">
-            <el-radio-button value="compact">{{ t('setting.densityCompact') }}</el-radio-button>
-            <el-radio-button value="default">{{ t('setting.densityDefault') }}</el-radio-button>
-            <el-radio-button value="comfortable">{{ t('setting.densityComfortable') }}</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <!-- 圆角 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.borderRadius') }}</span>
-          <el-radio-group v-model="globalStore.borderRadiusPreset">
-            <el-radio-button value="sharp">{{ t('setting.radiusSharp') }}</el-radio-button>
-            <el-radio-button value="default">{{ t('setting.radiusDefault') }}</el-radio-button>
-            <el-radio-button value="rounded">{{ t('setting.radiusRounded') }}</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <!-- 卡片边框 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.cardBorder') }}</span>
-          <el-radio-group v-model="globalStore.cardBorderStyle">
-            <el-radio-button v-for="s in cardBorderOptions" :key="s.key" :value="s.key">{{ s.name }}</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <!-- 侧边栏宽度 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.sidebarWidth') }}</span>
-          <el-radio-group v-model="globalStore.sidebarWidth">
-            <el-radio-button value="narrow">{{ t('setting.sidebarNarrow') }}</el-radio-button>
-            <el-radio-button value="default">{{ t('setting.sidebarDefault') }}</el-radio-button>
-            <el-radio-button value="wide">{{ t('setting.sidebarWide') }}</el-radio-button>
-          </el-radio-group>
-        </div>
-
-        <!-- 显示服务器时钟 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.showServerClock') }}</span>
-          <el-switch v-model="globalStore.showServerClock" />
-        </div>
-
-        <!-- 仪表盘刷新间隔 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.dashboardRefresh') }}</span>
-          <el-select v-model="globalStore.dashboardRefreshInterval" class="xp-select-sm">
-            <el-option :label="'2 ' + t('setting.seconds')" :value="2000" />
-            <el-option :label="'5 ' + t('setting.seconds')" :value="5000" />
-            <el-option :label="'10 ' + t('setting.seconds')" :value="10000" />
-            <el-option :label="'30 ' + t('setting.seconds')" :value="30000" />
-            <el-option :label="t('setting.disableAutoRefresh')" :value="0" />
-          </el-select>
-        </div>
-
-        <!-- 减弱动画 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.reduceMotion') }}</span>
-          <el-switch v-model="globalStore.reduceMotion" />
-        </div>
-
-        <el-divider />
-
-        <!-- 终端外观 -->
-        <div class="appearance-subtitle">{{ t('setting.terminalAppearance') }}</div>
-
-        <!-- 终端配色 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.termTheme') }}</span>
-          <div class="term-theme-grid">
-            <button
-              v-for="tt in TERMINAL_THEME_PRESETS"
-              :key="tt.key"
-              type="button"
-              class="term-theme-swatch"
-              :class="{ active: globalStore.termTheme === tt.key }"
-              :aria-label="tt.name"
-              @click="globalStore.termTheme = tt.key"
-            >
-              <div class="term-preview" :style="{ background: tt.theme.background, color: tt.theme.foreground }">
-                <span :style="{ color: tt.theme.green }">$</span>
-                <span :style="{ color: tt.theme.cyan }"> ls</span>
-                <span :style="{ color: tt.theme.yellow }"> -la</span>
-              </div>
-              <span class="term-theme-name">{{ tt.name }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 终端字体 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.termFont') }}</span>
-          <el-select v-model="globalStore.termFont" class="xp-select-md">
-            <el-option v-for="f in TERMINAL_FONT_PRESETS" :key="f.key" :label="f.name" :value="f.key" />
-          </el-select>
-        </div>
-
-        <!-- 终端字号 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.termFontSize') }}</span>
-          <el-slider v-model="globalStore.termFontSize" :min="10" :max="24" :step="1" show-input class="xp-slider-md" />
-        </div>
-
-        <!-- 终端透明度 -->
-        <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.termBgOpacity') }}</span>
-          <el-slider v-model="globalStore.termBgOpacity" :min="0.3" :max="1" :step="0.05" show-input class="xp-slider-md" />
-        </div>
-      </div>
+      <AppearancePanel />
     </el-card>
 
-    <!-- Card 3: 面板与安全 -->
-    <el-card id="setting-security" class="setting-card xp-section-card" v-loading="loading">
+    <el-card v-show="activeSection === 'panel'" id="setting-security" class="setting-card xp-section-card" v-loading="loading">
       <template #header>
         <div class="card-header">
           <div class="card-header-title">
             <el-icon><Setting /></el-icon>
-            <span>{{ t('setting.panelAndSecurity') }}</span>
+            <span>{{ t('setting.panelSection') }}</span>
           </div>
         </div>
       </template>
-      <el-collapse v-model="activeCollapse">
-        <el-collapse-item :title="t('setting.title')" name="panel">
+      <el-collapse v-model="panelCollapse">
+        <el-collapse-item :title="t('setting.panelSection')" name="panel">
           <el-form :model="form" label-width="140px" class="xp-form-narrow">
             <el-form-item :label="t('setting.panelName')">
               <el-input v-model="form.panelName" />
@@ -313,8 +135,10 @@
               <el-input v-model="form.securityEntrance" :placeholder="securityEntranceSet ? t('setting.secretConfiguredPlaceholder') : t('setting.securityEntrancePlaceholder')" clearable>
                 <template #prepend>/</template>
               </el-input>
-              <el-tag v-if="securityEntranceSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
-              <el-button v-if="securityEntranceSet" type="danger" plain @click="clearSettingSecret('SecurityEntrance')">{{ t('setting.clearSecret') }}</el-button>
+              <div v-if="securityEntranceSet" class="xp-secret-row">
+                <span>{{ t('setting.secretConfigured') }}</span>
+                <button type="button" class="xp-secret-clear" @click="clearSettingSecret('SecurityEntrance')">{{ t('setting.clearSecret') }}</button>
+              </div>
               <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ t('setting.securityEntranceHint') }}</el-text>
               </div>
@@ -373,24 +197,6 @@
           </div>
         </el-collapse-item>
 
-        <el-collapse-item :title="t('setting.agentSetting')" name="agent">
-          <el-form label-width="140px" class="xp-form-narrow">
-            <el-form-item :label="t('setting.agentToken')">
-              <div class="xp-inline-form">
-                <el-input v-model="agentTokenForm.token" :placeholder="agentTokenSet ? t('setting.secretConfiguredPlaceholder') : t('setting.agentTokenPlaceholder')" show-password clearable />
-                <el-tag v-if="agentTokenSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
-                <el-button @click="generateAgentToken">{{ t('setting.generateToken') }}</el-button>
-              </div>
-              <div class="xp-form-tip">
-                <el-text type="info" size="small">{{ t('setting.agentTokenHint') }}</el-text>
-              </div>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingAgentToken" :disabled="!agentTokenForm.token" @click="handleSaveAgentToken">{{ t('setting.save') }}</el-button>
-            </el-form-item>
-          </el-form>
-        </el-collapse-item>
-
         <el-collapse-item :title="t('setting.proxy')" name="proxy">
           <el-form label-width="140px" class="xp-form-medium">
             <el-form-item :label="t('setting.proxyType')">
@@ -411,8 +217,10 @@
             </el-form-item>
             <el-form-item :label="t('setting.proxyAddress')">
               <el-input v-model="proxyForm.address" :placeholder="proxyAddressSet ? t('setting.secretConfiguredPlaceholder') : proxyAddressPlaceholder" clearable />
-              <el-tag v-if="proxyAddressSet" type="success">{{ t('setting.secretConfigured') }}</el-tag>
-              <el-button v-if="proxyAddressSet" type="danger" plain @click="clearSettingSecret('ProxyAddress')">{{ t('setting.clearSecret') }}</el-button>
+              <div v-if="proxyAddressSet" class="xp-secret-row">
+                <span>{{ t('setting.secretConfigured') }}</span>
+                <button type="button" class="xp-secret-clear" @click="clearSettingSecret('ProxyAddress')">{{ t('setting.clearSecret') }}</button>
+              </div>
               <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ proxyAddressHint }}</el-text>
               </div>
@@ -452,7 +260,19 @@
             </el-form-item>
           </el-form>
         </el-collapse-item>
+      </el-collapse>
+    </el-card>
 
+    <el-card v-show="activeSection === 'account'" id="setting-account" class="setting-card xp-section-card" v-loading="loading">
+      <template #header>
+        <div class="card-header">
+          <div class="card-header-title">
+            <el-icon><User /></el-icon>
+            <span>{{ t('setting.accountAndSecurity') }}</span>
+          </div>
+        </div>
+      </template>
+      <el-collapse v-model="accountCollapse">
         <el-collapse-item :title="t('setting.accountSetting')" name="account">
           <el-form label-width="140px" class="xp-form-narrow">
             <el-form-item :label="t('setting.userName')">
@@ -476,6 +296,23 @@
             </el-form-item>
           </el-form>
         </el-collapse-item>
+        <el-collapse-item :title="t('setting.agentSetting')" name="agent">
+          <el-form label-width="140px" class="xp-form-narrow">
+            <el-form-item :label="t('setting.agentToken')">
+              <div class="xp-inline-form">
+                <el-input v-model="agentTokenForm.token" :placeholder="agentTokenSet ? t('setting.secretConfiguredPlaceholder') : t('setting.agentTokenPlaceholder')" show-password clearable />
+                <span v-if="agentTokenSet" class="xp-secret-row">{{ t('setting.secretConfigured') }}</span>
+                <el-button @click="generateAgentToken">{{ t('setting.generateToken') }}</el-button>
+              </div>
+              <div class="xp-form-tip">
+                <el-text type="info" size="small">{{ t('setting.agentTokenHint') }}</el-text>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="savingAgentToken" :disabled="!agentTokenForm.token" @click="handleSaveAgentToken">{{ t('setting.save') }}</el-button>
+            </el-form-item>
+          </el-form>
+        </el-collapse-item>
       </el-collapse>
     </el-card>
       </main>
@@ -484,49 +321,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, markRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Setting, InfoFilled, Brush, Moon, Sunny, Check } from '@element-plus/icons-vue'
+import { Refresh, Setting, InfoFilled, Brush, User } from '@element-plus/icons-vue'
 import { getSettingInfo, updateSetting, updatePort, testProxy, getPanelSSL, updatePanelSSL, restartPanel } from '@/api/modules/setting'
 import { searchCertificate } from '@/api/modules/ssl'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
 import { updatePassword } from '@/api/modules/auth'
-import { useGlobalStore, type ThemeMode } from '@/store/modules/global'
+import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
 import type { UpgradeInfo, Certificate } from '@/api/interface'
-import { ACCENT_PRESETS, getPresetByKey, applyAccentPalette, generatePaletteFromHex } from '@/utils/accent-colors'
-import { BG_PRESETS, FONT_PRESETS, CARD_BORDER_STYLES } from '@/utils/appearance'
-import { TERMINAL_THEME_PRESETS, TERMINAL_FONT_PRESETS } from '@/utils/terminal-theme'
+import AppearancePanel from './appearance-panel.vue'
 
 const { t } = useI18n()
 const globalStore = useGlobalStore()
 
+const activeSection = ref('appearance')
 const settingSections = computed(() => [
-  { id: 'setting-version', title: t('setting.versionAndUpgrade'), icon: 'InfoFilled' },
-  { id: 'setting-appearance', title: t('setting.appearance'), icon: 'Brush' },
-  { id: 'setting-security', title: t('setting.panelAndSecurity'), icon: 'Setting' },
+  { id: 'appearance', title: t('setting.appearance'), icon: markRaw(Brush) },
+  { id: 'panel', title: t('setting.panelSection'), icon: markRaw(Setting) },
+  { id: 'account', title: t('setting.accountAndSecurity'), icon: markRaw(User) },
+  { id: 'update', title: t('setting.versionAndUpgrade'), icon: markRaw(InfoFilled) },
 ])
 
-const cardBorderLabelKeys: Record<string, string> = {
-  'accent-left': 'setting.cardBorderAccentLeft',
-  full: 'setting.cardBorderFull',
-  'shadow-only': 'setting.cardBorderShadowOnly',
-}
-
-const cardBorderOptions = computed(() =>
-  CARD_BORDER_STYLES.map((item) => ({
-    ...item,
-    name: t(cardBorderLabelKeys[item.key] || 'setting.cardBorderFull'),
-  })),
-)
-
-const bgPresetLabel = (key: string) => t(`setting.bgPresetNames.${key}`)
-
-const scrollToSection = (id: string) => {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-const activeCollapse = ref(['panel', 'panelSsl', 'agent', 'proxy', 'account'])
+const panelCollapse = ref(['panel'])
+const accountCollapse = ref(['account'])
 
 const panelSSLInfo = reactive({
   enable: false,
@@ -599,18 +418,6 @@ const handleRestartPanelForSsl = async () => {
   } catch {
     /* ignore */
   }
-}
-
-const selectPreset = (key: string) => {
-  globalStore.setAccent(key)
-  const preset = getPresetByKey(key)
-  if (preset) applyAccentPalette(preset)
-}
-
-const onCustomAccent = (e: Event) => {
-  const hex = (e.target as HTMLInputElement).value
-  globalStore.setAccent('custom', hex)
-  applyAccentPalette(generatePaletteFromHex(hex))
 }
 
 const loading = ref(false)

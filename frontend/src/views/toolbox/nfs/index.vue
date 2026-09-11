@@ -428,7 +428,7 @@ onMounted(() => loadAll())
 }
 .client-entry {
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
+  border-radius: var(--xp-radius-sm);
   padding: 12px;
   margin-bottom: 10px;
   background: var(--el-fill-color-blank);

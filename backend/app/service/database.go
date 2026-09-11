@@ -38,8 +38,15 @@ func NewIDatabaseService() IDatabaseService {
 	return &DatabaseService{repo: repo.NewIDatabaseRepo()}
 }
 
+type remoteDBAdmin interface {
+	DeleteDatabase(name string) error
+	DeleteUser(username, permission string) error
+	Close()
+}
+
 type DatabaseService struct {
-	repo repo.IDatabaseRepo
+	repo       repo.IDatabaseRepo
+	dropRemote func(server *model.DatabaseServer, instance *model.DatabaseInstance) error
 }
 
 func (s *DatabaseService) CreateServer(req dto.DatabaseServerCreate) error {
@@ -179,31 +186,101 @@ func (s *DatabaseService) DeleteInstance(id uint) error {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 	server, err := s.repo.GetServer(instance.ServerID)
-	if err == nil {
-		switch server.Type {
-		case "mysql":
-			client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
-			if err == nil {
-				defer client.Close()
-				_ = client.DeleteDatabase(instance.Name)
-				username := instance.Username
-				if username == "" {
-					username = instance.Name
-				}
-				_ = client.DeleteUser(username, instance.Permission)
-			}
-		case "postgresql":
-			client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
-			if err == nil {
-				defer client.Close()
-				_ = client.DeleteDatabase(instance.Name)
-				if instance.Username != "" && instance.Password != "" {
-					_ = client.DeleteUser(instance.Username)
-				}
-			}
-		}
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	drop := s.dropRemote
+	if drop == nil {
+		drop = s.dropRemoteDatabase
+	}
+	if err := drop(server, instance); err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 	return s.repo.DeleteInstance(id)
+}
+
+func (s *DatabaseService) dropRemoteDatabase(server *model.DatabaseServer, instance *model.DatabaseInstance) error {
+	client, err := openRemoteDBAdmin(server)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	others, err := s.repo.ListInstancesByServerID(server.ID)
+	if err != nil {
+		return err
+	}
+	return dropRemoteInstance(server, instance, others, client)
+}
+
+func openRemoteDBAdmin(server *model.DatabaseServer) (remoteDBAdmin, error) {
+	switch server.Type {
+	case "mysql":
+		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return nil, err
+		}
+		return mysqlAdmin{client}, nil
+	case "postgresql":
+		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return nil, err
+		}
+		return postgresAdmin{client}, nil
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", server.Type)
+	}
+}
+
+type mysqlAdmin struct{ client *dbUtil.MysqlClient }
+
+func (a mysqlAdmin) DeleteDatabase(name string) error { return a.client.DeleteDatabase(name) }
+func (a mysqlAdmin) DeleteUser(username, permission string) error {
+	return a.client.DeleteUser(username, permission)
+}
+func (a mysqlAdmin) Close() { a.client.Close() }
+
+type postgresAdmin struct{ client *dbUtil.PostgresClient }
+
+func (a postgresAdmin) DeleteDatabase(name string) error { return a.client.DeleteDatabase(name) }
+func (a postgresAdmin) DeleteUser(username, _ string) error {
+	return a.client.DeleteUser(username)
+}
+func (a postgresAdmin) Close() { a.client.Close() }
+
+func dropRemoteInstance(server *model.DatabaseServer, instance *model.DatabaseInstance, others []model.DatabaseInstance, client remoteDBAdmin) error {
+	if err := client.DeleteDatabase(instance.Name); err != nil {
+		return fmt.Errorf("drop database: %w", err)
+	}
+	username := instance.Username
+	if username == "" {
+		username = instance.Name
+	}
+	if username == "" || usernameShared(others, instance.ID, username) {
+		return nil
+	}
+	if server.Type == "postgresql" && instance.Username == "" {
+		return nil
+	}
+	if err := client.DeleteUser(username, instance.Permission); err != nil {
+		return fmt.Errorf("database dropped, account cleanup failed: %w", err)
+	}
+	return nil
+}
+
+func usernameShared(others []model.DatabaseInstance, instanceID uint, username string) bool {
+	for _, inst := range others {
+		if inst.ID == instanceID {
+			continue
+		}
+		other := inst.Username
+		if other == "" {
+			other = inst.Name
+		}
+		if other == username {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *DatabaseService) SearchInstance(req dto.DatabaseInstanceSearch) (int64, []dto.DatabaseInstanceInfo, error) {

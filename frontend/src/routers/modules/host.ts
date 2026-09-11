@@ -5,7 +5,7 @@ const hostRoutes: RouteRecordRaw[] = [
     path: '/host/files',
     name: 'FileManager',
     component: () => import('@/views/host/file/index.vue'),
-    meta: { title: 'menu.fileManager', icon: 'FolderOpened', requiresAuth: true },
+    meta: { title: 'menu.fileManager', icon: 'FolderOpened', requiresAuth: true, template: 'workbench' },
   },
   {
     path: '/host/monitor',

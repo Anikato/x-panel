@@ -356,7 +356,7 @@ onMounted(() => search())
   code {
     background: var(--el-fill-color-light);
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--xp-radius-sm);
     font-size: 13px;
     word-break: break-all;
     flex: 1;
@@ -365,7 +365,7 @@ onMounted(() => search())
 code {
   background: var(--el-fill-color-light);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--xp-radius-sm);
   font-size: 13px;
 }
 </style>

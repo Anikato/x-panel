@@ -67,7 +67,7 @@
       </div>
 
       <!-- 终端区域 -->
-      <div class="float-term-body" ref="bodyRef">
+      <div class="float-term-body xp-term-stage" ref="bodyRef">
         <div
           v-for="tab in tabs"
           :key="tab.id"
@@ -91,14 +91,16 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useGlobalStore } from '@/store/modules/global'
+import { useAppearanceStore } from '@/store/modules/appearance'
 import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
 import { normalizeTerminalCwd } from '@/utils/terminal-cwd'
 import { buildTerminalWsUrl } from '@/utils/terminal-ws'
-import { getToken } from '@/utils/auth'
+import { issueAccessTicket } from '@/api/modules/auth'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const globalStore = useGlobalStore()
+const appearance = useAppearanceStore()
 const bodyRef = ref<HTMLElement | null>(null)
 
 // ==================== 面板位置/尺寸 ====================
@@ -191,11 +193,12 @@ const fitActive = () => {
   })
 }
 
-const getWsUrl = (hostId?: number, cwd?: string | null) => {
+const getWsUrl = async (hostId?: number, cwd?: string | null) => {
+  const res = await issueAccessTicket({ scope: 'terminal' })
   return buildTerminalWsUrl({
     protocol: location.protocol,
     host: location.host,
-    token: getToken(),
+    ticket: res.data.ticket,
     hostId,
     cwd,
   })
@@ -229,7 +232,7 @@ const scheduleReconnect = (tab: TermTab) => {
   }, delay)
 }
 
-const connectWebSocket = (tab: TermTab) => {
+const connectWebSocket = async (tab: TermTab) => {
   if (!tab.terminal) return
   clearReconnectTimer(tab)
   tab.closing = false
@@ -244,7 +247,7 @@ const connectWebSocket = (tab: TermTab) => {
   }
 
   const term = tab.terminal
-  const ws = new WebSocket(getWsUrl(tab.hostId, tab.cwd))
+  const ws = new WebSocket(await getWsUrl(tab.hostId, tab.cwd))
   ws.binaryType = 'arraybuffer'
   tab.ws = ws
 
@@ -288,7 +291,7 @@ const createTerminal = async (tab: TermTab) => {
     fontSize: globalStore.termFontSize,
     fontFamily: getTermFontByKey(globalStore.termFont),
     theme: applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity),
-    scrollback: 10000, allowProposedApi: true,
+    scrollback: 10000, allowProposedApi: true, allowTransparency: true,
   })
 
   term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
@@ -359,8 +362,7 @@ const closeTab = (idx: number) => {
 const changeFontSize = (delta: number) => {
   const n = Math.max(10, Math.min(24, globalStore.termFontSize + delta))
   if (n === globalStore.termFontSize) return
-  globalStore.termFontSize = n
-  for (const tab of tabs.value) { if (tab.terminal) { tab.terminal.options.fontSize = n; tab.fitAddon?.fit() } }
+  appearance.setLiveOverride('termFontSize', n)
 }
 
 // 主题/字体联动
@@ -368,9 +370,16 @@ watch(() => globalStore.termTheme, () => {
   const theme = applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity)
   tabs.value.forEach(t => { if (t.terminal) t.terminal.options.theme = theme })
 })
+watch(() => globalStore.termBgOpacity, () => {
+  const theme = applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity)
+  tabs.value.forEach(t => { if (t.terminal) t.terminal.options.theme = theme })
+})
 watch(() => globalStore.termFont, () => {
   const font = getTermFontByKey(globalStore.termFont)
   tabs.value.forEach(t => { if (t.terminal) { t.terminal.options.fontFamily = font; t.fitAddon?.fit() } })
+})
+watch(() => globalStore.termFontSize, (size) => {
+  tabs.value.forEach(t => { if (t.terminal) { t.terminal.options.fontSize = size; t.fitAddon?.fit() } })
 })
 
 // 显示时自动打开第一个终端；最小化恢复时 refit
@@ -424,9 +433,9 @@ onBeforeUnmount(() => {
   z-index: 3000;
   display: flex;
   flex-direction: column;
-  background: #0d1117;
+  background: var(--xp-terminal-bg);
   border: 1px solid var(--xp-accent-muted);
-  border-radius: 10px;
+  border-radius: var(--xp-radius);
   box-shadow: 0 20px 60px rgba(0,0,0,0.6), var(--xp-accent-glow);
   overflow: hidden;
   user-select: none;
@@ -438,8 +447,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 0 10px;
   height: 36px;
-  background: rgba(255,255,255,0.04);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: color-mix(in srgb, var(--xp-bg-elevated) 88%, transparent);
+  border-bottom: 1px solid var(--xp-border-light);
   cursor: move;
   flex-shrink: 0;
 }
@@ -471,13 +480,13 @@ onBeforeUnmount(() => {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #f59e0b;
+      background: var(--xp-warning);
     }
 
-    &.connected .conn-dot { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.75); }
-    &.disconnected .conn-dot { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.65); }
+    &.connected .conn-dot { background: var(--xp-success); box-shadow: 0 0 6px color-mix(in srgb, var(--xp-success) 75%, transparent); }
+    &.disconnected .conn-dot { background: var(--xp-danger); box-shadow: 0 0 6px color-mix(in srgb, var(--xp-danger) 65%, transparent); }
     &.reconnecting .conn-dot,
-    &.connecting .conn-dot { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.65); }
+    &.connecting .conn-dot { background: var(--xp-warning); box-shadow: 0 0 6px color-mix(in srgb, var(--xp-warning) 65%, transparent); }
   }
 }
 
@@ -498,11 +507,11 @@ onBeforeUnmount(() => {
     color: var(--xp-text-muted);
     cursor: pointer;
     padding: 3px;
-    border-radius: 4px;
+    border-radius: var(--xp-radius-sm);
     transition: all 0.15s;
 
     &:hover { color: var(--xp-accent); background: var(--xp-accent-muted); }
-    &.close-btn:hover { color: #ff6b6b; background: rgba(255,107,107,0.15); }
+    &.close-btn:hover { color: var(--xp-danger); background: color-mix(in srgb, var(--xp-danger) 16%, transparent); }
   }
 }
 
@@ -510,7 +519,7 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 2px;
   padding: 4px 8px 0;
-  background: rgba(255,255,255,0.02);
+  background: color-mix(in srgb, var(--xp-bg-elevated) 70%, transparent);
   flex-shrink: 0;
 
   .ft-tab {
@@ -519,29 +528,29 @@ onBeforeUnmount(() => {
     gap: 4px;
     padding: 3px 10px;
     font-size: 11px;
-    border-radius: 4px 4px 0 0;
+    border-radius: var(--xp-radius-sm) var(--xp-radius-sm) 0 0;
     cursor: pointer;
     color: var(--xp-text-muted);
-    background: rgba(255,255,255,0.03);
-    transition: all 0.15s;
+    background: color-mix(in srgb, var(--xp-bg-surface) 80%, transparent);
+    transition: color 0.15s, background 0.15s;
 
     &.active { color: var(--xp-accent); background: var(--xp-accent-muted); }
-    &:hover:not(.active) { color: var(--xp-text-secondary); background: rgba(255,255,255,0.06); }
+    &:hover:not(.active) { color: var(--xp-text-secondary); background: var(--xp-accent-muted); }
 
     .ft-tab-dot {
       width: 5px;
       height: 5px;
       border-radius: 50%;
-      background: #22c55e;
+      background: var(--xp-success);
       flex-shrink: 0;
     }
 
-    &.disconnected .ft-tab-dot { background: #ef4444; }
-    &.reconnecting .ft-tab-dot { background: #f59e0b; }
+    &.disconnected .ft-tab-dot { background: var(--xp-danger); }
+    &.reconnecting .ft-tab-dot { background: var(--xp-warning); }
 
     .ft-tab-close {
       opacity: 0.5;
-      &:hover { opacity: 1; color: #ff6b6b; }
+      &:hover { opacity: 1; color: var(--xp-danger); }
     }
   }
 }
@@ -550,18 +559,18 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   position: relative;
-  padding: 6px;
+  padding: 0;
+  overflow: hidden;
   user-select: text;
 
   .ft-term-instance {
     position: absolute;
-    inset: 6px;
+    inset: 0;
     display: none;
 
     &.active { display: block; }
 
     :deep(.xterm) { height: 100%; }
-    :deep(.xterm-viewport) { border-radius: 4px; }
   }
 }
 
@@ -576,10 +585,10 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 0 12px;
   height: 32px;
-  background: #0d1117;
+  background: var(--xp-terminal-bg);
   border: 1px solid var(--xp-accent-muted);
   border-bottom: none;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--xp-radius-sm) var(--xp-radius-sm) 0 0;
   font-size: 12px;
   color: var(--xp-accent);
   cursor: pointer;
@@ -592,15 +601,15 @@ onBeforeUnmount(() => {
   .term-bar-dot {
     width: 6px; height: 6px;
     border-radius: 50%;
-    background: #4ade80;
-    box-shadow: 0 0 6px #4ade80;
+    background: var(--xp-success);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--xp-success) 80%, transparent);
     flex-shrink: 0;
   }
 
   .bar-close {
     margin-left: 4px;
     color: var(--xp-text-muted);
-    &:hover { color: #ff6b6b; }
+    &:hover { color: var(--xp-danger); }
   }
 }
 

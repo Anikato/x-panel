@@ -75,6 +75,12 @@ ErrNginxInstall:
   other: "Nginx 安装失败: {{.detail}}"
 ErrNginxBuildDeps:
   other: "缺少编译依赖: {{.detail}}"
+ErrNginxLogAllFailed:
+  other: "无法读取访问日志: {{.detail}}"
+ErrNginxLogUnsupportedFormat:
+  other: "当前访问日志格式不受支持，无法统计。需要 Nginx combined 格式。"
+ErrNginxLogBusy:
+  other: "日志分析正在进行，请稍后重试"
 
 # 网站管理错误
 ErrWebsiteDomainExist:
