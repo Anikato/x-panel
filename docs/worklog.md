@@ -1,5 +1,21 @@
 # X-Panel 工作日志
 
+## 2026-09-12
+
+### 完成内容
+
+- [x] 发布 X-Panel `v0.8.2`（主题包导入导出、四种表面配方、自定义字体、亮暗色编辑器工作区；linux/amd64、linux/arm64，公网 SHA256 通过）
+- [x] Agent 仍为 `agent-v2.3.4-xpanel.1`，未换制品
+
+### 关键决策
+
+- 正式发布只走 `Build & Release` 的 `workflow_dispatch`，源码先推到 `3c20ccb`
+- 公开主题 schema 仍未冻结；本版是产品补丁，不是契约冻结
+
+### 下一步计划
+
+- 节点执行 `xpanel update --latest` 升级到 `v0.8.2`
+
 ## 2026-09-11
 
 ### 完成内容
