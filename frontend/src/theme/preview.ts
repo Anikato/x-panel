@@ -55,14 +55,27 @@ export function cancelPreview(session: PreviewSession): AppearancePreference {
 export function restoreGroup(session: PreviewSession, group: OverrideGroup): void {
   const themeId = session.draft.themeId
   const current = { ...(session.draft.overridesByTheme[themeId] || {}) }
+  const isolated = { ...(session.draft.isolated || {}) }
   for (const key of OVERRIDE_GROUPS[group]) {
     delete (current as Record<string, unknown>)[key]
+    const prefix = `overridesByTheme.${themeId}.${key}`
+    for (const path of Object.keys(isolated)) {
+      if (path === prefix || path.startsWith(`${prefix}.`)) delete isolated[path]
+    }
   }
   session.draft.overridesByTheme[themeId] = current
+  session.draft.isolated = Object.keys(isolated).length ? isolated : undefined
 }
 
 export function restoreThemeDefaults(session: PreviewSession): void {
-  session.draft.overridesByTheme[session.draft.themeId] = {}
+  const themeId = session.draft.themeId
+  session.draft.overridesByTheme[themeId] = {}
+  const isolated = { ...(session.draft.isolated || {}) }
+  const prefix = `overridesByTheme.${themeId}.`
+  for (const path of Object.keys(isolated)) {
+    if (path.startsWith(prefix)) delete isolated[path]
+  }
+  session.draft.isolated = Object.keys(isolated).length ? isolated : undefined
 }
 
 export function restoreAllDefaults(session: PreviewSession): void {

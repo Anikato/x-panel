@@ -36,3 +36,53 @@ test('appearance preset strips uploaded wallpapers and rejects junk', () => {
   assert.equal(parseAppearancePreset('{"foo":1}').ok, false)
   assert.equal(parseAppearancePreset('not-json').ok, false)
 })
+
+test('outer 1 + inner 1 with schemaMinor 99 still reads known fields', () => {
+  const parsed = parseAppearancePreset({
+    kind: 'x-panel.appearance',
+    schemaVersion: 1,
+    schemaMinor: 99,
+    futureRoot: true,
+    preference: {
+      schemaVersion: 1,
+      schemaMinor: 99,
+      themeId: 'atelier',
+      mode: 'dark',
+      reduceMotion: false,
+      keepPersonalPrefsAcrossThemes: false,
+      overridesByTheme: {
+        atelier: { uiFont: 'lxgw', futureOption: true },
+      },
+    },
+  })
+  assert.equal(parsed.ok, true)
+  if (!parsed.ok) return
+  assert.equal(parsed.preference.themeId, 'atelier')
+  assert.equal(parsed.preference.overridesByTheme.atelier?.uiFont, 'lxgw')
+  assert.equal((parsed.preference.overridesByTheme.atelier as { futureOption?: boolean } | undefined)?.futureOption, undefined)
+  assert.equal(parsed.preference.isolated?.['overridesByTheme.atelier.futureOption'], true)
+  const round = buildAppearancePreset(parsed.preference)
+  assert.equal((round.preference.overridesByTheme.atelier as { futureOption?: boolean })?.futureOption, true)
+})
+
+test('inner preference schemaVersion 2 is rejected', () => {
+  const parsed = parseAppearancePreset({
+    kind: 'x-panel.appearance',
+    schemaVersion: 1,
+    preference: {
+      ...DEFAULT_PREFERENCE,
+      schemaVersion: 2,
+    },
+  })
+  assert.equal(parsed.ok, false)
+})
+
+test('export rewrites custom uiFont to system without mutating the live preference', () => {
+  const live = {
+    ...DEFAULT_PREFERENCE,
+    overridesByTheme: { atelier: { uiFont: 'custom' as const } },
+  }
+  const file = buildAppearancePreset(live)
+  assert.equal(file.preference.overridesByTheme.atelier?.uiFont, 'system')
+  assert.equal(live.overridesByTheme.atelier?.uiFont, 'custom')
+})

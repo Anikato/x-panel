@@ -30,11 +30,11 @@ html:not(.dark) {
 
   --xp-progress-trail: #e2e8f0;
 
-  --xp-drawer-bg: #ffffff;
-  --xp-drawer-header-bg: #fafafa;
+  --xp-drawer-bg: var(--xp-bg-surface);
+  --xp-drawer-header-bg: var(--xp-bg-surface);
 
-  --xp-popover-bg: #ffffff;
-  --xp-popover-border: #e2e8f0;
+  --xp-popover-bg: var(--xp-bg-elevated);
+  --xp-popover-border: var(--xp-border);
 
   --xp-tab-active-bg: #ffffff;
   --xp-tab-border: #e2e8f0;
@@ -52,11 +52,11 @@ html:not(.dark) {
   --xp-btn-primary-gradient: linear-gradient(135deg, #0891b2, #06b6d4);
   --xp-btn-primary-gradient-hover: linear-gradient(135deg, #0e7490, #0891b2);
 
-  --xp-context-bg: #ffffff;
-  --xp-context-border: #e2e8f0;
-  --xp-context-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  --xp-context-hover: rgba(8, 145, 178, 0.06);
-  --xp-context-danger-hover: rgba(239, 68, 68, 0.06);
+  --xp-context-bg: var(--xp-bg-elevated);
+  --xp-context-border: var(--xp-border);
+  --xp-context-shadow: 0 12px 40px color-mix(in srgb, #000 12%, transparent);
+  --xp-context-hover: color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset));
+  --xp-context-danger-hover: color-mix(in srgb, var(--xp-danger) 12%, transparent);
 
   // --- Element Plus variable overrides for light mode ---
   --el-color-primary: #0891b2;
@@ -72,9 +72,9 @@ html:not(.dark) {
   --el-color-danger: #dc2626;
   --el-color-info: #64748b;
 
-  --el-bg-color: #F4F5F8;
-  --el-bg-color-overlay: #FFFFFF;
-  --el-bg-color-page: #E4E6EC;
+  --el-bg-color: var(--xp-bg-surface);
+  --el-bg-color-overlay: var(--xp-bg-elevated);
+  --el-bg-color-page: var(--xp-bg-base);
 
   --el-text-color-primary: #1e293b;
   --el-text-color-regular: #334155;
@@ -86,25 +86,26 @@ html:not(.dark) {
   --el-border-color-lighter: #f8fafc;
   --el-border-color-dark: #cbd5e1;
 
-  --el-fill-color: #f1f5f9;
-  --el-fill-color-light: #f8fafc;
-  --el-fill-color-lighter: #ffffff;
-  --el-fill-color-blank: #ffffff;
+  --el-fill-color: var(--xp-bg-inset);
+  --el-fill-color-light: var(--xp-bg-inset);
+  --el-fill-color-lighter: var(--xp-bg-surface);
+  --el-fill-color-blank: var(--xp-bg-surface);
 
   --el-box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   --el-box-shadow-light: 0 1px 4px rgba(0, 0, 0, 0.06);
   --el-box-shadow-lighter: 0 1px 2px rgba(0, 0, 0, 0.04);
 
-  --el-card-bg-color: #ffffff;
-  --el-dialog-bg-color: #ffffff;
-  --el-drawer-bg-color: #ffffff;
+  --el-card-bg-color: var(--xp-bg-surface);
+  --el-dialog-bg-color: var(--xp-bg-elevated);
+  --el-drawer-bg-color: var(--xp-bg-surface);
 
-  --el-table-header-bg-color: #fafafa;
-  --el-table-row-hover-bg-color: rgba(8, 145, 178, 0.04);
+  --el-table-header-bg-color: var(--xp-bg-table-header);
+  --el-table-row-hover-bg-color: var(--xp-inset-hover);
+  --el-table-current-row-bg-color: var(--xp-inset-selected);
 
   --el-menu-bg-color: transparent;
-  --el-menu-hover-bg-color: rgba(8, 145, 178, 0.06);
-  --el-menu-active-color: #0891b2;
+  --el-menu-hover-bg-color: var(--xp-inset-hover);
+  --el-menu-active-color: var(--xp-accent);
 
   --el-pagination-hover-color: #0891b2;
 }

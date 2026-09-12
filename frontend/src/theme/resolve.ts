@@ -1,6 +1,7 @@
 import { ensureContrast, generatePaletteFromHex, getPresetByKey } from '../utils/accent-colors.ts'
-import { getTheme } from './catalog.ts'
-import { getSurfacePreset } from './surfaces.ts'
+import { getTheme, hasTheme } from './catalog.ts'
+import { getSurfacePreset, lightSurfaceFamily } from './surfaces.ts'
+import { BLACK, isHex, mixSrgb, normalizeHex } from './pack-color.ts'
 import {
   CROSS_THEME_KEYS,
   DEFAULT_PREFERENCE,
@@ -16,6 +17,7 @@ import {
   type ResolvedAccent,
   type ResolvedAppearance,
   type ThemeId,
+  type ThemeModePack,
   type ThemeOverrides,
   type ThemeVariants,
 } from './types.ts'
@@ -46,6 +48,26 @@ function currentOverrides(pref: AppearancePreference): ThemeOverrides {
 export function isCustomized(pref: AppearancePreference): boolean {
   const over = currentOverrides(pref)
   return Object.values(over).some((value) => value !== undefined && value !== '')
+}
+
+function resolvePackOrUserAccent(pack: ThemeModePack, over: ThemeOverrides): ResolvedAccent {
+  if (over.accentKey || over.accentCustom) {
+    return resolveAccent(over.accentKey || pack.accentKey, over.accentCustom || '')
+  }
+  if (pack.accentHex) {
+    return {
+      key: 'custom',
+      custom: pack.accentHex,
+      primary: pack.accentHex,
+      hover: pack.accentHover || generatePaletteFromHex(pack.accentHex).hover,
+      muted: pack.accentMuted || generatePaletteFromHex(pack.accentHex).muted,
+      glow: generatePaletteFromHex(pack.accentHex).glow,
+      secondary: pack.accentSecondaryHex || generatePaletteFromHex(pack.accentHex).secondary,
+      onAccent: pack.onAccent || (luminance(pack.accentHex) > 0.62 ? '#0B0E14' : '#F8FAFC'),
+      rgb: hexToRgb(pack.accentHex),
+    }
+  }
+  return resolveAccent(pack.accentKey, '')
 }
 
 function resolveAccent(key: string, custom: string): ResolvedAccent {
@@ -94,13 +116,17 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     iconContainer: over.iconContainer || theme.variants.iconContainer,
   }
   const iconSet = over.iconSet || theme.iconSet || theme.defaults.iconSet
-  let accent = resolveAccent(over.accentKey || pack.accentKey, over.accentCustom || '')
+  let accent = resolvePackOrUserAccent(pack, over)
 
   let colors = { ...pack.colors }
-  if (colorMode === 'dark' && over.surfacePreset) {
-    const surface = getSurfacePreset(over.surfacePreset)
-    if (surface) colors = { ...colors, ...surface.colors }
-    else warnings.push(`unknown surface preset: ${over.surfacePreset}`)
+  if (over.surfacePreset) {
+    if (colorMode === 'dark') {
+      const surface = getSurfacePreset(over.surfacePreset)
+      if (surface) colors = { ...colors, ...surface.colors }
+      else warnings.push(`unknown surface preset: ${over.surfacePreset}`)
+    } else {
+      colors = { ...colors, ...lightSurfaceFamily(over.surfacePreset) }
+    }
   }
 
   if (colorMode === 'light') {
@@ -119,6 +145,9 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     4.5,
   )
   accent = { ...accent, onAccent }
+  if (over.accentSecondary && isHex(over.accentSecondary)) {
+    accent = { ...accent, secondary: normalizeHex(over.accentSecondary) }
+  }
 
   const materials = {
     ...theme.tokens.materials,
@@ -155,6 +184,12 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     : 'none'
   const termImageUrl = typeof over.termImageUrl === 'string' ? over.termImageUrl.trim() : ''
   const editorTheme = colorMode === 'light' ? theme.editor.light : theme.editor.dark
+  const hoverStrength = over.surfaces?.inset?.hoverStrength ?? theme.surfaces?.hoverStrength ?? 1
+  const insetHover = hoverStrength <= 0
+    ? 'transparent'
+    : `color-mix(in srgb, ${colors.textPrimary} ${Math.round(8 * hoverStrength)}%, ${colors.bgInset})`
+  const insetSelected = mixSrgb(colors.bgInset, accent.primary, 0.15)
+  const primaryTint = colorMode === 'light' ? '#FFFFFF' : BLACK
 
   const sidebarSolid = colors.bgSidebar
   const headerSolid = colors.bgHeader
@@ -194,7 +229,7 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     '--xp-accent-secondary': accent.secondary,
     '--xp-logo-primary': accent.primary,
     '--xp-logo-secondary': accent.secondary,
-    '--xp-font-family': theme.tokens.fonts.ui[uiFontKey],
+    '--xp-font-family': theme.tokens.fonts.ui[uiFontKey] || theme.tokens.fonts.ui.system,
     '--xp-font-mono': theme.tokens.fonts.mono,
     '--xp-font-size': densityTokens.fontSize,
     '--xp-spacing': densityTokens.spacing,
@@ -219,8 +254,6 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     '--xp-motion-ease': motion.ease,
     '--xp-shadow-card': colorMode === 'dark' ? '0 8px 24px rgba(0, 0, 0, 0.28)' : '0 10px 28px rgba(26, 23, 20, 0.08)',
     '--xp-shadow-overlay': colorMode === 'dark' ? '0 18px 48px rgba(0, 0, 0, 0.45)' : '0 18px 40px rgba(26, 23, 20, 0.12)',
-    '--el-color-primary': accent.primary,
-    '--el-color-primary-dark-2': accent.hover,
     '--el-bg-color': colors.bgSurface,
     '--el-bg-color-overlay': overlaySolid,
     '--el-bg-color-page': colors.bgBase,
@@ -234,7 +267,17 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     '--el-box-shadow': 'var(--xp-shadow-overlay)',
     '--el-card-bg-color': colors.bgSurface,
     '--el-dialog-bg-color': overlaySolid,
-    '--el-drawer-bg-color': overlaySolid,
+    '--el-drawer-bg-color': colors.bgSurface,
+    '--el-color-primary': accent.primary,
+    '--el-color-primary-dark-2': mixSrgb(accent.primary, BLACK, 0.2),
+    '--el-color-primary-light-3': mixSrgb(accent.primary, primaryTint, colorMode === 'light' ? 0.35 : 0.28),
+    '--el-color-primary-light-5': mixSrgb(accent.primary, primaryTint, colorMode === 'light' ? 0.55 : 0.46),
+    '--el-color-primary-light-7': mixSrgb(accent.primary, primaryTint, colorMode === 'light' ? 0.72 : 0.62),
+    '--el-color-primary-light-8': mixSrgb(accent.primary, primaryTint, colorMode === 'light' ? 0.84 : 0.74),
+    '--el-color-primary-light-9': mixSrgb(accent.primary, colorMode === 'light' ? '#FFFFFF' : colors.bgSurface, colorMode === 'light' ? 0.92 : 0.78),
+    '--el-menu-active-color': accent.primary,
+    '--xp-btn-primary-bg': accent.hover,
+    '--xp-btn-primary-hover': accent.primary,
     '--xp-chart-0': theme.charts.categorical[0] || accent.primary,
     '--xp-chart-1': theme.charts.categorical[1] || colors.success,
     '--xp-chart-2': theme.charts.categorical[2] || colors.warning,
@@ -242,6 +285,13 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     '--xp-chart-4': theme.charts.categorical[4] || accent.secondary,
     '--xp-chart-5': theme.charts.categorical[5] || colors.info,
     '--el-popup-modal-bg-color': overlaySolid,
+    '--xp-card-top-edge-shadow': (over.surfaces?.card?.topEdge ?? theme.surfaces?.cardTopEdge ?? true)
+      ? `inset 0 1px 0 color-mix(in srgb, ${accent.primary} 16%, transparent)`
+      : 'none',
+    '--xp-inset-hover': insetHover,
+    '--xp-inset-selected': insetSelected,
+    '--el-table-row-hover-bg-color': insetHover,
+    '--el-table-current-row-bg-color': insetSelected,
     '--xp-chrome-veil': chromeImageMode !== 'none'
       ? `linear-gradient(${withAlpha(colors.bgBase, colorMode === 'dark' ? 0.62 : 0.72)}, ${withAlpha(colors.bgBase, colorMode === 'dark' ? 0.78 : 0.86)})`
       : 'none',
@@ -263,10 +313,12 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     'term-follow': termFollowChrome ? 'on' : 'off',
   }
 
+  const themeMissing = !hasTheme(pref.themeId)
   return {
-    themeId: theme.id,
-    themeName: theme.name,
+    themeId: pref.themeId,
+    themeName: themeMissing ? pref.themeId : theme.name,
     themeVersion: theme.version,
+    themeMissing,
     customized: isCustomized(pref),
     colorMode,
     modePreference: pref.mode,
@@ -274,7 +326,7 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     transparency,
     density,
     uiFontKey,
-    uiFont: theme.tokens.fonts.ui[uiFontKey],
+    uiFont: theme.tokens.fonts.ui[uiFontKey] || theme.tokens.fonts.ui.system,
     monoFont: theme.tokens.fonts.mono,
     sidebarWidth: theme.tokens.sidebarWidths[sidebarWidthKey],
     headerHeight: theme.tokens.headerHeights[headerHeightKey],
@@ -326,11 +378,13 @@ export function switchTheme(pref: AppearancePreference, nextId: ThemeId): Appear
 export function clonePreference(pref: AppearancePreference): AppearancePreference {
   return {
     schemaVersion: pref.schemaVersion,
+    schemaMinor: pref.schemaMinor,
     themeId: pref.themeId,
     mode: pref.mode,
     reduceMotion: pref.reduceMotion,
     keepPersonalPrefsAcrossThemes: pref.keepPersonalPrefsAcrossThemes,
     overridesByTheme: JSON.parse(JSON.stringify(pref.overridesByTheme || {})),
+    isolated: pref.isolated ? { ...pref.isolated } : undefined,
   }
 }
 

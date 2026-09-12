@@ -1,4 +1,36 @@
+import { BLACK, WHITE, mixSrgb } from './pack-color.ts'
 import type { SemanticColors, SurfacePreset } from './types.ts'
+
+const LIGHT_C1 = { bg: '#E4E6EC', surface: '#F4F5F8' }
+const LIGHT_TINTS: Record<SurfacePreset, string> = {
+  graphite: '#64748B',
+  abyss: '#1D4ED8',
+  void: '#000000',
+  tinted: '#0F766E',
+  cosmos: '#7E22CE',
+  warm: '#92400E',
+}
+
+export function lightSurfaceFamily(key: SurfacePreset): SurfacePresetDef['colors'] {
+  const tint = LIGHT_TINTS[key]
+  const bg = mixSrgb(LIGHT_C1.bg, tint, 0.06)
+  const surface = mixSrgb(LIGHT_C1.surface, tint, 0.03)
+  const elevated = mixSrgb(surface, WHITE, 0.4)
+  const inset = mixSrgb(surface, BLACK, 0.04)
+  const sidebar = mixSrgb(bg, BLACK, 0.04)
+  return {
+    bgBase: bg,
+    bgSurface: surface,
+    bgElevated: elevated,
+    bgOverlay: elevated,
+    bgSidebar: sidebar,
+    bgHeader: sidebar,
+    bgInput: inset,
+    bgTableHeader: inset,
+    bgInset: inset,
+    bgAuth: mixSrgb(bg, BLACK, 0.04),
+  }
+}
 
 export interface SurfacePresetDef {
   key: SurfacePreset

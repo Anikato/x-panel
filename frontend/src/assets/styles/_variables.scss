@@ -64,7 +64,7 @@
   --xp-progress-trail: rgba(255, 255, 255, 0.06);
 
   // --- Drawer / Dialog ---
-  --xp-drawer-bg: var(--xp-bg-elevated);
+  --xp-drawer-bg: var(--xp-bg-surface);
   --xp-drawer-header-bg: var(--xp-bg-surface);
 
   // --- Popover ---
@@ -94,11 +94,11 @@
   --xp-btn-primary-gradient-hover: #7AA2FF;
 
   // --- Context menu / Floating panels ---
-  --xp-context-bg: var(--xp-bg-surface);
+  --xp-context-bg: var(--xp-bg-elevated);
   --xp-context-border: var(--xp-border);
-  --xp-context-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --xp-context-hover: rgba(34, 211, 238, 0.08);
-  --xp-context-danger-hover: rgba(239, 68, 68, 0.08);
+  --xp-context-shadow: 0 12px 40px color-mix(in srgb, #000 35%, transparent);
+  --xp-context-hover: color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset));
+  --xp-context-danger-hover: color-mix(in srgb, var(--xp-danger) 12%, transparent);
 
   // --- Font ---
   --xp-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',

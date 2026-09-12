@@ -8,7 +8,7 @@
     <el-table :data="servers" v-loading="loading" style="width:100%">
       <el-table-column type="expand">
         <template #default="{ row }">
-          <div class="instance-panel">
+          <div class="instance-panel xp-inset">
             <div class="instance-toolbar">
               <el-button type="primary" size="small" @click="openCreateInstance(row)">{{ t('database.createDB') }}</el-button>
               <el-button size="small" @click="syncInstances(row)">
@@ -709,6 +709,7 @@ onMounted(() => loadServers())
 <style scoped>
 .instance-panel {
   padding: 8px 16px;
+  border-radius: var(--xp-radius-sm);
 }
 .instance-toolbar {
   display: flex;

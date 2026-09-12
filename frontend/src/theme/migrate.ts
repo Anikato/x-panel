@@ -1,5 +1,5 @@
 import { ACCENT_PRESETS } from '../utils/accent-colors.ts'
-import { hasTheme } from './catalog.ts'
+import { isThemeSlug } from './catalog.ts'
 import { clonePreference, emptyPreference } from './resolve.ts'
 import { sanitizeWallpaperUrl } from './wallpaper-store.ts'
 import {
@@ -65,43 +65,152 @@ function parseObject(input: unknown): Record<string, unknown> | null {
   return null
 }
 
-function sanitizeOverrides(raw: unknown): ThemeOverrides {
+const KNOWN_OVERRIDE_KEYS = new Set([
+  'accentKey', 'accentCustom', 'accentSecondary', 'density', 'uiFont', 'sidebarWidth', 'headerHeight',
+  'radius', 'card', 'sidebarVariant', 'subnav', 'iconSet', 'iconContainer', 'transparency',
+  'surfacePreset', 'termTheme', 'termFont', 'termFontSize', 'termBgOpacity', 'termWallpaper',
+  'chromeTexture', 'chromeImageMode', 'chromeImageUrl', 'termFollowChrome', 'termImageMode', 'termImageUrl',
+  'surfaces',
+])
+
+function isolate(isolated: Record<string, unknown>, path: string, value: unknown) {
+  isolated[path] = value
+}
+
+function takeEnum<T extends string>(
+  raw: unknown,
+  allowed: readonly T[] | Set<string>,
+  path: string,
+  isolated: Record<string, unknown>,
+): T | undefined {
+  if (raw === undefined) return undefined
+  const ok = allowed instanceof Set ? typeof raw === 'string' && allowed.has(raw) : includes(allowed, raw)
+  if (ok) {
+    delete isolated[path]
+    return raw as T
+  }
+  isolate(isolated, path, raw)
+  return undefined
+}
+
+function sanitizeSurfaces(raw: unknown, prefix: string, isolated: Record<string, unknown>): ThemeOverrides['surfaces'] {
+  if (!raw || typeof raw !== 'object') {
+    if (raw !== undefined) isolate(isolated, prefix, raw)
+    return undefined
+  }
+  const src = raw as Record<string, unknown>
+  for (const key of Object.keys(src)) {
+    if (key !== 'card' && key !== 'inset') isolate(isolated, `${prefix}.${key}`, src[key])
+  }
+  const next: NonNullable<ThemeOverrides['surfaces']> = {}
+  if (src.card !== undefined) {
+    if (!src.card || typeof src.card !== 'object') isolate(isolated, `${prefix}.card`, src.card)
+    else {
+      const card = src.card as Record<string, unknown>
+      for (const key of Object.keys(card)) {
+        if (key !== 'topEdge') isolate(isolated, `${prefix}.card.${key}`, card[key])
+      }
+      if (typeof card.topEdge === 'boolean') {
+        delete isolated[`${prefix}.card.topEdge`]
+        next.card = { topEdge: card.topEdge }
+      } else if (card.topEdge !== undefined) isolate(isolated, `${prefix}.card.topEdge`, card.topEdge)
+    }
+  }
+  if (src.inset !== undefined) {
+    if (!src.inset || typeof src.inset !== 'object') isolate(isolated, `${prefix}.inset`, src.inset)
+    else {
+      const inset = src.inset as Record<string, unknown>
+      for (const key of Object.keys(inset)) {
+        if (key !== 'hoverStrength') isolate(isolated, `${prefix}.inset.${key}`, inset[key])
+      }
+      if (typeof inset.hoverStrength === 'number' && Number.isFinite(inset.hoverStrength)) {
+        delete isolated[`${prefix}.inset.hoverStrength`]
+        next.inset = { hoverStrength: Math.min(1, Math.max(0, inset.hoverStrength)) }
+      } else if (inset.hoverStrength !== undefined) isolate(isolated, `${prefix}.inset.hoverStrength`, inset.hoverStrength)
+    }
+  }
+  return Object.keys(next).length ? next : undefined
+}
+
+function sanitizeOverrides(raw: unknown, prefix: string, isolated: Record<string, unknown>): ThemeOverrides {
   const src = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
   const next: ThemeOverrides = {}
-  if (typeof src.accentKey === 'string' && ACCENT_KEYS.has(src.accentKey)) next.accentKey = src.accentKey
-  if (typeof src.accentCustom === 'string') next.accentCustom = src.accentCustom
-  if (includes(DENSITIES, src.density)) next.density = src.density as Density
-  if (includes(UI_FONTS, src.uiFont)) next.uiFont = src.uiFont as UiFont
-  if (includes(SIDEBAR_WIDTHS, src.sidebarWidth)) next.sidebarWidth = src.sidebarWidth as SidebarWidth
-  if (includes(HEADER_HEIGHTS, src.headerHeight)) next.headerHeight = src.headerHeight as HeaderHeight
-  if (includes(RADIUS_PRESETS, src.radius)) next.radius = src.radius as RadiusPreset
-  if (includes(CARD_VARIANTS, src.card)) next.card = src.card as CardVariant
-  if (includes(SIDEBAR_VARIANTS, src.sidebarVariant)) next.sidebarVariant = src.sidebarVariant as SidebarVariant
-  if (includes(SUBNAV_VARIANTS, src.subnav)) next.subnav = src.subnav as SubnavVariant
-  if (includes(ICON_SETS, src.iconSet)) next.iconSet = src.iconSet as IconSet
-  if (includes(ICON_CONTAINERS, src.iconContainer)) next.iconContainer = src.iconContainer as IconContainer
+  for (const key of Object.keys(src)) {
+    if (!KNOWN_OVERRIDE_KEYS.has(key)) isolate(isolated, `${prefix}.${key}`, src[key])
+  }
+  const accentKey = takeEnum(src.accentKey, ACCENT_KEYS, `${prefix}.accentKey`, isolated)
+  if (accentKey) next.accentKey = accentKey
+  if (typeof src.accentCustom === 'string') {
+    next.accentCustom = src.accentCustom
+    delete isolated[`${prefix}.accentCustom`]
+  } else if (src.accentCustom !== undefined) isolate(isolated, `${prefix}.accentCustom`, src.accentCustom)
+  if (typeof src.accentSecondary === 'string' && /^#[0-9a-fA-F]{6}$/.test(src.accentSecondary.trim())) {
+    next.accentSecondary = src.accentSecondary.trim().toUpperCase()
+    delete isolated[`${prefix}.accentSecondary`]
+  } else if (src.accentSecondary !== undefined) isolate(isolated, `${prefix}.accentSecondary`, src.accentSecondary)
+  const density = takeEnum(src.density, DENSITIES, `${prefix}.density`, isolated)
+  if (density) next.density = density
+  const uiFont = takeEnum(src.uiFont, UI_FONTS, `${prefix}.uiFont`, isolated)
+  if (uiFont) next.uiFont = uiFont
+  const sidebarWidth = takeEnum(src.sidebarWidth, SIDEBAR_WIDTHS, `${prefix}.sidebarWidth`, isolated)
+  if (sidebarWidth) next.sidebarWidth = sidebarWidth
+  const headerHeight = takeEnum(src.headerHeight, HEADER_HEIGHTS, `${prefix}.headerHeight`, isolated)
+  if (headerHeight) next.headerHeight = headerHeight
+  const radius = takeEnum(src.radius, RADIUS_PRESETS, `${prefix}.radius`, isolated)
+  if (radius) next.radius = radius
+  const card = takeEnum(src.card, CARD_VARIANTS, `${prefix}.card`, isolated)
+  if (card) next.card = card
+  const sidebarVariant = takeEnum(src.sidebarVariant, SIDEBAR_VARIANTS, `${prefix}.sidebarVariant`, isolated)
+  if (sidebarVariant) next.sidebarVariant = sidebarVariant
+  const subnav = takeEnum(src.subnav, SUBNAV_VARIANTS, `${prefix}.subnav`, isolated)
+  if (subnav) next.subnav = subnav
+  const iconSet = takeEnum(src.iconSet, ICON_SETS, `${prefix}.iconSet`, isolated)
+  if (iconSet) next.iconSet = iconSet
+  const iconContainer = takeEnum(src.iconContainer, ICON_CONTAINERS, `${prefix}.iconContainer`, isolated)
+  if (iconContainer) next.iconContainer = iconContainer
   if (typeof src.transparency === 'boolean') next.transparency = src.transparency
-  if (includes(SURFACE_PRESETS, src.surfacePreset)) next.surfacePreset = src.surfacePreset as SurfacePreset
-  if (typeof src.termTheme === 'string' && TERM_THEMES.has(src.termTheme)) next.termTheme = src.termTheme
-  if (typeof src.termFont === 'string' && TERM_FONTS.has(src.termFont)) next.termFont = src.termFont
+  else if (src.transparency !== undefined) isolate(isolated, `${prefix}.transparency`, src.transparency)
+  const surfacePreset = takeEnum(src.surfacePreset, SURFACE_PRESETS, `${prefix}.surfacePreset`, isolated)
+  if (surfacePreset) next.surfacePreset = surfacePreset
+  const termTheme = takeEnum(src.termTheme, TERM_THEMES, `${prefix}.termTheme`, isolated)
+  if (termTheme) next.termTheme = termTheme
+  const termFont = takeEnum(src.termFont, TERM_FONTS, `${prefix}.termFont`, isolated)
+  if (termFont) next.termFont = termFont
   if (typeof src.termFontSize === 'number' && src.termFontSize >= 10 && src.termFontSize <= 24) next.termFontSize = src.termFontSize
-  if (typeof src.termBgOpacity === 'number' && src.termBgOpacity >= 0.3 && src.termBgOpacity <= 1) next.termBgOpacity = src.termBgOpacity
-  if (includes(TERM_WALLPAPERS, src.termWallpaper)) next.termWallpaper = src.termWallpaper as TermWallpaper
+  else if (src.termFontSize !== undefined) isolate(isolated, `${prefix}.termFontSize`, src.termFontSize)
+  if (typeof src.termBgOpacity === 'number' && src.termBgOpacity >= 0 && src.termBgOpacity <= 1) next.termBgOpacity = src.termBgOpacity
+  else if (src.termBgOpacity !== undefined) isolate(isolated, `${prefix}.termBgOpacity`, src.termBgOpacity)
+  const termWallpaper = takeEnum(src.termWallpaper, TERM_WALLPAPERS, `${prefix}.termWallpaper`, isolated)
+  if (termWallpaper) next.termWallpaper = termWallpaper
   if (typeof src.chromeTexture === 'string') {
     const texture = coerceChromeTexture(src.chromeTexture)
-    if (texture !== 'none' || src.chromeTexture === 'none') next.chromeTexture = texture
-  }
-  if (includes(WALLPAPER_IMAGE_MODES, src.chromeImageMode)) next.chromeImageMode = src.chromeImageMode as WallpaperImageMode
+    if (texture !== 'none' || src.chromeTexture === 'none') {
+      next.chromeTexture = texture
+      delete isolated[`${prefix}.chromeTexture`]
+    } else isolate(isolated, `${prefix}.chromeTexture`, src.chromeTexture)
+  } else if (src.chromeTexture !== undefined) isolate(isolated, `${prefix}.chromeTexture`, src.chromeTexture)
+  const chromeImageMode = takeEnum(src.chromeImageMode, WALLPAPER_IMAGE_MODES, `${prefix}.chromeImageMode`, isolated)
+  if (chromeImageMode) next.chromeImageMode = chromeImageMode
   if (typeof src.chromeImageUrl === 'string') {
     const url = sanitizeWallpaperUrl(src.chromeImageUrl)
     if (url) next.chromeImageUrl = url
+    else if (/^https?:\/\//i.test(src.chromeImageUrl.trim()) && !src.chromeImageUrl.trim().toLowerCase().startsWith('https://')) {
+      isolate(isolated, `${prefix}.chromeImageUrl`, src.chromeImageUrl)
+    }
   }
   if (typeof src.termFollowChrome === 'boolean') next.termFollowChrome = src.termFollowChrome
-  if (includes(WALLPAPER_IMAGE_MODES, src.termImageMode)) next.termImageMode = src.termImageMode as WallpaperImageMode
+  else if (src.termFollowChrome !== undefined) isolate(isolated, `${prefix}.termFollowChrome`, src.termFollowChrome)
+  const termImageMode = takeEnum(src.termImageMode, WALLPAPER_IMAGE_MODES, `${prefix}.termImageMode`, isolated)
+  if (termImageMode) next.termImageMode = termImageMode
   if (typeof src.termImageUrl === 'string') {
     const url = sanitizeWallpaperUrl(src.termImageUrl)
     if (url) next.termImageUrl = url
+    else if (/^https?:\/\//i.test(src.termImageUrl.trim()) && !src.termImageUrl.trim().toLowerCase().startsWith('https://')) {
+      isolate(isolated, `${prefix}.termImageUrl`, src.termImageUrl)
+    }
   }
+  const surfaces = sanitizeSurfaces(src.surfaces, `${prefix}.surfaces`, isolated)
+  if (surfaces) next.surfaces = surfaces
   return next
 }
 
@@ -142,23 +251,32 @@ export function migrateLegacyAppearance(input: unknown): AppearancePreference {
 
 export function sanitizePreference(input: unknown): AppearancePreference {
   const raw = parseObject(input) || (input && typeof input === 'object' ? input as Record<string, unknown> : {})
-  const themeId: ThemeId = hasTheme(String(raw.themeId || '')) ? raw.themeId as ThemeId : 'atelier'
+  const themeId: ThemeId = isThemeSlug(String(raw.themeId || '')) ? String(raw.themeId) : 'atelier'
   const mode = includes(THEME_MODES, raw.mode) ? raw.mode as ThemeMode : 'dark'
+  const isolated: Record<string, unknown> = raw.isolated && typeof raw.isolated === 'object' && !Array.isArray(raw.isolated)
+    ? { ...raw.isolated as Record<string, unknown> }
+    : {}
   const overridesByTheme: AppearancePreference['overridesByTheme'] = {}
   const srcOverrides = raw.overridesByTheme && typeof raw.overridesByTheme === 'object'
     ? raw.overridesByTheme as Record<string, unknown>
     : {}
   for (const key of Object.keys(srcOverrides)) {
-    if (!hasTheme(key)) continue
-    overridesByTheme[key] = sanitizeOverrides(srcOverrides[key])
+    if (!isThemeSlug(key)) {
+      isolate(isolated, `overridesByTheme.${key}`, srcOverrides[key])
+      continue
+    }
+    overridesByTheme[key] = sanitizeOverrides(srcOverrides[key], `overridesByTheme.${key}`, isolated)
   }
+  const schemaMinor = typeof raw.schemaMinor === 'number' && raw.schemaMinor >= 0 ? Math.round(raw.schemaMinor) : 0
   return {
     schemaVersion: APPEARANCE_SCHEMA_VERSION,
+    schemaMinor,
     themeId,
     mode,
     reduceMotion: Boolean(raw.reduceMotion),
     keepPersonalPrefsAcrossThemes: Boolean(raw.keepPersonalPrefsAcrossThemes),
     overridesByTheme,
+    isolated: Object.keys(isolated).length ? isolated : undefined,
   }
 }
 

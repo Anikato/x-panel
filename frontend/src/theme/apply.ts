@@ -1,6 +1,6 @@
-import { applyAccentPalette, generatePaletteFromHex, getPresetByKey } from '../utils/accent-colors.ts'
 import { FONT_CDN } from './shared-tokens.ts'
 import { emitAppearanceChanged } from './charts.ts'
+import { applyCustomFontFace } from './font-store.ts'
 import { cssImage, readEffectiveWallpaper, sanitizeWallpaperUrl } from './wallpaper-store.ts'
 import type { ResolvedAppearance, UiFont } from './types.ts'
 
@@ -12,17 +12,16 @@ function loadCdnFont(url: string) {
   const link = document.createElement('link')
   link.rel = 'stylesheet'
   link.href = url
+  link.onerror = () => {
+    loadedFonts.delete(url)
+    document.dispatchEvent(new CustomEvent('xp-font-cdn-failed', { detail: { url } }))
+  }
   document.head.appendChild(link)
 }
 
 export function applyResolvedAppearance(resolved: ResolvedAppearance): void {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  const palette = resolved.accent.key === 'custom' && resolved.accent.custom
-    ? generatePaletteFromHex(resolved.accent.custom)
-    : getPresetByKey(resolved.accent.key)
-  if (palette) applyAccentPalette(palette)
-
   for (const [prop, value] of Object.entries(resolved.cssVars)) {
     root.style.setProperty(prop, value)
   }
@@ -44,6 +43,7 @@ export function applyResolvedAppearance(resolved: ResolvedAppearance): void {
 
   const cdn = FONT_CDN[resolved.uiFontKey as UiFont]
   if (cdn) loadCdnFont(cdn)
+  if (resolved.uiFontKey === 'custom') void applyCustomFontFace()
 
   const chromePhoto = resolved.chromeImageMode === 'upload'
     ? readEffectiveWallpaper('chrome', resolved.themeId)

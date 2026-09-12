@@ -1,10 +1,11 @@
 export const APPEARANCE_SCHEMA_VERSION = 1 as const
 
-export type ThemeId = 'atelier' | 'lumen'
+export type ThemeId = string
+export const BUILTIN_THEME_IDS = ['atelier', 'lumen'] as const
 export type ColorMode = 'dark' | 'light'
 export type ThemeMode = 'dark' | 'light' | 'auto'
 export type Density = 'compact' | 'default' | 'comfortable'
-export type UiFont = 'system' | 'inter' | 'noto' | 'lxgw'
+export type UiFont = 'system' | 'inter' | 'noto' | 'lxgw' | 'custom'
 export type SidebarWidth = 'narrow' | 'default' | 'wide'
 export type HeaderHeight = 'compact' | 'default' | 'comfortable'
 export type RadiusPreset = 'sharp' | 'default' | 'rounded'
@@ -18,10 +19,10 @@ export type TermWallpaper = 'none'
 export type ChromeTexture = 'none' | 'ribbon' | 'galaxy' | 'starfield'
 export type WallpaperImageMode = 'none' | 'url' | 'upload'
 
-export const THEME_IDS: ThemeId[] = ['atelier', 'lumen']
+export const THEME_IDS: ThemeId[] = [...BUILTIN_THEME_IDS]
 export const THEME_MODES: ThemeMode[] = ['dark', 'light', 'auto']
 export const DENSITIES: Density[] = ['compact', 'default', 'comfortable']
-export const UI_FONTS: UiFont[] = ['system', 'inter', 'noto', 'lxgw']
+export const UI_FONTS: UiFont[] = ['system', 'inter', 'noto', 'lxgw', 'custom']
 export const SIDEBAR_WIDTHS: SidebarWidth[] = ['narrow', 'default', 'wide']
 export const HEADER_HEIGHTS: HeaderHeight[] = ['compact', 'default', 'comfortable']
 export const RADIUS_PRESETS: RadiusPreset[] = ['sharp', 'default', 'rounded']
@@ -52,6 +53,9 @@ export const OVERRIDE_GROUPS = {
   variants: ['card', 'sidebarVariant', 'subnav', 'iconSet', 'iconContainer', 'radius'],
   material: ['transparency', 'surfacePreset', 'chromeTexture', 'chromeImageMode', 'chromeImageUrl'],
   terminal: ['termTheme', 'termFont', 'termFontSize', 'termBgOpacity', 'termWallpaper', 'termFollowChrome', 'termImageMode', 'termImageUrl'],
+  recipe: ['surfaces'],
+  secondary: ['accentSecondary'],
+  radius: ['radius'],
 } as const
 
 export type OverrideGroup = keyof typeof OVERRIDE_GROUPS
@@ -120,6 +124,11 @@ export interface ThemeVariants {
 export interface ThemeModePack {
   colors: SemanticColors
   accentKey: string
+  accentHex?: string
+  accentHover?: string
+  accentMuted?: string
+  accentSecondaryHex?: string
+  onAccent?: string
   terminalTheme: string
   editorTheme: string
 }
@@ -129,6 +138,7 @@ export interface ThemeDefinition {
   id: ThemeId
   name: string
   version: string
+  source?: 'builtin' | 'pack'
   modes: {
     dark: ThemeModePack
     light: ThemeModePack
@@ -162,6 +172,7 @@ export interface ThemeDefinition {
   terminal: { dark: string; light: string }
   editor: { dark: string; light: string }
   charts: { categorical: string[]; sequential: string[] }
+  surfaces?: { cardTopEdge: boolean, hoverStrength: number }
   assets?: Record<string, never>
 }
 
@@ -191,15 +202,22 @@ export interface ThemeOverrides {
   termFollowChrome?: boolean
   termImageMode?: WallpaperImageMode
   termImageUrl?: string
+  accentSecondary?: string
+  surfaces?: {
+    card?: { topEdge?: boolean }
+    inset?: { hoverStrength?: number }
+  }
 }
 
 export interface AppearancePreference {
   schemaVersion: number
+  schemaMinor?: number
   themeId: ThemeId
   mode: ThemeMode
   reduceMotion: boolean
   keepPersonalPrefsAcrossThemes: boolean
   overridesByTheme: Partial<Record<ThemeId, ThemeOverrides>>
+  isolated?: Record<string, unknown>
 }
 
 export interface ResolveEnv {
@@ -224,6 +242,7 @@ export interface ResolvedAppearance {
   themeId: ThemeId
   themeName: string
   themeVersion: string
+  themeMissing: boolean
   customized: boolean
   colorMode: ColorMode
   modePreference: ThemeMode

@@ -1,20 +1,31 @@
 import type { ThemeDefinition, ThemeId } from './types.ts'
+import { BUILTIN_THEME_IDS } from './types.ts'
 import { atelierTheme } from './themes/atelier.ts'
 import { lumenTheme } from './themes/lumen.ts'
+import { definitionFromInstalled, hasInstalledPack, installedThemeDefinitions } from './pack-store.ts'
 
-const THEMES: Record<ThemeId, ThemeDefinition> = {
+const BUILTINS: Record<string, ThemeDefinition> = {
   atelier: atelierTheme,
   lumen: lumenTheme,
 }
 
+export function isBuiltinTheme(id: string): boolean {
+  return (BUILTIN_THEME_IDS as readonly string[]).includes(id)
+}
+
 export function listThemes(): ThemeDefinition[] {
-  return [atelierTheme, lumenTheme]
+  return [atelierTheme, lumenTheme, ...installedThemeDefinitions()]
 }
 
 export function getTheme(id: string): ThemeDefinition {
-  return THEMES[id as ThemeId] || atelierTheme
+  if (BUILTINS[id]) return BUILTINS[id]
+  return definitionFromInstalled(id) || atelierTheme
 }
 
-export function hasTheme(id: string): id is ThemeId {
-  return id === 'atelier' || id === 'lumen'
+export function hasTheme(id: string): boolean {
+  return isBuiltinTheme(id) || hasInstalledPack(id)
+}
+
+export function isThemeSlug(id: string): id is ThemeId {
+  return /^[a-z0-9][a-z0-9-]{1,63}$/.test(id)
 }

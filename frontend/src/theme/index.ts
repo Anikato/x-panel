@@ -13,10 +13,12 @@ export type {
   ChromeTexture,
   WallpaperImageMode,
 } from './types.ts'
-export { listThemes, getTheme, hasTheme } from './catalog.ts'
+export { listThemes, getTheme, hasTheme, isThemeSlug, isBuiltinTheme } from './catalog.ts'
+export { installThemePack, uninstallThemePack, resetInstalledPacksForTests, getInstalledPackRaw } from './pack-store.ts'
 export { resolveAppearance, switchTheme, clonePreference, isCustomized, emptyPreference } from './resolve.ts'
 export { hydrateAppearance, migrateLegacyAppearance, sanitizePreference } from './migrate.ts'
 export { buildAppearancePreset, parseAppearancePreset, APPEARANCE_PRESET_KIND } from './preset-file.ts'
+export { parseThemePack, restoreOverlayGroup, THEME_PACK_KIND, CHART_SAFE } from './pack-parse.ts'
 export {
   beginPreview,
   patchDraft,
@@ -28,6 +30,20 @@ export {
   type PreviewSession,
 } from './preview.ts'
 export { applyResolvedAppearance, readResolveEnv } from './apply.ts'
+export { monacoThemeOf, applyMonacoWorkspaceTheme } from './editor.ts'
+export {
+  applyCustomFontFace,
+  beginFontDraft,
+  cancelFontDraft,
+  clearCustomFont,
+  fileToCustomFont,
+  flushFontDraft,
+  hasFontDraft,
+  peekFontDraft,
+  readCustomFontMeta,
+  saveCustomFont,
+  setDraftFont,
+} from './font-store.ts'
 export { mapNavIcon, resolveSemanticIcon } from './icons.ts'
 export { chartTokens, cssVar, colorAlpha, onAppearanceChange, APPEARANCE_CHANGED } from './charts.ts'
 export { SURFACE_PRESET_DEFS, getSurfacePreset } from './surfaces.ts'
@@ -42,4 +58,4 @@ export {
   wallpaperJobMatches,
   writeWallpaperData,
 } from './wallpaper-store.ts'
-export { UI_FONT_STACKS, DENSITY_TOKENS, SIDEBAR_WIDTH_TOKENS, FONT_CDN } from './shared-tokens.ts'
+export { UI_FONT_STACKS, DENSITY_TOKENS, SIDEBAR_WIDTH_TOKENS, FONT_CDN, CUSTOM_UI_FONT_FAMILY } from './shared-tokens.ts'

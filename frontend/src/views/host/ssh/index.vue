@@ -292,8 +292,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type * as Monaco from 'monaco-editor'
 import type { SSHInfo, SSHLogEntry, AuthorizedKey } from '@/api/interface'
+import { useAppearanceStore } from '@/store/modules/appearance'
+import { applyMonacoWorkspaceTheme } from '@/theme'
 
 const { t } = useI18n()
+const appearanceStore = useAppearanceStore()
 const activeTab = ref('config')
 const loading = ref(false)
 
@@ -539,10 +542,17 @@ const loadSSHDConfig = async () => {
       sshdEditor.setValue(content)
     } else if (sshdEditorRef.value) {
       const monaco = await loadMonaco()
+      applyMonacoWorkspaceTheme(
+        monaco,
+        appearanceStore.resolved.editorTheme,
+        appearanceStore.resolved.terminalTheme,
+        appearanceStore.resolved.termBgOpacity,
+        appearanceStore.resolved.colors.bgSurface,
+      )
       sshdEditor = monaco.editor.create(sshdEditorRef.value, {
         value: content,
         language: 'plaintext',
-        theme: 'vs-dark',
+        theme: 'xp-follow-term',
         fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
         minimap: { enabled: false },
@@ -575,6 +585,25 @@ watch(activeTab, (val) => {
   if (val === 'keys' && authorizedKeys.value.length === 0) loadAuthorizedKeys()
   if (val === 'privateKeys' && sshKeys.value.length === 0) loadSSHKeys()
 })
+
+watch(
+  () => [
+    appearanceStore.resolved.editorTheme,
+    appearanceStore.resolved.terminalTheme,
+    appearanceStore.resolved.termBgOpacity,
+  ],
+  async () => {
+    if (!sshdEditor) return
+    const monaco = await loadMonaco()
+    applyMonacoWorkspaceTheme(
+      monaco,
+      appearanceStore.resolved.editorTheme,
+      appearanceStore.resolved.terminalTheme,
+      appearanceStore.resolved.termBgOpacity,
+      appearanceStore.resolved.colors.bgSurface,
+    )
+  },
+)
 
 onMounted(() => loadSSH())
 

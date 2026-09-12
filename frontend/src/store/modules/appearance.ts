@@ -9,6 +9,10 @@ import {
   clonePreference,
   hydrateAppearance,
   parseAppearancePreset,
+  THEME_PACK_KIND,
+  installThemePack,
+  uninstallThemePack,
+  getInstalledPackRaw,
   patchDraft,
   readLocalPreference,
   readResolveEnv,
@@ -28,6 +32,8 @@ import {
   type ThemeOverrides,
 } from '@/theme'
 import { readLegacyFromPinia } from '@/theme/storage.ts'
+import atelierExample from '@/theme/examples/atelier.theme.json'
+import lumenExample from '@/theme/examples/lumen.theme.json'
 import {
   beginWallpaperDraft,
   cancelWallpaperDraft,
@@ -36,6 +42,7 @@ import {
   restoreWallpaperSnapshot,
   snapshotWallpaperDraftTargets,
 } from '@/theme/wallpaper-store.ts'
+import { beginFontDraft, cancelFontDraft, flushFontDraft } from '@/theme/font-store.ts'
 import { useGlobalStore } from './global'
 
 function currentEnv() {
@@ -80,6 +87,7 @@ export const useAppearanceStore = defineStore('appearance', {
       this.session = beginPreview(this.preference)
       this.previewing = true
       beginWallpaperDraft()
+      beginFontDraft()
     },
 
     ensurePreview() {
@@ -131,6 +139,7 @@ export const useAppearanceStore = defineStore('appearance', {
       const imageSnap = snapshotWallpaperDraftTargets()
       try {
         flushWallpaperDraftToStorage()
+        await flushFontDraft()
       } catch {
         this.persistError = 'local'
         return false
@@ -158,6 +167,7 @@ export const useAppearanceStore = defineStore('appearance', {
       this.session = null
       this.previewing = false
       cancelWallpaperDraft()
+      cancelFontDraft()
       this.applyCurrent()
     },
 
@@ -253,6 +263,42 @@ export const useAppearanceStore = defineStore('appearance', {
       this.applyCurrent()
       await this.persist()
       return true
+    },
+
+    exportThemePackJSON() {
+      const id = this.preference.themeId
+      const raw = getInstalledPackRaw(id)
+      if (raw) return JSON.stringify(raw, null, 2)
+      if (id === 'lumen') return JSON.stringify(lumenExample, null, 2)
+      return JSON.stringify(atelierExample, null, 2)
+    },
+
+    installThemePackFromJSON(raw: unknown) {
+      const result = installThemePack(raw)
+      if (!result.ok) return result
+      this.patch({ themeId: result.id })
+      return result
+    },
+
+    removeInstalledTheme(id: string) {
+      uninstallThemePack(id)
+      this.applyCurrent()
+    },
+
+    importAnyAppearanceFile(raw: string) {
+      let data: unknown
+      try {
+        data = JSON.parse(raw)
+      } catch {
+        return { ok: false as const, error: 'invalid-json' }
+      }
+      const kind = data && typeof data === 'object' ? (data as { kind?: string }).kind : ''
+      if (kind === THEME_PACK_KIND) {
+        const installed = this.installThemePackFromJSON(data)
+        if (!installed.ok) return installed
+        return { ok: true as const, kind: 'theme' as const }
+      }
+      return { ok: false as const, error: 'not-theme', appearance: raw }
     },
   },
 })

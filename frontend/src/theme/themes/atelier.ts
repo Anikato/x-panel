@@ -118,4 +118,5 @@ export const atelierTheme: ThemeDefinition = {
     categorical: ['#7AA2FF', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#22d3ee'],
     sequential: ['#2A4CA3', '#355FCC', '#5B86E8', '#7AA2FF', '#9DB8FF'],
   },
+  surfaces: { cardTopEdge: true, hoverStrength: 1 },
 }

@@ -1,0 +1,104 @@
+{
+  "kind": "x-panel.theme",
+  "schemaVersion": 1,
+  "schemaMinor": 0,
+  "id": "atelier",
+  "name": "工坊",
+  "version": "1.2.0",
+  "palette": {
+    "dark": {
+      "bg": "#111318",
+      "surface": "#191C23",
+      "elevated": "#222630",
+      "overlay": "#222630",
+      "inset": "#151821",
+      "sidebar": "#0E1016",
+      "header": "#111318",
+      "input": "#151821",
+      "tableHeader": "#151821",
+      "auth": "#0B0D12",
+      "text": "#EEF0F4",
+      "textSecondary": "#A4ADBC",
+      "textMuted": "#7B8494",
+      "border": "#303641",
+      "borderLight": "rgba(255, 255, 255, 0.06)",
+      "borderHover": "#3C4452",
+      "accent": "#CB2028",
+      "accentSecondary": "#E85A62",
+      "success": "#22c55e",
+      "warning": "#f59e0b",
+      "danger": "#ef4444",
+      "info": "#3b82f6"
+    },
+    "light": {
+      "bg": "#E4E6EC",
+      "surface": "#F4F5F8",
+      "elevated": "#FAFBFC",
+      "overlay": "#FFFFFF",
+      "inset": "#E6E8EE",
+      "sidebar": "#D8DCE4",
+      "header": "#ECEEF3",
+      "input": "#F7F8FB",
+      "tableHeader": "#E8EAEE",
+      "auth": "#D5D9E2",
+      "text": "#141820",
+      "textSecondary": "#3A4250",
+      "textMuted": "#5B6472",
+      "border": "#C3C9D4",
+      "borderLight": "#D3D8E1",
+      "borderHover": "#A7B0BD",
+      "accent": "#5B8CFF",
+      "accentSecondary": "#7AA2FF",
+      "success": "#15803d",
+      "warning": "#b45309",
+      "danger": "#b91c1c",
+      "info": "#1d4ed8"
+    }
+  },
+  "derive": { "strategy": "v1" },
+  "defaults": {
+    "mode": "dark",
+    "density": "default",
+    "uiFont": "lxgw",
+    "sidebarWidth": "default",
+    "headerHeight": "default",
+    "radius": "default",
+    "transparency": false,
+    "iconSet": "outline",
+    "termFont": "consolas",
+    "termFontSize": 14,
+    "termBgOpacity": 0.5,
+    "chromeTexture": "ribbon",
+    "variants": {
+      "sidebar": "marker",
+      "subnav": "block",
+      "card": "outline",
+      "iconContainer": "none"
+    }
+  },
+  "tokens": {
+    "materials": {
+      "surfaceOpacity": 0.88,
+      "blurPx": 12,
+      "sidebarOpacity": 0.78,
+      "headerOpacity": 0.82,
+      "overlayOpacity": 0.9
+    },
+    "motion": {
+      "hoverMs": 100,
+      "pageMs": 80,
+      "menuMs": 140,
+      "drawerMs": 180,
+      "ease": "cubic-bezier(0.2, 0, 0, 1)"
+    }
+  },
+  "surfaces": {
+    "card": { "topEdge": true }
+  },
+  "terminal": { "dark": "default", "light": "paper" },
+  "editor": { "dark": "vs-dark", "light": "vs" },
+  "charts": {
+    "categorical": ["#CB2028", "#34d399", "#fbbf24", "#7AA2FF", "#a78bfa", "#22d3ee"],
+    "sequential": ["#191C23", "#461D24", "#721E26", "#9F1F27", "#CB2028"]
+  }
+}

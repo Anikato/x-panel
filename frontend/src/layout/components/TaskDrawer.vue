@@ -13,7 +13,7 @@
           <span class="task-count">{{ uploadStore.doneCount }}/{{ uploadStore.queue.length }}</span>
         </div>
         <div v-if="uploadStore.queue.length === 0" class="task-empty">{{ t('header.noUploadTasks') }}</div>
-        <div v-for="item in uploadStore.queue" :key="item.id" class="task-row">
+        <div v-for="item in uploadStore.queue" :key="item.id" class="task-row xp-inset">
           <div class="task-name" :title="item.name">{{ item.name }}</div>
           <el-progress
             :percentage="item.progress"
@@ -36,7 +36,7 @@
           </el-button>
         </div>
         <div v-if="fileTaskStore.tasks.length === 0" class="task-empty">{{ t('header.noFileTasks') }}</div>
-        <div v-for="task in fileTaskStore.tasks" :key="task.id" class="task-row">
+        <div v-for="task in fileTaskStore.tasks" :key="task.id" class="task-row xp-inset">
           <div class="task-name">{{ task.name }}</div>
           <el-progress
             v-if="task.status === 'running' && task.bytesTotal > 0"
@@ -109,6 +109,8 @@ defineExpose({ activeCount })
   flex-direction: column;
   gap: 6px;
   margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--xp-radius-sm);
 }
 
 .task-name {

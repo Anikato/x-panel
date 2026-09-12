@@ -4,7 +4,7 @@ import { normalizeTerminalCwd } from '@/utils/terminal-cwd'
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
 export type BgPreset = 'graphite' | 'abyss' | 'void' | 'tinted' | 'cosmos' | 'warm'
-export type UiFont = 'system' | 'inter' | 'noto' | 'lxgw'
+export type UiFont = 'system' | 'inter' | 'noto' | 'lxgw' | 'custom'
 export type UiDensity = 'compact' | 'default' | 'comfortable'
 export type BorderRadiusPreset = 'sharp' | 'default' | 'rounded'
 export type CardBorderStyle = 'accent-left' | 'full' | 'shadow-only'

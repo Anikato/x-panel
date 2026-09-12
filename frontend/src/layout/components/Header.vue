@@ -16,12 +16,12 @@
         </el-icon>
       </div>
 
-      <el-popover placement="bottom-start" :width="360" trigger="click">
+      <el-popover placement="bottom-start" :width="360" trigger="click" popper-class="xp-float">
         <template #reference>
           <button type="button" class="server-chip" :aria-label="t('header.serverSummary')">
             <span class="status-dot" :class="serverReachable ? 'online' : 'offline'" />
             <span class="server-name">{{ globalStore.serverInfo?.hostname || globalStore.panelName || 'X-Panel' }}</span>
-            <span class="server-state">{{ serverReachable ? t('commons.online') : t('header.connectionLost') }}</span>
+            <span class="server-state">{{ serverReachable ? t('header.panelReachable') : t('header.panelDisconnected') }}</span>
           </button>
         </template>
         <div class="server-summary">
@@ -229,6 +229,7 @@ const searchInput = ref<{ focus?: () => void } | null>(null)
 const taskOpen = ref(false)
 const serverClock = ref('')
 const serverReachable = ref(true)
+const reachFailStreak = ref(0)
 const unreadNotifications = ref(0)
 const recentNotifications = ref<NotificationItem[]>([])
 const popupShown = new Set<number>()
@@ -294,10 +295,12 @@ const fetchServerInfo = async () => {
         timezone: h.timezone || '',
       })
       updateClock()
+      reachFailStreak.value = 0
       serverReachable.value = true
     }
   } catch {
-    serverReachable.value = false
+    reachFailStreak.value += 1
+    if (reachFailStreak.value >= 2) serverReachable.value = false
   }
 }
 

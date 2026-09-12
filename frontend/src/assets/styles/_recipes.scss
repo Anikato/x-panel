@@ -1,0 +1,92 @@
+// Four surface recipes. Pages should use these, not local backgrounds.
+// card: large cards, list shells, drawer chrome
+// inset: nested rows, chips, table body, menu items
+// float: menus, dialogs, popovers, context menus, floating panels
+
+.xp-card,
+.el-card {
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border-light);
+  box-shadow: var(--xp-card-top-edge-shadow, inset 0 1px 0 color-mix(in srgb, var(--xp-accent) 16%, transparent));
+}
+
+.el-drawer {
+  background: var(--xp-bg-surface);
+}
+
+.el-drawer__header {
+  color: var(--xp-text-primary);
+  background: var(--xp-bg-surface);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--xp-border-light);
+}
+
+.xp-inset {
+  background: var(--xp-bg-inset);
+  border: 1px solid var(--xp-border-light);
+
+  &:hover:not(.is-disabled) {
+    background: var(--xp-inset-hover, var(--xp-bg-inset));
+  }
+
+  &.is-selected {
+    background: var(--xp-inset-selected, var(--xp-bg-inset));
+  }
+
+  &.is-selected:hover:not(.is-disabled) {
+    background: var(--xp-inset-hover, var(--xp-inset-selected));
+  }
+
+  &.is-disabled {
+    pointer-events: none;
+  }
+
+  &.is-disabled.is-selected {
+    background: var(--xp-bg-inset);
+    border-color: var(--xp-border-hover);
+  }
+}
+
+.xp-float,
+.context-menu {
+  background: var(--xp-bg-elevated);
+  border: 1px solid var(--xp-border);
+}
+
+.el-table {
+  --el-table-bg-color: var(--xp-bg-surface);
+  --el-table-tr-bg-color: var(--xp-bg-inset);
+  --el-table-header-bg-color: var(--xp-bg-table-header);
+  --el-table-row-hover-bg-color: var(--xp-inset-hover, color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset)));
+  --el-table-current-row-bg-color: var(--xp-inset-selected, color-mix(in srgb, var(--xp-accent) 15%, var(--xp-bg-inset)));
+}
+
+.el-dropdown-menu,
+.el-select-dropdown,
+.el-picker-panel,
+.el-cascader__dropdown,
+.el-autocomplete-suggestion,
+.el-dialog,
+.el-message-box,
+.el-notification,
+.el-popover.el-popper,
+.el-tooltip__popper {
+  background: var(--xp-bg-elevated);
+  border-color: var(--xp-border);
+}
+
+.el-dropdown-menu__item,
+.el-select-dropdown__item {
+  background: transparent;
+}
+
+.el-dropdown-menu__item:not(.is-disabled):hover,
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item.is-hovering {
+  background: var(--xp-inset-hover, color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset)));
+}
+
+.el-message {
+  background: var(--xp-bg-elevated);
+  border-color: var(--xp-border);
+}

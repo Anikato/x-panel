@@ -1,11 +1,14 @@
 import type { Density, HeaderHeight, RadiusPreset, SidebarWidth, UiFont } from './types.ts'
 import type { DensityTokens, MotionTokens, ShapeTokens } from './types.ts'
 
+export const CUSTOM_UI_FONT_FAMILY = 'XP Custom UI'
+
 export const UI_FONT_STACKS: Record<UiFont, string> = {
-  system: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+  system: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', 'Noto Sans SC', 'Noto Sans', 'DejaVu Sans', 'Liberation Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif",
   inter: "'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif",
   noto: "'Noto Sans SC', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif",
   lxgw: "'LXGW WenKai', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif",
+  custom: `'${CUSTOM_UI_FONT_FAMILY}', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif`,
 }
 
 export const MONO_FONT_STACK = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', ui-monospace, monospace"
@@ -44,4 +47,6 @@ export const DEFAULT_MOTION: MotionTokens = {
 
 export const FONT_CDN: Partial<Record<UiFont, string>> = {
   lxgw: 'https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css',
+  inter: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+  noto: 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap',
 }

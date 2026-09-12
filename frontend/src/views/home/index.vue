@@ -677,7 +677,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   color: inherit;
   text-align: left;
-  background: color-mix(in srgb, var(--xp-info) 8%, var(--xp-bg-inset));
+  background: var(--xp-bg-inset);
   border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius-sm);
 
@@ -710,7 +710,7 @@ button.dash-chip {
   cursor: pointer;
   &:hover {
     border-color: color-mix(in srgb, var(--xp-accent) 40%, var(--xp-border-light));
-    background: color-mix(in srgb, var(--xp-accent) 10%, var(--xp-bg-inset));
+    background: color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset));
   }
 }
 
@@ -727,7 +727,7 @@ button.dash-chip {
 }
 
 .sys-chip {
-  background: color-mix(in srgb, var(--xp-accent) 8%, var(--xp-bg-inset));
+  background: var(--xp-bg-inset);
   &.wide { grid-column: 1 / -1; }
   b {
     font-size: 12px;
@@ -773,7 +773,7 @@ button.dash-chip {
   color: var(--xp-text-secondary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  background: color-mix(in srgb, var(--xp-info) 8%, var(--xp-bg-inset));
+  background: var(--xp-bg-inset);
   border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius-sm);
   &.c-warn { color: var(--xp-warning); }

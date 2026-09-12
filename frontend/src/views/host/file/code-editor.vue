@@ -38,6 +38,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFileContent, saveFileContent } from '@/api/modules/file'
 import { useAppearanceStore } from '@/store/modules/appearance'
+import { applyMonacoWorkspaceTheme, monacoThemeOf } from '@/theme'
 
 const { t } = useI18n()
 const appearanceStore = useAppearanceStore()
@@ -52,7 +53,7 @@ const editorContainer = ref<HTMLElement>()
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
 let monacoLoader: Promise<typeof Monaco> | null = null
 
-const theme = ref(appearanceStore.resolved.editorTheme || 'vs-dark')
+const theme = ref(monacoThemeOf(appearanceStore.resolved.editorTheme))
 const language = ref('plaintext')
 
 const loadMonaco = async () => {
@@ -167,10 +168,17 @@ async function initEditor() {
   }
 
   const monaco = await loadMonaco()
+  applyMonacoWorkspaceTheme(
+    monaco,
+    appearanceStore.resolved.editorTheme,
+    appearanceStore.resolved.terminalTheme,
+    appearanceStore.resolved.termBgOpacity,
+    appearanceStore.resolved.colors.bgSurface,
+  )
   editor = monaco.editor.create(editorContainer.value, {
     value: originalContent.value,
     language: language.value,
-    theme: theme.value,
+    theme: 'xp-follow-term',
     fontSize: 14,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
     minimap: { enabled: true },
@@ -202,14 +210,33 @@ async function updateLanguage(lang: string) {
 
 async function updateTheme(t: string) {
   const monaco = await loadMonaco()
-  monaco.editor.setTheme(t)
+  applyMonacoWorkspaceTheme(
+    monaco,
+    t,
+    appearanceStore.resolved.terminalTheme,
+    appearanceStore.resolved.termBgOpacity,
+    appearanceStore.resolved.colors.bgSurface,
+  )
 }
 
-watch(() => appearanceStore.resolved.editorTheme, (next) => {
-  if (!next || next === theme.value) return
-  theme.value = next
-  void updateTheme(next)
-})
+watch(
+  () => [
+    appearanceStore.resolved.editorTheme,
+    appearanceStore.resolved.terminalTheme,
+    appearanceStore.resolved.termBgOpacity,
+  ],
+  async () => {
+    theme.value = monacoThemeOf(appearanceStore.resolved.editorTheme)
+    const monaco = await loadMonaco()
+    applyMonacoWorkspaceTheme(
+      monaco,
+      appearanceStore.resolved.editorTheme,
+      appearanceStore.resolved.terminalTheme,
+      appearanceStore.resolved.termBgOpacity,
+      appearanceStore.resolved.colors.bgSurface,
+    )
+  },
+)
 
 function resetContent() {
   if (editor) {

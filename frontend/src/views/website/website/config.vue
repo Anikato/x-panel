@@ -690,7 +690,8 @@ import * as echarts from 'echarts/core'
 import { BarChart, PieChart, LineChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { chartTokens, onAppearanceChange } from '@/theme'
+import { applyMonacoWorkspaceTheme, chartTokens, onAppearanceChange } from '@/theme'
+import { useAppearanceStore } from '@/store/modules/appearance'
 
 echarts.use([BarChart, PieChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
@@ -791,6 +792,7 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const globalStore = useGlobalStore()
+const appearanceStore = useAppearanceStore()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -861,6 +863,25 @@ const loadMonaco = async () => {
   if (!monacoLoader) monacoLoader = import('monaco-editor')
   return monacoLoader
 }
+
+watch(
+  () => [
+    appearanceStore.resolved.editorTheme,
+    appearanceStore.resolved.terminalTheme,
+    appearanceStore.resolved.termBgOpacity,
+  ],
+  async () => {
+    if (!monacoEditor) return
+    const monaco = await loadMonaco()
+    applyMonacoWorkspaceTheme(
+      monaco,
+      appearanceStore.resolved.editorTheme,
+      appearanceStore.resolved.terminalTheme,
+      appearanceStore.resolved.termBgOpacity,
+      appearanceStore.resolved.colors.bgSurface,
+    )
+  },
+)
 
 // 日志
 const logType = ref('access')
@@ -1181,10 +1202,17 @@ const initMonacoEditor = async (content: string) => {
   }
   if (!monacoContainerRef.value) return
   const monaco = await loadMonaco()
+  applyMonacoWorkspaceTheme(
+    monaco,
+    appearanceStore.resolved.editorTheme,
+    appearanceStore.resolved.terminalTheme,
+    appearanceStore.resolved.termBgOpacity,
+    appearanceStore.resolved.colors.bgSurface,
+  )
   monacoEditor = monaco.editor.create(monacoContainerRef.value, {
     value: content,
     language: 'plaintext',
-    theme: 'vs-dark',
+    theme: 'xp-follow-term',
     fontSize: 13,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
     minimap: { enabled: false },

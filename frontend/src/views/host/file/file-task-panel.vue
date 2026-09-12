@@ -1,5 +1,5 @@
 <template>
-  <div v-if="tasks.length > 0" class="task-panel" :class="{ collapsed: isCollapsed }">
+  <div v-if="tasks.length > 0" class="task-panel xp-float" :class="{ collapsed: isCollapsed }">
     <!-- 标题栏 -->
     <div class="task-panel-header" @click="isCollapsed = !isCollapsed">
       <div class="header-left">
@@ -238,10 +238,10 @@ defineExpose({ refresh })
   right: 16px;
   width: 400px;
   max-height: 420px;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-lighter);
+  background: var(--xp-bg-elevated);
+  border: 1px solid var(--xp-border);
   border-radius: var(--xp-radius-sm);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--xp-context-shadow);
   z-index: 2000;
   overflow: hidden;
   transition: all 0.3s ease;
@@ -257,8 +257,8 @@ defineExpose({ refresh })
   justify-content: space-between;
   padding: 10px 14px;
   cursor: pointer;
-  background: var(--el-fill-color-light);
-  border-bottom: 1px solid var(--el-border-color-extra-light);
+  background: var(--xp-bg-surface);
+  border-bottom: 1px solid var(--xp-border-light);
   user-select: none;
 }
 
@@ -271,7 +271,7 @@ defineExpose({ refresh })
 .header-title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--el-text-color-primary);
+  color: var(--xp-text-primary);
 }
 
 .header-right {
@@ -303,7 +303,7 @@ defineExpose({ refresh })
 }
 
 .task-item:hover {
-  background: var(--el-fill-color-lighter);
+  background: color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset));
 }
 
 .task-icon {
@@ -324,7 +324,7 @@ defineExpose({ refresh })
 
 .task-name {
   font-size: 13px;
-  color: var(--el-text-color-primary);
+  color: var(--xp-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -118,4 +118,5 @@ export const lumenTheme: ThemeDefinition = {
     categorical: ['#E08A4A', '#2DD4BF', '#F4EEE6', '#C084FC', '#F87171', '#FBBF24'],
     sequential: ['#9A3412', '#C2410C', '#EA580C', '#FB923C', '#FDBA74'],
   },
+  surfaces: { cardTopEdge: true, hoverStrength: 1 },
 }

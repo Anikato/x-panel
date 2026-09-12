@@ -192,11 +192,20 @@ html[data-transparency='on'] {
     background: color-mix(in srgb, var(--xp-bg-overlay) calc(var(--xp-overlay-opacity, 0.9) * 100%), transparent) !important;
   }
 
-  .el-table,
-  .el-table tr,
-  .el-table th.el-table__cell,
-  .el-table td.el-table__cell {
+  .el-table {
     background-color: var(--xp-bg-surface) !important;
+  }
+
+  .el-table th.el-table__cell {
+    background-color: var(--xp-bg-table-header) !important;
+  }
+
+  .el-table td.el-table__cell {
+    background-color: var(--xp-bg-inset) !important;
+  }
+
+  .el-table tr:hover td {
+    background-color: color-mix(in srgb, var(--xp-text-primary) 8%, var(--xp-bg-inset)) !important;
   }
 }
 

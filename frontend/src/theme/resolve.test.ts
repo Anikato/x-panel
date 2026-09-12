@@ -8,6 +8,7 @@ import {
 } from './types.ts'
 import { listThemes, getTheme } from './catalog.ts'
 import { resolveAppearance, switchTheme, isCustomized } from './resolve.ts'
+import { mixSrgb, relativeLuminance } from './pack-color.ts'
 import { hydrateAppearance, migrateLegacyAppearance, sanitizePreference } from './migrate.ts'
 import {
   applyPreview,
@@ -128,15 +129,20 @@ test('unknown values fall back without throwing', () => {
     reduceMotion: 'yes',
     overridesByTheme: {
       atelier: { density: 'ultra', uiFont: 'comic', termFontSize: 99, termBgOpacity: 4 },
+      'neon-dreams': { density: 'compact' },
     },
   })
-  assert.equal(sanitized.themeId, 'atelier')
+  assert.equal(sanitized.themeId, 'neon-dreams')
   assert.equal(sanitized.mode, 'dark')
   assert.equal(sanitized.reduceMotion, true)
   assert.equal(sanitized.overridesByTheme.atelier?.density, undefined)
   assert.equal(sanitized.overridesByTheme.atelier?.termFontSize, undefined)
+  assert.equal(sanitized.overridesByTheme['neon-dreams']?.density, 'compact')
   assert.doesNotThrow(() => resolveAppearance(sanitized, env))
-  assert.equal(resolveAppearance(sanitized, env).termWallpaper, 'none')
+  const resolved = resolveAppearance(sanitized, env)
+  assert.equal(resolved.themeId, 'neon-dreams')
+  assert.equal(resolved.themeMissing, true)
+  assert.equal(resolved.termWallpaper, 'none')
 })
 
 test('unsupported schema major version is rejected and previous preference is kept', () => {
@@ -294,8 +300,8 @@ test('light mode never copies a dark surface hex from a dark preset', () => {
     overridesByTheme: { atelier: { surfacePreset: 'void' } },
   }, env)
   assert.equal(resolved.colorMode, 'light')
-  assert.equal(resolved.colors.bgBase.startsWith('#0') || resolved.colors.bgBase.startsWith('#1'), false)
-  assert.equal(resolved.colors.bgBase, getTheme('atelier').modes.light.colors.bgBase)
+  assert.equal(resolved.colors.bgBase, mixSrgb('#E4E6EC', '#000000', 0.06))
+  assert.notEqual(resolved.colors.bgBase.toLowerCase(), getTheme('atelier').modes.dark.colors.bgBase.toLowerCase())
 })
 
 test('density tokens match the 32/36/40 and 36/44/52 baseline', () => {
@@ -367,4 +373,47 @@ test('chrome texture and wallpaper enums sanitize, and terminals follow panel la
   }, env)
   assert.equal(explicit.termFollowChrome, false)
   assert.equal(explicit.datasets['term-follow'], 'off')
+})
+
+test('light surface family tints C.1 bg/surface and does not copy dark hexes', () => {
+  const resolved = resolveAppearance({
+    ...DEFAULT_PREFERENCE,
+    mode: 'light',
+    overridesByTheme: { atelier: { surfacePreset: 'abyss' } },
+  }, { ...env, systemDark: false })
+  assert.equal(resolved.colors.bgBase, mixSrgb('#E4E6EC', '#1D4ED8', 0.06))
+  assert.equal(resolved.colors.bgSurface, mixSrgb('#F4F5F8', '#1D4ED8', 0.03))
+  assert.equal(resolved.colors.bgBase.startsWith('#0') || resolved.colors.bgBase.startsWith('#1'), false)
+})
+
+test('explicit overlay secondary survives a custom accent; hover still recomputes', () => {
+  const resolved = resolveAppearance({
+    ...DEFAULT_PREFERENCE,
+    overridesByTheme: {
+      atelier: { accentKey: 'custom', accentCustom: '#123456', accentSecondary: '#ABCDEF' },
+    },
+  }, env)
+  assert.equal(resolved.accent.primary.toUpperCase(), '#123456')
+  assert.equal(resolved.accent.secondary.toUpperCase(), '#ABCDEF')
+  assert.notEqual(resolved.accent.hover.toUpperCase(), '#123456')
+})
+
+test('light primary-light-9 is a pale fill, not a mix toward black', () => {
+  const light = resolveAppearance({ ...DEFAULT_PREFERENCE, mode: 'light' }, env)
+  const pale = light.cssVars['--el-color-primary-light-9']
+  assert.ok(pale)
+  assert.ok(relativeLuminance(pale) > 0.72)
+  assert.equal(light.cssVars['--el-table-current-row-bg-color'], light.cssVars['--xp-inset-selected'])
+  assert.equal(light.cssVars['--el-table-row-hover-bg-color'], light.cssVars['--xp-inset-hover'])
+})
+
+test('overlay can turn off card top edge and inset hover', () => {
+  const resolved = resolveAppearance({
+    ...DEFAULT_PREFERENCE,
+    overridesByTheme: {
+      atelier: { surfaces: { card: { topEdge: false }, inset: { hoverStrength: 0 } } },
+    },
+  }, env)
+  assert.equal(resolved.cssVars['--xp-card-top-edge-shadow'], 'none')
+  assert.match(resolved.cssVars['--xp-inset-hover'] || '', /0%|0\)|transparent/)
 })

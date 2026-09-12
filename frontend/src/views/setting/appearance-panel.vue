@@ -5,9 +5,11 @@
         <div class="appearance-status">{{ statusLabel }}</div>
         <div class="appearance-hint">{{ t('setting.appearanceDraftHint') }}</div>
         <div v-if="hasUnapplied" class="appearance-dirty">{{ t('setting.appearanceUnapplied') }}</div>
+        <div v-if="resolved.themeMissing" class="appearance-dirty">{{ t('setting.themePackMissing') }}</div>
       </div>
       <div class="appearance-actions">
         <el-button @click="exportPreset">{{ t('setting.appearanceExport') }}</el-button>
+        <el-button @click="exportThemePack">{{ t('setting.themePackExport') }}</el-button>
         <el-button @click="pickPresetFile">{{ t('setting.appearanceImport') }}</el-button>
         <el-button @click="cancel">{{ t('commons.cancel') }}</el-button>
         <el-button @click="appearance.restoreTheme()">{{ t('setting.restoreThemeDefaults') }}</el-button>
@@ -35,7 +37,13 @@
             <span :style="{ background: accentOf(theme) }" />
           </div>
           <strong>{{ theme.name }}</strong>
-          <span>{{ theme.id === 'atelier' ? t('setting.themeAtelierDesc') : t('setting.themeLumenDesc') }}</span>
+          <span>{{ theme.source === 'pack' ? t('setting.themePackInstalled') : (theme.id === 'atelier' ? t('setting.themeAtelierDesc') : t('setting.themeLumenDesc')) }}</span>
+          <el-button
+            v-if="theme.source === 'pack'"
+            link
+            type="danger"
+            @click.stop="removePack(theme.id)"
+          >{{ t('setting.themePackRemove') }}</el-button>
         </button>
       </div>
 
@@ -83,9 +91,18 @@
       <h3 class="appearance-group-title">{{ t('setting.appearanceGroupInterface') }}</h3>
       <div class="xp-setting-row">
         <span class="appearance-label">{{ t('setting.uiFont') }}</span>
-        <el-select :model-value="current.uiFont" class="xp-select-md" @change="(val: UiFont) => appearance.setOverride('uiFont', val)">
-          <el-option v-for="f in FONT_PRESETS" :key="f.key" :label="f.name" :value="f.key" />
-        </el-select>
+        <div>
+          <el-select :model-value="current.uiFont" class="xp-select-md" @change="(val: UiFont) => appearance.setOverride('uiFont', val)">
+            <el-option v-for="f in FONT_PRESETS" :key="f.key" :label="f.name" :value="f.key" />
+            <el-option v-if="customFontLabel" value="custom" :label="customFontLabel" />
+          </el-select>
+          <div class="wallpaper-actions">
+            <el-button @click="pickFontFile">{{ t('setting.customFontUpload') }}</el-button>
+            <el-button v-if="customFontLabel" link type="primary" @click="onClearCustomFont">{{ t('setting.customFontClear') }}</el-button>
+          </div>
+          <input ref="fontFileRef" type="file" accept=".woff2,.woff,.ttf,.otf" class="wallpaper-file" @change="onFontFile" />
+          <p class="setting-inline-hint">{{ t('setting.customFontHint') }}</p>
+        </div>
       </div>
 
       <div class="xp-setting-row">
@@ -97,6 +114,18 @@
             <el-radio-button value="comfortable">{{ t('setting.densityComfortable') }}</el-radio-button>
           </el-radio-group>
           <el-button link type="primary" @click="appearance.restoreGroup('common')">{{ t('setting.restoreGroup') }}</el-button>
+        </div>
+      </div>
+
+      <div class="xp-setting-row">
+        <span class="appearance-label">{{ t('setting.borderRadius') }}</span>
+        <div>
+          <el-radio-group :model-value="current.radius" @change="(val: RadiusPreset) => appearance.setOverride('radius', val)">
+            <el-radio-button value="sharp">{{ t('setting.radiusSharp') }}</el-radio-button>
+            <el-radio-button value="default">{{ t('setting.radiusDefault') }}</el-radio-button>
+            <el-radio-button value="rounded">{{ t('setting.radiusRounded') }}</el-radio-button>
+          </el-radio-group>
+          <el-button link type="primary" @click="appearance.restoreGroup('radius')">{{ t('setting.restoreGroup') }}</el-button>
         </div>
       </div>
 
@@ -114,6 +143,21 @@
         <div>
           <el-switch :model-value="current.transparency" @change="onTransparency" />
           <p class="setting-inline-hint">{{ t('setting.transparencyHint') }}</p>
+        </div>
+      </div>
+
+      <div class="xp-setting-row">
+        <span class="appearance-label">{{ t('setting.darkSurface') }}</span>
+        <div class="accent-grid-large">
+          <el-tooltip v-for="bg in SURFACE_PRESET_DEFS" :key="bg.key" :content="t(`setting.bgPresetNames.${bg.key}`)" placement="top">
+            <button
+              type="button"
+              class="bg-swatch"
+              :class="{ active: (current.surfacePreset || 'graphite') === bg.key }"
+              :style="{ background: bg.preview }"
+              @click="appearance.setOverride('surfacePreset', bg.key)"
+            />
+          </el-tooltip>
         </div>
       </div>
 
@@ -201,28 +245,36 @@
           </el-radio-group>
         </div>
         <div class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.borderRadius') }}</span>
+          <span class="appearance-label">{{ t('setting.headerHeight') }}</span>
+          <el-radio-group :model-value="current.headerHeight" @change="(val: HeaderHeight) => appearance.setOverride('headerHeight', val)">
+            <el-radio-button value="compact">{{ t('setting.densityCompact') }}</el-radio-button>
+            <el-radio-button value="default">{{ t('setting.densityDefault') }}</el-radio-button>
+            <el-radio-button value="comfortable">{{ t('setting.densityComfortable') }}</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="xp-setting-row">
+          <span class="appearance-label">{{ t('setting.accentSecondary') }}</span>
           <div>
-            <el-radio-group :model-value="current.radius" @change="(val: RadiusPreset) => appearance.setOverride('radius', val)">
-              <el-radio-button value="sharp">{{ t('setting.radiusSharp') }}</el-radio-button>
-              <el-radio-button value="default">{{ t('setting.radiusDefault') }}</el-radio-button>
-              <el-radio-button value="rounded">{{ t('setting.radiusRounded') }}</el-radio-button>
-            </el-radio-group>
-            <p class="setting-inline-hint">{{ t('setting.radiusHint') }}</p>
+            <input
+              type="color"
+              class="accent-custom-input"
+              :value="current.accentSecondary"
+              :aria-label="t('setting.accentSecondary')"
+              @input="onSecondaryAccent"
+            />
+            <el-button link type="primary" @click="appearance.restoreGroup('secondary')">{{ t('setting.restoreGroup') }}</el-button>
+            <p class="setting-inline-hint">{{ t('setting.advancedContrastHint') }}</p>
           </div>
         </div>
-        <div v-if="preference.themeId === 'atelier'" class="xp-setting-row">
-          <span class="appearance-label">{{ t('setting.darkSurface') }}</span>
-          <div class="accent-grid-large">
-            <el-tooltip v-for="bg in SURFACE_PRESET_DEFS" :key="bg.key" :content="t(`setting.bgPresetNames.${bg.key}`)" placement="top">
-              <button
-                type="button"
-                class="bg-swatch"
-                :class="{ active: (preference.overridesByTheme.atelier?.surfacePreset || 'graphite') === bg.key }"
-                :style="{ background: bg.preview }"
-                @click="appearance.setOverride('surfacePreset', bg.key)"
-              />
-            </el-tooltip>
+        <div class="xp-setting-row">
+          <span class="appearance-label">{{ t('setting.cardTopEdge') }}</span>
+          <el-switch :model-value="current.cardTopEdge" @change="onTopEdge" />
+        </div>
+        <div class="xp-setting-row">
+          <span class="appearance-label">{{ t('setting.insetHover') }}</span>
+          <div>
+            <el-slider :model-value="current.hoverStrength" :min="0" :max="1" :step="0.1" show-input class="xp-slider-md" @input="onHoverStrength" />
+            <el-button link type="primary" @click="appearance.restoreGroup('recipe')">{{ t('setting.restoreGroup') }}</el-button>
           </div>
         </div>
         <el-button link type="primary" @click="appearance.restoreGroup('variants')">{{ t('setting.restoreVariants') }}</el-button>
@@ -318,7 +370,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { ACCENT_PRESETS, getPresetByKey } from '@/utils/accent-colors'
@@ -335,11 +387,18 @@ import {
   setDraftWallpaper,
   wallpaperDraftGen,
   wallpaperJobMatches,
+  fileToCustomFont,
+  readCustomFontMeta,
+  applyCustomFontFace,
+  setDraftFont,
+  peekFontDraft,
+  hasFontDraft,
 } from '@/theme'
 import type {
   CardVariant,
   ChromeTexture,
   Density,
+  HeaderHeight,
   IconSet,
   RadiusPreset,
   SidebarVariant,
@@ -359,7 +418,9 @@ const saving = ref(false)
 const chromeFileRef = ref<HTMLInputElement | null>(null)
 const termFileRef = ref<HTMLInputElement | null>(null)
 const presetFileRef = ref<HTMLInputElement | null>(null)
-const themes = listThemes()
+const fontFileRef = ref<HTMLInputElement | null>(null)
+const customFontLabel = ref('')
+const themes = computed(() => listThemes())
 const preference = computed(() => appearance.preference)
 const resolved = computed(() => appearance.resolved)
 
@@ -388,6 +449,11 @@ const current = computed(() => {
     termFollowChrome: resolved.value.termFollowChrome,
     termImageMode: over.termImageMode || resolved.value.termImageMode,
     termImageUrl: over.termImageUrl || resolved.value.termImageUrl,
+    surfacePreset: over.surfacePreset,
+    headerHeight: over.headerHeight || theme.defaults.headerHeight,
+    accentSecondary: over.accentSecondary || resolved.value.accent.secondary,
+    cardTopEdge: over.surfaces?.card?.topEdge ?? theme.surfaces?.cardTopEdge ?? true,
+    hoverStrength: over.surfaces?.inset?.hoverStrength ?? theme.surfaces?.hoverStrength ?? 1,
   }
 })
 
@@ -434,6 +500,85 @@ const onTermUrl = (val: string) => {
 
 const pickChromeFile = () => chromeFileRef.value?.click()
 const pickTermFile = () => termFileRef.value?.click()
+const pickFontFile = () => fontFileRef.value?.click()
+
+const refreshCustomFontLabel = () => {
+  const draft = peekFontDraft()
+  if (draft === null) {
+    customFontLabel.value = current.value.uiFont === 'custom' ? t('setting.customFontMissing') : ''
+    return
+  }
+  const meta = draft?.meta || readCustomFontMeta()
+  if (meta) customFontLabel.value = meta.name
+  else if (current.value.uiFont === 'custom') customFontLabel.value = t('setting.customFontMissing')
+  else customFontLabel.value = ''
+}
+
+const onFontFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  appearance.ensurePreview()
+  try {
+    const rec = await fileToCustomFont(file)
+    setDraftFont(rec)
+    await applyCustomFontFace()
+    refreshCustomFontLabel()
+    appearance.setOverride('uiFont', 'custom')
+    ElMessage.success(t('setting.customFontOk'))
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : ''
+    if (reason === 'too-large') ElMessage.error(t('setting.customFontTooLarge'))
+    else if (reason === 'bad-format') ElMessage.error(t('setting.customFontBad'))
+    else ElMessage.error(t('setting.customFontFailed'))
+  }
+}
+
+const onClearCustomFont = async () => {
+  appearance.ensurePreview()
+  setDraftFont(null)
+  await applyCustomFontFace()
+  refreshCustomFontLabel()
+  if (current.value.uiFont === 'custom') appearance.setOverride('uiFont', 'system')
+}
+
+const onSecondaryAccent = (event: Event) => {
+  appearance.setOverride('accentSecondary', (event.target as HTMLInputElement).value)
+}
+
+const onTopEdge = (val: boolean) => {
+  appearance.patch({
+    overrides: {
+      surfaces: {
+        ...(current.value.cardTopEdge !== undefined ? { card: { topEdge: val } } : { card: { topEdge: val } }),
+        inset: { hoverStrength: current.value.hoverStrength },
+      },
+    },
+  })
+}
+
+const onHoverStrength = (val: number) => {
+  appearance.patch({
+    overrides: {
+      surfaces: {
+        card: { topEdge: current.value.cardTopEdge },
+        inset: { hoverStrength: val },
+      },
+    },
+  })
+}
+
+const removePack = async (id: string) => {
+  try {
+    await ElMessageBox.confirm(t('setting.themePackRemoveConfirm'), t('commons.tip'), { type: 'warning' })
+  } catch {
+    return
+  }
+  appearance.removeInstalledTheme(id)
+  if (preference.value.themeId === id) appearance.patch({ themeId: 'atelier' })
+  ElMessage.success(t('setting.themePackRemoved'))
+}
 
 const persistWallpaper = async (kind: 'chrome' | 'term', file?: File | null) => {
   if (!file) return
@@ -490,7 +635,7 @@ const statusLabel = computed(() => {
 const hasUnapplied = computed(() => {
   const session = appearance.session
   if (!appearance.previewing || !session) return false
-  return JSON.stringify(session.draft) !== JSON.stringify(session.committed) || hasWallpaperDraft()
+  return JSON.stringify(session.draft) !== JSON.stringify(session.committed) || hasWallpaperDraft() || hasFontDraft()
 })
 
 const accentOf = (theme: ThemeDefinition) => getPresetByKey(theme.modes.dark.accentKey)?.primary || '#7AA2FF'
@@ -500,8 +645,15 @@ const onCustomAccent = (event: Event) => {
   appearance.patch({ overrides: { accentKey: 'custom', accentCustom: hex } })
 }
 
-onMounted(() => appearance.startPreview())
+const onFontCdnFailed = () => ElMessage.warning(t('setting.fontCdnFailed'))
+
+onMounted(() => {
+  appearance.startPreview()
+  refreshCustomFontLabel()
+  document.addEventListener('xp-font-cdn-failed', onFontCdnFailed)
+})
 onBeforeUnmount(() => {
+  document.removeEventListener('xp-font-cdn-failed', onFontCdnFailed)
   if (appearance.previewing) appearance.cancelPreview()
 })
 
@@ -535,6 +687,17 @@ const exportPreset = () => {
   ElMessage.success(t('setting.appearanceExportOk'))
 }
 
+const exportThemePack = () => {
+  const blob = new Blob([appearance.exportThemePackJSON()], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `x-panel-theme-${appearance.preference.themeId}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(t('setting.themePackExportOk'))
+}
+
 const pickPresetFile = () => presetFileRef.value?.click()
 
 const onPresetFile = async (event: Event) => {
@@ -544,6 +707,23 @@ const onPresetFile = async (event: Event) => {
   if (!file) return
   try {
     const text = await file.text()
+    let data: { kind?: string } = {}
+    try {
+      data = JSON.parse(text)
+    } catch {
+      ElMessage.error(t('setting.appearanceImportBad'))
+      return
+    }
+    if (data.kind === 'x-panel.theme') {
+      const installed = appearance.installThemePackFromJSON(data)
+      if (!installed.ok) {
+        ElMessage.error(installed.error === 'builtin' ? t('setting.themePackBuiltin') : t('setting.themePackImportBad'))
+        return
+      }
+      appearance.startPreview()
+      ElMessage.success(t('setting.themePackImportOk'))
+      return
+    }
     const ok = await appearance.importPresetJSON(text)
     if (!ok) {
       ElMessage.error(t('setting.appearanceImportBad'))
