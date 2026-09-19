@@ -363,11 +363,11 @@ onMounted(loadNotifications)
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--el-color-info);
+  background: var(--xp-info);
 
-  &.success { background: var(--el-color-success); }
-  &.warning { background: var(--el-color-warning); }
-  &.error { background: var(--el-color-danger); }
+  &.success { background: var(--xp-success); }
+  &.warning { background: var(--xp-warning); }
+  &.error { background: var(--xp-danger); }
 }
 
 .notification-main {

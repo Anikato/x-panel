@@ -3,8 +3,8 @@
     <el-row :gutter="16">
       <!-- 主机名 -->
       <el-col :xs="24" :sm="12">
-        <el-card shadow="never" style="margin-bottom: 16px;">
-          <template #header>{{ $t('systemSetting.hostname') }}</template>
+        <article class="xp-deck" style="margin-bottom: 16px;">
+          <div class="xp-section" style="margin-top:0"><h3>{{ $t('systemSetting.hostname') }}</h3></div>
           <el-form label-width="110px">
             <el-form-item :label="$t('systemSetting.hostnameCurrent')">
               <span style="font-weight: bold;">{{ systemInfo.hostname || '-' }}</span>
@@ -21,13 +21,13 @@
               <el-text type="info" size="small">{{ $t('systemSetting.hostnameHint') }}</el-text>
             </el-form-item>
           </el-form>
-        </el-card>
+        </article>
       </el-col>
 
       <!-- 时区 -->
       <el-col :xs="24" :sm="12">
-        <el-card shadow="never" style="margin-bottom: 16px;">
-          <template #header>{{ $t('systemSetting.timezone') }}</template>
+        <article class="xp-deck" style="margin-bottom: 16px;">
+          <div class="xp-section" style="margin-top:0"><h3>{{ $t('systemSetting.timezone') }}</h3></div>
           <el-form label-width="110px">
             <el-form-item :label="$t('systemSetting.timezoneCurrent')">
               <span style="font-weight: bold;">{{ systemInfo.timezone || '-' }}</span>
@@ -43,15 +43,14 @@
               </div>
             </el-form-item>
           </el-form>
-        </el-card>
+        </article>
       </el-col>
     </el-row>
 
     <!-- DNS -->
-    <el-card shadow="never" style="margin-bottom: 16px;">
-      <template #header>
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span>{{ $t('systemSetting.dns') }}</span>
+    <article class="xp-deck" style="margin-bottom: 16px;">
+      <div class="xp-section" style="margin-top:0">
+          <h3>{{ $t('systemSetting.dns') }}</h3>
           <div>
             <el-dropdown trigger="click" @command="addPresetDNS" style="margin-right: 8px;">
               <el-button size="small">{{ $t('systemSetting.dnsPresets') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -65,8 +64,7 @@
             </el-dropdown>
             <el-button size="small" @click="addDNS">{{ $t('systemSetting.dnsAdd') }}</el-button>
           </div>
-        </div>
-      </template>
+      </div>
       <div style="margin-bottom: 8px;">
         <el-text type="info" size="small">{{ $t('systemSetting.dnsHint') }}</el-text>
       </div>
@@ -79,11 +77,11 @@
       <el-button type="primary" @click="handleSaveDNS" :loading="dnsSaving" style="margin-top: 8px;">
         {{ $t('commons.save') }}
       </el-button>
-    </el-card>
+    </article>
 
     <!-- Swap -->
-    <el-card shadow="never">
-      <template #header>{{ $t('systemSetting.swap') }}</template>
+    <article class="xp-deck">
+      <div class="xp-section" style="margin-top:0"><h3>{{ $t('systemSetting.swap') }}</h3></div>
       <el-descriptions :column="2" border v-if="swapInfo.file">
         <el-descriptions-item :label="$t('systemSetting.swapStatus')">
           <el-tag :type="swapInfo.enabled ? 'success' : 'info'">
@@ -112,7 +110,7 @@
           {{ $t('systemSetting.swapCreate') }}
         </el-button>
       </div>
-    </el-card>
+    </article>
 
     <!-- Swap 创建对话框 -->
     <el-dialog v-model="showCreateSwap" :title="$t('systemSetting.swapCreate')" width="420px" destroy-on-close>

@@ -695,7 +695,14 @@ export interface HostInfo {
 export interface NetInterface {
   name: string
   ipv4: string[]
+  ipv6?: string[]
+  mac?: string
   status: string
+  connected?: boolean
+  kind?: string
+  speedMbps?: number
+  duplex?: string
+  operState?: string
 }
 
 export interface CpuInfo {

@@ -1,22 +1,17 @@
 <template>
-  <div>
-    <el-card shadow="never">
-      <template #header>
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <span>{{ $t('userManage.title') }}</span>
-          <div>
-            <el-checkbox v-model="showSystem" @change="loadUsers" style="margin-right: 12px;">
-              {{ $t('userManage.showSystem') }}
-            </el-checkbox>
-            <el-button type="primary" @click="openCreate">
-              <el-icon><Plus /></el-icon>
-              {{ $t('userManage.createUser') }}
-            </el-button>
-          </div>
-        </div>
-      </template>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <el-checkbox v-model="showSystem" @change="loadUsers">
+        {{ $t('userManage.showSystem') }}
+      </el-checkbox>
+      <span class="toolbar-spacer" />
+      <el-button type="primary" @click="openCreate">
+        <el-icon><Plus /></el-icon>
+        {{ $t('userManage.createUser') }}
+      </el-button>
+    </div>
 
-      <el-table :data="filteredUsers" v-loading="loading" stripe>
+    <el-table :data="filteredUsers" v-loading="loading" stripe>
         <el-table-column prop="username" :label="$t('userManage.username')" min-width="120">
           <template #default="{ row }">
             <el-tag v-if="row.uid === 0" type="danger" size="small" style="margin-right: 4px;">root</el-tag>
@@ -46,7 +41,6 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog

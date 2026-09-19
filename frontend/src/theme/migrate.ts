@@ -9,6 +9,7 @@ import {
   DEFAULT_PREFERENCE,
   HEADER_HEIGHTS,
   ICON_CONTAINERS,
+  HEADING_STYLES,
   ICON_SETS,
   RADIUS_PRESETS,
   SIDEBAR_VARIANTS,
@@ -67,7 +68,7 @@ function parseObject(input: unknown): Record<string, unknown> | null {
 
 const KNOWN_OVERRIDE_KEYS = new Set([
   'accentKey', 'accentCustom', 'accentSecondary', 'density', 'uiFont', 'sidebarWidth', 'headerHeight',
-  'radius', 'card', 'sidebarVariant', 'subnav', 'iconSet', 'iconContainer', 'transparency',
+  'radius', 'card', 'sidebarVariant', 'headingStyle', 'subnav', 'iconSet', 'iconContainer', 'transparency',
   'surfacePreset', 'termTheme', 'termFont', 'termFontSize', 'termBgOpacity', 'termWallpaper',
   'chromeTexture', 'chromeImageMode', 'chromeImageUrl', 'termFollowChrome', 'termImageMode', 'termImageUrl',
   'surfaces',
@@ -162,6 +163,8 @@ function sanitizeOverrides(raw: unknown, prefix: string, isolated: Record<string
   if (card) next.card = card
   const sidebarVariant = takeEnum(src.sidebarVariant, SIDEBAR_VARIANTS, `${prefix}.sidebarVariant`, isolated)
   if (sidebarVariant) next.sidebarVariant = sidebarVariant
+  const headingStyle = takeEnum(src.headingStyle, HEADING_STYLES, `${prefix}.headingStyle`, isolated)
+  if (headingStyle) next.headingStyle = headingStyle
   const subnav = takeEnum(src.subnav, SUBNAV_VARIANTS, `${prefix}.subnav`, isolated)
   if (subnav) next.subnav = subnav
   const iconSet = takeEnum(src.iconSet, ICON_SETS, `${prefix}.iconSet`, isolated)

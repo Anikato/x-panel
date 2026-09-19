@@ -1,17 +1,11 @@
 <template>
-  <div>
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <div class="card-header-title">
-            <el-icon><Notebook /></el-icon>
-            <span>{{ t('log.operationLog') }}</span>
-          </div>
+  <div class="xp-page-shell">
+      <div class="app-toolbar">
+        <span class="toolbar-spacer" />
           <el-button type="danger" plain size="small" @click="handleClean">
             <el-icon><Delete /></el-icon>{{ t('log.clean') }}
           </el-button>
-        </div>
-      </template>
+      </div>
 
       <el-table :data="tableData" v-loading="loading">
         <el-table-column :label="t('log.operation')" min-width="220">
@@ -58,7 +52,6 @@
           @current-change="fetchData"
         />
       </div>
-    </el-card>
   </div>
 </template>
 

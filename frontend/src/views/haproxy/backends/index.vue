@@ -1,13 +1,12 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('haproxy.backends') }}</h3>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button type="primary" @click="openBackendDialog()">
         <el-icon><Plus /></el-icon>{{ $t('haproxy.createBackend') }}
       </el-button>
     </div>
 
-    <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe @expand-change="onExpandChange">
         <el-table-column type="expand">
           <template #default="{ row }">
@@ -44,7 +43,6 @@
           @current-change="search"
         />
       </div>
-    </el-card>
 
     <!-- Backend 表单 -->
     <el-dialog v-model="backendDialog" :title="isEditBE ? $t('haproxy.editBackend') : $t('haproxy.createBackend')" width="680px" destroy-on-close>

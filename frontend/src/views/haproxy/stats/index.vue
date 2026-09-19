@@ -1,14 +1,12 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('haproxy.stats') }}</h3>
-      <div>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
         <el-switch v-model="autoRefresh" :active-text="$t('haproxy.autoRefresh')" @change="toggleAutoRefresh" />
-        <el-button style="margin-left: 12px;" @click="loadAll">
+        <span class="toolbar-spacer" />
+        <el-button @click="loadAll">
           <el-icon><Refresh /></el-icon>{{ $t('commons.refresh') }}
         </el-button>
         <el-button type="warning" @click="clearAll" :disabled="!hasData">{{ $t('haproxy.clearCounters') }}</el-button>
-      </div>
     </div>
 
     <!-- 未安装提示 -->
@@ -24,35 +22,26 @@
       </template>
     </el-alert>
 
-    <el-row :gutter="16" v-loading="loading">
-      <el-col :span="6">
-        <el-card shadow="never" class="metric-card">
-          <div class="metric-label">{{ $t('haproxy.currentConn') }}</div>
-          <div class="metric-value">{{ infoMap.CurrConns || '-' }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="metric-card">
-          <div class="metric-label">{{ $t('haproxy.totalConn') }}</div>
-          <div class="metric-value">{{ infoMap.CumConns || '-' }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="metric-card">
-          <div class="metric-label">{{ $t('haproxy.currentRate') }}</div>
-          <div class="metric-value">{{ infoMap.ConnRate || '-' }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="metric-card">
-          <div class="metric-label">{{ $t('haproxy.uptime') }}</div>
-          <div class="metric-value">{{ infoMap.Uptime || '-' }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="xp-deck-grid" style="--xp-metric-columns: 4" v-loading="loading">
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.currentConn') }}</div>
+          <div class="xp-metric-value">{{ infoMap.CurrConns || '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.totalConn') }}</div>
+          <div class="xp-metric-value">{{ infoMap.CumConns || '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.currentRate') }}</div>
+          <div class="xp-metric-value">{{ infoMap.ConnRate || '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.uptime') }}</div>
+          <div class="xp-metric-value">{{ infoMap.Uptime || '-' }}</div>
+        </article>
+    </div>
 
-    <el-card shadow="never" style="margin-top: 16px;">
-      <template #header><span>{{ $t('haproxy.frontends') }}</span></template>
+    <div class="xp-section"><h3>{{ $t('haproxy.frontends') }}</h3></div>
       <el-table :data="stats.frontends || []" stripe size="small">
         <el-table-column prop="name" :label="$t('haproxy.proxyName')" min-width="140" />
         <el-table-column :label="$t('haproxy.svStatus')" width="100">
@@ -66,10 +55,8 @@
         <el-table-column prop="reqRate" :label="$t('haproxy.reqRate')" width="100" />
         <el-table-column prop="totalReq" :label="$t('haproxy.totalReq')" width="120" />
       </el-table>
-    </el-card>
 
-    <el-card shadow="never" style="margin-top: 16px;">
-      <template #header><span>{{ $t('haproxy.backends') }}</span></template>
+    <div class="xp-section"><h3>{{ $t('haproxy.backends') }}</h3></div>
       <el-table :data="stats.backends || []" stripe size="small">
         <el-table-column prop="name" :label="$t('haproxy.proxyName')" min-width="140" />
         <el-table-column :label="$t('haproxy.svStatus')" width="100">
@@ -83,10 +70,8 @@
         <el-table-column :label="$t('haproxy.bin')" width="110"><template #default="{ row }">{{ formatBytes(row.bytesIn) }}</template></el-table-column>
         <el-table-column :label="$t('haproxy.bout')" width="110"><template #default="{ row }">{{ formatBytes(row.bytesOut) }}</template></el-table-column>
       </el-table>
-    </el-card>
 
-    <el-card shadow="never" style="margin-top: 16px;">
-      <template #header><span>{{ $t('haproxy.serversRuntime') }}</span></template>
+    <div class="xp-section"><h3>{{ $t('haproxy.serversRuntime') }}</h3></div>
       <el-table :data="stats.servers || []" stripe size="small">
         <el-table-column prop="backend" :label="$t('haproxy.proxyName')" min-width="130" />
         <el-table-column prop="name" :label="$t('haproxy.svName')" min-width="130" />
@@ -100,7 +85,6 @@
         <el-table-column :label="$t('haproxy.bout')" width="110"><template #default="{ row }">{{ formatBytes(row.bytesOut) }}</template></el-table-column>
         <el-table-column prop="checkStatus" :label="$t('haproxy.checkStatus')" min-width="120" />
       </el-table>
-    </el-card>
   </div>
 </template>
 

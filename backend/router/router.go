@@ -203,6 +203,7 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/monitor/history/clean", api.CleanMonitorData)
 		privateGroup.GET("/monitor/io-options", api.GetIOOptions)
 		privateGroup.GET("/monitor/network-options", api.GetNetworkOptions)
+		privateGroup.GET("/monitor/nics", api.ListNics)
 
 		// 进程管理
 		privateGroup.POST("/process/search", api.ListProcesses)

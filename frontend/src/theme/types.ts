@@ -1,7 +1,7 @@
 export const APPEARANCE_SCHEMA_VERSION = 1 as const
 
 export type ThemeId = string
-export const BUILTIN_THEME_IDS = ['atelier', 'lumen'] as const
+export const BUILTIN_THEME_IDS = ['atelier', 'lumen', 'ink', 'harbor', 'quartz'] as const
 export type ColorMode = 'dark' | 'light'
 export type ThemeMode = 'dark' | 'light' | 'auto'
 export type Density = 'compact' | 'default' | 'comfortable'
@@ -10,13 +10,14 @@ export type SidebarWidth = 'narrow' | 'default' | 'wide'
 export type HeaderHeight = 'compact' | 'default' | 'comfortable'
 export type RadiusPreset = 'sharp' | 'default' | 'rounded'
 export type CardVariant = 'flat' | 'outline' | 'raised'
-export type SidebarVariant = 'marker' | 'block'
+export type SidebarVariant = 'marker' | 'block' | 'rail'
 export type SubnavVariant = 'line' | 'block' | 'pill'
 export type IconSet = 'outline' | 'solid'
 export type IconContainer = 'none' | 'tile'
 export type SurfacePreset = 'graphite' | 'abyss' | 'void' | 'tinted' | 'cosmos' | 'warm'
 export type TermWallpaper = 'none'
-export type ChromeTexture = 'none' | 'ribbon' | 'galaxy' | 'starfield'
+export type HeadingStyle = 'compact' | 'display'
+export type ChromeTexture = 'none' | 'ribbon' | 'galaxy' | 'starfield' | 'grain'
 export type WallpaperImageMode = 'none' | 'url' | 'upload'
 
 export const THEME_IDS: ThemeId[] = [...BUILTIN_THEME_IDS]
@@ -27,19 +28,20 @@ export const SIDEBAR_WIDTHS: SidebarWidth[] = ['narrow', 'default', 'wide']
 export const HEADER_HEIGHTS: HeaderHeight[] = ['compact', 'default', 'comfortable']
 export const RADIUS_PRESETS: RadiusPreset[] = ['sharp', 'default', 'rounded']
 export const CARD_VARIANTS: CardVariant[] = ['flat', 'outline', 'raised']
-export const SIDEBAR_VARIANTS: SidebarVariant[] = ['marker', 'block']
+export const SIDEBAR_VARIANTS: SidebarVariant[] = ['marker', 'block', 'rail']
+export const HEADING_STYLES: HeadingStyle[] = ['compact', 'display']
 export const SUBNAV_VARIANTS: SubnavVariant[] = ['line', 'block', 'pill']
 export const ICON_SETS: IconSet[] = ['outline', 'solid']
 export const ICON_CONTAINERS: IconContainer[] = ['none', 'tile']
 export const SURFACE_PRESETS: SurfacePreset[] = ['graphite', 'abyss', 'void', 'tinted', 'cosmos', 'warm']
 export const TERM_WALLPAPERS: TermWallpaper[] = ['none']
-export const CHROME_TEXTURES: ChromeTexture[] = ['none', 'ribbon', 'galaxy', 'starfield']
+export const CHROME_TEXTURES: ChromeTexture[] = ['none', 'ribbon', 'galaxy', 'starfield', 'grain']
 
 export function coerceChromeTexture(raw: unknown): ChromeTexture {
-  if (raw === 'ribbon' || raw === 'galaxy' || raw === 'starfield' || raw === 'none') return raw
+  if (raw === 'ribbon' || raw === 'galaxy' || raw === 'starfield' || raw === 'grain' || raw === 'none') return raw
   if (raw === 'diagonal') return 'ribbon'
   if (raw === 'dots') return 'starfield'
-  if (raw === 'grain' || raw === 'grid') return 'galaxy'
+  if (raw === 'grid') return 'galaxy'
   return 'none'
 }
 export const WALLPAPER_IMAGE_MODES: WallpaperImageMode[] = ['none', 'url', 'upload']
@@ -50,7 +52,7 @@ export type CrossThemeKey = typeof CROSS_THEME_KEYS[number]
 export const OVERRIDE_GROUPS = {
   common: ['density', 'uiFont', 'sidebarWidth', 'headerHeight'],
   accent: ['accentKey', 'accentCustom'],
-  variants: ['card', 'sidebarVariant', 'subnav', 'iconSet', 'iconContainer', 'radius'],
+  variants: ['card', 'sidebarVariant', 'subnav', 'iconSet', 'iconContainer', 'radius', 'headingStyle'],
   material: ['transparency', 'surfacePreset', 'chromeTexture', 'chromeImageMode', 'chromeImageUrl'],
   terminal: ['termTheme', 'termFont', 'termFontSize', 'termBgOpacity', 'termWallpaper', 'termFollowChrome', 'termImageMode', 'termImageUrl'],
   recipe: ['surfaces'],
@@ -119,6 +121,7 @@ export interface ThemeVariants {
   subnav: SubnavVariant
   card: CardVariant
   iconContainer: IconContainer
+  heading?: HeadingStyle
 }
 
 export interface ThemeModePack {
@@ -186,6 +189,7 @@ export interface ThemeOverrides {
   radius?: RadiusPreset
   card?: CardVariant
   sidebarVariant?: SidebarVariant
+  headingStyle?: HeadingStyle
   subnav?: SubnavVariant
   iconSet?: IconSet
   iconContainer?: IconContainer

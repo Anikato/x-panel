@@ -1,23 +1,20 @@
 <template>
-  <div class="traffic-page">
-    <div class="page-header">
-      <h3>{{ $t('traffic.title') }}</h3>
-      <div class="header-actions">
+  <div class="traffic-page xp-page-shell">
+    <div class="app-toolbar">
+        <span class="toolbar-spacer" />
         <el-button size="small" type="primary" :icon="Plus" @click="openConfigDialog()">
           {{ $t('traffic.addConfig') }}
         </el-button>
         <el-button size="small" :icon="Refresh" @click="loadAll" :loading="loading">
           {{ $t('commons.refresh') }}
         </el-button>
-      </div>
     </div>
 
     <!-- Summary Cards -->
     <div class="summary-cards" v-if="summary.length > 0">
-      <el-card
+      <article
         v-for="item in summary"
-        shadow="never"
-        class="summary-card"
+        class="xp-deck summary-card"
         :class="{ 'is-disabled': !item.enabled }"
         :key="item.interfaceName + '-' + themeTick"
       >
@@ -69,7 +66,7 @@
             </div>
           </div>
         </div>
-      </el-card>
+      </article>
     </div>
 
     <el-empty v-else-if="!loading" :description="$t('traffic.noConfig')">
@@ -77,7 +74,7 @@
     </el-empty>
 
     <!-- Chart Section -->
-    <el-card shadow="never" class="chart-section" v-if="summary.length > 0">
+    <article class="xp-deck chart-section" v-if="summary.length > 0">
       <div class="chart-toolbar">
         <el-select v-model="selectedInterface" style="width: 160px" @change="loadStats">
           <el-option
@@ -129,7 +126,7 @@
         ↑ {{ formatBytes(statsTotalSent) }} &nbsp; ↓ {{ formatBytes(statsTotalRecv) }} &nbsp;
         {{ $t('traffic.total') }}: {{ formatBytes(statsTotalSent + statsTotalRecv) }}
       </div>
-    </el-card>
+    </article>
 
     <ConfigDialog ref="configDialogRef" @refresh="loadAll" />
   </div>

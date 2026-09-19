@@ -114,6 +114,7 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     subnav: over.subnav || theme.variants.subnav,
     card: over.card || theme.variants.card,
     iconContainer: over.iconContainer || theme.variants.iconContainer,
+    heading: over.headingStyle || theme.variants.heading || 'compact',
   }
   const iconSet = over.iconSet || theme.iconSet || theme.defaults.iconSet
   let accent = resolvePackOrUserAccent(pack, over)
@@ -302,6 +303,7 @@ export function resolveAppearance(pref: AppearancePreference, env: ResolveEnv): 
     density,
     'card-variant': variants.card,
     'sidebar-variant': variants.sidebar,
+    'heading-style': variants.heading || 'compact',
     'subnav-variant': variants.subnav,
     'icon-set': iconSet,
     'icon-container': variants.iconContainer,

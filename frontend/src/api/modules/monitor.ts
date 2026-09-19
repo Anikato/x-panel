@@ -27,3 +27,7 @@ export const getIOOptions = () => {
 export const getNetworkOptions = () => {
   return http.get('/monitor/network-options')
 }
+
+export const listNics = () => {
+  return http.get('/monitor/nics')
+}

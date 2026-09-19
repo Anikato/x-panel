@@ -1,7 +1,7 @@
 <template>
   <div class="module-chrome" :class="{ 'is-side': isSide }">
-    <div v-if="isTabs || partitions.length" class="module-heading">
-      <h2>{{ t(headingKey) }}</h2>
+    <div v-if="chromeHeading.show" class="module-heading">
+      <h2>{{ t(chromeHeading.titleKey) }}</h2>
     </div>
     <div v-if="partitions.length" class="module-partitions">
       <div class="module-tabs-track">
@@ -71,6 +71,7 @@ import {
   findLocalNavItem,
   hideLocalNav,
   locationMatches,
+  resolveChromeHeading,
   resolveModule,
   resolveNetworkPartition,
   type LocalNavItem,
@@ -117,10 +118,7 @@ const partitionLink = (partition: NavPartition) => {
   return { path: current?.path || partition.defaultPath }
 }
 
-const headingKey = computed(() => {
-  const current = findLocalNavItem(route.path, queryRecord.value)
-  return current?.titleKey || currentModule.value?.titleKey || ''
-})
+const chromeHeading = computed(() => resolveChromeHeading(route.path, queryRecord.value))
 </script>
 
 <style lang="scss" scoped>
@@ -134,13 +132,13 @@ const headingKey = computed(() => {
 
 .module-heading {
   flex-shrink: 0;
-  padding: 16px 24px 0;
+  padding: 18px 24px 10px;
 
   h2 {
     margin: 0;
     color: var(--xp-text-primary);
-    font-size: 18px;
     font-weight: 650;
+    line-height: 1.2;
   }
 }
 

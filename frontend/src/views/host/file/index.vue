@@ -278,7 +278,7 @@
                   <el-dropdown-item v-if="isCompressFile(row)" command="decompress">{{ t('file.decompress') }}</el-dropdown-item>
                   <el-dropdown-item command="compress">{{ t('file.compress') }}</el-dropdown-item>
                   <el-dropdown-item command="delete" divided>
-                    <span style="color: var(--el-color-danger)">{{ t('file.delete') }}</span>
+                    <span style="color: var(--xp-danger)">{{ t('file.delete') }}</span>
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>

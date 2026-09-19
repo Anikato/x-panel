@@ -78,6 +78,10 @@ func (a *MonitorAPI) GetIOOptions(c *gin.Context) {
 	helper.SuccessWithData(c, options)
 }
 
+func (a *MonitorAPI) ListNics(c *gin.Context) {
+	helper.SuccessWithData(c, service.ListInventoryNics())
+}
+
 func (a *MonitorAPI) GetNetworkOptions(c *gin.Context) {
 	netStat, _ := net.IOCounters(true)
 	options := []string{"all"}

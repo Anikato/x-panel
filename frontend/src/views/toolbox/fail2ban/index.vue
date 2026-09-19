@@ -1,47 +1,42 @@
 <template>
-  <div class="fail2ban-page">
-    <!-- 未安装 -->
-    <el-card v-if="!status.isInstalled" shadow="never">
+  <div class="fail2ban-page xp-page-shell">
+    <div v-if="!status.isInstalled" class="xp-empty">
       <el-empty :description="$t('toolbox.fail2ban.notInstalled')">
         <el-button type="primary" @click="handleInstall" :loading="installLoading">{{ $t('toolbox.fail2ban.install') }}</el-button>
       </el-empty>
-    </el-card>
+    </div>
 
-    <!-- 已安装 -->
     <template v-if="status.isInstalled">
-      <!-- 状态栏 -->
-      <el-card shadow="never" style="margin-bottom: 16px">
-        <div class="status-bar">
-          <div class="status-item">
-            <span class="status-label">{{ $t('toolbox.fail2ban.serviceStatus') }}</span>
+      <div class="app-toolbar">
+        <el-button-group size="small">
+          <el-button @click="handleOperate('start')" :disabled="status.isRunning">{{ $t('toolbox.fail2ban.start') }}</el-button>
+          <el-button @click="handleOperate('stop')" :disabled="!status.isRunning">{{ $t('toolbox.fail2ban.stop') }}</el-button>
+          <el-button @click="handleOperate('restart')">{{ $t('toolbox.fail2ban.restart') }}</el-button>
+        </el-button-group>
+        <span class="status-label">{{ $t('toolbox.fail2ban.autoStart') }}</span>
+        <el-switch v-model="status.autoStart" @change="handleAutoStart" size="small" />
+      </div>
+      <div class="xp-deck-grid">
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('toolbox.fail2ban.serviceStatus') }}</div>
+          <div class="xp-metric-value">
             <el-tag :type="status.isRunning ? 'success' : 'danger'" size="small">
               {{ status.isRunning ? $t('toolbox.fail2ban.running') : $t('toolbox.fail2ban.stopped') }}
             </el-tag>
           </div>
-          <div class="status-item" v-if="status.version">
-            <span class="status-label">{{ $t('toolbox.fail2ban.version') }}</span>
-            <span>{{ status.version }}</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">{{ $t('toolbox.fail2ban.totalBanned') }}</span>
+        </article>
+        <article v-if="status.version" class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('toolbox.fail2ban.version') }}</div>
+          <div class="xp-metric-value">{{ status.version }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('toolbox.fail2ban.totalBanned') }}</div>
+          <div class="xp-metric-value">
             <el-tag type="warning" size="small">{{ totalBanned }}</el-tag>
           </div>
-          <div class="status-actions">
-            <el-button-group size="small">
-              <el-button @click="handleOperate('start')" :disabled="status.isRunning">{{ $t('toolbox.fail2ban.start') }}</el-button>
-              <el-button @click="handleOperate('stop')" :disabled="!status.isRunning">{{ $t('toolbox.fail2ban.stop') }}</el-button>
-              <el-button @click="handleOperate('restart')">{{ $t('toolbox.fail2ban.restart') }}</el-button>
-            </el-button-group>
-            <div class="autostart-toggle">
-              <span class="status-label">{{ $t('toolbox.fail2ban.autoStart') }}</span>
-              <el-switch v-model="status.autoStart" @change="handleAutoStart" size="small" />
-            </div>
-          </div>
-        </div>
-      </el-card>
+        </article>
+      </div>
 
-      <!-- Tabs -->
-      <el-card shadow="never">
         <el-tabs v-model="activeTab">
           <!-- SSH 防护 -->
           <el-tab-pane :label="$t('toolbox.fail2ban.sshProtection')" name="ssh">
@@ -171,7 +166,6 @@
             </el-alert>
           </el-tab-pane>
         </el-tabs>
-      </el-card>
     </template>
 
     <!-- 编辑 Jail 对话框 -->

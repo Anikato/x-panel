@@ -110,6 +110,7 @@ export const lumenTheme: ThemeDefinition = {
     subnav: 'pill',
     card: 'raised',
     iconContainer: 'tile',
+    heading: 'compact',
   },
   iconSet: 'solid',
   terminal: { dark: 'lumen-dark', light: 'lumen-light' },

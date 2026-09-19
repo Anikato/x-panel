@@ -241,7 +241,7 @@ onMounted(() => load())
 </script>
 
 <style scoped>
-.form-hint { margin-top: 4px; font-size: 12px; color: var(--el-text-color-secondary); }
+.form-hint { margin-top: 4px; font-size: 12px; color: var(--xp-text-secondary); }
 .output-textarea :deep(.el-textarea__inner) {
   font-family: var(--xp-font-mono);
   font-size: 12px;

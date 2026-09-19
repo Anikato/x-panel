@@ -128,7 +128,7 @@
           <el-select v-model="selectedPresetKey" :placeholder="$t('sshManage.selectPresetKey')" clearable style="width: 100%;" @change="handlePresetKeySelect">
             <el-option v-for="k in presetKeys" :key="k.name" :label="k.name + ' (' + k.keyType + ')'" :value="k.name" />
             <template #empty>
-              <div style="padding: 8px 12px; color: var(--el-text-color-secondary); font-size: 12px;">{{ $t('sshManage.noPresetKeys') }}</div>
+              <div style="padding: 8px 12px; color: var(--xp-text-secondary); font-size: 12px;">{{ $t('sshManage.noPresetKeys') }}</div>
             </template>
           </el-select>
         </el-form-item>

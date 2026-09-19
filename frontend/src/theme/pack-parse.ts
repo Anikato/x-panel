@@ -45,8 +45,9 @@ const ENUMS = {
   headerHeight: ['compact', 'default', 'comfortable'],
   radius: ['sharp', 'default', 'rounded'],
   iconSet: ['outline', 'solid'],
-  chromeTexture: ['none', 'ribbon', 'galaxy', 'starfield'],
-  sidebar: ['marker', 'block'],
+  chromeTexture: ['none', 'ribbon', 'galaxy', 'starfield', 'grain'],
+  sidebar: ['marker', 'block', 'rail'],
+  heading: ['compact', 'display'],
   subnav: ['line', 'block', 'pill'],
   card: ['flat', 'outline', 'raised'],
   iconContainer: ['none', 'tile'],
@@ -457,6 +458,7 @@ export function parseThemePack(raw: unknown, overlay: ThemePackOverlay = {}): { 
       subnav: readEnum(variantsRaw.subnav, ENUMS.subnav, 'block', 'defaults.variants.subnav', warnings, isolated),
       card: readEnum(variantsRaw.card, ENUMS.card, 'outline', 'defaults.variants.card', warnings, isolated),
       iconContainer: readEnum(variantsRaw.iconContainer, ENUMS.iconContainer, 'none', 'defaults.variants.iconContainer', warnings, isolated),
+      heading: readEnum(variantsRaw.heading, ENUMS.heading, 'compact', 'defaults.variants.heading', warnings, isolated),
     },
   }
 

@@ -3,7 +3,7 @@
     <div v-if="dockerChecking" v-loading="true" style="height: 200px" />
 
     <!-- Docker Not Installed -->
-    <el-card v-else-if="!dockerStatus.isExist" class="docker-install-card">
+    <div v-else-if="!dockerStatus.isExist" class="xp-empty docker-install-card">
       <div class="docker-install-content">
         <el-icon :size="64" color="var(--xp-text-muted)"><box /></el-icon>
         <h2>{{ t('container.dockerNotInstalled') }}</h2>
@@ -18,17 +18,17 @@
           <pre class="log-content">{{ installLog }}</pre>
         </div>
       </div>
-    </el-card>
+    </div>
 
     <!-- Docker Installed but Not Running -->
-    <el-card v-else-if="!dockerStatus.isActive" class="docker-install-card">
+    <div v-else-if="!dockerStatus.isActive" class="xp-empty docker-install-card">
       <div class="docker-install-content">
-        <el-icon :size="64" color="var(--el-color-warning)"><warning-filled /></el-icon>
+        <el-icon :size="64" color="var(--xp-warning)"><warning-filled /></el-icon>
         <h2>{{ t('container.dockerNotRunning') }}</h2>
         <p>{{ t('container.dockerNotRunningDesc') }}</p>
         <el-button type="primary" @click="checkDocker">{{ t('container.recheck') }}</el-button>
       </div>
-    </el-card>
+    </div>
 
     <!-- Docker Available -->
     <template v-else>
@@ -128,7 +128,7 @@
                       <el-dropdown-item @click="handleCommitOpen(row)">{{ t('container.commit') }}</el-dropdown-item>
                       <el-dropdown-item @click="handleCleanLog(row)">{{ t('container.cleanLog') }}</el-dropdown-item>
                       <el-dropdown-item divided @click="handleRemoveContainer(row)">
-                        <span style="color: var(--el-color-danger)">{{ t('commons.delete') }}</span>
+                        <span style="color: var(--xp-danger)">{{ t('commons.delete') }}</span>
                       </el-dropdown-item>
                     </el-dropdown-menu>
                   </template>

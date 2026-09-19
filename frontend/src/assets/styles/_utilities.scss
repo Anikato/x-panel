@@ -9,6 +9,10 @@
   justify-content: space-between;
   margin-bottom: 20px;
 
+  &:not(:has(h2, h3)) {
+    justify-content: flex-end;
+  }
+
   h3 {
     margin: 0;
     font-size: 22px;
@@ -40,8 +44,10 @@
 }
 
 // --- Toolbar (above tables) ---
-.app-toolbar {
+.app-toolbar,
+.filter-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
@@ -49,6 +55,10 @@
   background: var(--xp-bg-surface);
   border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius);
+}
+
+.toolbar-spacer {
+  flex: 1;
 }
 
 // --- Pagination (below tables) ---
@@ -411,6 +421,60 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.xp-deck {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px;
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius);
+  box-shadow: var(--xp-card-top-edge-shadow, none);
+}
+
+.xp-deck-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--xp-metric-columns, 3), minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.xp-metric-card.is-compact {
+  min-height: 88px;
+
+  .xp-metric-value {
+    font-size: 16px;
+    font-weight: 650;
+  }
+}
+
+.xp-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 12px;
+
+  h3 {
+    margin: 0;
+    color: var(--xp-text-primary);
+    font-size: 15px;
+    font-weight: 650;
+  }
+}
+
+.xp-section-desc {
+  color: var(--xp-text-muted);
+  font-size: 12px;
+}
+
+.xp-empty {
+  padding: 48px 16px;
+  text-align: center;
+  background: var(--xp-bg-surface);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius);
 }
 
 // --- Page hero ---

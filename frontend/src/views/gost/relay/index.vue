@@ -1,7 +1,7 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('gost.relayTitle') }}</h3>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon>{{ $t('gost.createRelay') }}
       </el-button>
@@ -11,7 +11,6 @@
       {{ $t('gost.relayDesc') }}
     </el-alert>
 
-    <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="name" :label="$t('gost.name')" min-width="120" />
         <el-table-column prop="listenAddr" :label="$t('gost.listenAddr')" min-width="130">
@@ -70,7 +69,6 @@
           @current-change="search"
         />
       </div>
-    </el-card>
 
     <!-- 创建 / 编辑 -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? $t('gost.editRelay') : $t('gost.createRelay')" width="520px" destroy-on-close>
@@ -354,7 +352,7 @@ onMounted(() => search())
   display: flex;
   align-items: center;
   code {
-    background: var(--el-fill-color-light);
+    background: var(--xp-bg-inset);
     padding: 8px 12px;
     border-radius: var(--xp-radius-sm);
     font-size: 13px;
@@ -363,7 +361,7 @@ onMounted(() => search())
   }
 }
 code {
-  background: var(--el-fill-color-light);
+  background: var(--xp-bg-inset);
   padding: 2px 6px;
   border-radius: var(--xp-radius-sm);
   font-size: 13px;

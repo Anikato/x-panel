@@ -1,11 +1,10 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('haproxy.configHistory') }}</h3>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button @click="load"><el-icon><Refresh /></el-icon>{{ $t('commons.refresh') }}</el-button>
     </div>
 
-    <el-card shadow="never">
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="operator" :label="$t('haproxy.operator')" width="120" />
@@ -28,7 +27,6 @@
         </el-table-column>
       </el-table>
       <div class="total-info" v-if="total">{{ $t('haproxy.totalItems', { count: total }) }}</div>
-    </el-card>
 
     <el-dialog v-model="viewVisible" :title="$t('haproxy.configSnapshot')" width="900px">
       <el-input v-model="viewContent" type="textarea" :rows="24" readonly class="code-view" spellcheck="false" />

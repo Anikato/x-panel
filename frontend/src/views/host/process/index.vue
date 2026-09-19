@@ -1,7 +1,6 @@
 <template>
   <div class="process-page">
     <div class="page-header">
-      <h3>{{ $t('process.title') }}</h3>
       <div class="header-actions">
         <el-radio-group v-model="activeTab" size="small">
           <el-radio-button value="process">{{ $t('process.title') }}</el-radio-button>
@@ -445,6 +444,10 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .process-page {
   height: 100%;
+}
+
+.page-header {
+  justify-content: flex-end;
 }
 
 .toolbar {

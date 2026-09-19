@@ -29,8 +29,8 @@
           >
             <div class="task-icon">
               <el-icon v-if="task.status === 'running'" class="spin-icon"><Loading /></el-icon>
-              <el-icon v-else-if="task.status === 'success'" style="color:var(--el-color-success)"><CircleCheck /></el-icon>
-              <el-icon v-else style="color:var(--el-color-danger)"><CircleClose /></el-icon>
+              <el-icon v-else-if="task.status === 'success'" style="color:var(--xp-success)"><CircleCheck /></el-icon>
+              <el-icon v-else style="color:var(--xp-danger)"><CircleClose /></el-icon>
             </div>
             <div class="task-info">
               <div class="task-name">{{ task.name }}</div>
@@ -230,7 +230,7 @@ function formatEndDuration(startTime: number, endTime?: number): string {
 
 .task-error {
   font-size: 12px;
-  color: var(--el-color-danger);
+  color: var(--xp-danger);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

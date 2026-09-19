@@ -1,26 +1,26 @@
 <template>
-  <div class="haproxy-status-page">
-    <div class="page-header">
-      <h3>{{ $t('haproxy.status') }}</h3>
+  <div class="haproxy-status-page xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button size="small" :icon="Refresh" @click="loadStatus" :loading="loading">
         {{ $t('commons.refresh') }}
       </el-button>
     </div>
 
     <template v-if="!status.isInstalled && !installing">
-      <el-card shadow="never" class="install-card">
+      <div class="xp-empty">
         <el-empty :description="$t('haproxy.notInstalled')">
           <template #image>
             <el-icon :size="64" color="var(--xp-text-muted)"><Aim /></el-icon>
           </template>
           <el-button type="primary" @click="handleInstall">{{ $t('haproxy.install') }}</el-button>
         </el-empty>
-      </el-card>
+      </div>
     </template>
 
     <template v-if="installing">
-      <el-card shadow="never">
-        <template #header>{{ $t('haproxy.installProgress') }}</template>
+      <article class="xp-deck">
+        <div class="xp-section" style="margin-top:0"><h3>{{ $t('haproxy.installProgress') }}</h3></div>
         <el-progress
           :percentage="installProgress.percent"
           :status="installProgress.phase === 'error' ? 'exception' : installProgress.phase === 'done' ? 'success' : undefined"
@@ -33,7 +33,7 @@
           </el-tag>
           <span style="margin-left: 8px;">{{ installProgress.message }}</span>
         </div>
-      </el-card>
+      </article>
     </template>
 
     <template v-if="status.isInstalled && !installing">
@@ -41,72 +41,58 @@
         {{ $t('haproxy.infoNote') }}
       </el-alert>
 
-      <el-row :gutter="16">
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('commons.status') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.isRunning ? 'success' : 'danger'" size="large" effect="dark" round>
-                {{ status.isRunning ? $t('haproxy.running') : $t('haproxy.stopped') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('haproxy.version') }}</div>
-            <div class="stat-value version-text">{{ status.version || '-' }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('haproxy.socketReady') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.socketReady ? 'success' : 'danger'" size="large" effect="dark" round>
-                {{ status.socketReady ? $t('haproxy.socketOk') : $t('haproxy.socketBad') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('haproxy.autoStart') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.autoStart ? 'success' : 'info'" size="large" effect="dark" round>
-                {{ status.autoStart ? $t('haproxy.autoStartEnabled') : '-' }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <div class="app-toolbar">
+        <el-button type="success" :disabled="status.isRunning" @click="handleOperate('start')" :loading="operateLoading === 'start'">
+          <el-icon><VideoPlay /></el-icon>{{ $t('haproxy.start') }}
+        </el-button>
+        <el-button type="danger" :disabled="!status.isRunning" @click="handleOperate('stop')" :loading="operateLoading === 'stop'">
+          <el-icon><VideoPause /></el-icon>{{ $t('haproxy.stop') }}
+        </el-button>
+        <el-button type="primary" :disabled="!status.isRunning" @click="handleOperate('reload')" :loading="operateLoading === 'reload'">
+          <el-icon><RefreshRight /></el-icon>{{ $t('haproxy.reload') }}
+        </el-button>
+        <el-button type="warning" :disabled="!status.isRunning" @click="handleOperate('restart')" :loading="operateLoading === 'restart'">
+          <el-icon><Refresh /></el-icon>{{ $t('haproxy.restart') }}
+        </el-button>
+        <span class="toolbar-spacer" />
+        <el-button type="danger" plain @click="handleUninstall">
+          <el-icon><Delete /></el-icon>{{ $t('haproxy.uninstall') }}
+        </el-button>
+      </div>
 
-      <el-row :gutter="16" style="margin-top: 16px;">
-        <el-col :span="14">
-          <el-card shadow="never">
-            <template #header>{{ $t('commons.operate') }}</template>
-            <div class="operate-buttons">
-              <el-button type="success" :disabled="status.isRunning" @click="handleOperate('start')" :loading="operateLoading === 'start'">
-                <el-icon><VideoPlay /></el-icon>{{ $t('haproxy.start') }}
-              </el-button>
-              <el-button type="danger" :disabled="!status.isRunning" @click="handleOperate('stop')" :loading="operateLoading === 'stop'">
-                <el-icon><VideoPause /></el-icon>{{ $t('haproxy.stop') }}
-              </el-button>
-              <el-button type="primary" :disabled="!status.isRunning" @click="handleOperate('reload')" :loading="operateLoading === 'reload'">
-                <el-icon><RefreshRight /></el-icon>{{ $t('haproxy.reload') }}
-              </el-button>
-              <el-button type="warning" :disabled="!status.isRunning" @click="handleOperate('restart')" :loading="operateLoading === 'restart'">
-                <el-icon><Refresh /></el-icon>{{ $t('haproxy.restart') }}
-              </el-button>
-              <el-divider direction="vertical" />
-              <el-button type="danger" plain @click="handleUninstall">
-                <el-icon><Delete /></el-icon>{{ $t('haproxy.uninstall') }}
-              </el-button>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="10">
-          <el-card shadow="never">
-            <template #header>{{ $t('haproxy.checkUpdate') }}</template>
+      <div class="xp-deck-grid" style="--xp-metric-columns: 4">
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('commons.status') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.isRunning ? 'success' : 'danger'" size="small">
+              {{ status.isRunning ? $t('haproxy.running') : $t('haproxy.stopped') }}
+            </el-tag>
+          </div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.version') }}</div>
+          <div class="xp-metric-value version-text">{{ status.version || '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.socketReady') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.socketReady ? 'success' : 'danger'" size="small">
+              {{ status.socketReady ? $t('haproxy.socketOk') : $t('haproxy.socketBad') }}
+            </el-tag>
+          </div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('haproxy.autoStart') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.autoStart ? 'success' : 'info'" size="small">
+              {{ status.autoStart ? $t('haproxy.autoStartEnabled') : '-' }}
+            </el-tag>
+          </div>
+        </article>
+      </div>
+
+          <article class="xp-deck">
+            <div class="xp-section" style="margin-top:0"><h3>{{ $t('haproxy.checkUpdate') }}</h3></div>
             <div v-if="!updateInfo">
               <el-button type="primary" plain @click="handleCheckUpdate" :loading="checkUpdateLoading">
                 <el-icon><Upload /></el-icon>{{ $t('haproxy.checkUpdate') }}
@@ -127,14 +113,11 @@
                 </el-button>
               </div>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
+          </article>
 
-      <el-card shadow="never" style="margin-top: 16px;">
-        <template #header>
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>{{ $t('haproxy.statsSection') }}</span>
+      <article class="xp-deck" style="margin-top: 16px;">
+        <div class="xp-section" style="margin-top:0">
+            <h3>{{ $t('haproxy.statsSection') }}</h3>
             <el-button
               type="primary"
               size="small"
@@ -143,8 +126,7 @@
             >
               {{ $t('commons.save') }}（保存并重载）
             </el-button>
-          </div>
-        </template>
+        </div>
         <el-form :model="statsForm" label-width="130px" style="max-width: 600px;">
           <el-form-item label="启用监控面板">
             <el-switch v-model="statsForm.statsEnable" />
@@ -163,7 +145,7 @@
             <el-input v-model="statsForm.statsPass" type="password" show-password placeholder="留空则不修改" style="width: 200px;" />
           </el-form-item>
         </el-form>
-      </el-card>
+      </article>
     </template>
   </div>
 </template>
@@ -352,6 +334,6 @@ onUnmounted(() => stopPollProgress())
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
 }
 .form-tip-small {
-  font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; line-height: 1.4;
+  font-size: 12px; color: var(--xp-text-secondary); margin-top: 4px; line-height: 1.4;
 }
 </style>

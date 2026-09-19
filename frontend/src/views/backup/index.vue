@@ -638,7 +638,7 @@ onMounted(() => {
 .form-hint {
   margin-top: 4px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-secondary);
 }
 
 .mount-option {
@@ -661,7 +661,7 @@ onMounted(() => {
 
 .mount-device {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-secondary);
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -5,7 +5,7 @@ html[data-sidebar-variant='marker'] {
   .sidebar .nav-item.active {
     color: var(--xp-accent);
     font-weight: 600;
-    background: transparent;
+    background: var(--xp-accent-muted);
     box-shadow: inset 2px 0 0 var(--xp-accent);
     border-radius: 0 var(--xp-radius-sm) var(--xp-radius-sm) 0;
   }
@@ -20,6 +20,53 @@ html[data-sidebar-variant='block'] {
     color: var(--xp-on-accent);
     font-weight: 650;
     background: var(--xp-accent);
+  }
+}
+
+html[data-sidebar-variant='rail'] {
+  .sidebar {
+    border-right: 0;
+    box-shadow: inset 4px 0 0 var(--xp-accent);
+  }
+
+  .sidebar .nav-tree {
+    padding-left: 12px;
+  }
+
+  .sidebar .nav-item {
+    min-height: 42px;
+    margin: 3px 6px;
+    border-radius: var(--xp-radius);
+  }
+
+  .sidebar .nav-item.active {
+    color: var(--xp-on-accent);
+    font-weight: 650;
+    background: var(--xp-accent);
+    box-shadow: none;
+  }
+}
+
+html[data-heading-style='compact'] {
+  .module-heading {
+    padding: 16px 24px 8px;
+
+    h2 {
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+  }
+}
+
+html[data-heading-style='display'] {
+  .module-heading {
+    padding: 22px 24px 14px;
+
+    h2 {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
   }
 }
 
@@ -181,7 +228,9 @@ html[data-transparency='on'] {
   }
 
   .gauge-card,
-  .deck-card {
+  .deck-card,
+  .xp-deck,
+  .xp-metric-card {
     background-color: color-mix(in srgb, var(--xp-bg-surface) calc(var(--xp-surface-opacity, 0.88) * 100%), transparent) !important;
   }
 
@@ -330,6 +379,24 @@ html.reduce-motion *::after {
   --xp-chrome-texture-size: auto, auto, auto, 170px 170px, 240px 210px;
   --xp-chrome-texture-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat;
   --xp-chrome-texture-position: 0 0, 0 0, 0 0, 0 0, 40px 28px;
+}
+
+[data-chrome-texture='grain'] {
+  --xp-chrome-texture:
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--xp-text-primary) 4%, transparent) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--xp-text-primary) 3%, transparent) 0 1px,
+      transparent 1px 4px
+    ),
+    radial-gradient(ellipse 80% 50% at 12% 0%, color-mix(in srgb, var(--xp-accent) 10%, transparent), transparent 56%);
+  --xp-chrome-texture-size: auto, auto, auto;
+  --xp-chrome-texture-repeat: repeat, repeat, no-repeat;
+  --xp-chrome-texture-position: 0 0, 0 0, 0 0;
 }
 
 [data-chrome-texture='starfield'] {

@@ -1,10 +1,7 @@
 <template>
   <div class="nezha-agent-page" v-loading="loading && !status">
     <div class="page-header">
-      <div class="page-header-text">
-        <h3>{{ $t('nezhaAgent.title') }}</h3>
-        <p class="page-desc">{{ $t('nezhaAgent.pageDesc') }}</p>
-      </div>
+      <p class="page-desc">{{ $t('nezhaAgent.pageDesc') }}</p>
       <el-button size="small" :icon="Refresh" :loading="loading" @click="loadStatus">
         {{ $t('commons.refresh') }}
       </el-button>
@@ -108,50 +105,48 @@
       <!-- Status cards -->
       <el-row :gutter="12" class="stat-row">
         <el-col :xs="12" :sm="12" :md="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nezhaAgent.runtimeStatus') }}</div>
-            <div class="stat-value">
+          <article class="xp-metric-card is-compact">
+            <div class="xp-metric-label">{{ $t('nezhaAgent.runtimeStatus') }}</div>
+            <div class="xp-metric-value">
               <el-tag :type="statusTagType" effect="dark" round size="small">
                 {{ $t(view.statusLabelKey) }}
               </el-tag>
             </div>
-          </el-card>
+          </article>
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nezhaAgent.autoStart') }}</div>
-            <div class="stat-value">
+          <article class="xp-metric-card is-compact">
+            <div class="xp-metric-label">{{ $t('nezhaAgent.autoStart') }}</div>
+            <div class="xp-metric-value">
               <el-tag :type="status.enabled ? 'success' : 'info'" effect="dark" round size="small">
                 {{ status.enabled ? $t('nezhaAgent.enabled') : $t('nezhaAgent.disabled') }}
               </el-tag>
             </div>
-          </el-card>
+          </article>
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nezhaAgent.version') }}</div>
-            <div class="stat-value mono">{{ status.version || $t('nezhaAgent.empty') }}</div>
-          </el-card>
+          <article class="xp-metric-card is-compact">
+            <div class="xp-metric-label">{{ $t('nezhaAgent.version') }}</div>
+            <div class="xp-metric-value mono">{{ status.version || $t('nezhaAgent.empty') }}</div>
+          </article>
         </el-col>
         <el-col :xs="12" :sm="12" :md="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nezhaAgent.configHealth') }}</div>
-            <div class="stat-value">
+          <article class="xp-metric-card is-compact">
+            <div class="xp-metric-label">{{ $t('nezhaAgent.configHealth') }}</div>
+            <div class="xp-metric-value">
               <el-tag :type="configHealthTagType" effect="dark" round size="small">
                 {{ configHealthLabel }}
               </el-tag>
             </div>
-          </el-card>
+          </article>
         </el-col>
       </el-row>
 
       <!-- Details + Operations -->
       <el-row :gutter="12" class="detail-row">
         <el-col :xs="24" :md="14">
-          <el-card shadow="never">
-            <template #header>
-              <span>{{ $t('nezhaAgent.details') }}</span>
-            </template>
+          <article class="xp-deck">
+            <div class="xp-section" style="margin-top:0"><h3>{{ $t('nezhaAgent.details') }}</h3></div>
             <el-descriptions :column="1" border size="small" class="detail-desc">
               <el-descriptions-item :label="$t('nezhaAgent.uuid')">
                 <span class="mono">{{ status.uuid || $t('nezhaAgent.empty') }}</span>
@@ -186,14 +181,12 @@
                 <span class="mono">{{ status.serviceState || $t('nezhaAgent.empty') }}</span>
               </el-descriptions-item>
             </el-descriptions>
-          </el-card>
+          </article>
         </el-col>
 
         <el-col :xs="24" :md="10">
-          <el-card shadow="never">
-            <template #header>
-              <span>{{ $t('nezhaAgent.operations') }}</span>
-            </template>
+          <article class="xp-deck">
+            <div class="xp-section" style="margin-top:0"><h3>{{ $t('nezhaAgent.operations') }}</h3></div>
             <div class="operate-buttons">
               <el-button
                 v-if="!status.componentAvailable"
@@ -281,7 +274,7 @@
                 {{ $t('nezhaAgent.logs') }}
               </el-button>
             </div>
-          </el-card>
+          </article>
         </el-col>
       </el-row>
     </template>
@@ -773,8 +766,8 @@ onMounted(() => {
 }
 
 .log-viewer {
-  background: var(--xp-bg-inset, var(--el-fill-color-darker));
-  border: 1px solid var(--xp-border-light, var(--el-border-color-lighter));
+  background: var(--xp-bg-inset, var(--xp-bg-inset));
+  border: 1px solid var(--xp-border-light, var(--xp-border-light));
   border-radius: var(--xp-radius, 4px);
   padding: 12px;
   max-height: 520px;

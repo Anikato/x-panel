@@ -207,6 +207,7 @@ export const NAV_MODULES: NavModule[] = [
       { id: 'host-services', titleKey: 'nav.systemServices', path: '/toolbox/services', keywords: ['系统服务', 'systemd'] },
       { id: 'host-process', titleKey: 'nav.processes', path: '/host/process', keywords: ['进程'] },
       { id: 'host-disk', titleKey: 'nav.disks', path: '/host/disk', keywords: ['磁盘', '存储'] },
+      { id: 'host-nics', titleKey: 'nav.nics', path: '/host/network', keywords: ['网卡', '网口', '以太网', 'wifi'] },
       {
         id: 'host-share',
         titleKey: 'nav.fileShare',
@@ -349,7 +350,9 @@ export function findLocalNavItem(path: string, query: Record<string, string> = {
   if (path === '/backup' && !query.tab) {
     return flat.find((item) => item.id === 'backup-records')
   }
-  return flat.find((item) => !item.query && item.path === path)
+  const pathMatches = flat.filter((item) => !item.query && item.path === path)
+  if (!pathMatches.length) return undefined
+  return pathMatches.find((item) => !item.children?.length) || pathMatches[0]
 }
 
 export function resolveModule(path: string): NavModule | undefined {
@@ -422,6 +425,15 @@ export function hideLocalNav(mod: NavModule | undefined, path: string) {
   if (!mod || mod.localNav === 'none') return true
   if (mod.id === 'website' && /^\/website\/websites\/.+/.test(path)) return true
   return false
+}
+
+export function resolveChromeHeading(path: string, query: Record<string, string> = {}) {
+  const mod = resolveModule(path)
+  if (hideLocalNav(mod, path) || !mod) return { show: false, titleKey: '' }
+  const show = mod.localNav === 'tabs' || mod.localNav === 'side' || Boolean(mod.partitions?.length)
+  if (!show) return { show: false, titleKey: '' }
+  const current = findLocalNavItem(path, query)
+  return { show: true, titleKey: current?.titleKey || mod.titleKey }
 }
 
 export function resolveNetworkPartition(path: string) {

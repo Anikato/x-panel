@@ -1,8 +1,6 @@
 package service
 
 import (
-	"net"
-	"strings"
 	"time"
 
 	"xpanel/app/dto"
@@ -81,38 +79,7 @@ func (s *TrafficService) DeleteConfig(interfaceName string) error {
 }
 
 func (s *TrafficService) ListInterfaces() ([]dto.InterfaceInfo, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	var result []dto.InterfaceInfo
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		info := dto.InterfaceInfo{
-			Name: iface.Name,
-			MAC:  iface.HardwareAddr.String(),
-		}
-		if iface.Flags&net.FlagUp != 0 {
-			info.Status = "up"
-		} else {
-			info.Status = "down"
-		}
-		addrs, err := iface.Addrs()
-		if err == nil {
-			for _, addr := range addrs {
-				ip := addr.String()
-				if strings.Contains(ip, ":") {
-					info.IPv6 = append(info.IPv6, ip)
-				} else {
-					info.IPv4 = append(info.IPv4, ip)
-				}
-			}
-		}
-		result = append(result, info)
-	}
-	return result, nil
+	return listNicsFrom(readHostIfaces, readNicSysfs, false), nil
 }
 
 func (s *TrafficService) GetStats(req dto.TrafficStatsRequest) (*dto.TrafficStatsResponse, error) {

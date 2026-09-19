@@ -1,13 +1,12 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('gost.forwardTitle') }}</h3>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon>{{ $t('gost.createForward') }}
       </el-button>
     </div>
 
-    <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="name" :label="$t('gost.name')" min-width="120" />
         <el-table-column prop="type" :label="$t('gost.type')" width="140">
@@ -64,7 +63,6 @@
           @current-change="search"
         />
       </div>
-    </el-card>
 
     <!-- 创建 / 编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? $t('gost.editForward') : $t('gost.createForward')" width="560px" destroy-on-close>
@@ -253,7 +251,7 @@ onMounted(() => search())
   margin-top: 16px;
 }
 code {
-  background: var(--el-fill-color-light);
+  background: var(--xp-bg-inset);
   padding: 2px 6px;
   border-radius: var(--xp-radius-sm);
   font-size: 13px;

@@ -1,32 +1,23 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('haproxy.rawConfig') }}</h3>
-      <div>
-        <el-tag type="warning" v-if="!readonly">{{ $t('haproxy.configWarning') }}</el-tag>
-      </div>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <el-radio-group v-model="mode" size="small" @change="onModeChange">
+        <el-radio-button value="preview">{{ $t('haproxy.previewMode') }}</el-radio-button>
+        <el-radio-button value="active">{{ $t('haproxy.activeMode') }}</el-radio-button>
+        <el-radio-button value="custom">{{ $t('haproxy.customMode') }}</el-radio-button>
+      </el-radio-group>
+      <el-tag v-if="!readonly" type="warning">{{ $t('haproxy.configWarning') }}</el-tag>
+      <span class="toolbar-spacer" />
+      <el-button @click="load"><el-icon><Refresh /></el-icon>{{ $t('commons.refresh') }}</el-button>
+      <el-button @click="doValidate" :loading="validating">{{ $t('haproxy.validate') }}</el-button>
+      <el-button type="primary" v-if="mode === 'custom'" @click="doSave" :loading="saving">{{ $t('haproxy.saveAndReload') }}</el-button>
     </div>
-
-    <el-card shadow="never">
-      <div class="toolbar">
-        <el-radio-group v-model="mode" size="small" @change="onModeChange">
-          <el-radio-button value="preview">{{ $t('haproxy.previewMode') }}</el-radio-button>
-          <el-radio-button value="active">{{ $t('haproxy.activeMode') }}</el-radio-button>
-          <el-radio-button value="custom">{{ $t('haproxy.customMode') }}</el-radio-button>
-        </el-radio-group>
-        <div class="actions">
-          <el-button @click="load"><el-icon><Refresh /></el-icon>{{ $t('commons.refresh') }}</el-button>
-          <el-button @click="doValidate" :loading="validating">{{ $t('haproxy.validate') }}</el-button>
-          <el-button type="primary" v-if="mode === 'custom'" @click="doSave" :loading="saving">{{ $t('haproxy.saveAndReload') }}</el-button>
-        </div>
-      </div>
 
       <el-alert v-if="validateMsg" :title="validateMsg" :type="validateOk ? 'success' : 'error'" show-icon style="margin-bottom: 12px;" closable @close="validateMsg = ''" />
 
       <div class="editor">
         <el-input v-model="content" type="textarea" :rows="28" :readonly="mode !== 'custom'" class="code-editor" spellcheck="false" />
       </div>
-    </el-card>
   </div>
 </template>
 

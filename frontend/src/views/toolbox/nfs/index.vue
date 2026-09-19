@@ -1,15 +1,7 @@
 <template>
-  <div class="toolbox-nfs-page">
-    <div class="page-header">
-      <h3>{{ $t('toolbox.nfsTitle') }}</h3>
-      <el-button size="small" :icon="Refresh" @click="loadAll" :loading="loading">
-        {{ $t('commons.refresh') }}
-      </el-button>
-    </div>
-
-    <!-- Not installed -->
+  <div class="toolbox-nfs-page xp-page-shell">
     <template v-if="!status.isInstalled">
-      <el-card shadow="never" class="install-card">
+      <div class="xp-empty">
         <el-empty :description="$t('toolbox.nfsNotInstalled')">
           <template #image>
             <el-icon :size="64" color="var(--xp-text-muted)"><FolderOpened /></el-icon>
@@ -18,67 +10,56 @@
             {{ $t('toolbox.install') }}
           </el-button>
         </el-empty>
-      </el-card>
+      </div>
     </template>
 
-    <!-- Installed -->
     <template v-if="status.isInstalled">
-      <!-- Status bar -->
-      <el-row :gutter="16" class="status-row">
-        <el-col :span="4">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('commons.status') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.isRunning ? 'success' : 'danger'" effect="dark" round>
-                {{ status.isRunning ? $t('toolbox.running') : $t('toolbox.stopped') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('toolbox.version') }}</div>
-            <div class="stat-value mono">{{ status.version || '-' }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('toolbox.autoStart') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.autoStart ? 'success' : 'info'" effect="dark" round>
-                {{ status.autoStart ? $t('commons.enabled') : $t('commons.disabled') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="11">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('commons.operate') }}</div>
-            <div class="stat-value operate-buttons">
-              <el-button type="success" size="small" :disabled="status.isRunning" @click="handleOperate('start')" :loading="opLoading === 'start'">
-                <el-icon><VideoPlay /></el-icon>
-              </el-button>
-              <el-button type="danger" size="small" :disabled="!status.isRunning" @click="handleOperate('stop')" :loading="opLoading === 'stop'">
-                <el-icon><VideoPause /></el-icon>
-              </el-button>
-              <el-button type="primary" size="small" :disabled="!status.isRunning" @click="handleOperate('restart')" :loading="opLoading === 'restart'">
-                <el-icon><RefreshRight /></el-icon>
-              </el-button>
-              <el-divider direction="vertical" />
-              <el-button size="small" :type="status.autoStart ? 'warning' : 'success'" plain @click="handleOperate(status.autoStart ? 'disable' : 'enable')">
-                {{ status.autoStart ? $t('toolbox.disableAutoStart') : $t('toolbox.enableAutoStart') }}
-              </el-button>
-              <el-button type="danger" size="small" plain @click="handleUninstall">
-                {{ $t('toolbox.uninstall') }}
-              </el-button>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <div class="app-toolbar">
+        <el-button size="small" :icon="Refresh" @click="loadAll" :loading="loading">
+          {{ $t('commons.refresh') }}
+        </el-button>
+        <span class="toolbar-spacer" />
+        <el-button type="success" size="small" :disabled="status.isRunning" @click="handleOperate('start')" :loading="opLoading === 'start'">
+          <el-icon><VideoPlay /></el-icon>
+        </el-button>
+        <el-button type="danger" size="small" :disabled="!status.isRunning" @click="handleOperate('stop')" :loading="opLoading === 'stop'">
+          <el-icon><VideoPause /></el-icon>
+        </el-button>
+        <el-button type="primary" size="small" :disabled="!status.isRunning" @click="handleOperate('restart')" :loading="opLoading === 'restart'">
+          <el-icon><RefreshRight /></el-icon>
+        </el-button>
+        <el-button size="small" :type="status.autoStart ? 'warning' : 'success'" plain @click="handleOperate(status.autoStart ? 'disable' : 'enable')">
+          {{ status.autoStart ? $t('toolbox.disableAutoStart') : $t('toolbox.enableAutoStart') }}
+        </el-button>
+        <el-button type="danger" size="small" plain @click="handleUninstall">
+          {{ $t('toolbox.uninstall') }}
+        </el-button>
+      </div>
 
-      <!-- Tabs -->
-      <el-card shadow="never" style="margin-top: 16px;">
-        <el-tabs v-model="activeTab">
+      <div class="xp-deck-grid">
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('commons.status') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.isRunning ? 'success' : 'danger'" size="small">
+              {{ status.isRunning ? $t('toolbox.running') : $t('toolbox.stopped') }}
+            </el-tag>
+          </div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('toolbox.version') }}</div>
+          <div class="xp-metric-value mono">{{ status.version || '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('toolbox.autoStart') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.autoStart ? 'success' : 'info'" size="small">
+              {{ status.autoStart ? $t('commons.enabled') : $t('commons.disabled') }}
+            </el-tag>
+          </div>
+        </article>
+      </div>
+
+      <el-tabs v-model="activeTab">
           <!-- Exports Tab -->
           <el-tab-pane :label="$t('toolbox.nfsExports')" name="exports">
             <div class="tab-toolbar">
@@ -128,7 +109,6 @@
             </el-table>
           </el-tab-pane>
         </el-tabs>
-      </el-card>
     </template>
 
     <!-- Export Dialog -->
@@ -405,33 +385,18 @@ onMounted(() => loadAll())
 </script>
 
 <style lang="scss" scoped>
-.page-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
-  h3 { margin: 0; }
-}
-.install-card { text-align: center; }
-.status-row {
-  .stat-card {
-    text-align: center;
-    .stat-title { font-size: 13px; color: var(--xp-text-muted); margin-bottom: 10px; }
-    .stat-value { font-size: 14px; font-weight: 600; }
-    .mono { font-family: monospace; }
-  }
-}
-.operate-buttons {
-  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px;
-}
+.mono { font-family: var(--xp-font-mono, monospace); }
 .tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
 .client-item {
   display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; margin-bottom: 4px;
   .client-options { font-size: 12px; color: var(--xp-text-muted); }
 }
 .client-entry {
-  border: 1px solid var(--el-border-color-lighter);
+  border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius-sm);
   padding: 12px;
   margin-bottom: 10px;
-  background: var(--el-fill-color-blank);
+  background: var(--xp-bg-surface);
 }
 .client-row { display: flex; align-items: center; margin-bottom: 8px; }
 .options-grid {

@@ -1,17 +1,15 @@
 <template>
-  <div class="firewall-page">
-    <div class="page-header">
-      <h3>{{ $t('firewall.title') }}</h3>
-      <div class="header-actions">
+  <div class="firewall-page xp-page-shell">
+    <div class="app-toolbar">
         <el-tag :type="baseInfo.isActive ? 'success' : 'danger'" size="small">
           {{ baseInfo.isExist ? (baseInfo.isActive ? $t('firewall.enabled') : $t('firewall.disabled')) : $t('firewall.notInstalled') }}
         </el-tag>
+        <span class="toolbar-spacer" />
         <template v-if="baseInfo.isExist">
           <el-button size="small" type="success" plain @click="handleOperate('enable')" v-if="!baseInfo.isActive">{{ $t('firewall.enable') }}</el-button>
           <el-button size="small" type="danger" plain @click="handleOperate('disable')" v-if="baseInfo.isActive">{{ $t('firewall.disable') }}</el-button>
           <el-button size="small" type="warning" plain @click="handleOperate('reload')" v-if="baseInfo.isActive">{{ $t('firewall.reload') }}</el-button>
         </template>
-      </div>
     </div>
 
     <el-tabs v-model="activeTab" v-if="baseInfo.isExist">

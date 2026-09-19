@@ -52,62 +52,58 @@
       </el-dialog>
 
       <!-- 负载（全宽） -->
-      <el-card shadow="never" class="chart-card">
-        <template #header><span class="chart-title">{{ $t('monitor.load') }}</span></template>
+      <article class="xp-deck chart-card">
+        <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('monitor.load') }}</h3></div>
         <div ref="loadChartRef" class="chart-container"></div>
-      </el-card>
+      </article>
 
       <!-- CPU + 内存 -->
       <el-row :gutter="14" class="chart-grid-row">
         <el-col :xs="24" :md="12">
-          <el-card shadow="never" class="chart-card">
-            <template #header><span class="chart-title">CPU</span></template>
+          <article class="xp-deck chart-card">
+            <div class="xp-section" style="margin-top:0"><h3 class="chart-title">CPU</h3></div>
             <div ref="cpuChartRef" class="chart-container"></div>
-          </el-card>
+          </article>
         </el-col>
         <el-col :xs="24" :md="12">
-          <el-card shadow="never" class="chart-card">
-            <template #header><span class="chart-title">{{ $t('monitor.memory') }}</span></template>
+          <article class="xp-deck chart-card">
+            <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('monitor.memory') }}</h3></div>
             <div ref="memChartRef" class="chart-container"></div>
-          </el-card>
+          </article>
         </el-col>
       </el-row>
 
       <!-- IO + 网络 -->
       <el-row :gutter="14" class="chart-grid-row">
         <el-col :xs="24" :md="12">
-          <el-card shadow="never" class="chart-card">
-            <template #header>
-              <div class="chart-hd-row">
-                <span class="chart-title">{{ $t('monitor.disk') }} I/O</span>
+          <article class="xp-deck chart-card">
+            <div class="xp-section" style="margin-top:0">
+                <h3 class="chart-title">{{ $t('monitor.disk') }} I/O</h3>
                 <el-select v-model="ioChoose" size="small" style="width: 120px" @change="loadHistory">
                   <el-option v-for="o in ioOptions" :key="o" :label="o === 'all' ? $t('commons.all') : o" :value="o" />
                 </el-select>
-              </div>
-            </template>
+            </div>
             <div ref="ioChartRef" class="chart-container"></div>
-          </el-card>
+          </article>
         </el-col>
         <el-col :xs="24" :md="12">
-          <el-card shadow="never" class="chart-card">
-            <template #header>
-              <div class="chart-hd-row">
-                <span class="chart-title">{{ $t('monitor.network') }}</span>
+          <article class="xp-deck chart-card">
+            <div class="xp-section" style="margin-top:0">
+                <h3 class="chart-title">{{ $t('monitor.network') }}</h3>
                 <el-select v-model="netChoose" size="small" style="width: 120px" @change="loadHistory">
                   <el-option v-for="o in netOptions" :key="o" :label="o === 'all' ? $t('commons.all') : o" :value="o" />
                 </el-select>
-              </div>
-            </template>
+            </div>
             <div ref="netChartRef" class="chart-container"></div>
-          </el-card>
+          </article>
         </el-col>
       </el-row>
 
       <!-- 硬件温度（仅物理机有数据时显示） -->
-      <el-card shadow="never" class="chart-card" v-show="hasSensorData">
-        <template #header><span class="chart-title">{{ $t('monitor.temperature') }}</span></template>
+      <article class="xp-deck chart-card" v-show="hasSensorData">
+        <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('monitor.temperature') }}</h3></div>
         <div ref="sensorChartRef" class="chart-container"></div>
-      </el-card>
+      </article>
   </div>
 </template>
 

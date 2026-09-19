@@ -31,7 +31,7 @@ export function applyResolvedAppearance(resolved: ResolvedAppearance): void {
   root.style.fontSize = resolved.densityTokens.fontSize
 
   const datasetKeys = [
-    'theme', 'density', 'card-variant', 'sidebar-variant', 'subnav-variant',
+    'theme', 'density', 'card-variant', 'sidebar-variant', 'heading-style', 'subnav-variant',
     'icon-set', 'icon-container', 'transparency', 'color-mode', 'term-wallpaper',
     'chrome-texture', 'chrome-photo', 'term-follow',
   ]

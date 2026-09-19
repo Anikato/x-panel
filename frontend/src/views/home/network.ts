@@ -22,6 +22,20 @@ export function filterAddressIfaces(ifaces: NetInterface[] | undefined): NetInte
   })
 }
 
+export function filterInventoryNics(ifaces: NetInterface[] | undefined): NetInterface[] {
+  return (ifaces || []).filter((iface) => iface?.name && !isNoiseIface(iface.name) && !/^(tun\d*|tailscale)/i.test(iface.name))
+}
+
+export function formatLinkSpeed(mbps?: number): string {
+  if (!mbps || mbps <= 0) return ''
+  if (mbps >= 1000) {
+    const gbps = mbps / 1000
+    const label = Number.isInteger(gbps) ? String(gbps) : String(gbps)
+    return `${label} Gbps`
+  }
+  return `${mbps} Mbps`
+}
+
 export function filterTrafficNics(nics: NetIOInfo[] | undefined): NetIOInfo[] {
   const cleaned = (nics || []).filter((nic) => nic?.name && nic.name !== 'lo' && !isNoiseIface(nic.name))
   const active = cleaned.filter((nic) => (nic.speedUp || 0) + (nic.speedDown || 0) >= 64)

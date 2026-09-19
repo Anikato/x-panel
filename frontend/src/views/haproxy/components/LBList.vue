@@ -1,13 +1,12 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ mode === 'http' ? $t('haproxy.httpLB') : $t('haproxy.tcpLB') }}</h3>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon>{{ $t('haproxy.createLB') }}
       </el-button>
     </div>
 
-    <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="name" :label="$t('haproxy.name')" min-width="140" />
         <el-table-column :label="$t('haproxy.bindAddr')" min-width="160">
@@ -56,7 +55,6 @@
           @current-change="search"
         />
       </div>
-    </el-card>
 
     <!-- 编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? $t('haproxy.editLB') : $t('haproxy.createLB')" width="640px" destroy-on-close>

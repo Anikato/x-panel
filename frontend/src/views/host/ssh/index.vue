@@ -1,29 +1,20 @@
 <template>
-  <div class="ssh-page">
-    <div class="page-header">
-      <h3>{{ $t('sshManage.title') }}</h3>
+  <div class="ssh-page xp-page-shell">
+    <div class="app-toolbar">
+      <el-tag :type="sshInfo.isActive ? 'success' : 'danger'" size="small">
+        {{ sshInfo.isExist ? (sshInfo.isActive ? $t('sshManage.active') : $t('sshManage.inactive')) : $t('sshManage.notInstalled') }}
+      </el-tag>
+      <span class="toolbar-spacer" />
+      <template v-if="sshInfo.isExist">
+        <el-button size="small" type="success" plain @click="handleOperate('start')" :disabled="sshInfo.isActive">{{ $t('sshManage.start') }}</el-button>
+        <el-button size="small" type="danger" plain @click="handleOperate('stop')" :disabled="!sshInfo.isActive">{{ $t('sshManage.stop') }}</el-button>
+        <el-button size="small" type="warning" plain @click="handleOperate('restart')" :disabled="!sshInfo.isActive">{{ $t('sshManage.restart') }}</el-button>
+      </template>
       <el-button size="small" :icon="Refresh" @click="loadSSH" :loading="loading">{{ $t('commons.refresh') }}</el-button>
     </div>
 
     <el-tabs v-model="activeTab">
-      <!-- SSH 配置 -->
       <el-tab-pane :label="$t('sshManage.title')" name="config">
-        <el-card shadow="never">
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('sshManage.status') }}</span>
-              <div class="header-actions">
-                <el-tag :type="sshInfo.isActive ? 'success' : 'danger'" size="small">
-                  {{ sshInfo.isExist ? (sshInfo.isActive ? $t('sshManage.active') : $t('sshManage.inactive')) : $t('sshManage.notInstalled') }}
-                </el-tag>
-                <template v-if="sshInfo.isExist">
-                  <el-button size="small" type="success" plain @click="handleOperate('start')" :disabled="sshInfo.isActive">{{ $t('sshManage.start') }}</el-button>
-                  <el-button size="small" type="danger" plain @click="handleOperate('stop')" :disabled="!sshInfo.isActive">{{ $t('sshManage.stop') }}</el-button>
-                  <el-button size="small" type="warning" plain @click="handleOperate('restart')" :disabled="!sshInfo.isActive">{{ $t('sshManage.restart') }}</el-button>
-                </template>
-              </div>
-            </div>
-          </template>
 
           <el-form v-if="sshInfo.isExist" label-width="140px" class="ssh-form">
             <el-form-item :label="$t('sshManage.port')">
@@ -56,18 +47,13 @@
             </el-form-item>
           </el-form>
           <el-empty v-else :description="sshInfo.message || $t('sshManage.notInstalled')" />
-        </el-card>
       </el-tab-pane>
 
-      <!-- 公钥管理 -->
       <el-tab-pane label="authorized_keys" name="keys">
-        <el-card shadow="never">
-          <template #header>
-            <div class="card-header">
-              <span>authorized_keys</span>
+          <div class="app-toolbar">
+            <span class="toolbar-spacer" />
               <el-button type="primary" size="small" @click="openAddKeyDialog">{{ $t('commons.create') }}</el-button>
-            </div>
-          </template>
+          </div>
           <el-table :data="authorizedKeys" v-loading="keysLoading" size="small">
             <el-table-column prop="keyType" :label="$t('sshManage.keyType')" width="120" />
             <el-table-column prop="name" :label="$t('commons.name')" min-width="200">
@@ -84,7 +70,6 @@
               </template>
             </el-table-column>
           </el-table>
-        </el-card>
 
         <el-dialog v-model="showAddKeyDialog" :title="$t('sshManage.addAuthorizedKey')" width="600px" destroy-on-close>
           <el-radio-group v-model="addKeyMode" style="margin-bottom: 16px; width: 100%;">
@@ -146,16 +131,11 @@
 
       <!-- 私钥管理 -->
       <el-tab-pane :label="$t('sshManage.keyManage')" name="privateKeys">
-        <el-card shadow="never">
-          <template #header>
-            <div class="card-header">
-              <span>{{ $t('sshManage.keyManage') }}</span>
-              <div style="display: flex; gap: 8px;">
+          <div class="app-toolbar">
+            <span class="toolbar-spacer" />
                 <el-button type="primary" size="small" @click="showGenerateDialog = true">{{ $t('sshManage.generateKey') }}</el-button>
                 <el-button size="small" @click="showImportDialog = true">{{ $t('sshManage.importKey') }}</el-button>
-              </div>
-            </div>
-          </template>
+          </div>
           <el-table :data="sshKeys" v-loading="sshKeysLoading" size="small">
             <el-table-column prop="name" :label="$t('sshManage.keyName')" min-width="140" />
             <el-table-column prop="keyType" :label="$t('sshManage.keyType')" width="120" />
@@ -176,7 +156,6 @@
               </template>
             </el-table-column>
           </el-table>
-        </el-card>
 
         <!-- 生成密钥对 -->
         <el-dialog v-model="showGenerateDialog" :title="$t('sshManage.generateKey')" width="480px" destroy-on-close>

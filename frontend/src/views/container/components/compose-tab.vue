@@ -53,7 +53,7 @@
                   <el-dropdown-item @click="openEdit(row)">{{ t('container.composeEdit') }}</el-dropdown-item>
                   <el-dropdown-item @click="operate(row, 'down')">{{ t('container.composeDown') }}</el-dropdown-item>
                   <el-dropdown-item divided @click="handleDelete(row)">
-                    <span style="color: var(--el-color-danger)">{{ t('commons.delete') }}</span>
+                    <span style="color: var(--xp-danger)">{{ t('commons.delete') }}</span>
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>

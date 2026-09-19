@@ -147,8 +147,8 @@ function formatEta(remainingBytes: number, speed: number): string {
 .meta-percent { color: var(--xp-text-secondary); font-variant-numeric: tabular-nums; }
 .meta-speed { color: var(--xp-accent); font-weight: 500; }
 .meta-eta   { color: var(--xp-text-muted); }
-.meta-done  { color: var(--el-color-success); }
-.meta-error { color: var(--el-color-danger); }
+.meta-done  { color: var(--xp-success); }
+.meta-error { color: var(--xp-danger); }
 
 .slide-up-enter-active, .slide-up-leave-active {
   transition: all 0.3s ease;

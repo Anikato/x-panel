@@ -1,13 +1,12 @@
 <template>
-  <div>
-    <div class="page-header">
-      <h3>{{ $t('gost.chainTitle') }}</h3>
+  <div class="xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon>{{ $t('gost.createChain') }}
       </el-button>
     </div>
 
-    <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="name" :label="$t('gost.name')" min-width="150" />
         <el-table-column prop="hopCount" :label="$t('gost.hopCount')" width="120" align="center" />
@@ -34,7 +33,6 @@
           @current-change="search"
         />
       </div>
-    </el-card>
 
     <!-- 创建 / 编辑 -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? $t('gost.editChain') : $t('gost.createChain')" width="720px" destroy-on-close>
@@ -280,7 +278,7 @@ onMounted(() => search())
   margin-top: 16px;
 }
 .hop-block {
-  background: var(--el-fill-color-lighter);
+  background: var(--xp-bg-surface);
   border-radius: var(--xp-radius-sm);
   padding: 12px 16px;
   margin-bottom: 12px;

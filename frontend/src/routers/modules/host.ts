@@ -38,6 +38,12 @@ const hostRoutes: RouteRecordRaw[] = [
     meta: { title: 'menu.diskManage', icon: 'Coin', requiresAuth: true },
   },
   {
+    path: '/host/network',
+    name: 'NicManage',
+    component: () => import('@/views/host/network/index.vue'),
+    meta: { title: 'menu.nicManage', icon: 'Connection', requiresAuth: true },
+  },
+  {
     path: '/host/users',
     name: 'UserManage',
     component: () => import('@/views/host/user/index.vue'),

@@ -1,5 +1,21 @@
 # X-Panel 工作日志
 
+## 2026-09-19
+
+### 完成内容
+
+- [x] 源码打上 X-Panel `v0.8.3`：主机网卡页、服务 Unit 预览、侧栏与主题、列表页表面统一
+- [ ] GitHub Release / `Build & Release` 尚未跑（linux/amd64、linux/arm64）
+
+### 关键决策
+
+- 列表页禁止卡套表，摘要用 deck，与首页同一套表面；设置页分类卡片保留
+- 内置主题拉开色相与结构（轨式侧栏、纸纹底、展示级标题），不靠换强调色凑数
+
+### 下一步计划
+
+- 走 `Build & Release` 的 `workflow_dispatch` 打出正式包后，节点 `xpanel update --latest`
+
 ## 2026-09-12
 
 ### 完成内容

@@ -4,6 +4,7 @@ import {
   NAV_MODULES,
   collectReachableDestinations,
   findLocalNavItem,
+  resolveChromeHeading,
   resolveModule,
   resolveModuleDestination,
   resolveRememberedPath,
@@ -37,6 +38,7 @@ const REQUIRED_PATHS = [
   '/backup',
   '/host/process',
   '/host/disk',
+  '/host/network',
   '/host/users',
   '/host/system',
   '/toolbox/services',
@@ -57,6 +59,23 @@ test('every existing operational page is reachable from the navigation registry'
   for (const path of REQUIRED_PATHS) {
     assert.ok(reachable.includes(path), `missing nav destination for ${path}`)
   }
+})
+
+test('side modules get a chrome heading like tab modules', () => {
+  assert.deepEqual(resolveChromeHeading('/toolbox/nfs'), { show: true, titleKey: 'menu.toolboxNfs' })
+  assert.deepEqual(resolveChromeHeading('/toolbox/samba'), { show: true, titleKey: 'menu.toolboxSamba' })
+  assert.deepEqual(resolveChromeHeading('/toolbox/services'), { show: true, titleKey: 'nav.systemServices' })
+  assert.deepEqual(resolveChromeHeading('/host/system'), { show: true, titleKey: 'nav.hostConfig' })
+  assert.deepEqual(resolveChromeHeading('/host/users'), { show: true, titleKey: 'nav.systemUsers' })
+  assert.deepEqual(resolveChromeHeading('/website/nginx'), { show: true, titleKey: 'nav.nginx' })
+  assert.deepEqual(resolveChromeHeading('/toolbox/fail2ban'), { show: true, titleKey: 'nav.fail2ban' })
+})
+
+test('workbench and overview pages do not show a chrome heading', () => {
+  assert.equal(resolveChromeHeading('/home').show, false)
+  assert.equal(resolveChromeHeading('/host/files').show, false)
+  assert.equal(resolveChromeHeading('/container').show, false)
+  assert.equal(resolveChromeHeading('/database').show, false)
 })
 
 test('sidebar modules do not expand HAProxy and GOST technical pages', () => {
@@ -88,6 +107,8 @@ test('search finds modules by title key and keywords', () => {
   assert.ok(certHits.some((hit) => hit.path === '/website/ssl'))
   const fail2banHits = searchNavigation('fail2ban')
   assert.ok(fail2banHits.some((hit) => hit.path === '/toolbox/fail2ban'))
+  const nicHits = searchNavigation('网卡')
+  assert.ok(nicHits.some((hit) => hit.path === '/host/network'))
 })
 
 test('invalid remembered subpage falls back to the module default', () => {

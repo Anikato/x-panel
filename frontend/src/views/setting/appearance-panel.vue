@@ -8,12 +8,22 @@
         <div v-if="resolved.themeMissing" class="appearance-dirty">{{ t('setting.themePackMissing') }}</div>
       </div>
       <div class="appearance-actions">
-        <el-button @click="exportPreset">{{ t('setting.appearanceExport') }}</el-button>
-        <el-button @click="exportThemePack">{{ t('setting.themePackExport') }}</el-button>
-        <el-button @click="pickPresetFile">{{ t('setting.appearanceImport') }}</el-button>
+        <el-dropdown trigger="click" @command="onAppearanceMore">
+          <el-button>
+            {{ t('commons.more') }}
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="exportPreset">{{ t('setting.appearanceExport') }}</el-dropdown-item>
+              <el-dropdown-item command="exportThemePack">{{ t('setting.themePackExport') }}</el-dropdown-item>
+              <el-dropdown-item command="importPreset">{{ t('setting.appearanceImport') }}</el-dropdown-item>
+              <el-dropdown-item command="restoreTheme" divided>{{ t('setting.restoreThemeDefaults') }}</el-dropdown-item>
+              <el-dropdown-item command="restoreAll">{{ t('setting.restoreAllDefaults') }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button @click="cancel">{{ t('commons.cancel') }}</el-button>
-        <el-button @click="appearance.restoreTheme()">{{ t('setting.restoreThemeDefaults') }}</el-button>
-        <el-button @click="appearance.restoreAll()">{{ t('setting.restoreAllDefaults') }}</el-button>
         <el-button type="primary" :loading="saving" @click="apply">{{ t('setting.applyAppearance') }}</el-button>
         <input ref="presetFileRef" type="file" accept="application/json,.json" class="wallpaper-file" @change="onPresetFile" />
       </div>
@@ -37,7 +47,7 @@
             <span :style="{ background: accentOf(theme) }" />
           </div>
           <strong>{{ theme.name }}</strong>
-          <span>{{ theme.source === 'pack' ? t('setting.themePackInstalled') : (theme.id === 'atelier' ? t('setting.themeAtelierDesc') : t('setting.themeLumenDesc')) }}</span>
+          <span>{{ theme.source === 'pack' ? t('setting.themePackInstalled') : t(`setting.themeDesc.${theme.id}`) }}</span>
           <el-button
             v-if="theme.source === 'pack'"
             link
@@ -224,6 +234,7 @@
           <el-radio-group :model-value="current.sidebarVariant" @change="(val: SidebarVariant) => appearance.setOverride('sidebarVariant', val)">
             <el-radio-button value="marker">{{ t('setting.sidebarMarker') }}</el-radio-button>
             <el-radio-button value="block">{{ t('setting.sidebarBlock') }}</el-radio-button>
+            <el-radio-button value="rail">{{ t('setting.sidebarRail') }}</el-radio-button>
           </el-radio-group>
         </div>
         <div class="xp-setting-row">
@@ -371,7 +382,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check } from '@element-plus/icons-vue'
+import { ArrowDown, Check } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { ACCENT_PRESETS, getPresetByKey } from '@/utils/accent-colors'
 import { FONT_PRESETS } from '@/utils/appearance'
@@ -668,6 +679,14 @@ const apply = async () => {
   if (appearance.persistError === 'remote') ElMessage.warning(t('setting.appearanceRemoteBackupFailed'))
   else ElMessage.success(t('setting.appearanceApplied'))
   appearance.startPreview()
+}
+
+const onAppearanceMore = (command: string) => {
+  if (command === 'exportPreset') exportPreset()
+  else if (command === 'exportThemePack') exportThemePack()
+  else if (command === 'importPreset') pickPresetFile()
+  else if (command === 'restoreTheme') appearance.restoreTheme()
+  else if (command === 'restoreAll') appearance.restoreAll()
 }
 
 const cancel = () => {

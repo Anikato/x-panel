@@ -495,7 +495,7 @@
               <div style="font-size:12px;line-height:1.6">
                 <b>API Token 模式（推荐）</b>：只填 apiKey，email 留空<br/>
                 <b>Global API Key 模式</b>：同时填 email 和 apiKey<br/>
-                <span style="color:var(--el-color-warning)">API Token 需要 Zone:DNS:Edit 权限</span>
+                <span style="color:var(--xp-warning)">API Token 需要 Zone:DNS:Edit 权限</span>
               </div>
             </template>
           </el-alert>

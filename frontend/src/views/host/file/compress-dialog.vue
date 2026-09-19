@@ -248,12 +248,12 @@ defineExpose({ openCompress, openDecompress })
 .archive-preview-list {
   max-height: 180px;
   overflow: auto;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--xp-border);
   border-radius: var(--xp-radius-sm);
   padding: 8px;
 }
 .archive-preview-count {
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-secondary);
   font-size: 12px;
   margin-bottom: 6px;
 }

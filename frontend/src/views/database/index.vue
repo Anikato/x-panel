@@ -1,5 +1,8 @@
 <template>
   <div>
+    <div class="page-header">
+      <h3>{{ $t('nav.database') }}</h3>
+    </div>
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
       <el-tab-pane label="MySQL / MariaDB" name="mysql">
         <DatabaseTab db-type="mysql" ref="mysqlTabRef" />

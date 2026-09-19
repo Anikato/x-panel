@@ -1,5 +1,5 @@
 <template>
-  <div class="services-page">
+  <div class="services-page xp-page-shell">
     <div class="app-toolbar">
       <el-input
         v-model="searchKey"
@@ -96,61 +96,99 @@
     </el-table>
 
     <!-- 创建/编辑对话框 -->
-    <el-dialog v-model="editVisible" :title="isEdit ? $t('toolbox.services.editService') : $t('toolbox.services.createService')" width="600px" :close-on-click-modal="false">
-      <el-form :model="editForm" label-width="120px" :rules="formRules" ref="formRef">
-        <el-form-item :label="$t('toolbox.services.serviceName')" prop="name">
-          <el-input v-model="editForm.name" :disabled="isEdit" :placeholder="$t('toolbox.services.serviceNameHint')">
-            <template #prepend v-if="!isEdit">xp-</template>
-          </el-input>
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.description')">
-          <el-input v-model="editForm.description" />
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.execStart')" prop="execStart">
-          <el-input v-model="editForm.execStart" :placeholder="$t('toolbox.services.execStartHint')" />
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.workingDir')">
-          <el-input v-model="editForm.workingDir" :placeholder="$t('toolbox.services.workingDirHint')" />
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.user')">
-          <el-input v-model="editForm.user" :placeholder="$t('toolbox.services.userHint')" />
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.restartPolicy')">
-          <el-select v-model="editForm.restart" style="width: 100%">
-            <el-option :label="$t('toolbox.services.restartOnFailure')" value="on-failure" />
-            <el-option :label="$t('toolbox.services.restartAlways')" value="always" />
-            <el-option :label="$t('toolbox.services.restartOnAbnormal')" value="on-abnormal" />
-            <el-option :label="$t('toolbox.services.restartNo')" value="no" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.restartSec')">
-          <el-input-number v-model="editForm.restartSec" :min="0" :max="3600" />
-          <span class="form-hint">{{ $t('toolbox.services.restartSecHint') }}</span>
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.environment')">
-          <el-input v-model="editForm.environment" type="textarea" :rows="2" :placeholder="$t('toolbox.services.envHint')" />
-        </el-form-item>
-        <el-form-item :label="$t('toolbox.services.afterTarget')">
-          <el-select v-model="editForm.afterTarget" filterable allow-create default-first-option style="width: 100%"
-            :placeholder="$t('toolbox.services.afterTargetHint')">
-            <el-option label="network.target — 网络就绪后启动" value="network.target" />
-            <el-option label="network-online.target — 网络完全连通后启动" value="network-online.target" />
-            <el-option label="multi-user.target — 多用户模式就绪后启动" value="multi-user.target" />
-            <el-option label="syslog.target — 系统日志就绪后启动" value="syslog.target" />
-            <el-option label="mysql.service — MySQL 启动后" value="mysql.service" />
-            <el-option label="postgresql.service — PostgreSQL 启动后" value="postgresql.service" />
-            <el-option label="redis.service — Redis 启动后" value="redis.service" />
-            <el-option label="nginx.service — Nginx 启动后" value="nginx.service" />
-            <el-option label="docker.service — Docker 启动后" value="docker.service" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="!isEdit" :label="$t('toolbox.services.autoStart')">
-          <el-switch v-model="editForm.autoStart" />
-        </el-form-item>
-      </el-form>
+    <el-dialog v-model="editVisible" :title="isEdit ? $t('toolbox.services.editService') : $t('toolbox.services.createService')" width="980px" :close-on-click-modal="false">
+      <div class="service-edit-layout">
+        <el-form class="service-edit-form" :model="editForm" label-width="120px" :rules="formRules" ref="formRef">
+          <el-form-item :label="$t('toolbox.services.serviceName')" prop="name">
+            <el-input v-model="editForm.name" :disabled="isEdit" :placeholder="$t('toolbox.services.serviceNameHint')">
+              <template #prepend v-if="!isEdit">xp-</template>
+            </el-input>
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.description')">
+            <el-input v-model="editForm.description" />
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.execStart')" prop="execStart">
+            <el-input v-model="editForm.execStart" :placeholder="$t('toolbox.services.execStartHint')" />
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.workingDir')">
+            <div class="path-field">
+              <el-input v-model="editForm.workingDir" :placeholder="$t('toolbox.services.workingDirHint')" />
+              <el-button @click="openDirBrowser">{{ $t('toolbox.services.browseDir') }}</el-button>
+            </div>
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.user')">
+            <el-input v-model="editForm.user" :placeholder="$t('toolbox.services.userHint')" />
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.restartPolicy')">
+            <el-select v-model="editForm.restart" style="width: 100%">
+              <el-option :label="$t('toolbox.services.restartOnFailure')" value="on-failure" />
+              <el-option :label="$t('toolbox.services.restartAlways')" value="always" />
+              <el-option :label="$t('toolbox.services.restartOnAbnormal')" value="on-abnormal" />
+              <el-option :label="$t('toolbox.services.restartNo')" value="no" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.restartSec')">
+            <el-input-number v-model="editForm.restartSec" :min="0" :max="3600" />
+            <span class="form-hint">{{ $t('toolbox.services.restartSecHint') }}</span>
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.environment')">
+            <el-input v-model="editForm.environment" type="textarea" :rows="3" :placeholder="$t('toolbox.services.envHint')" />
+          </el-form-item>
+          <el-form-item :label="$t('toolbox.services.afterTarget')">
+            <el-select v-model="editForm.afterTarget" filterable allow-create default-first-option style="width: 100%"
+              :placeholder="$t('toolbox.services.afterTargetHint')">
+              <el-option label="network.target — 网络就绪后启动" value="network.target" />
+              <el-option label="network-online.target — 网络完全连通后启动" value="network-online.target" />
+              <el-option label="multi-user.target — 多用户模式就绪后启动" value="multi-user.target" />
+              <el-option label="syslog.target — 系统日志就绪后启动" value="syslog.target" />
+              <el-option label="mysql.service — MySQL 启动后" value="mysql.service" />
+              <el-option label="postgresql.service — PostgreSQL 启动后" value="postgresql.service" />
+              <el-option label="redis.service — Redis 启动后" value="redis.service" />
+              <el-option label="nginx.service — Nginx 启动后" value="nginx.service" />
+              <el-option label="docker.service — Docker 启动后" value="docker.service" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="!isEdit" :label="$t('toolbox.services.autoStart')">
+            <el-switch v-model="editForm.autoStart" />
+          </el-form-item>
+        </el-form>
+        <aside class="service-preview">
+          <div class="service-preview-title">{{ $t('toolbox.services.unitPreview') }}</div>
+          <pre>{{ unitPreview }}</pre>
+        </aside>
+      </div>
       <template #footer>
         <el-button @click="editVisible = false">{{ $t('commons.cancel') }}</el-button>
         <el-button type="primary" @click="handleSave" :loading="saving">{{ $t('commons.save') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="dirBrowserVisible" :title="$t('toolbox.services.selectDirectory')" width="520px" destroy-on-close>
+      <div class="dir-browser">
+        <div class="dir-browser-bar">
+          <el-input v-model="dirBrowserPath" size="small" @keyup.enter="loadDirList" />
+          <el-button size="small" :icon="RefreshRight" @click="loadDirList" />
+          <el-button size="small" :icon="ArrowUp" @click="goParentDir" />
+        </div>
+        <div class="dir-browser-list" v-loading="dirLoading">
+          <div
+            v-for="item in dirList"
+            :key="item.path"
+            class="dir-item"
+            :class="{ 'dir-item--selected': dirBrowserPath === item.path }"
+            @click="dirBrowserPath = item.path"
+            @dblclick="enterDir(item.path)"
+          >
+            <el-icon class="dir-folder-icon"><Folder /></el-icon>
+            <span>{{ item.name }}</span>
+          </div>
+          <div v-if="dirList.length === 0 && !dirLoading" class="dir-empty">{{ $t('toolbox.services.noSubdirs') }}</div>
+        </div>
+        <div class="dir-browser-current">{{ $t('toolbox.services.currentSelection') }}：<code>{{ dirBrowserPath }}</code></div>
+      </div>
+      <template #footer>
+        <el-button @click="dirBrowserVisible = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button type="primary" @click="confirmDirSelect">{{ $t('toolbox.services.browseDir') }}</el-button>
       </template>
     </el-dialog>
 
@@ -218,7 +256,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { ArrowDown, Plus, Refresh } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, Folder, Plus, Refresh, RefreshRight } from '@element-plus/icons-vue'
+import { listFiles } from '@/api/modules/file'
+import { buildUnitPreview, serviceUnitName } from './unit-preview'
 import {
   listSystemdServices, getSystemdServiceDetail,
   createSystemdService, updateSystemdService, deleteSystemdService,
@@ -306,6 +346,54 @@ const editForm = reactive({
 const formRules = {
   name: [{ required: true, message: t('toolbox.services.nameRequired'), trigger: 'blur' }],
   execStart: [{ required: true, message: t('toolbox.services.execStartRequired'), trigger: 'blur' }],
+}
+
+const unitPreview = computed(() => buildUnitPreview({
+  ...editForm,
+  name: serviceUnitName(editForm.name, isEdit.value),
+}))
+
+const dirBrowserVisible = ref(false)
+const dirBrowserPath = ref('/')
+const dirLoading = ref(false)
+const dirList = ref<{ name: string, path: string }[]>([])
+
+const loadDirList = async () => {
+  dirLoading.value = true
+  try {
+    const res = await listFiles({ path: dirBrowserPath.value, showHidden: false })
+    const items = res.data?.items || []
+    dirList.value = items
+      .filter((f: { isDir?: boolean }) => f.isDir)
+      .map((f: { name: string, path: string }) => ({ name: f.name, path: f.path }))
+  } catch {
+    dirList.value = []
+  } finally {
+    dirLoading.value = false
+  }
+}
+
+const openDirBrowser = () => {
+  dirBrowserPath.value = editForm.workingDir || '/opt'
+  dirBrowserVisible.value = true
+  loadDirList()
+}
+
+const enterDir = (path: string) => {
+  dirBrowserPath.value = path
+  loadDirList()
+}
+
+const goParentDir = () => {
+  const parts = dirBrowserPath.value.split('/').filter(Boolean)
+  parts.pop()
+  dirBrowserPath.value = '/' + parts.join('/')
+  loadDirList()
+}
+
+const confirmDirSelect = () => {
+  editForm.workingDir = dirBrowserPath.value
+  dirBrowserVisible.value = false
 }
 
 const resetForm = () => Object.assign(editForm, {
@@ -580,6 +668,117 @@ onUnmounted(() => stopLogPoll())
   margin-left: 8px;
   font-size: 12px;
   color: var(--xp-text-muted);
+}
+
+.service-edit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.service-edit-form {
+  min-width: 0;
+}
+
+.path-field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.service-preview {
+  min-width: 0;
+  padding: 12px;
+  background: var(--xp-bg-inset);
+  border: 1px solid var(--xp-border-light);
+  border-radius: var(--xp-radius);
+}
+
+.service-preview-title {
+  margin-bottom: 8px;
+  color: var(--xp-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.service-preview pre {
+  margin: 0;
+  max-height: 520px;
+  overflow: auto;
+  color: var(--xp-text-secondary);
+  font-family: var(--xp-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dir-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dir-browser-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.dir-browser-list {
+  height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  padding: 4px;
+}
+
+.dir-folder-icon {
+  color: var(--xp-warning);
+}
+
+.dir-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+
+  &:hover {
+    background: var(--xp-accent-muted);
+  }
+
+  &--selected {
+    color: var(--xp-accent);
+    background: var(--xp-accent-muted);
+  }
+}
+
+.dir-empty {
+  padding: 40px 0;
+  color: var(--xp-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.dir-browser-current {
+  color: var(--xp-text-muted);
+  font-size: 12px;
+
+  code {
+    color: var(--xp-accent);
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .service-edit-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .unit-hint {

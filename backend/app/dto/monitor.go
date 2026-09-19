@@ -41,11 +41,16 @@ type SystemHostInfo struct {
 
 // InterfaceInfo 网卡信息
 type InterfaceInfo struct {
-	Name   string   `json:"name"`
-	IPv4   []string `json:"ipv4"`
-	IPv6   []string `json:"ipv6"`
-	MAC    string   `json:"mac"`
-	Status string   `json:"status"` // up / down
+	Name      string   `json:"name"`
+	IPv4      []string `json:"ipv4"`
+	IPv6      []string `json:"ipv6"`
+	MAC       string   `json:"mac"`
+	Status    string   `json:"status"` // admin up / down
+	Connected bool     `json:"connected"`
+	Kind      string   `json:"kind"` // ethernet / wifi / bridge / bond / vlan / virtual
+	SpeedMbps int      `json:"speedMbps,omitempty"`
+	Duplex    string   `json:"duplex,omitempty"`
+	OperState string   `json:"operState,omitempty"`
 }
 
 // CPUStats CPU 状态

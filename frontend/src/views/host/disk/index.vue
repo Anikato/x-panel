@@ -1,50 +1,44 @@
 <template>
-  <div class="disk-page">
-    <div class="page-header">
-      <h3>{{ $t('disk.title') }}</h3>
+  <div class="disk-page xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button size="small" :icon="Refresh" @click="loadAll" :loading="loading">{{ $t('commons.refresh') }}</el-button>
     </div>
 
-    <!-- 本地磁盘 -->
-    <el-row :gutter="16">
-      <el-col :span="24" v-for="(part, idx) in partitions" :key="idx">
-        <el-card shadow="never" class="disk-card">
-          <div class="disk-info-row">
-            <div class="disk-basic">
-              <div class="disk-device">
-                <el-icon :size="20"><Coin /></el-icon>
-                <span class="device-name">{{ part.device }}</span>
-                <el-tag size="small" type="info">{{ part.fsType }}</el-tag>
-              </div>
-              <div class="disk-mount">{{ $t('disk.mountPoint') }}: {{ part.mountPoint }}</div>
-            </div>
-            <div class="disk-usage-section">
-              <div class="disk-progress">
-                <el-progress :percentage="Math.round(part.usedPercent)" :color="progressColor" :stroke-width="18" :text-inside="true" />
-              </div>
-              <div class="disk-sizes">
-                <span>{{ $t('disk.used') }}: {{ formatBytes(part.used) }}</span>
-                <span>{{ $t('disk.free') }}: {{ formatBytes(part.free) }}</span>
-                <span>{{ $t('disk.total') }}: {{ formatBytes(part.total) }}</span>
-              </div>
-            </div>
-            <div class="disk-inodes" v-if="part.inodesTotal > 0">
-              <div class="inodes-label">{{ $t('disk.inodes') }}</div>
-              <div class="inodes-detail">
-                {{ $t('disk.inodesUsed') }}: {{ formatNumber(part.inodesUsed) }} / {{ formatNumber(part.inodesTotal) }}
-              </div>
-            </div>
+    <article v-for="(part, idx) in partitions" :key="idx" class="xp-deck disk-partition">
+      <div class="disk-info-row">
+        <div class="disk-basic">
+          <div class="disk-device">
+            <el-icon :size="20"><Coin /></el-icon>
+            <span class="device-name">{{ part.device }}</span>
+            <el-tag size="small" type="info">{{ part.fsType }}</el-tag>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+          <div class="disk-mount">{{ $t('disk.mountPoint') }}: {{ part.mountPoint }}</div>
+        </div>
+        <div class="disk-usage-section">
+          <div class="disk-progress">
+            <el-progress :percentage="Math.round(part.usedPercent)" :color="progressColor" :stroke-width="18" :text-inside="true" />
+          </div>
+          <div class="disk-sizes">
+            <span>{{ $t('disk.used') }}: {{ formatBytes(part.used) }}</span>
+            <span>{{ $t('disk.free') }}: {{ formatBytes(part.free) }}</span>
+            <span>{{ $t('disk.total') }}: {{ formatBytes(part.total) }}</span>
+          </div>
+        </div>
+        <div class="disk-inodes" v-if="part.inodesTotal > 0">
+          <div class="inodes-label">{{ $t('disk.inodes') }}</div>
+          <div class="inodes-detail">
+            {{ $t('disk.inodesUsed') }}: {{ formatNumber(part.inodesUsed) }} / {{ formatNumber(part.inodesTotal) }}
+          </div>
+        </div>
+      </div>
+    </article>
 
     <el-empty v-if="!loading && partitions.length === 0" />
 
-    <!-- 块设备 -->
-    <div class="page-header" style="margin-top: 20px;">
+    <div class="xp-section">
       <h3>{{ $t('disk.blockDevices') }}</h3>
-      <span class="sub-desc">{{ $t('disk.blockDevicesDesc') }}</span>
+      <span class="xp-section-desc">{{ $t('disk.blockDevicesDesc') }}</span>
     </div>
 
     <el-table :data="flatDevices" v-loading="blockLoading" size="small" stripe row-key="path">
@@ -121,8 +115,7 @@
       </template>
     </el-dialog>
 
-    <!-- 远程挂载 -->
-    <div class="page-header" style="margin-top: 20px;">
+    <div class="xp-section">
       <h3>{{ $t('disk.remoteMount') }}</h3>
       <el-button size="small" type="primary" :icon="Plus" @click="showMountDialog = true">
         {{ $t('disk.addMount') }}
@@ -644,7 +637,7 @@ onMounted(() => loadAll())
 <style lang="scss" scoped>
 .disk-page { height: 100%; }
 
-.disk-card {
+.disk-partition {
   margin-bottom: 12px;
 }
 

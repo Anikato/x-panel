@@ -1,14 +1,14 @@
 <template>
-  <div class="nginx-page">
-    <div class="page-header">
+  <div class="nginx-page xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button size="small" :icon="Refresh" @click="loadStatus" :loading="loading">
         {{ $t('commons.refresh') }}
       </el-button>
     </div>
 
-    <!-- 未安装状态 -->
     <template v-if="!status.isInstalled && !installing">
-      <el-card shadow="never" class="install-card">
+      <div class="xp-empty">
         <el-empty :description="$t('nginx.notInstalled')">
           <template #image>
             <el-icon :size="64" color="var(--xp-text-muted)"><Box /></el-icon>
@@ -19,15 +19,12 @@
             </el-button>
           </div>
         </el-empty>
-      </el-card>
+      </div>
     </template>
 
-    <!-- 安装中 -->
     <template v-if="installing">
-      <el-card shadow="never" class="progress-card">
-        <template #header>
-          <span>{{ $t('nginx.installProgress') }}</span>
-        </template>
+      <article class="xp-deck">
+        <div class="xp-section" style="margin-top:0"><h3>{{ $t('nginx.installProgress') }}</h3></div>
         <div class="progress-content">
           <el-progress :percentage="installProgress.percent" :status="progressStatus" :stroke-width="18" :text-inside="true" />
           <div class="progress-phase">
@@ -35,7 +32,7 @@
             <span class="progress-msg">{{ installProgress.message }}</span>
           </div>
         </div>
-      </el-card>
+      </article>
     </template>
 
     <!-- 已安装 — 状态面板 -->
@@ -63,27 +60,23 @@
       <el-tabs v-model="mainTab" class="nginx-tabs">
         <el-tab-pane :label="$t('nginx.status')" name="status">
 
-      <!-- 信息卡片 -->
-      <el-row :gutter="16" class="info-row">
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nginx.status') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.isRunning ? 'success' : 'danger'" size="large" effect="dark" round>
-                {{ status.isRunning ? $t('nginx.running') : $t('nginx.stopped') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">
+      <div class="xp-deck-grid" style="--xp-metric-columns: 4">
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('nginx.status') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.isRunning ? 'success' : 'danger'" size="small">
+              {{ status.isRunning ? $t('nginx.running') : $t('nginx.stopped') }}
+            </el-tag>
+          </div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">
               {{ $t('nginx.version') }}
               <el-button link type="primary" size="small" :loading="updateCheckLoading" @click="handleCheckUpdate" style="margin-left: 6px">
                 {{ $t('nginx.checkUpdate') }}
               </el-button>
-            </div>
-            <div class="stat-value version-text">{{ status.version || '-' }}</div>
+          </div>
+          <div class="xp-metric-value version-text">{{ status.version || '-' }}</div>
             <div v-if="updateInfo.hasUpdate" class="update-hint">
               <el-tag type="warning" size="small" effect="plain">
                 {{ $t('nginx.newVersionAvailable', { version: updateInfo.availableVersion }) }}
@@ -92,31 +85,22 @@
                 <el-icon><Upload /></el-icon>{{ $t('nginx.upgrade') }}
               </el-button>
             </div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nginx.pid') }}</div>
-            <div class="stat-value version-text">{{ status.isRunning ? status.pid : '-' }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('nginx.configOK') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.configOK ? 'success' : 'danger'" size="large" effect="dark" round>
-                {{ status.configOK ? $t('nginx.configValid') : $t('nginx.configInvalid') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('nginx.pid') }}</div>
+          <div class="xp-metric-value version-text">{{ status.isRunning ? status.pid : '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('nginx.configOK') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.configOK ? 'success' : 'danger'" size="small">
+              {{ status.configOK ? $t('nginx.configValid') : $t('nginx.configInvalid') }}
+            </el-tag>
+          </div>
+        </article>
+      </div>
 
-      <!-- 操作按钮 -->
-      <el-card shadow="never" class="operate-card">
-        <template #header>
-          <span>{{ $t('commons.operate') }}</span>
-        </template>
+      <div class="app-toolbar">
         <div class="operate-buttons">
           <el-button type="success" :disabled="status.isRunning" @click="handleOperate('start')" :loading="operateLoading === 'start'">
             <el-icon><VideoPlay /></el-icon>{{ $t('nginx.start') }}
@@ -150,13 +134,10 @@
             />
           </div>
         </div>
-      </el-card>
+      </div>
 
-      <!-- 安装信息 -->
-      <el-card shadow="never" class="detail-card">
-        <template #header>
-          <span>{{ $t('nginx.installDir') }}</span>
-        </template>
+      <article class="xp-deck">
+        <div class="xp-section" style="margin-top:0"><h3>{{ $t('nginx.installDir') }}</h3></div>
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item :label="$t('nginx.mode')">
             <el-tag :type="status.systemMode ? 'success' : 'info'" size="small">
@@ -168,13 +149,10 @@
           <el-descriptions-item :label="$t('nginx.startedAt')">{{ status.isRunning ? formatTime(status.startedAt) : '-' }}</el-descriptions-item>
           <el-descriptions-item :label="$t('nginx.pid')">{{ status.isRunning ? status.pid : '-' }}</el-descriptions-item>
         </el-descriptions>
-      </el-card>
+      </article>
 
-      <!-- 配置测试结果 -->
-      <el-card v-if="testResult !== null" shadow="never" class="test-card">
-        <template #header>
-          <span>{{ $t('nginx.testOutput') }}</span>
-        </template>
+      <article v-if="testResult !== null" class="xp-deck">
+        <div class="xp-section" style="margin-top:0"><h3>{{ $t('nginx.testOutput') }}</h3></div>
         <el-alert :type="testResult.success ? 'success' : 'error'" :title="testResult.success ? $t('nginx.testSuccess') : $t('nginx.testFail')" :closable="false" show-icon />
         <el-table v-if="testResult.issues?.length" :data="testResult.issues" size="small" style="margin-top: 12px">
           <el-table-column label="级别" prop="level" width="90" />
@@ -183,7 +161,7 @@
           <el-table-column label="问题" prop="message" min-width="260" show-overflow-tooltip />
         </el-table>
         <pre class="config-output" v-if="testResult.output">{{ testResult.output }}</pre>
-      </el-card>
+      </article>
 
         </el-tab-pane>
 
@@ -221,8 +199,8 @@
                   </div>
                 </div>
                 <el-input v-model="confContent" type="textarea" :rows="24" class="conf-editor-textarea" :placeholder="activeConfFile ? '' : '请从左侧选择配置文件'" />
-                <el-card v-if="includeTree" shadow="never" class="include-card">
-                  <template #header>Include 关系</template>
+                <article v-if="includeTree" class="xp-deck include-card">
+                  <div class="xp-section" style="margin-top:0"><h3>Include 关系</h3></div>
                   <el-tree :data="[includeTree]" :props="{ label: 'path', children: 'children' }" default-expand-all>
                     <template #default="{ data }">
                       <span>
@@ -231,7 +209,7 @@
                       </span>
                     </template>
                   </el-tree>
-                </el-card>
+                </article>
               </el-col>
             </el-row>
           </div>

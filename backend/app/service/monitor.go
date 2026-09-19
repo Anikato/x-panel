@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -233,40 +232,9 @@ func loadSensorTemps() []dto.SensorTemp {
 	return result
 }
 
-// getNetworkInterfaces 获取所有网卡信息（IP/MAC/状态）
+// getNetworkInterfaces 获取所有网卡信息（IP/MAC/链路状态）
 func getNetworkInterfaces() []dto.InterfaceInfo {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil
-	}
-	var result []dto.InterfaceInfo
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		info := dto.InterfaceInfo{
-			Name: iface.Name,
-			MAC:  iface.HardwareAddr.String(),
-		}
-		if iface.Flags&net.FlagUp != 0 {
-			info.Status = "up"
-		} else {
-			info.Status = "down"
-		}
-		addrs, err := iface.Addrs()
-		if err == nil {
-			for _, addr := range addrs {
-				ip := addr.String()
-				if strings.Contains(ip, ":") {
-					info.IPv6 = append(info.IPv6, ip)
-				} else {
-					info.IPv4 = append(info.IPv4, ip)
-				}
-			}
-		}
-		result = append(result, info)
-	}
-	return result
+	return listNicsFrom(readHostIfaces, readNicSysfs, false)
 }
 
 // getCachedPublicIP 获取公网 IP（缓存 5 分钟）

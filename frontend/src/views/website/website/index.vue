@@ -1,18 +1,5 @@
 <template>
-  <div class="website-page">
-    <div class="page-header">
-      <div class="header-actions">
-        <el-button :loading="certificateBatchLoading" @click="handleCertificateBatch">
-          {{ $t('website.checkAllCertificates') }}
-        </el-button>
-        <el-button @click="openImportDialog">{{ $t('website.importExisting') }}</el-button>
-        <el-button type="primary" @click="openCreateDialog">
-          <el-icon><Plus /></el-icon>
-          {{ $t('website.create') }}
-        </el-button>
-      </div>
-    </div>
-
+  <div class="website-page xp-page-shell">
     <div class="filter-bar">
       <el-input v-model="searchInfo" :placeholder="$t('commons.search')" prefix-icon="Search" clearable class="search-input" @input="onFilterChange" />
       <el-select v-model="filterType" clearable :placeholder="$t('website.type')" class="filter-select" @change="onFilterChange">
@@ -25,6 +12,16 @@
       </el-select>
       <span v-if="hasFilters" class="filter-count">{{ $t('website.filterCount', { count: total }) }}</span>
       <el-button v-if="hasFilters" link type="primary" @click="clearFilters">{{ $t('website.clearFilters') }}</el-button>
+      <div class="header-actions">
+        <el-button :loading="certificateBatchLoading" @click="handleCertificateBatch">
+          {{ $t('website.checkAllCertificates') }}
+        </el-button>
+        <el-button @click="openImportDialog">{{ $t('website.importExisting') }}</el-button>
+        <el-button type="primary" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon>
+          {{ $t('website.create') }}
+        </el-button>
+      </div>
     </div>
 
     <el-table :data="websites" style="width: 100%" v-loading="loading">
@@ -584,18 +581,14 @@ onMounted(() => {
   width: 100%;
 }
 
-.page-header {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
 .filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  .header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-left: auto;
+    gap: 8px;
+  }
 
   .search-input {
     flex: 1 1 260px;
@@ -724,7 +717,7 @@ onMounted(() => {
   .dir-browser-list {
     height: 260px;
     overflow-y: auto;
-    border: 1px solid var(--el-border-color);
+    border: 1px solid var(--xp-border);
     border-radius: var(--xp-radius-sm);
     padding: 4px;
 
@@ -741,8 +734,8 @@ onMounted(() => {
       user-select: none;
       transition: background 0.15s;
 
-      &:hover { background: var(--el-fill-color-light); }
-      &--selected { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+      &:hover { background: var(--xp-bg-inset); }
+      &--selected { background: var(--xp-accent-muted); color: var(--xp-accent); }
     }
 
     .dir-empty {
@@ -756,7 +749,7 @@ onMounted(() => {
   .dir-browser-current {
     font-size: 12px;
     color: var(--xp-text-muted);
-    code { font-size: 12px; color: var(--el-color-primary); }
+    code { font-size: 12px; color: var(--xp-accent); }
   }
 }
 </style>

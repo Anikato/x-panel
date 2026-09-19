@@ -1549,9 +1549,9 @@ onBeforeUnmount(() => {
   gap: 8px;
   min-width: 0;
   padding: 14px;
-  border: 1px solid var(--el-border-color-lighter);
+  border: 1px solid var(--xp-border-light);
   border-radius: var(--xp-radius-sm);
-  background: var(--el-fill-color-extra-light);
+  background: var(--xp-bg-inset);
 
   code {
     overflow: hidden;
@@ -1567,12 +1567,12 @@ onBeforeUnmount(() => {
 }
 
 .evidence-error {
-  color: var(--el-color-danger);
+  color: var(--xp-danger);
   font-size: 12px;
 }
 
 .evidence-ok {
-  color: var(--el-color-success);
+  color: var(--xp-success);
   font-size: 12px;
 }
 
@@ -1669,7 +1669,7 @@ onBeforeUnmount(() => {
     .dir-browser-list {
       height: 260px;
       overflow-y: auto;
-      border: 1px solid var(--el-border-color);
+      border: 1px solid var(--xp-border);
       border-radius: var(--xp-radius-sm);
       padding: 4px;
 
@@ -1686,8 +1686,8 @@ onBeforeUnmount(() => {
         user-select: none;
         transition: background 0.15s;
 
-        &:hover { background: var(--el-fill-color-light); }
-        &--selected { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+        &:hover { background: var(--xp-bg-inset); }
+        &--selected { background: var(--xp-accent-muted); color: var(--xp-accent); }
       }
 
       .dir-empty {
@@ -1701,7 +1701,7 @@ onBeforeUnmount(() => {
     .dir-browser-current {
       font-size: 12px;
       color: var(--xp-text-muted);
-      code { font-size: 12px; color: var(--el-color-primary); }
+      code { font-size: 12px; color: var(--xp-accent); }
     }
   }
 
@@ -1744,7 +1744,7 @@ onBeforeUnmount(() => {
       color: var(--xp-text-secondary);
       margin-top: 4px;
     }
-    &.error-card .stat-value { color: var(--el-color-danger); }
+    &.error-card .stat-value { color: var(--xp-danger); }
   }
 
   .analysis-charts {

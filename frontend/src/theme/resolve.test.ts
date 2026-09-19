@@ -24,7 +24,7 @@ const env = { systemDark: true, systemReduceMotion: false, transparencySupported
 
 test('catalog ships atelier and lumen with complete dark and light packs', () => {
   const themes = listThemes()
-  assert.deepEqual(themes.map((item) => item.id), ['atelier', 'lumen'])
+  assert.deepEqual(themes.map((item) => item.id), ['atelier', 'lumen', 'ink', 'harbor', 'quartz'])
   for (const theme of themes) {
     assert.equal(theme.schemaVersion, 1)
     assert.ok(theme.modes.dark.colors.bgBase)
@@ -291,6 +291,33 @@ test('light accent and muted text meet 4.5:1 on the content surface', () => {
   assert.ok(contrastRatio(lumen.accent.primary, lumen.colors.bgSurface) >= 4.5)
   assert.ok(contrastRatio(lumen.colors.textMuted, lumen.colors.bgSurface) >= 4.5)
   assert.ok(contrastRatio(lumen.accent.onAccent, lumen.accent.primary) >= 4.5)
+  for (const id of ['ink', 'harbor', 'quartz'] as const) {
+    const resolved = resolveAppearance({ ...DEFAULT_PREFERENCE, themeId: id, mode: 'light' }, env)
+    assert.ok(contrastRatio(resolved.accent.primary, resolved.colors.bgSurface) >= 4.5, `${id} accent`)
+    assert.ok(contrastRatio(resolved.colors.textMuted, resolved.colors.bgSurface) >= 4.5, `${id} muted`)
+    assert.ok(contrastRatio(resolved.accent.onAccent, resolved.accent.primary) >= 4.5, `${id} onAccent`)
+  }
+})
+
+test('ink harbor quartz are not accent-only clones of atelier or lumen', () => {
+  const atelier = getTheme('atelier')
+  const lumen = getTheme('lumen')
+  const ink = getTheme('ink')
+  const harbor = getTheme('harbor')
+  const quartz = getTheme('quartz')
+  assert.notEqual(ink.modes.dark.colors.bgBase, atelier.modes.dark.colors.bgBase)
+  assert.notEqual(harbor.modes.dark.colors.bgBase, lumen.modes.dark.colors.bgBase)
+  assert.notEqual(quartz.variants.card, atelier.variants.card)
+  assert.notEqual(ink.variants.subnav, atelier.variants.subnav)
+  assert.notEqual(harbor.variants.subnav, lumen.variants.subnav)
+  assert.notEqual(quartz.defaults.uiFont, lumen.defaults.uiFont)
+  assert.notEqual(ink.defaults.chromeTexture, atelier.defaults.chromeTexture)
+  assert.equal(harbor.variants.sidebar, 'rail')
+  assert.equal(ink.variants.heading, 'display')
+  assert.equal(ink.defaults.chromeTexture, 'grain')
+  assert.equal(quartz.variants.iconContainer, 'none')
+  assert.notEqual(ink.modes.dark.colors.bgBase, harbor.modes.dark.colors.bgBase)
+  assert.notEqual(harbor.modes.dark.colors.bgBase, quartz.modes.dark.colors.bgBase)
 })
 
 test('light mode never copies a dark surface hex from a dark preset', () => {
@@ -360,7 +387,7 @@ test('chrome texture and wallpaper enums sanitize, and terminals follow panel la
 
   const withTexture = resolveAppearance({
     ...DEFAULT_PREFERENCE,
-    overridesByTheme: { atelier: { chromeTexture: 'grain' as never } },
+    overridesByTheme: { atelier: { chromeTexture: 'grid' as never } },
   }, env)
   assert.equal(withTexture.chromeTexture, 'galaxy')
   assert.equal(withTexture.termFollowChrome, true)

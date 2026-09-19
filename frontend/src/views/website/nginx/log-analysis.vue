@@ -71,30 +71,24 @@
           <!-- 图表行 -->
           <el-row :gutter="16" style="margin-top: 16px">
             <el-col :xs="24" :lg="16">
-              <el-card shadow="never" class="chart-card">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.requestTrend') }}</span>
-                </template>
+              <article class="xp-deck chart-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.requestTrend') }}</h3></div>
                 <div ref="trendChartRef" class="chart-container"></div>
-              </el-card>
+              </article>
             </el-col>
             <el-col :xs="24" :lg="8">
-              <el-card shadow="never" class="chart-card">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.statusCodeDist') }}</span>
-                </template>
+              <article class="xp-deck chart-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.statusCodeDist') }}</h3></div>
                 <div ref="statusChartRef" class="chart-container"></div>
-              </el-card>
+              </article>
             </el-col>
           </el-row>
 
           <!-- Top IP + Top URL -->
           <el-row :gutter="16" style="margin-top: 16px">
             <el-col :xs="24" :lg="12">
-              <el-card shadow="never" class="rank-card">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.topIPs') }}</span>
-                </template>
+              <article class="xp-deck rank-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.topIPs') }}</h3></div>
                 <el-table :data="analysis.topIps || []" size="small" stripe :show-header="true" max-height="320"
                   :row-class-name="ipRowClass">
                   <el-table-column type="index" width="36" />
@@ -139,13 +133,11 @@
                     </template>
                   </el-table-column>
                 </el-table>
-              </el-card>
+              </article>
             </el-col>
             <el-col :xs="24" :lg="12">
-              <el-card shadow="never" class="rank-card">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.topURLs') }}</span>
-                </template>
+              <article class="xp-deck rank-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.topURLs') }}</h3></div>
                 <el-table :data="analysis.topUrls || []" size="small" stripe :show-header="true" max-height="320">
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.url')" min-width="240">
@@ -159,29 +151,25 @@
                     </template>
                   </el-table-column>
                 </el-table>
-              </el-card>
+              </article>
             </el-col>
           </el-row>
 
           <!-- 威胁检测 -->
           <el-row v-if="analysis.threatRequests > 0" :gutter="16" style="margin-top: 16px">
             <el-col :xs="24" :lg="10">
-              <el-card shadow="never" class="rank-card threat-section">
-                <template #header>
-                  <div class="threat-header">
-                    <span class="chart-title">{{ $t('nginx.attackTypes') }}</span>
+              <article class="xp-deck rank-card threat-section">
+                <div class="xp-section threat-header" style="margin-top:0">
+                    <h3 class="chart-title">{{ $t('nginx.attackTypes') }}</h3>
                     <span class="muted-text">{{ $t('nginx.threatHint') }}</span>
                     <el-tag type="danger" size="small" effect="plain">{{ formatNumber(analysis.threatRequests) }} {{ $t('nginx.requests') }}</el-tag>
-                  </div>
-                </template>
+                </div>
                 <div ref="threatChartRef" class="chart-container" style="height: 220px"></div>
-              </el-card>
+              </article>
             </el-col>
             <el-col :xs="24" :lg="14">
-              <el-card shadow="never" class="rank-card threat-section">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.threatIPs') }}</span>
-                </template>
+              <article class="xp-deck rank-card threat-section">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.threatIPs') }}</h3></div>
                 <el-table :data="analysis.threatIPs || []" size="small" stripe :show-header="true" max-height="260">
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.ip')" min-width="130">
@@ -224,29 +212,25 @@
                     </template>
                   </el-table-column>
                 </el-table>
-              </el-card>
+              </article>
             </el-col>
           </el-row>
 
           <!-- 爬虫检测 -->
           <el-row v-if="analysis.crawlerRequests > 0" :gutter="16" style="margin-top: 16px">
             <el-col :xs="24" :lg="10">
-              <el-card shadow="never" class="rank-card crawler-section">
-                <template #header>
-                  <div class="threat-header">
-                    <span class="chart-title">{{ $t('nginx.crawlerDetection') }}</span>
+              <article class="xp-deck rank-card crawler-section">
+                <div class="xp-section threat-header" style="margin-top:0">
+                    <h3 class="chart-title">{{ $t('nginx.crawlerDetection') }}</h3>
                     <span class="muted-text">{{ $t('nginx.crawlerHint') }}</span>
                     <el-tag type="info" size="small" effect="plain">{{ formatNumber(analysis.crawlerRequests) }} {{ $t('nginx.requests') }}</el-tag>
-                  </div>
-                </template>
+                </div>
                 <div ref="crawlerChartRef" class="chart-container" style="height: 220px"></div>
-              </el-card>
+              </article>
             </el-col>
             <el-col :xs="24" :lg="14">
-              <el-card shadow="never" class="rank-card crawler-section">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.crawlerRanking') }}</span>
-                </template>
+              <article class="xp-deck rank-card crawler-section">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.crawlerRanking') }}</h3></div>
                 <el-table :data="analysis.topCrawlers || []" size="small" stripe :show-header="true" max-height="260">
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.crawlerName')" min-width="150">
@@ -265,17 +249,15 @@
                     </template>
                   </el-table-column>
                 </el-table>
-              </el-card>
+              </article>
             </el-col>
           </el-row>
 
           <!-- User-Agent 排行 -->
           <el-row :gutter="16" style="margin-top: 16px">
             <el-col :span="24">
-              <el-card shadow="never" class="rank-card">
-                <template #header>
-                  <span class="chart-title">{{ $t('nginx.topUserAgents') }}</span>
-                </template>
+              <article class="xp-deck rank-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">{{ $t('nginx.topUserAgents') }}</h3></div>
                 <el-table :data="analysis.topUserAgents || []" size="small" stripe :show-header="true" max-height="280">
                   <el-table-column type="index" width="36" />
                   <el-table-column :label="$t('nginx.browser')" width="160">
@@ -299,7 +281,7 @@
                     </template>
                   </el-table-column>
                 </el-table>
-              </el-card>
+              </article>
             </el-col>
           </el-row>
 
@@ -870,22 +852,22 @@ onUnmounted(() => {
       text-align: center;
       transition: border-color 0.2s;
 
-      &:hover { border-color: var(--el-color-primary-light-5); }
+      &:hover { border-color: color-mix(in srgb, var(--xp-accent) 45%, transparent); }
 
       &.error-card {
-        border-color: var(--el-color-danger-light-5);
-        .summary-value { color: var(--el-color-danger); }
+        border-color: color-mix(in srgb, var(--xp-danger) 45%, transparent);
+        .summary-value { color: var(--xp-danger); }
       }
 
       &.warning-card {
-        border-color: var(--el-color-warning-light-5);
-        .summary-value { color: var(--el-color-warning); }
+        border-color: color-mix(in srgb, var(--xp-warning) 45%, transparent);
+        .summary-value { color: var(--xp-warning); }
       }
 
       &.threat-card {
-        border-color: var(--el-color-danger-light-5);
-        background: var(--el-color-danger-light-9);
-        .summary-value { color: var(--el-color-danger); }
+        border-color: color-mix(in srgb, var(--xp-danger) 45%, transparent);
+        background: color-mix(in srgb, var(--xp-danger) 14%, transparent);
+        .summary-value { color: var(--xp-danger); }
       }
     }
 
@@ -925,7 +907,7 @@ onUnmounted(() => {
 
   .threat-section {
     :deep(.el-card__header) {
-      border-left: 3px solid var(--el-color-danger);
+      border-left: 3px solid var(--xp-danger);
     }
   }
 
@@ -935,20 +917,20 @@ onUnmounted(() => {
     justify-content: space-between;
   }
 
-  .threat-count { color: var(--el-color-danger) !important; }
+  .threat-count { color: var(--xp-danger) !important; }
 
   .high-traffic-tag {
     font-size: 11px;
-    color: var(--el-color-warning);
+    color: var(--xp-warning);
     font-weight: 600;
   }
 
   :deep(.banned-row) {
-    background-color: var(--el-color-danger-light-9) !important;
+    background-color: color-mix(in srgb, var(--xp-danger) 14%, transparent) !important;
   }
 
   :deep(.high-traffic-row) {
-    background-color: var(--el-color-warning-light-9) !important;
+    background-color: color-mix(in srgb, var(--xp-warning) 14%, transparent) !important;
   }
 
   .mono-text {
@@ -966,13 +948,13 @@ onUnmounted(() => {
 
   .drilldown-link {
     cursor: pointer;
-    color: var(--el-color-primary);
+    color: var(--xp-accent);
     &:hover { text-decoration: underline; }
   }
 
   .crawler-section {
     :deep(.el-card__header) {
-      border-left: 3px solid var(--el-color-success);
+      border-left: 3px solid var(--xp-success);
     }
   }
 

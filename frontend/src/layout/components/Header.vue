@@ -18,10 +18,9 @@
 
       <el-popover placement="bottom-start" :width="360" trigger="click" popper-class="xp-float">
         <template #reference>
-          <button type="button" class="server-chip" :aria-label="t('header.serverSummary')">
-            <span class="status-dot" :class="serverReachable ? 'online' : 'offline'" />
+          <button type="button" class="server-chip" :aria-label="serverChipLabel" :title="connectionLabel">
+            <span class="status-dot" :class="connectionStatus" />
             <span class="server-name">{{ globalStore.serverInfo?.hostname || globalStore.panelName || 'X-Panel' }}</span>
-            <span class="server-state">{{ serverReachable ? t('header.panelReachable') : t('header.panelDisconnected') }}</span>
           </button>
         </template>
         <div class="server-summary">
@@ -45,7 +44,7 @@
       <button type="button" class="search-entry" @click="searchOpen = true">
         <el-icon><Search /></el-icon>
         <span>{{ t('header.search') }}</span>
-        <kbd>⌘K</kbd>
+        <kbd>{{ searchShortcut }}</kbd>
       </button>
 
       <el-tooltip :content="t('header.quickTerminal')" placement="bottom">
@@ -144,7 +143,7 @@
       <el-dropdown @command="handleCommand" trigger="click">
         <div class="user-dropdown">
           <div class="user-avatar">
-            <el-icon :size="14"><UserFilled /></el-icon>
+            <UserAvatar :name="userStore.name || 'admin'" />
           </div>
           <span class="username">{{ userStore.name || 'admin' }}</span>
         </div>
@@ -214,6 +213,9 @@ import { useI18n } from 'vue-i18n'
 import type { NotificationItem } from '@/api/interface'
 import { searchNavigation, type NavHit } from '@/navigation/registry'
 import TaskDrawer from './TaskDrawer.vue'
+import UserAvatar from './UserAvatar.vue'
+import { reachStatus } from '../reach-status.ts'
+import { searchShortcutLabel } from '../search-shortcut.ts'
 
 const router = useRouter()
 const globalStore = useGlobalStore()
@@ -223,13 +225,23 @@ const uploadStore = useUploadStore()
 const fileTaskStore = useFileTaskStore()
 const { t } = useI18n()
 
+const searchShortcut = searchShortcutLabel()
 const searchOpen = ref(false)
 const searchKeyword = ref('')
 const searchInput = ref<{ focus?: () => void } | null>(null)
 const taskOpen = ref(false)
 const serverClock = ref('')
-const serverReachable = ref(true)
 const reachFailStreak = ref(0)
+const connectionStatus = computed(() => reachStatus(reachFailStreak.value))
+const connectionLabel = computed(() => {
+  const labels = {
+    online: t('header.panelReachable'),
+    warning: t('header.connectionUnstable'),
+    offline: t('header.panelDisconnected'),
+  }
+  return labels[connectionStatus.value]
+})
+const serverChipLabel = computed(() => `${t('header.serverSummary')} · ${connectionLabel.value}`)
 const unreadNotifications = ref(0)
 const recentNotifications = ref<NotificationItem[]>([])
 const popupShown = new Set<number>()
@@ -296,11 +308,9 @@ const fetchServerInfo = async () => {
       })
       updateClock()
       reachFailStreak.value = 0
-      serverReachable.value = true
     }
   } catch {
     reachFailStreak.value += 1
-    if (reachFailStreak.value >= 2) serverReachable.value = false
   }
 }
 
@@ -551,12 +561,6 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.server-state {
-  color: var(--xp-text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .search-entry {
   display: inline-flex;
   align-items: center;
@@ -739,7 +743,6 @@ onUnmounted(() => {
 @media (max-width: 1100px) {
   .search-entry span,
   .search-entry kbd,
-  .server-state,
   .username {
     display: none;
   }

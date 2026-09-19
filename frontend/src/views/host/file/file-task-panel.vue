@@ -31,9 +31,9 @@
         >
           <div class="task-icon">
             <el-icon v-if="task.status === 'running'" class="spin-icon"><Loading /></el-icon>
-            <el-icon v-else-if="task.status === 'success'" color="var(--el-color-success)"><CircleCheck /></el-icon>
-            <el-icon v-else-if="task.status === 'cancelled'" color="var(--el-color-warning)"><CircleClose /></el-icon>
-            <el-icon v-else color="var(--el-color-danger)"><CircleClose /></el-icon>
+            <el-icon v-else-if="task.status === 'success'" color="var(--xp-success)"><CircleCheck /></el-icon>
+            <el-icon v-else-if="task.status === 'cancelled'" color="var(--xp-warning)"><CircleClose /></el-icon>
+            <el-icon v-else color="var(--xp-danger)"><CircleClose /></el-icon>
           </div>
           <div class="task-info">
             <div class="task-name">{{ task.name || taskTypeLabel(task.type) }}</div>
@@ -339,14 +339,14 @@ defineExpose({ refresh })
   display: flex;
   gap: 6px;
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-secondary);
   margin-top: 2px;
   flex-wrap: wrap;
 }
 
 .task-current-file {
   font-size: 11px;
-  color: var(--el-text-color-placeholder);
+  color: var(--xp-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -355,12 +355,12 @@ defineExpose({ refresh })
 
 .task-time {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--xp-text-secondary);
 }
 
 .task-error {
   font-size: 12px;
-  color: var(--el-color-danger);
+  color: var(--xp-danger);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -370,7 +370,7 @@ defineExpose({ refresh })
 .task-empty {
   text-align: center;
   padding: 20px;
-  color: var(--el-text-color-placeholder);
+  color: var(--xp-text-muted);
   font-size: 13px;
 }
 

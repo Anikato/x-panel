@@ -1,15 +1,14 @@
 <template>
-  <div class="gost-status-page">
-    <div class="page-header">
-      <h3>{{ $t('gost.status') }}</h3>
+  <div class="gost-status-page xp-page-shell">
+    <div class="app-toolbar">
+      <span class="toolbar-spacer" />
       <el-button size="small" :icon="Refresh" @click="loadStatus" :loading="loading">
         {{ $t('commons.refresh') }}
       </el-button>
     </div>
 
-    <!-- 未安装 -->
     <template v-if="!status.isInstalled && !installing">
-      <el-card shadow="never" class="install-card">
+      <div class="xp-empty">
         <el-empty :description="$t('gost.notInstalled')">
           <template #image>
             <el-icon :size="64" color="var(--xp-text-muted)"><Promotion /></el-icon>
@@ -20,15 +19,12 @@
             </el-button>
           </div>
         </el-empty>
-      </el-card>
+      </div>
     </template>
 
-    <!-- 安装中 -->
     <template v-if="installing">
-      <el-card shadow="never">
-        <template #header>
-          <span>{{ $t('gost.installProgress') }}</span>
-        </template>
+      <article class="xp-deck">
+        <div class="xp-section" style="margin-top:0"><h3>{{ $t('gost.installProgress') }}</h3></div>
         <div class="progress-content">
           <el-progress
             :percentage="installProgress.percent"
@@ -46,90 +42,64 @@
             <span style="margin-left: 8px;">{{ installProgress.message }}</span>
           </div>
         </div>
-      </el-card>
+      </article>
     </template>
 
-    <!-- 已安装 -->
     <template v-if="status.isInstalled && !installing">
       <el-alert type="success" :closable="false" show-icon style="margin-bottom: 16px;">
         {{ $t('gost.infoNote') }}
       </el-alert>
 
-      <el-row :gutter="16" class="info-row">
-        <el-col :span="5">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('commons.status') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.isRunning ? 'success' : 'danger'" size="large" effect="dark" round>
-                {{ status.isRunning ? $t('gost.running') : $t('gost.stopped') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('gost.version') }}</div>
-            <div class="stat-value version-text">{{ status.version || '-' }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('gost.apiStatus') }}</div>
-            <div class="stat-value">
-              <el-tag :type="status.apiReady ? 'success' : 'danger'" size="large" effect="dark" round>
-                {{ status.apiReady ? $t('gost.apiReady') : $t('gost.apiUnreachable') }}
-              </el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('gost.autoStart') }}</div>
-            <div class="stat-value">
-              <el-tag type="success" size="large" effect="dark" round>{{ $t('gost.autoStartEnabled') }}</el-tag>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="never" class="stat-card">
-            <div class="stat-title">{{ $t('gost.sync') }}</div>
-            <div class="stat-value">
-              <el-button type="primary" size="small" @click="handleSync" :loading="syncLoading" :disabled="!status.apiReady">
-                {{ $t('gost.sync') }}
-              </el-button>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <div class="app-toolbar">
+        <el-button type="success" :disabled="status.isRunning" @click="handleOperate('start')" :loading="operateLoading === 'start'">
+          <el-icon><VideoPlay /></el-icon>{{ $t('gost.start') }}
+        </el-button>
+        <el-button type="danger" :disabled="!status.isRunning" @click="handleOperate('stop')" :loading="operateLoading === 'stop'">
+          <el-icon><VideoPause /></el-icon>{{ $t('gost.stop') }}
+        </el-button>
+        <el-button type="primary" :disabled="!status.isRunning" @click="handleOperate('restart')" :loading="operateLoading === 'restart'">
+          <el-icon><RefreshRight /></el-icon>{{ $t('gost.restart') }}
+        </el-button>
+        <el-button type="primary" size="small" @click="handleSync" :loading="syncLoading" :disabled="!status.apiReady">
+          {{ $t('gost.sync') }}
+        </el-button>
+        <span class="toolbar-spacer" />
+        <el-button type="danger" plain @click="handleUninstall">
+          <el-icon><Delete /></el-icon>{{ $t('gost.uninstall') }}
+        </el-button>
+      </div>
 
-      <el-row :gutter="16" style="margin-top: 16px;">
-        <el-col :span="12">
-          <el-card shadow="never">
-            <template #header>
-              <span>{{ $t('commons.operate') }}</span>
-            </template>
-            <div class="operate-buttons">
-              <el-button type="success" :disabled="status.isRunning" @click="handleOperate('start')" :loading="operateLoading === 'start'">
-                <el-icon><VideoPlay /></el-icon>{{ $t('gost.start') }}
-              </el-button>
-              <el-button type="danger" :disabled="!status.isRunning" @click="handleOperate('stop')" :loading="operateLoading === 'stop'">
-                <el-icon><VideoPause /></el-icon>{{ $t('gost.stop') }}
-              </el-button>
-              <el-button type="primary" :disabled="!status.isRunning" @click="handleOperate('restart')" :loading="operateLoading === 'restart'">
-                <el-icon><RefreshRight /></el-icon>{{ $t('gost.restart') }}
-              </el-button>
-              <el-divider direction="vertical" />
-              <el-button type="danger" plain @click="handleUninstall">
-                <el-icon><Delete /></el-icon>{{ $t('gost.uninstall') }}
-              </el-button>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="12">
-          <el-card shadow="never">
-            <template #header>
-              <span>{{ $t('gost.checkUpdate') }}</span>
-            </template>
+      <div class="xp-deck-grid" style="--xp-metric-columns: 4">
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('commons.status') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.isRunning ? 'success' : 'danger'" size="small">
+              {{ status.isRunning ? $t('gost.running') : $t('gost.stopped') }}
+            </el-tag>
+          </div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('gost.version') }}</div>
+          <div class="xp-metric-value version-text">{{ status.version || '-' }}</div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('gost.apiStatus') }}</div>
+          <div class="xp-metric-value">
+            <el-tag :type="status.apiReady ? 'success' : 'danger'" size="small">
+              {{ status.apiReady ? $t('gost.apiReady') : $t('gost.apiUnreachable') }}
+            </el-tag>
+          </div>
+        </article>
+        <article class="xp-metric-card is-compact">
+          <div class="xp-metric-label">{{ $t('gost.autoStart') }}</div>
+          <div class="xp-metric-value">
+            <el-tag type="success" size="small">{{ $t('gost.autoStartEnabled') }}</el-tag>
+          </div>
+        </article>
+      </div>
+
+          <article class="xp-deck">
+            <div class="xp-section" style="margin-top:0"><h3>{{ $t('gost.checkUpdate') }}</h3></div>
             <div v-if="!updateInfo">
               <el-button type="primary" plain @click="handleCheckUpdate" :loading="checkUpdateLoading">
                 <el-icon><Upload /></el-icon>{{ $t('gost.checkUpdate') }}
@@ -139,7 +109,7 @@
               <el-descriptions :column="1" border size="small">
                 <el-descriptions-item :label="$t('gost.currentVersion')">{{ updateInfo.currentVersion }}</el-descriptions-item>
                 <el-descriptions-item :label="$t('gost.latestVersion')">
-                  <a :href="updateInfo.releaseURL" target="_blank" style="color: var(--el-color-primary)">{{ updateInfo.latestVersion }}</a>
+                  <a :href="updateInfo.releaseURL" target="_blank" style="color: var(--xp-accent)">{{ updateInfo.latestVersion }}</a>
                 </el-descriptions-item>
               </el-descriptions>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
@@ -157,9 +127,7 @@
                 </el-button>
               </div>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
+          </article>
     </template>
   </div>
 </template>

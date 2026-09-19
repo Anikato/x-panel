@@ -12,25 +12,15 @@
     <el-scrollbar class="sidebar-menu-scroll">
       <nav class="nav-tree" aria-label="主导航">
         <section v-for="group in groups" :key="group.id" class="nav-group">
-          <button
-            v-if="!globalStore.menuCollapse"
-            type="button"
-            class="nav-group-title"
-            :class="{ 'has-active': groupCollapsed[group.id] && groupHasActive(group.id) }"
-            :aria-expanded="!groupCollapsed[group.id]"
-            @click="toggleGroup(group.id)"
-          >
-            <span>{{ t(group.titleKey) }}</span>
-            <el-icon class="group-caret" :class="{ collapsed: groupCollapsed[group.id] }"><ArrowDown /></el-icon>
-          </button>
-          <div v-show="globalStore.menuCollapse || !groupCollapsed[group.id]" class="nav-group-items">
+          <p v-if="!globalStore.menuCollapse" class="nav-group-label">{{ t(group.titleKey) }}</p>
+          <div class="nav-group-items">
             <router-link
               v-for="mod in modulesIn(group.id)"
               :key="mod.id"
               :to="toLocation(mod)"
               class="nav-item"
               :class="{ active: isActive(mod) }"
-              :title="globalStore.menuCollapse ? t(mod.titleKey) : undefined"
+              :title="t(mod.titleKey)"
             >
               <el-icon><component :is="iconOf(mod)" /></el-icon>
               <span v-if="!globalStore.menuCollapse" class="nav-item-label">{{ t(mod.titleKey) }}</span>
@@ -57,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useGlobalStore } from '@/store/modules/global'
@@ -73,7 +63,7 @@ import { mapNavIcon } from '@/theme'
 import { useAppearanceStore } from '@/store/modules/appearance'
 import ShieldIcon from '@/components/icons/ShieldIcon.vue'
 import XPanelLogo from '@/components/brand/XPanelLogo.vue'
-import { destinationFor, readGroupCollapsed, rememberCurrentRoute, writeGroupCollapsed } from '@/navigation/session'
+import { destinationFor, rememberCurrentRoute } from '@/navigation/session'
 
 const route = useRoute()
 const globalStore = useGlobalStore()
@@ -82,7 +72,6 @@ const { t } = useI18n()
 
 const groups = NAV_GROUPS
 const footerModules = SIDEBAR_FOOTER_MODULES
-const groupCollapsed = reactive<Partial<Record<NavGroupId, boolean>>>(readGroupCollapsed())
 
 const currentModule = computed(() => resolveModule(route.path))
 
@@ -102,8 +91,6 @@ watch(
 
 const modulesIn = (groupId: NavGroupId) => SIDEBAR_MAIN_MODULES.filter((mod) => mod.group === groupId)
 
-const groupHasActive = (groupId: NavGroupId) => currentModule.value?.group === groupId
-
 const isActive = (mod: NavModule) => currentModule.value?.id === mod.id
 
 const toLocation = (mod: NavModule) => {
@@ -115,11 +102,6 @@ const extraIcons: Record<string, unknown> = { ShieldIcon }
 const iconOf = (mod: NavModule) => {
   const name = mapNavIcon(mod.icon, appearanceStore.resolved.iconSet)
   return extraIcons[name] || name
-}
-
-const toggleGroup = (groupId: NavGroupId) => {
-  groupCollapsed[groupId] = !groupCollapsed[groupId]
-  writeGroupCollapsed({ ...groupCollapsed })
 }
 </script>
 
@@ -140,6 +122,21 @@ const toggleGroup = (groupId: NavGroupId) => {
 
   &.is-collapse {
     width: var(--xp-sidebar-collapse-width);
+
+    .sidebar-logo {
+      justify-content: center;
+      padding: 0;
+    }
+
+    .nav-item {
+      justify-content: center;
+      padding: 0;
+    }
+
+    .nav-group + .nav-group {
+      margin-top: 8px;
+      padding-top: 8px;
+    }
   }
 }
 
@@ -148,29 +145,25 @@ const toggleGroup = (groupId: NavGroupId) => {
   flex-shrink: 0;
   align-items: center;
   height: var(--xp-header-height);
-  padding: 0 16px;
+  padding: 0 14px;
   gap: 10px;
-  border-bottom: 1px solid var(--xp-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--xp-border) 60%, transparent);
 
   .logo-icon {
     display: flex;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 3px;
-    background: var(--xp-accent-muted);
-    border: 1px solid var(--xp-border-light);
-    border-radius: var(--xp-radius-sm);
+    width: 36px;
+    height: 36px;
   }
 
   .logo-text {
     overflow: hidden;
     color: var(--xp-text-primary);
-    font-size: 15px;
-    font-weight: 650;
-    letter-spacing: -0.02em;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
     white-space: nowrap;
   }
 }
@@ -181,55 +174,33 @@ const toggleGroup = (groupId: NavGroupId) => {
 }
 
 .nav-tree {
-  padding: 10px 8px 16px;
+  padding: 12px 8px 16px;
 }
 
-.nav-group {
-  margin-bottom: 8px;
+.nav-group + .nav-group {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--xp-border) 70%, transparent);
 }
 
-.nav-group-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin: 4px 0 2px;
-  padding: 6px 10px;
+.nav-group-label {
+  margin: 0 0 6px;
+  padding: 0 10px;
   color: var(--xp-text-muted);
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: none;
-  background: transparent;
-  border: 0;
-  border-radius: var(--xp-radius-sm);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--xp-text-secondary);
-    background: transparent;
-  }
-
-  &.has-active {
-    color: var(--xp-accent);
-  }
-
-  .group-caret {
-    font-size: 12px;
-    transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
-
-    &.collapsed {
-      transform: rotate(-90deg);
-    }
-  }
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  min-height: 36px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
   margin: 1px 0;
-  padding: 0 10px;
+  padding: 0 8px;
   gap: 10px;
   color: var(--xp-text-secondary);
   font-size: 13.5px;
@@ -268,7 +239,7 @@ const toggleGroup = (groupId: NavGroupId) => {
 }
 
 :global(html[data-sidebar-variant='marker']) .nav-item.active {
-  background: transparent;
+  background: var(--xp-accent-muted);
   box-shadow: inset 2px 0 0 var(--xp-accent);
   border-radius: 0 var(--xp-radius-sm) var(--xp-radius-sm) 0;
 }
@@ -294,7 +265,13 @@ const toggleGroup = (groupId: NavGroupId) => {
   flex-shrink: 0;
   padding: 8px;
   gap: 2px;
-  border-top: 1px solid var(--xp-border);
+  border-top: 1px solid color-mix(in srgb, var(--xp-border) 60%, transparent);
+
+  .nav-item {
+    min-height: 34px;
+    color: var(--xp-text-muted);
+    font-size: 12.5px;
+  }
 }
 
 @media (max-width: 900px) {
