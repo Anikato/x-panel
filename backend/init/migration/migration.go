@@ -43,6 +43,7 @@ func Init() {
 		&model.GostChain{},
 		&model.CertSource{},
 		&model.CertSyncLog{},
+		&model.CertServerAccessLog{},
 		&model.HAProxyLB{},
 		&model.HAProxyBackend{},
 		&model.HAProxyServer{},

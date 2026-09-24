@@ -55,3 +55,7 @@ export const getCertServerSetting = () => {
 export const updateCertServerSetting = (params: { enabled: boolean; token: string }) => {
   return http.post('/cert-server/setting', params)
 }
+
+export const listCertServerAccessLogs = (params: { page: number; pageSize: number }) => {
+  return http.post('/cert-server/access-logs', params)
+}

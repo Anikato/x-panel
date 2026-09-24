@@ -89,7 +89,8 @@ type SearchCertSyncLogReq struct {
 // --- 证书服务设置 ---
 
 type CertServerSetting struct {
-	Enabled  bool   `json:"enabled"`
-	Token    string `json:"-"`
-	TokenSet bool   `json:"tokenSet"`
+	Enabled     bool   `json:"enabled"`
+	Token       string `json:"token,omitempty"`
+	TokenSet    bool   `json:"tokenSet"`
+	TokenSuffix string `json:"tokenSuffix,omitempty"`
 }

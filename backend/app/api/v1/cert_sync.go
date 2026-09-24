@@ -126,6 +126,20 @@ func (a *CertSyncAPI) UpdateCertServerSetting(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *CertSyncAPI) ListCertServerAccessLogs(c *gin.Context) {
+	var req dto.PageInfo
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	total, items, err := service.NewICertServerService().ListAccessLogs(req.Page, req.PageSize)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithPage(c, total, items)
+}
+
 func (a *CertSyncAPI) ServeCerts(c *gin.Context) {
 	items, err := service.NewICertServerService().ListCerts()
 	if err != nil {

@@ -553,6 +553,7 @@ func Setup(mode string) *gin.Engine {
 		// 证书服务端设置
 		privateGroup.GET("/cert-server/setting", api.GetCertServerSetting)
 		privateGroup.POST("/cert-server/setting", api.UpdateCertServerSetting)
+		privateGroup.POST("/cert-server/access-logs", api.ListCertServerAccessLogs)
 
 		// Nezha Agent（捆绑组件；日志复用 toolbox systemd logs）
 		privateGroup.GET("/nezha-agent/status", api.GetNezhaAgentStatus)

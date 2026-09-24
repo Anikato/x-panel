@@ -351,12 +351,21 @@
         <div class="cert-server-section">
           <el-form label-width="140px">
             <el-form-item :label="$t('ssl.enableCertServer')">
-              <el-switch v-model="certServerSetting.enabled" @change="handleSaveCertServer" />
+              <el-switch v-model="certServerSetting.enabled" @change="handleToggleCertServer" />
               <div class="form-tip">{{ $t('ssl.certServerTip') }}</div>
             </el-form-item>
             <el-form-item v-if="certServerSetting.enabled" :label="$t('ssl.certServerToken')">
+              <div v-if="certServerSetting.tokenSet" class="form-tip">
+                当前 Token 仍有效<span v-if="certServerSetting.tokenSuffix">，末尾 {{ certServerSetting.tokenSuffix }}</span>。留空保存不会更换。
+              </div>
               <div class="token-row">
-                <el-input v-model="certServerSetting.token" type="password" show-password style="flex:1" />
+                <el-input
+                  v-model="certServerSetting.token"
+                  type="password"
+                  show-password
+                  style="flex:1"
+                  :placeholder="certServerSetting.tokenSet ? '填写新 Token 才会更换' : '设置访问 Token'"
+                />
                 <el-button size="small" type="info" plain @click="handleGenerateToken">
                   {{ $t('ssl.generateToken') }}
                 </el-button>
@@ -364,9 +373,25 @@
                   {{ $t('commons.save') }}
                 </el-button>
               </div>
-              <div class="form-tip">{{ $t('ssl.certServerTokenTip') }}</div>
+              <div v-if="revealedToken" class="form-tip">刚保存的 Token：{{ revealedToken }}。请复制给其他面板，关闭页面前它不会再显示。</div>
+              <div class="form-tip">{{ $t('ssl.certServerTokenTip') }} 更换后，旧 Token 会失效，正在同步的面板需要改成新 Token。</div>
             </el-form-item>
           </el-form>
+          <div class="xp-section" style="margin-top: 18px"><h3>连接记录</h3></div>
+          <el-table :data="certServerLogs" size="small" v-loading="certServerLogLoading">
+            <el-table-column label="时间" width="180">
+              <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column label="来源" min-width="140">
+              <template #default="{ row }">{{ row.clientName || '未命名面板' }}</template>
+            </el-table-column>
+            <el-table-column prop="remoteIP" label="IP" width="150" />
+            <el-table-column prop="action" label="动作" min-width="180" show-overflow-tooltip />
+            <el-table-column label="结果" width="90">
+              <template #default="{ row }">{{ row.status }}</template>
+            </el-table-column>
+            <el-table-column prop="message" label="说明" min-width="140" show-overflow-tooltip />
+          </el-table>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -666,13 +691,13 @@ import {
 } from '@/api/modules/ssl'
 import {
   listCertSources, createCertSource, updateCertSource, deleteCertSource,
-  syncCertSource, getCertServerSetting, updateCertServerSetting, searchSyncLogs,
+  syncCertSource, getCertServerSetting, updateCertServerSetting, listCertServerAccessLogs, searchSyncLogs,
 } from '@/api/modules/cert-sync'
 import { searchWebsite } from '@/api/modules/website'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type {
   Certificate, CertificateRenewalPlanItem, CertificateRenewalManagementType,
-  AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting,
+  AcmeAccount, DnsAccount, DnsProvider, CertSource, CertSyncLog, CertServerSetting, CertServerAccessLog,
 } from '@/api/interface'
 import {
   formatCertificateDeleteSummary,
@@ -1298,7 +1323,21 @@ const syncLogStatusLabel = (s: string) => {
 }
 
 // --- 证书服务 ---
+const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : ''
+
 const certServerSetting = ref<CertServerSetting>({ enabled: false, token: '', tokenSet: false })
+const revealedToken = ref('')
+const certServerLogs = ref<CertServerAccessLog[]>([])
+const certServerLogLoading = ref(false)
+
+const loadCertServerLogs = async () => {
+  certServerLogLoading.value = true
+  try {
+    const res = await listCertServerAccessLogs({ page: 1, pageSize: 20 })
+    certServerLogs.value = res.data?.items || []
+  } catch { /* ignore */ }
+  finally { certServerLogLoading.value = false }
+}
 
 const loadCertServerSetting = async () => {
   try {
@@ -1307,16 +1346,30 @@ const loadCertServerSetting = async () => {
       ? { ...res.data, token: '' }
       : { enabled: false, token: '', tokenSet: false }
   } catch {}
+  void loadCertServerLogs()
+}
+
+const handleToggleCertServer = async () => {
+  try {
+    await updateCertServerSetting({ enabled: certServerSetting.value.enabled, token: '' })
+    ElMessage.success('保存成功')
+  } catch {
+    certServerSetting.value.enabled = !certServerSetting.value.enabled
+    ElMessage.error('保存失败')
+  }
 }
 
 const handleSaveCertServer = async () => {
+  const nextToken = certServerSetting.value.token.trim()
   try {
-    await updateCertServerSetting(certServerSetting.value)
-    if (certServerSetting.value.token) {
+    await updateCertServerSetting({ enabled: certServerSetting.value.enabled, token: nextToken })
+    if (nextToken) {
+      revealedToken.value = nextToken
       certServerSetting.value.token = ''
       certServerSetting.value.tokenSet = true
+      certServerSetting.value.tokenSuffix = nextToken.slice(-4)
     }
-    ElMessage.success('保存成功')
+    ElMessage.success(nextToken ? '新 Token 已保存，旧 Token 已失效' : '保存成功')
   } catch { ElMessage.error('保存失败') }
 }
 

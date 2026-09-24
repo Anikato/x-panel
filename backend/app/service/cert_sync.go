@@ -561,6 +561,9 @@ func (s *CertSourceService) fetchRemoteCerts(source model.CertSource) ([]dto.Cer
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("X-Cert-Token", source.Token)
+	if name := strings.TrimSpace(source.Name); name != "" {
+		req.Header.Set("X-Cert-Client", name)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -747,6 +750,7 @@ type ICertServerService interface {
 	ListCerts() ([]dto.CertServerItem, error)
 	GetSetting() (*dto.CertServerSetting, error)
 	UpdateSetting(req dto.CertServerSetting) error
+	ListAccessLogs(page, pageSize int) (int64, []model.CertServerAccessLog, error)
 }
 
 type CertServerService struct {
@@ -801,9 +805,18 @@ func (s *CertServerService) GetSetting() (*dto.CertServerSetting, error) {
 	enabled, _ := s.settingRepo.GetValueByKey("CertServerEnabled")
 	token, _ := s.settingRepo.GetValueByKey("CertServerToken")
 	return &dto.CertServerSetting{
-		Enabled:  enabled == "enable",
-		TokenSet: token != "",
+		Enabled:     enabled == "enable",
+		TokenSet:    token != "",
+		TokenSuffix: certServerTokenSuffix(token),
 	}, nil
+}
+
+func certServerTokenSuffix(token string) string {
+	token = strings.TrimSpace(token)
+	if len(token) < 4 {
+		return ""
+	}
+	return token[len(token)-4:]
 }
 
 func (s *CertServerService) UpdateSetting(req dto.CertServerSetting) error {
@@ -820,6 +833,23 @@ func (s *CertServerService) UpdateSetting(req dto.CertServerSetting) error {
 		}
 	}
 	return nil
+}
+
+func (s *CertServerService) ListAccessLogs(page, pageSize int) (int64, []model.CertServerAccessLog, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	var total int64
+	var items []model.CertServerAccessLog
+	query := global.DB.Model(&model.CertServerAccessLog{})
+	if err := query.Count(&total).Error; err != nil {
+		return 0, nil, err
+	}
+	err := query.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
+	return total, items, err
 }
 
 func normalizeSyncStrategy(strategy string) string {

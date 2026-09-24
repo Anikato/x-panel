@@ -23,6 +23,16 @@ type CertSource struct {
 	RefreshPendingAt *time.Time `json:"refreshPendingAt"`
 }
 
+// CertServerAccessLog 其他面板拉取或检查证书服务的记录。
+type CertServerAccessLog struct {
+	BaseModel
+	ClientName string `gorm:"size:128" json:"clientName"`
+	RemoteIP   string `gorm:"size:64" json:"remoteIP"`
+	Action     string `gorm:"size:128" json:"action"`
+	Status     int    `json:"status"`
+	Message    string `gorm:"size:256" json:"message"`
+}
+
 // CertSyncLog 证书同步日志
 type CertSyncLog struct {
 	BaseModel

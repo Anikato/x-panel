@@ -516,6 +516,17 @@ export interface CertServerSetting {
   enabled: boolean
   token: string
   tokenSet: boolean
+  tokenSuffix?: string
+}
+
+export interface CertServerAccessLog {
+  id: number
+  clientName: string
+  remoteIP: string
+  action: string
+  status: number
+  message: string
+  createdAt: string
 }
 
 // ======================== Website ========================
