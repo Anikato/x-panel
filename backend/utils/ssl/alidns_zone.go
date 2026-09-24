@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
+	"github.com/alibabacloud-go/tea/dara"
 	alidns "github.com/go-acme/alidns-20150109/v4/client"
 )
 
@@ -48,7 +49,7 @@ func listAliDNSDomainNames(accessKey, secretKey string) ([]string, error) {
 	var page int64 = 1
 	for {
 		request := new(alidns.DescribeDomainsRequest).SetPageNumber(page).SetPageSize(100)
-		response, err := alidns.DescribeDomainsWithContext(context.Background(), client, request, nil)
+		response, err := alidns.DescribeDomainsWithContext(context.Background(), client, request, &dara.RuntimeOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("阿里云 DNS 接口调用失败: %v", err)
 		}

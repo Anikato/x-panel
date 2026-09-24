@@ -263,6 +263,24 @@ func redactCertificateSecret(detail *dto.CertificateDetail, cert model.Certifica
 	detail.PrivateKeySet = cert.PrivateKey != ""
 }
 
+func recoverCertificateJob(id uint, action string, errp *error) {
+	rec := recover()
+	if rec == nil {
+		return
+	}
+	msg := fmt.Sprintf("%s异常: %v", action, rec)
+	_ = repo.NewICertificateRepo().Update(id, map[string]interface{}{
+		"status":  "error",
+		"message": msg,
+	})
+	if global.LOG != nil {
+		global.LOG.Errorf("%s", msg)
+	}
+	if errp != nil {
+		*errp = fmt.Errorf("%s", msg)
+	}
+}
+
 func MarkInterruptedCertificateApplications() {
 	if global.DB == nil {
 		return
@@ -284,7 +302,8 @@ func MarkInterruptedCertificateApplications() {
 	}
 }
 
-func (s *CertificateService) Apply(id uint) error {
+func (s *CertificateService) Apply(id uint) (err error) {
+	defer recoverCertificateJob(id, "证书申请", &err)
 	release, err := acquireCertificateRenewal(id)
 	if err != nil {
 		return err
@@ -462,7 +481,8 @@ func (s *CertificateService) Renew(id uint) error {
 	return s.renew(id, certificateRenewalManual)
 }
 
-func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) error {
+func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) (err error) {
+	defer recoverCertificateJob(id, "证书续签", &err)
 	release, err := acquireCertificateRenewal(id)
 	if err != nil {
 		return err
