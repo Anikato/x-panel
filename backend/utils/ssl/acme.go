@@ -170,22 +170,17 @@ func (c *AcmeClient) ObtainCertificate(domains []string, keyType string, logWrit
 	}
 
 	cert, err := c.Client.Certificate.Obtain(request)
-	if err != nil {
-		// 等待 120s：
-		// 1. 给 DNS 记录更多传播时间
-		// 2. 让 lego CleanUp 删除的旧 TXT 记录在阿里云等异步 DNS 上完全生效
-		//    （太短会导致重试时出现 DomainRecordDuplicate 错误）
-		log.Printf("[lego] first attempt failed: %v, waiting 120s before retry (allowing DNS cleanup to propagate)...", err)
-		time.Sleep(120 * time.Second)
+	if err != nil && certificateObtainRetryDelay(err) > 0 {
+		delay := certificateObtainRetryDelay(err)
+		log.Printf("[lego] first attempt failed: %v, waiting %s before retry so the previous TXT record can be removed...", err, delay)
+		time.Sleep(delay)
 		cert, err = c.Client.Certificate.Obtain(request)
-		if err != nil {
-			// 特别提示 DomainRecordDuplicate：说明 DNS 清理还未完成，可以再等待后手动重试
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "DomainRecordDuplicate") {
-				return nil, fmt.Errorf("obtain certificate: DNS 验证 TXT 记录冲突（旧记录尚未清理完毕），请稍等 1-2 分钟后手动点击重新申请。详情: %v", err)
-			}
-			return nil, fmt.Errorf("obtain certificate: %v", err)
+	}
+	if err != nil {
+		if strings.Contains(err.Error(), "DomainRecordDuplicate") {
+			return nil, fmt.Errorf("obtain certificate: DNS 验证 TXT 记录冲突（旧记录尚未清理完毕），请稍等 1-2 分钟后手动点击重新申请。详情: %v", err)
 		}
+		return nil, fmt.Errorf("obtain certificate: %v", err)
 	}
 
 	return cert, nil
@@ -198,14 +193,24 @@ func (c *AcmeClient) SetDNSProvider(dnsType, authJSON string) error {
 		return err
 	}
 	return c.Client.Challenge.SetDNS01Provider(provider,
-		dns01.AddDNSTimeout(5*time.Minute),
-		dns01.AddRecursiveNameservers([]string{
-			"1.1.1.1:53",
-			"8.8.8.8:53",
-			"1.0.0.1:53",
-			"8.8.4.4:53",
-		}),
+		dns01.AddDNSTimeout(3*time.Second),
+		dns01.AddRecursiveNameservers(acmeRecursiveNameservers),
 	)
+}
+
+// acmeRecursiveNameservers 先用国内公共 DNS。1.1.1.1 在部分国内网络会超时，
+// 阿里云写 TXT 前也要用这组地址确认域名区域。
+var acmeRecursiveNameservers = []string{
+	"223.5.5.5:53",
+	"119.29.29.29:53",
+	"8.8.8.8:53",
+}
+
+func certificateObtainRetryDelay(err error) time.Duration {
+	if err == nil || !strings.Contains(err.Error(), "DomainRecordDuplicate") {
+		return 0
+	}
+	return 45 * time.Second
 }
 
 // SetHTTPProvider 设置 HTTP-01 验证提供商。

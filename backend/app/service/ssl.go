@@ -263,6 +263,27 @@ func redactCertificateSecret(detail *dto.CertificateDetail, cert model.Certifica
 	detail.PrivateKeySet = cert.PrivateKey != ""
 }
 
+func MarkInterruptedCertificateApplications() {
+	if global.DB == nil {
+		return
+	}
+	result := global.DB.Model(&model.Certificate{}).
+		Where("status = ?", "applying").
+		Updates(map[string]interface{}{
+			"status":  "error",
+			"message": "申请进程已中断，证书未签发。可以删除或重新申请",
+		})
+	if result.Error != nil {
+		if global.LOG != nil {
+			global.LOG.Warnf("failed to mark interrupted certificate applications: %v", result.Error)
+		}
+		return
+	}
+	if result.RowsAffected > 0 && global.LOG != nil {
+		global.LOG.Infof("Marked %d interrupted certificate applications as failed", result.RowsAffected)
+	}
+}
+
 func (s *CertificateService) Apply(id uint) error {
 	release, err := acquireCertificateRenewal(id)
 	if err != nil {
@@ -329,6 +350,15 @@ func (s *CertificateService) Apply(id uint) error {
 			return err
 		}
 		logger.Printf("[成功] DNS 提供商配置完成")
+		if dns.Type == "AliYun" {
+			logger.Printf("[信息] 正在确认阿里云账号是否托管这些域名...")
+			if err := sslutil.EnsureAliDNSZones(dns.Authorization, domains); err != nil {
+				logger.Printf("[错误] %s", err.Error())
+				s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+				return err
+			}
+			logger.Printf("[成功] 阿里云账号中已找到对应域名")
+		}
 	case "http":
 		logger.Printf("[信息] 正在配置 HTTP-01 验证提供商...")
 		if err := s.prepareHTTP01Website(cert); err != nil {
@@ -351,7 +381,7 @@ func (s *CertificateService) Apply(id uint) error {
 	// 申请证书
 	logger.Printf("[信息] 正在向 CA 发起证书申请（此步骤可能耗时数分钟）...")
 	if cert.Provider == "dns" {
-		logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
+		logger.Printf("[信息] DNS 验证中：写入 TXT 记录，并用公共 DNS 确认生效后提交 CA...")
 	} else if cert.Provider == "http" {
 		logger.Printf("[信息] HTTP 验证中：请确保域名 80 端口可访问面板的 /.well-known/acme-challenge/ 路径...")
 	}
@@ -495,6 +525,15 @@ func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) e
 			s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
 			return err
 		}
+		if dns.Type == "AliYun" {
+			logger.Printf("[信息] 正在确认阿里云账号是否托管这些域名...")
+			if err := sslutil.EnsureAliDNSZones(dns.Authorization, renewDomains); err != nil {
+				logger.Printf("[错误] %s", err.Error())
+				s.certRepo.Update(id, map[string]interface{}{"status": "error", "message": err.Error()})
+				return err
+			}
+			logger.Printf("[成功] 阿里云账号中已找到对应域名")
+		}
 	case "http":
 		logger.Printf("[信息] 正在配置 HTTP-01 验证提供商...")
 		if err := s.prepareHTTP01Website(cert); err != nil {
@@ -513,7 +552,7 @@ func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) e
 	logger.Printf("[信息] 续签域名: %s", strings.Join(renewDomains, ", "))
 	logger.Printf("[信息] 正在向 CA 发起续签请求...")
 	if cert.Provider == "dns" {
-		logger.Printf("[信息] DNS 验证中：创建 TXT 记录并等待 CA 验证（已跳过传播检查）...")
+		logger.Printf("[信息] DNS 验证中：写入 TXT 记录，并用公共 DNS 确认生效后提交 CA...")
 	} else if cert.Provider == "http" {
 		logger.Printf("[信息] HTTP 验证中：请确保域名 80 端口可访问 /.well-known/acme-challenge/ 路径...")
 	}

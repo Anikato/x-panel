@@ -75,7 +75,7 @@ func GetDNSProvider(dnsType, authJSON string) (challenge.Provider, error) {
 		config := alidns.NewDefaultConfig()
 		config.APIKey = param.AccessKey
 		config.SecretKey = param.SecretKey
-		config.PropagationTimeout = propagationTimeout
+		config.PropagationTimeout = 2 * time.Minute
 		config.PollingInterval = pollingInterval
 		config.TTL = ttl
 		return alidns.NewDNSProviderConfig(config)
