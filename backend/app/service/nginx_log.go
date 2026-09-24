@@ -41,13 +41,17 @@ var combinedLogRe = regexp.MustCompile(
 )
 
 type logEntry struct {
-	IP        string
-	Time      time.Time
-	Method    string
-	URL       string
-	Status    int
-	Bytes     int64
-	UserAgent string
+	IP              string
+	Time            time.Time
+	Method          string
+	URL             string
+	Status          int
+	Bytes           int64
+	UserAgent       string
+	RequestSeconds  float64
+	HasRequestTime  bool
+	UpstreamSeconds float64
+	HasUpstreamTime bool
 }
 
 // Analyze handles legacy site-ID based analysis
@@ -74,7 +78,11 @@ func (s *NginxLogService) Analyze(ctx context.Context, req dto.NginxLogAnalysisR
 	until := time.Now()
 	cutoff := until.AddDate(0, 0, -days)
 	key := fmt.Sprintf("%s|legacy|%d|%d", logAnalysisStrategyVersion, req.SiteID, days)
-	return runSiteAnalysis(ctx, key, req.Refresh, []string{logPath}, cutoff, until, false, false)
+	errorPath := fmt.Sprintf("%s/%s.error.log", logDir, site.PrimaryDomain)
+	if strings.TrimSpace(site.ErrorLogPath) != "" {
+		errorPath = strings.TrimSpace(site.ErrorLogPath)
+	}
+	return runSiteAnalysis(ctx, key, req.Refresh, []string{logPath}, []string{errorPath}, cutoff, until, true, false)
 }
 
 // DetectSites scans Nginx config files and extracts server_name + log paths
@@ -126,7 +134,7 @@ func (s *NginxLogService) AnalyzeSite(ctx context.Context, req dto.NginxLogAnaly
 		return nil, err
 	}
 	key := fmt.Sprintf("%s|analyze|%s|%s", logAnalysisStrategyVersion, req.Site, req.TimeRange)
-	return runSiteAnalysis(ctx, key, req.Refresh, paths, cutoff, until, true, shared)
+	return runSiteAnalysis(ctx, key, req.Refresh, paths, s.resolveErrorLogs(req.Site), cutoff, until, true, shared)
 }
 
 // TailLog returns the last N lines of access or error log
@@ -190,11 +198,21 @@ func (s *NginxLogService) Drilldown(ctx context.Context, req dto.NginxLogDrilldo
 	}
 	until := time.Now()
 	cutoff := parseCutoffAt(req.TimeRange, until)
-	paths, shared, err := s.resolveAccessLogs(req.Site)
+	if req.Days > 0 {
+		cutoff = until.AddDate(0, 0, -req.Days)
+	}
+	var paths []string
+	var shared bool
+	var err error
+	if req.SiteID > 0 {
+		paths, err = s.websiteAccessLogs(req.SiteID)
+	} else {
+		paths, shared, err = s.resolveAccessLogs(req.Site)
+	}
 	if err != nil {
 		return nil, err
 	}
-	key := fmt.Sprintf("%s|drill|%s|%s|%s|%s", logAnalysisStrategyVersion, req.Site, req.TimeRange, req.FilterType, req.FilterValue)
+	key := fmt.Sprintf("%s|drill|%d|%s|%s|%d|%s|%s", logAnalysisStrategyVersion, req.SiteID, req.Site, req.TimeRange, req.Days, req.FilterType, req.FilterValue)
 	if item, ok := logAnalysisCache.get(key); ok && item.drill != nil {
 		out := *item.drill
 		out.Meta.CacheHit = true
@@ -236,6 +254,41 @@ func (s *NginxLogService) Drilldown(ctx context.Context, req dto.NginxLogDrilldo
 	})
 }
 
+func (s *NginxLogService) websiteAccessLogs(id uint) ([]string, error) {
+	site, err := s.websiteRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return nil, buserr.New(constant.ErrRecordNotFound)
+	}
+	logDir := fmt.Sprintf("%s/sites", global.CONF.Nginx.GetLogDir())
+	logPath := fmt.Sprintf("%s/%s.access.log", logDir, site.PrimaryDomain)
+	if strings.TrimSpace(site.AccessLogPath) != "" {
+		logPath = strings.TrimSpace(site.AccessLogPath)
+	}
+	return []string{logPath}, nil
+}
+
+func (s *NginxLogService) resolveErrorLogs(site string) []string {
+	sites, err := s.DetectSites()
+	if err != nil {
+		return nil
+	}
+	if site == "" {
+		var paths []string
+		for _, item := range sites {
+			if item.ErrorLog != "" && item.ErrorLog != "off" {
+				paths = append(paths, item.ErrorLog)
+			}
+		}
+		return dedupStrings(paths)
+	}
+	for _, item := range sites {
+		if item.Name == site && item.ErrorLog != "" && item.ErrorLog != "off" {
+			return []string{item.ErrorLog}
+		}
+	}
+	return nil
+}
+
 func (s *NginxLogService) resolveAccessLogs(site string) ([]string, bool, error) {
 	sites, err := s.DetectSites()
 	if err != nil {
@@ -269,7 +322,7 @@ func (s *NginxLogService) resolveAccessLogs(site string) ([]string, bool, error)
 	return []string{chosen}, owners > 1, nil
 }
 
-func runSiteAnalysis(ctx context.Context, key string, refresh bool, paths []string, cutoff, until time.Time, withGeo, shared bool) (*dto.NginxLogAnalysis, error) {
+func runSiteAnalysis(ctx context.Context, key string, refresh bool, paths, errorPaths []string, cutoff, until time.Time, withGeo, shared bool) (*dto.NginxLogAnalysis, error) {
 	if !refresh {
 		if item, ok := logAnalysisCache.get(key); ok && item.result != nil {
 			out := *item.result
@@ -310,6 +363,7 @@ func runSiteAnalysis(ctx context.Context, key string, refresh bool, paths []stri
 			meta.addReason("shared_log_unattributed")
 		}
 		result := sink.result(withGeo, loadBannedIPSet())
+		result.ErrorSummary = summarizeErrorLogs(errorPaths, cutoff, until)
 		result.Meta = meta.toMeta(cutoff, until, time.Now())
 		result.Meta.SharedLog = shared
 		logAnalysisCache.put(&analysisCacheItem{

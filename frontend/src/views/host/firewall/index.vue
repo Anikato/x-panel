@@ -23,6 +23,7 @@
           </el-button>
         </div>
         <el-table :data="portRules" size="small" v-loading="portLoading">
+          <el-table-column prop="number" label="#" width="70" />
           <el-table-column prop="port" :label="$t('firewall.port')" width="140" />
           <el-table-column prop="protocol" :label="$t('firewall.protocol')" width="100">
             <template #default="{ row }">
@@ -55,6 +56,7 @@
           </el-button>
         </div>
         <el-table :data="ipRules" size="small" v-loading="ipLoading">
+          <el-table-column prop="number" label="#" width="70" />
           <el-table-column prop="address" :label="$t('firewall.address')" min-width="200" />
           <el-table-column prop="strategy" :label="$t('firewall.strategy')" width="100">
             <template #default="{ row }">
@@ -136,6 +138,7 @@ interface FirewallBase {
 }
 
 interface PortRule {
+  number: number
   port: string
   protocol: string
   strategy: string
@@ -143,6 +146,7 @@ interface PortRule {
 }
 
 interface IPRule {
+  number: number
   address: string
   strategy: string
 }

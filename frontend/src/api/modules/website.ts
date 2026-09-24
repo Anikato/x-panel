@@ -133,7 +133,7 @@ export const tailNginxLog = (params: { site: string; type: string; lines: number
   return http.post('/nginx/log/tail', params)
 }
 
-export const drilldownNginxLog = (params: { site: string; timeRange: string; filterType: string; filterValue: string }, signal?: AbortSignal) => {
+export const drilldownNginxLog = (params: { site: string; siteId?: number; days?: number; timeRange: string; filterType: string; filterValue: string }, signal?: AbortSignal) => {
   return http.post('/nginx/log/drilldown', params, signal ? { signal } : undefined)
 }
 

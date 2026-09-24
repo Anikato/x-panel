@@ -216,15 +216,32 @@ func (s *HAProxyService) DeleteLB(id uint, operator string) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
-	// 删除所属 ACL
-	acls, _ := repo.NewIHAProxyACLRepo().GetListByLB(id)
-	for _, a := range acls {
-		_ = repo.NewIHAProxyACLRepo().Delete(repo.WithByID(a.ID))
-	}
-	if err := repo.NewIHAProxyLBRepo().Delete(repo.WithByID(id)); err != nil {
+	acls, err := repo.NewIHAProxyACLRepo().GetListByLB(id)
+	if err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("删除 LB: %s", old.Name), operator)
+	removedACLs := make([]model.HAProxyACLRule, 0, len(acls))
+	for _, acl := range acls {
+		if err := repo.NewIHAProxyACLRepo().Delete(repo.WithByID(acl.ID)); err != nil {
+			_ = restoreHAProxyACLs(removedACLs)
+			return err
+		}
+		removedACLs = append(removedACLs, acl)
+	}
+	if err := repo.NewIHAProxyLBRepo().Delete(repo.WithByID(id)); err != nil {
+		_ = restoreHAProxyACLs(removedACLs)
+		return err
+	}
+	if err := s.ApplyChange(fmt.Sprintf("删除 LB: %s", old.Name), operator); err != nil {
+		if rerr := repo.NewIHAProxyLBRepo().Create(&old); rerr != nil {
+			return fmt.Errorf("%v; restore lb: %w", err, rerr)
+		}
+		if rerr := restoreHAProxyACLs(acls); rerr != nil {
+			return fmt.Errorf("%v; restore acl: %w", err, rerr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) ToggleLB(req dto.HAProxyLBToggle, operator string) error {
@@ -480,14 +497,32 @@ func (s *HAProxyService) DeleteBackend(id uint, operator string) error {
 	if aclCnt+defRef > 0 {
 		return buserr.New(constant.ErrHAProxyBackendHasRefs)
 	}
-	servers, _ := repo.NewIHAProxyServerRepo().GetListByBackend(id)
-	for _, srv := range servers {
-		_ = repo.NewIHAProxyServerRepo().Delete(repo.WithByID(srv.ID))
-	}
-	if err := repo.NewIHAProxyBackendRepo().Delete(repo.WithByID(id)); err != nil {
+	servers, err := repo.NewIHAProxyServerRepo().GetListByBackend(id)
+	if err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("删除 Backend: %s", old.Name), operator)
+	removedServers := make([]model.HAProxyServer, 0, len(servers))
+	for _, srv := range servers {
+		if err := repo.NewIHAProxyServerRepo().Delete(repo.WithByID(srv.ID)); err != nil {
+			_ = restoreHAProxyServers(removedServers)
+			return err
+		}
+		removedServers = append(removedServers, srv)
+	}
+	if err := repo.NewIHAProxyBackendRepo().Delete(repo.WithByID(id)); err != nil {
+		_ = restoreHAProxyServers(removedServers)
+		return err
+	}
+	if err := s.ApplyChange(fmt.Sprintf("删除 Backend: %s", old.Name), operator); err != nil {
+		if rerr := repo.NewIHAProxyBackendRepo().Create(&old); rerr != nil {
+			return fmt.Errorf("%v; restore backend: %w", err, rerr)
+		}
+		if rerr := restoreHAProxyServers(servers); rerr != nil {
+			return fmt.Errorf("%v; restore servers: %w", err, rerr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) validateBackendName(name string, excludeID uint) error {
@@ -564,7 +599,13 @@ func (s *HAProxyService) DeleteServer(id uint, operator string) error {
 	if err := repo.NewIHAProxyServerRepo().Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
-	return s.ApplyChange(fmt.Sprintf("删除 Server: %s", old.Name), operator)
+	if err := s.ApplyChange(fmt.Sprintf("删除 Server: %s", old.Name), operator); err != nil {
+		if rerr := repo.NewIHAProxyServerRepo().Create(&old); rerr != nil {
+			return fmt.Errorf("%v; restore server: %w", err, rerr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *HAProxyService) validateServer(req *dto.HAProxyServerCreate) error {
@@ -650,10 +691,40 @@ func (s *HAProxyService) UpdateACL(req dto.HAProxyACLUpdate, operator string) er
 }
 
 func (s *HAProxyService) DeleteACL(id uint, operator string) error {
+	old, err := repo.NewIHAProxyACLRepo().Get(repo.WithByID(id))
+	if err != nil {
+		return buserr.New(constant.ErrRecordNotFound)
+	}
 	if err := repo.NewIHAProxyACLRepo().Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
-	return s.ApplyChange("删除 ACL 规则", operator)
+	if err := s.ApplyChange("删除 ACL 规则", operator); err != nil {
+		if rerr := repo.NewIHAProxyACLRepo().Create(&old); rerr != nil {
+			return fmt.Errorf("%v; restore acl: %w", err, rerr)
+		}
+		return err
+	}
+	return nil
+}
+
+func restoreHAProxyACLs(items []model.HAProxyACLRule) error {
+	for i := range items {
+		item := items[i]
+		if err := repo.NewIHAProxyACLRepo().Create(&item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func restoreHAProxyServers(items []model.HAProxyServer) error {
+	for i := range items {
+		item := items[i]
+		if err := repo.NewIHAProxyServerRepo().Create(&item); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // --- Raw Config / 版本管理 ---

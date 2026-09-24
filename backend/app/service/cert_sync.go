@@ -452,6 +452,7 @@ func (s *CertSourceService) syncFromSource(source model.CertSource) error {
 	}
 	applyCertificateRefreshPendingUpdate(updates, len(certIDs), postActionErr, now)
 	s.sourceRepo.Update(source.ID, updates)
+	replaceUnusableWebsiteCertificates(time.Now())
 
 	global.LOG.Infof("[cert-sync] Source %s: %s", source.Name, msg)
 	return nil

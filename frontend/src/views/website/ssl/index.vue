@@ -98,6 +98,11 @@
               {{ row.type === 'upload' ? '手动上传' : row.provider?.toUpperCase() }}
             </template>
           </el-table-column>
+          <el-table-column label="使用者" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ consumerSummary(row.consumers) }}
+            </template>
+          </el-table-column>
           <el-table-column :label="$t('ssl.expireDate')" width="170">
             <template #default="{ row }">
               <span :class="{ 'text-danger': isExpiring(row.expireDate) }">
@@ -536,6 +541,7 @@
             </div>
           </el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.certDir')" :span="2">{{ certDetail.filePath || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="使用者" :span="2">{{ consumerSummary(certDetail.consumers) }}</el-descriptions-item>
         </el-descriptions>
         <el-divider />
         <div class="cert-pem-section" v-if="certDetail.pem">
@@ -1457,6 +1463,18 @@ const dnsFieldPlaceholder = (field: string) => {
   if (field === 'email') return 'API Token 模式留空，Global API Key 模式填写'
   if (field === 'apiKey') return '填写 API Token 或 Global API Key'
   return ''
+}
+
+const consumerSummary = (items?: { kind: string; name: string }[]) => {
+  if (!items || items.length === 0) return '-'
+  const labels: Record<string, string> = {
+    website: '网站',
+    haproxy: 'HAProxy',
+    gost: 'GOST',
+    panel: '面板',
+    nginx: '配置',
+  }
+  return items.map((item) => `${labels[item.kind] || item.kind} ${item.name}`).join('、')
 }
 
 const isExpiring = (d: string) => {

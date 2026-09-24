@@ -2,9 +2,13 @@ package service
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +16,7 @@ import (
 	"xpanel/app/dto"
 )
 
-const logAnalysisStrategyVersion = "active-v1"
+const logAnalysisStrategyVersion = "active-v2"
 
 var (
 	logScanMaxBytes     int64 = 64 << 20
@@ -152,6 +156,7 @@ func (m *scanMetaAcc) toMeta(from, to, generated time.Time) dto.NginxLogAnalysis
 }
 
 func scanLogFiles(ctx context.Context, paths []string, cutoff, until time.Time, limits scanLimits, sink logSink) scanMetaAcc {
+	paths = expandLogPaths(paths)
 	meta := scanMetaAcc{filesTotal: len(paths)}
 	budget := newScanBudget(limits, until)
 	if logScanTestHook != nil {
@@ -201,7 +206,59 @@ func scanLogFiles(ctx context.Context, paths []string, cutoff, until time.Time, 
 	return meta
 }
 
+func expandLogPaths(paths []string) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	add := func(path string) {
+		if path == "" || path == "off" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		out = append(out, path)
+	}
+	for _, path := range paths {
+		if path == "" || path == "off" {
+			continue
+		}
+		candidates := []string{path}
+		for i := 1; i <= 14; i++ {
+			candidates = append(candidates, fmt.Sprintf("%s.%d", path, i), fmt.Sprintf("%s.%d.gz", path, i))
+		}
+		dated, _ := filepath.Glob(path + "-*")
+		sort.Sort(sort.Reverse(sort.StringSlice(dated)))
+		candidates = append(candidates, dated...)
+		found := false
+		for _, candidate := range candidates {
+			info, err := os.Stat(candidate)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			add(candidate)
+			found = true
+		}
+		if !found {
+			add(path)
+		}
+	}
+	return out
+}
+
 func scanLogFile(ctx context.Context, path string, snapshot int64, cutoff time.Time, budget *scanBudget, sink logSink, meta *scanMetaAcc) error {
+	if strings.HasSuffix(strings.ToLower(path), ".gz") {
+		remain := budget.limits.MaxBytes - budget.bytes
+		if budget.limits.MaxBytes > 0 && remain <= 0 {
+			budget.reason = "byte_limit"
+			return nil
+		}
+		data, err := readGzipLimited(path, remain)
+		if err != nil {
+			return err
+		}
+		return scanLogReadAt(ctx, bytes.NewReader(data), int64(len(data)), cutoff, budget, sink, meta)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -212,6 +269,31 @@ func scanLogFile(ctx context.Context, path string, snapshot int64, cutoff time.T
 		snapshot = live.Size()
 		meta.addReason("truncated_file")
 	}
+	return scanLogReadAt(ctx, f, snapshot, cutoff, budget, sink, meta)
+}
+
+func readGzipLimited(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	if limit <= 0 {
+		limit = 8 << 20
+	}
+	return io.ReadAll(io.LimitReader(zr, limit))
+}
+
+type logReadAt interface {
+	ReadAt(p []byte, off int64) (int, error)
+}
+
+func scanLogReadAt(ctx context.Context, f logReadAt, snapshot int64, cutoff time.Time, budget *scanBudget, sink logSink, meta *scanMetaAcc) error {
 	end := snapshot
 	if end == 0 {
 		return nil
@@ -331,7 +413,7 @@ func scanLogFile(ctx context.Context, path string, snapshot int64, cutoff time.T
 	return nil
 }
 
-func findLastNewline(ctx context.Context, f *os.File, end int64, budget *scanBudget, meta *scanMetaAcc) (int64, bool, error) {
+func findLastNewline(ctx context.Context, f logReadAt, end int64, budget *scanBudget, meta *scanMetaAcc) (int64, bool, error) {
 	chunkSize := int64(logScanChunkSize)
 	if chunkSize <= 0 {
 		chunkSize = 64 * 1024
@@ -382,10 +464,11 @@ func findLastNewline(ctx context.Context, f *os.File, end int64, budget *scanBud
 }
 
 func parseCombinedLine(line []byte) (logEntry, bool) {
-	m := combinedLogRe.FindSubmatch(line)
-	if m == nil {
+	loc := combinedLogRe.FindSubmatchIndex(line)
+	if loc == nil {
 		return logEntry{}, false
 	}
+	m := combinedLogRe.FindSubmatch(line)
 	t, err := time.Parse("02/Jan/2006:15:04:05 -0700", string(m[2]))
 	if err != nil {
 		return logEntry{}, false
@@ -398,7 +481,7 @@ func parseCombinedLine(line []byte) (logEntry, bool) {
 		method = parts[0]
 		url = parts[1]
 	}
-	return logEntry{
+	entry := logEntry{
 		IP:        string(m[1]),
 		Time:      t,
 		Method:    method,
@@ -406,7 +489,31 @@ func parseCombinedLine(line []byte) (logEntry, bool) {
 		Status:    status,
 		Bytes:     nBytes,
 		UserAgent: string(m[6]),
-	}, true
+	}
+	rest := strings.Fields(string(line[loc[1]:]))
+	if len(rest) > 0 {
+		if value, err := strconv.ParseFloat(rest[0], 64); err == nil {
+			entry.RequestSeconds = value
+			entry.HasRequestTime = true
+		}
+	}
+	if len(rest) > 1 {
+		raw := strings.Trim(rest[1], `"`)
+		if raw != "" && raw != "-" {
+			part := strings.TrimSpace(strings.Split(raw, ",")[0])
+			if value, err := strconv.ParseFloat(part, 64); err == nil {
+				entry.UpstreamSeconds = value
+				entry.HasUpstreamTime = true
+			}
+		}
+	}
+	return entry, true
+}
+
+type slowStat struct {
+	count int64
+	sum   float64
+	max   float64
 }
 
 type statsSink struct {
@@ -414,10 +521,14 @@ type statsSink struct {
 	capped          bool
 	totalBytes      int64
 	errors          int64
+	requestSum      float64
+	requestCount    int64
+	slowRequests    int64
 	ipSet           map[string]struct{}
 	urlCount        map[string]int64
 	ipCount         map[string]int64
 	uaCount         map[string]int64
+	slowURL         map[string]*slowStat
 	hourlyReqs      map[string]int64
 	hourlyBytes     map[string]int64
 	dailyReqs       map[string]int64
@@ -437,6 +548,7 @@ func newStatsSink(maxKeys int) *statsSink {
 		urlCount:        map[string]int64{},
 		ipCount:         map[string]int64{},
 		uaCount:         map[string]int64{},
+		slowURL:         map[string]*slowStat{},
 		hourlyReqs:      map[string]int64{},
 		hourlyBytes:     map[string]int64{},
 		dailyReqs:       map[string]int64{},
@@ -465,8 +577,15 @@ func (s *statsSink) add(e logEntry) bool {
 	}
 	s.ipSet[e.IP] = struct{}{}
 	s.totalBytes += e.Bytes
-	cat := statusClass(e.Status)
-	s.statusCodes[cat]++
+	s.statusCodes[strconv.Itoa(e.Status)]++
+	if e.HasRequestTime {
+		s.requestSum += e.RequestSeconds
+		s.requestCount++
+		if e.RequestSeconds >= 1 {
+			s.slowRequests++
+		}
+		s.noteSlow(e.URL, e.RequestSeconds)
+	}
 	if e.Status >= 400 {
 		s.errors++
 	}
@@ -491,8 +610,46 @@ func (s *statsSink) add(e logEntry) bool {
 	return true
 }
 
-func statusClass(status int) string {
-	return strconv.Itoa(status/100) + "xx"
+func (s *statsSink) noteSlow(url string, seconds float64) {
+	if s.maxKeys > 0 {
+		if _, ok := s.slowURL[url]; !ok && len(s.slowURL) >= s.maxKeys {
+			return
+		}
+	}
+	item := s.slowURL[url]
+	if item == nil {
+		item = &slowStat{}
+		s.slowURL[url] = item
+	}
+	item.count++
+	item.sum += seconds
+	if seconds > item.max {
+		item.max = seconds
+	}
+}
+
+func topSlow(items map[string]*slowStat, n int) []dto.SlowURL {
+	out := make([]dto.SlowURL, 0, len(items))
+	for name, item := range items {
+		if item == nil || item.count == 0 {
+			continue
+		}
+		out = append(out, dto.SlowURL{
+			Name: name, Count: item.count,
+			AvgMs: item.sum / float64(item.count) * 1000,
+			MaxMs: item.max * 1000,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].MaxMs == out[j].MaxMs {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].MaxMs > out[j].MaxMs
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
 }
 
 func (s *statsSink) result(withGeo bool, banned map[string]bool) *dto.NginxLogAnalysis {
@@ -522,6 +679,11 @@ func (s *statsSink) result(withGeo bool, banned map[string]bool) *dto.NginxLogAn
 	}
 	out.HourlyStats = timeSeries(s.hourlyReqs, s.hourlyBytes)
 	out.DailyStats = timeSeries(s.dailyReqs, s.dailyBytes)
+	out.SlowRequests = s.slowRequests
+	out.TopSlowURLs = topSlow(s.slowURL, 10)
+	if s.requestCount > 0 {
+		out.AvgRequestMs = s.requestSum / float64(s.requestCount) * 1000
+	}
 	return out
 }
 

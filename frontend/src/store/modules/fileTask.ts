@@ -46,6 +46,7 @@ export const useFileTaskStore = defineStore('fileTask', () => {
       // 过滤掉已被用户清除的已完成任务
       tasks.value = all.filter(t => !(clearedIds.has(t.id) && t.status !== 'running'))
     } catch { /* ignore */ }
+    schedulePolling()
   }
 
   function clearFinished() {
@@ -58,14 +59,11 @@ export const useFileTaskStore = defineStore('fileTask', () => {
     tasks.value = tasks.value.filter(t => t.status === 'running')
   }
 
-  function startPolling() {
+  function schedulePolling() {
     if (pollTimer) clearInterval(pollTimer)
-    // 运行中 1s，空闲 30s
     const interval = runningCount.value > 0 ? 1000 : 30000
-    pollTimer = setInterval(async () => {
-      await fetchTasks()
-      // 频率自适应：任务状态变化时重新设定间隔
-      startPolling()
+    pollTimer = setInterval(() => {
+      void fetchTasks()
     }, interval)
   }
 
@@ -81,8 +79,7 @@ export const useFileTaskStore = defineStore('fileTask', () => {
   function init() {
     if (initialized) return
     initialized = true
-    fetchTasks()
-    startPolling()
+    void fetchTasks()
   }
 
   return { tasks, runningCount, finishedTasks, fetchTasks, clearFinished, init, stopPolling }

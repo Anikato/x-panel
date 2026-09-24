@@ -16,7 +16,7 @@ export const createPortRule = (params: { port: string; protocol: string; strateg
   return http.post('/firewall/port', params)
 }
 
-export const deletePortRule = (params: { port: string; protocol: string; strategy: string; from?: string }) => {
+export const deletePortRule = (params: { number?: number; port: string; protocol: string; strategy: string; from?: string }) => {
   return http.post('/firewall/port/del', params)
 }
 
@@ -28,6 +28,6 @@ export const createIPRule = (params: { address: string; strategy: string }) => {
   return http.post('/firewall/ip', params)
 }
 
-export const deleteIPRule = (params: { address: string; strategy: string }) => {
+export const deleteIPRule = (params: { number?: number; address: string; strategy: string }) => {
   return http.post('/firewall/ip/del', params)
 }

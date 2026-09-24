@@ -567,6 +567,7 @@ export default {
     unread: '未读',
     read: '已读',
     markRead: '标为已读',
+    clearBadge: '清除',
     markAllRead: '全部已读',
     clearRead: '清空已读',
     clearAll: '清空全部',
@@ -1021,6 +1022,7 @@ export default {
     connected: '已连接',
     disconnected: '未连接',
     unnegotiated: '未协商',
+    unreported: '不提供协商速率',
     duplexFull: '全双工',
     duplexHalf: '半双工',
     kindEthernet: '以太网',
@@ -1290,7 +1292,7 @@ export default {
     edit: '编辑网站',
     domain: '主域名',
     otherDomains: '其他域名',
-    otherDomainsHint: '多个域名用逗号分隔',
+    otherDomainsHint: '可添加多个，回车确认，也能一次粘贴',
     type: '网站类型',
     typeStatic: '静态网站',
     typeProxy: '反向代理',
@@ -1381,7 +1383,7 @@ export default {
     proxyOptHint: '反向代理已内置 Buffer/Timeout 优化（connect 60s, read 600s, buffers 8x8k）',
     // 自定义
     customSetting: '自定义配置',
-    customNginxHint: '自定义 Nginx server 级指令。如与面板托管指令重复，面板会自动跳过冲突项。支持添加自定义 location 块、额外 header 等。',
+    customNginxHint: '写在这个网站的 HTTP server 块里面，可以加 location、header、反代。stream、TCP/UDP（例如游戏或 Steam 的端口转发）必须放在 http 外面，站点配置文件做不到，需要单独的配置。',
     // Nginx 配置
     nginxConfig: 'Nginx 配置',
     configPreview: '配置预览',

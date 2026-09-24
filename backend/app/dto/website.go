@@ -47,6 +47,7 @@ type WebsiteUpdate struct {
 	// SSL
 	SSLEnable     bool   `json:"sslEnable"`
 	CertificateID uint   `json:"certificateID"`
+	SkipCertAdapt bool   `json:"skipCertAdapt"`
 	HttpConfig    string `json:"httpConfig"`
 	HSTS          bool   `json:"hsts"`
 	Http2Enable   bool   `json:"http2Enable"`
@@ -139,6 +140,7 @@ type WebsiteDetail struct {
 
 	SSLEnable     bool   `json:"sslEnable"`
 	CertificateID uint   `json:"certificateID"`
+	SkipCertAdapt bool   `json:"skipCertAdapt"`
 	HttpConfig    string `json:"httpConfig"`
 	HSTS          bool   `json:"hsts"`
 	Http2Enable   bool   `json:"http2Enable"`

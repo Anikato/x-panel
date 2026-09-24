@@ -20,16 +20,13 @@ func CertServerAuth() gin.HandlerFunc {
 
 		token := c.GetHeader("X-Cert-Token")
 		if token == "" {
-			token = c.Query("token")
-		}
-		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "cert server token required"})
 			c.Abort()
 			return
 		}
 
 		serverToken, _ := settingRepo.GetValueByKey("CertServerToken")
-		if serverToken == "" || serverToken != token {
+		if !secretEqual(token, serverToken) {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid cert server token"})
 			c.Abort()
 			return

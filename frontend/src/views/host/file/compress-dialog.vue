@@ -101,6 +101,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { compressFile, decompressFile, listArchive } from '@/api/modules/file'
+import { useFileTaskStore } from '@/store/modules/fileTask'
 
 const { t } = useI18n()
 const emit = defineEmits(['done'])
@@ -160,6 +161,7 @@ const doCompress = async () => {
     })
     if (res.data?.taskID) {
       ElMessage.info(t('file.taskStarted'))
+      void useFileTaskStore().fetchTasks()
     } else {
       ElMessage.success(t('commons.success'))
     }
@@ -202,6 +204,7 @@ const doDecompress = async () => {
     const res: any = await decompressFile(decompressForm.value)
     if (res.data?.taskID) {
       ElMessage.info(t('file.taskStarted'))
+      void useFileTaskStore().fetchTasks()
     } else {
       ElMessage.success(t('commons.success'))
     }

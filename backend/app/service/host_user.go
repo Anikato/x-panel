@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -112,6 +113,9 @@ func (s *HostUserService) List(showSystem bool) ([]LinuxUser, error) {
 }
 
 func (s *HostUserService) Create(req LinuxUserCreate) error {
+	if err := validateLinuxAccount(req.Username, req.Password, req.Home, req.Shell, req.Comment); err != nil {
+		return err
+	}
 	args := []string{}
 	if req.Comment != "" {
 		args = append(args, "-c", req.Comment)
@@ -148,6 +152,9 @@ func (s *HostUserService) Create(req LinuxUserCreate) error {
 }
 
 func (s *HostUserService) Update(req LinuxUserUpdate) error {
+	if err := validateLinuxAccount(req.Username, req.Password, req.Home, req.Shell, req.Comment); err != nil {
+		return err
+	}
 	args := []string{}
 	if req.Shell != "" {
 		args = append(args, "-s", req.Shell)
@@ -195,6 +202,9 @@ func (s *HostUserService) setSudo(username string, enable bool) {
 }
 
 func (s *HostUserService) Delete(req LinuxUserDelete) error {
+	if err := validateLinuxAccount(req.Username, "", "", "", ""); err != nil {
+		return err
+	}
 	args := []string{}
 	if req.RemoveHome {
 		args = append(args, "-r")
@@ -204,6 +214,23 @@ func (s *HostUserService) Delete(req LinuxUserDelete) error {
 	out, err := exec.Command("userdel", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("userdel failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+var linuxUsernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+func validateLinuxAccount(username, password, home, shell, comment string) error {
+	if !linuxUsernamePattern.MatchString(username) {
+		return fmt.Errorf("invalid username")
+	}
+	if strings.ContainsAny(password, "\r\n") {
+		return fmt.Errorf("invalid password")
+	}
+	for _, field := range []string{home, shell, comment} {
+		if strings.ContainsAny(field, "\r\n") {
+			return fmt.Errorf("invalid account field")
+		}
 	}
 	return nil
 }

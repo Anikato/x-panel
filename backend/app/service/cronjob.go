@@ -213,15 +213,28 @@ func (s *CronjobService) UpdateStatus(id uint, status string) error {
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
+	wasEnabled := job.Status == constant.StatusEnable
 	if status == constant.StatusEnable {
 		s.removeCronJob(job)
 		if err := s.addCronJob(job); err != nil {
+			if wasEnabled {
+				s.restoreCronJob(job)
+			}
 			return err
 		}
 	} else {
 		s.removeCronJob(job)
 	}
-	return s.cronjobRepo.Update(id, map[string]interface{}{"status": status})
+	if err := s.cronjobRepo.Update(id, map[string]interface{}{"status": status}); err != nil {
+		if wasEnabled {
+			s.removeCronJob(job)
+			s.restoreCronJob(job)
+		} else {
+			s.removeCronJob(job)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *CronjobService) HandleOnce(id uint) error {

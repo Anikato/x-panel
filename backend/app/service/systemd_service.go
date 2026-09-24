@@ -361,22 +361,32 @@ func (s *SystemdServiceImpl) SaveUnitContent(name, content string) error {
 		return fmt.Errorf("invalid unit file path: %s", unitFile)
 	}
 
-	backup, _ := os.ReadFile(unitFile)
+	backup, readErr := os.ReadFile(unitFile)
+	existed := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("read unit file %s: %w", unitFile, readErr)
+	}
 	if err := os.WriteFile(unitFile, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write unit file: %w", err)
 	}
+	restore := func() {
+		if existed {
+			_ = os.WriteFile(unitFile, backup, 0644)
+		} else {
+			_ = os.Remove(unitFile)
+		}
+		_ = exec.Command("systemctl", "daemon-reload").Run()
+	}
 
 	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
-		// 回滚
-		if backup != nil {
-			_ = os.WriteFile(unitFile, backup, 0644)
-			_ = exec.Command("systemctl", "daemon-reload").Run()
-		}
+		restore()
 		return fmt.Errorf("daemon-reload failed: %s", strings.TrimSpace(string(out)))
 	}
 
 	if s.isActive(name) {
-		_ = exec.Command("systemctl", "restart", name).Run()
+		if out, err := exec.Command("systemctl", "restart", name).CombinedOutput(); err != nil {
+			return fmt.Errorf("restart %s failed: %s", name, strings.TrimSpace(string(out)))
+		}
 	}
 	return nil
 }

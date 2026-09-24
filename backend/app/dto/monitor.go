@@ -16,8 +16,8 @@ type SystemStats struct {
 
 // SensorTemp 硬件温度传感器读数
 type SensorTemp struct {
-	Key      string  `json:"key"`  // 传感器标识，如 coretemp_package_id_0 / nvme_composite
-	Temp     float64 `json:"temp"` // 当前温度（摄氏度）
+	Key      string  `json:"key"`                // 传感器标识，如 coretemp_package_id_0 / nvme_composite
+	Temp     float64 `json:"temp"`               // 当前温度（摄氏度）
 	High     float64 `json:"high,omitempty"`     // 告警阈值
 	Critical float64 `json:"critical,omitempty"` // 严重阈值
 }
@@ -41,22 +41,23 @@ type SystemHostInfo struct {
 
 // InterfaceInfo 网卡信息
 type InterfaceInfo struct {
-	Name      string   `json:"name"`
-	IPv4      []string `json:"ipv4"`
-	IPv6      []string `json:"ipv6"`
-	MAC       string   `json:"mac"`
-	Status    string   `json:"status"` // admin up / down
-	Connected bool     `json:"connected"`
-	Kind      string   `json:"kind"` // ethernet / wifi / bridge / bond / vlan / virtual
-	SpeedMbps int      `json:"speedMbps,omitempty"`
-	Duplex    string   `json:"duplex,omitempty"`
-	OperState string   `json:"operState,omitempty"`
+	Name       string   `json:"name"`
+	IPv4       []string `json:"ipv4"`
+	IPv6       []string `json:"ipv6"`
+	MAC        string   `json:"mac"`
+	Status     string   `json:"status"` // admin up / down
+	Connected  bool     `json:"connected"`
+	Kind       string   `json:"kind"` // ethernet / wifi / bridge / bond / vlan / virtual
+	SpeedMbps  int      `json:"speedMbps,omitempty"`
+	SpeedState string   `json:"speedState,omitempty"` // negotiated, unnegotiated, unreported
+	Duplex     string   `json:"duplex,omitempty"`
+	OperState  string   `json:"operState,omitempty"`
 }
 
 // CPUStats CPU 状态
 type CPUStats struct {
 	ModelName    string    `json:"modelName"`
-	Cores        int       `json:"cores"`       // 物理核心
+	Cores        int       `json:"cores"`        // 物理核心
 	LogicalCores int       `json:"logicalCores"` // 逻辑核心
 	UsagePercent float64   `json:"usagePercent"`
 	PerCPU       []float64 `json:"perCPU,omitempty"` // 每核使用率
@@ -64,7 +65,7 @@ type CPUStats struct {
 
 // MemoryStats 内存状态
 type MemoryStats struct {
-	Total       uint64  `json:"total"`       // bytes
+	Total       uint64  `json:"total"` // bytes
 	Used        uint64  `json:"used"`
 	Available   uint64  `json:"available"`
 	UsedPercent float64 `json:"usedPercent"`
@@ -82,16 +83,16 @@ type LoadStats struct {
 
 // DiskStats 磁盘使用状态
 type DiskStats struct {
-	Device      string  `json:"device"`
-	MountPoint  string  `json:"mountPoint"`
-	FSType      string  `json:"fsType"`
-	Total       uint64  `json:"total"`
-	Used        uint64  `json:"used"`
-	Free        uint64  `json:"free"`
-	UsedPercent float64 `json:"usedPercent"`
-	InodesTotal uint64  `json:"inodesTotal"`
-	InodesUsed  uint64  `json:"inodesUsed"`
-	InodesFree  uint64  `json:"inodesFree"`
+	Device        string  `json:"device"`
+	MountPoint    string  `json:"mountPoint"`
+	FSType        string  `json:"fsType"`
+	Total         uint64  `json:"total"`
+	Used          uint64  `json:"used"`
+	Free          uint64  `json:"free"`
+	UsedPercent   float64 `json:"usedPercent"`
+	InodesTotal   uint64  `json:"inodesTotal"`
+	InodesUsed    uint64  `json:"inodesUsed"`
+	InodesFree    uint64  `json:"inodesFree"`
 	InodesPercent float64 `json:"inodesPercent"`
 }
 

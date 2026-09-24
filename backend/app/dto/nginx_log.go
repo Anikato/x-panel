@@ -24,7 +24,18 @@ type NginxLogAnalysis struct {
 	TopThreats      []RankItem           `json:"topThreats"`
 	CrawlerRequests int64                `json:"crawlerRequests"`
 	TopCrawlers     []RankItem           `json:"topCrawlers"`
+	AvgRequestMs    float64              `json:"avgRequestMs"`
+	SlowRequests    int64                `json:"slowRequests"`
+	TopSlowURLs     []SlowURL            `json:"topSlowUrls"`
+	ErrorSummary    []RankItem           `json:"errorSummary"`
 	Meta            NginxLogAnalysisMeta `json:"meta"`
+}
+
+type SlowURL struct {
+	Name  string  `json:"name"`
+	Count int64   `json:"count"`
+	AvgMs float64 `json:"avgMs"`
+	MaxMs float64 `json:"maxMs"`
 }
 
 type NginxLogAnalysisMeta struct {
@@ -97,8 +108,10 @@ type NginxLogTailResp struct {
 
 type NginxLogDrilldownReq struct {
 	Site        string `json:"site"`
+	SiteID      uint   `json:"siteId"`
+	Days        int    `json:"days"`
 	TimeRange   string `json:"timeRange"`
-	FilterType  string `json:"filterType" validate:"required,oneof=url threat"`
+	FilterType  string `json:"filterType" validate:"required,oneof=url ip threat"`
 	FilterValue string `json:"filterValue" validate:"required"`
 }
 

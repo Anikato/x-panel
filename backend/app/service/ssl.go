@@ -190,11 +190,23 @@ func (s *CertificateService) SearchWithPage(req dto.SearchCertReq) (int64, []dto
 		dnsMap[d.ID] = d.Name
 	}
 
+	ids := make([]uint, 0, len(certs))
+	for _, c := range certs {
+		ids = append(ids, c.ID)
+	}
+	consumers, err := listCertificateConsumers(ids)
+	if err != nil {
+		return 0, nil, err
+	}
 	var items []dto.CertificateInfo
 	for _, c := range certs {
 		info := certificateToInfo(c)
 		info.AcmeAccountEmail = acmeMap[c.AcmeAccountID]
 		info.DnsAccountName = dnsMap[c.DnsAccountID]
+		info.Consumers = consumers[c.ID]
+		if info.Consumers == nil {
+			info.Consumers = []dto.CertificateConsumer{}
+		}
 		items = append(items, info)
 	}
 	return total, items, nil
@@ -223,11 +235,19 @@ func (s *CertificateService) GetDetail(id uint) (*dto.CertificateDetail, error) 
 		}
 	}
 
+	consumers, err := listCertificateConsumers([]uint{cert.ID})
+	if err != nil {
+		return nil, err
+	}
 	detail := &dto.CertificateDetail{
 		CertificateInfo: func() dto.CertificateInfo {
 			info := certificateToInfo(cert)
 			info.AcmeAccountEmail = acmeEmail
 			info.DnsAccountName = dnsName
+			info.Consumers = consumers[cert.ID]
+			if info.Consumers == nil {
+				info.Consumers = []dto.CertificateConsumer{}
+			}
 			return info
 		}(),
 		Pem:           cert.Pem,
@@ -1094,4 +1114,5 @@ func AutoRenewCerts() {
 	}
 
 	wg.Wait()
+	replaceUnusableWebsiteCertificates(time.Now())
 }

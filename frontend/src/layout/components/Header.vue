@@ -101,12 +101,15 @@
         <div class="notification-panel">
           <div class="notification-panel-head">
             <strong>{{ t('notification.title') }}</strong>
-            <el-button link type="primary" @click="openNotifications">{{ t('notification.viewAll') }}</el-button>
+            <span class="notification-panel-actions">
+              <el-button v-if="unreadNotifications > 0" link @click="clearNotifications">{{ t('notification.clearBadge') }}</el-button>
+              <el-button link type="primary" @click="openNotifications">{{ t('notification.viewAll') }}</el-button>
+            </span>
           </div>
-          <div v-if="recentNotifications.length === 0" class="notification-empty">{{ t('commons.noData') }}</div>
+          <div v-if="unreadRecent.length === 0" class="notification-empty">{{ t('commons.noData') }}</div>
           <div v-else class="notification-recent-list">
             <div
-              v-for="item in recentNotifications"
+              v-for="item in unreadRecent"
               :key="item.id"
               class="notification-recent-item"
               :class="{ unread: !item.readAt }"
@@ -191,7 +194,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useGlobalStore } from '@/store/modules/global'
@@ -207,6 +210,7 @@ import { rebootServer, restartPanel } from '@/api/modules/setting'
 import {
   getNotificationSummary,
   getRecentNotifications,
+  markAllNotificationsRead,
   markNotificationsRead,
 } from '@/api/modules/notification'
 import { useI18n } from 'vue-i18n'
@@ -323,6 +327,8 @@ const fetchVersion = async () => {
   } catch { /* ignore */ }
 }
 
+const unreadRecent = computed(() => recentNotifications.value.filter((item) => !item.readAt))
+
 const fetchNotificationSummary = async () => {
   try {
     const res: any = await getNotificationSummary()
@@ -416,7 +422,28 @@ const toggleFloatTerm = () => {
   }
 }
 
+const clearNotifications = async () => {
+  await markAllNotificationsRead()
+  unreadNotifications.value = 0
+  await fetchNotificationSummary()
+  await fetchRecentNotifications()
+}
+
 const openNotifications = () => router.push('/notifications')
+
+watch(() => fileTaskStore.runningCount, (now, prev) => {
+  if ((prev ?? 0) > now) {
+    void fetchNotificationSummary()
+    void fetchRecentNotifications()
+  }
+})
+
+watch(() => uploadStore.doneCount, (now, prev) => {
+  if (now > (prev ?? 0)) {
+    void fetchNotificationSummary()
+    void fetchRecentNotifications()
+  }
+})
 
 const focusSearch = () => searchInput.value?.focus?.()
 
@@ -648,6 +675,11 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 8px;
+  gap: 8px;
+}
+
+.notification-panel-actions {
+  display: flex;
   gap: 8px;
 }
 

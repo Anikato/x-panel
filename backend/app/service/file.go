@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1453,8 +1454,7 @@ func (s *FileService) WgetWithTracker(ctx context.Context, req dto.FileWgetReq, 
 		return buserr.WithDetail(constant.ErrInvalidParams, "下载地址无效", err)
 	}
 
-	client := &http.Client{Timeout: 0}
-	resp, err := client.Do(httpReq)
+	resp, err := newFileDownloadClient().Do(httpReq)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -1465,6 +1465,14 @@ func (s *FileService) WgetWithTracker(ctx context.Context, req dto.FileWgetReq, 
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return buserr.WithDetail(constant.ErrInternalServer, fmt.Sprintf("下载失败，HTTP 状态码: %d", resp.StatusCode), nil)
+	}
+
+	budget, err := downloadBudget(dst)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, "无法确认磁盘剩余空间: "+err.Error(), err)
+	}
+	if resp.ContentLength > budget {
+		return buserr.WithDetail(constant.ErrInternalServer, "下载内容超过目标磁盘剩余空间", nil)
 	}
 
 	fileName := downloadFileName(resp, parsedURL)
@@ -1482,16 +1490,22 @@ func (s *FileService) WgetWithTracker(ctx context.Context, req dto.FileWgetReq, 
 		return buserr.WithDetail(constant.ErrInternalServer, "创建下载临时文件失败: "+err.Error(), err)
 	}
 
+	var written int64
 	copyErr := func() error {
 		defer out.Close()
-		reader := io.Reader(resp.Body)
+		reader := io.Reader(io.LimitReader(resp.Body, budget+1))
 		if tracker != nil {
-			reader = &progressReader{reader: resp.Body, tracker: tracker}
+			reader = &progressReader{reader: reader, tracker: tracker}
 		}
 		buf := make([]byte, 32*1024)
-		_, err := io.CopyBuffer(out, reader, buf)
+		var err error
+		written, err = io.CopyBuffer(out, reader, buf)
 		return err
 	}()
+	if copyErr == nil && written > budget {
+		_ = os.Remove(tmpPath)
+		return buserr.WithDetail(constant.ErrInternalServer, "下载内容超过目标磁盘剩余空间", nil)
+	}
 	if copyErr != nil {
 		_ = os.Remove(tmpPath)
 		if ctx.Err() != nil {
@@ -1506,6 +1520,37 @@ func (s *FileService) WgetWithTracker(ctx context.Context, req dto.FileWgetReq, 
 	}
 	global.LOG.Infof("File downloaded: %s → %s", req.URL, targetPath)
 	return nil
+}
+
+const downloadSpaceReserve int64 = 64 << 20
+
+var downloadBudget = filesystemDownloadBudget
+
+func filesystemDownloadBudget(dir string) (int64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(dir, &stat); err != nil {
+		return 0, err
+	}
+	avail := int64(stat.Bavail) * int64(stat.Bsize)
+	if avail <= downloadSpaceReserve {
+		return 0, nil
+	}
+	return avail - downloadSpaceReserve, nil
+}
+
+func newFileDownloadClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   15 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 60 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
 }
 
 func downloadFileName(resp *http.Response, fallbackURL *url.URL) string {

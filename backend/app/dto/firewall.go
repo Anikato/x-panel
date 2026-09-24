@@ -4,7 +4,7 @@ package dto
 type FirewallBaseInfo struct {
 	IsExist  bool   `json:"isExist"`
 	IsActive bool   `json:"isActive"`
-	Name     string `json:"name"`    // ufw / firewalld
+	Name     string `json:"name"` // ufw / firewalld
 	Version  string `json:"version"`
 }
 
@@ -15,6 +15,7 @@ type FirewallOperateReq struct {
 
 // PortRuleInfo 端口规则信息
 type PortRuleInfo struct {
+	Number   int    `json:"number"`
 	Port     string `json:"port"`     // e.g. "80" or "8000:8100"
 	Protocol string `json:"protocol"` // tcp, udp, tcp/udp
 	Strategy string `json:"strategy"` // allow, deny
@@ -38,6 +39,7 @@ type PortRuleCreate struct {
 
 // PortRuleDelete 删除端口规则
 type PortRuleDelete struct {
+	Number   int    `json:"number"`
 	Port     string `json:"port" binding:"required"`
 	Protocol string `json:"protocol" binding:"required"`
 	Strategy string `json:"strategy" binding:"required"`
@@ -46,6 +48,7 @@ type PortRuleDelete struct {
 
 // IPRuleInfo IP 规则信息
 type IPRuleInfo struct {
+	Number   int    `json:"number"`
 	Address  string `json:"address"`
 	Strategy string `json:"strategy"` // allow, deny
 }
@@ -58,15 +61,16 @@ type IPRuleCreate struct {
 
 // IPRuleDelete 删除 IP 规则
 type IPRuleDelete struct {
+	Number   int    `json:"number"`
 	Address  string `json:"address" binding:"required"`
 	Strategy string `json:"strategy" binding:"required"`
 }
 
 // ForwardRuleInfo 转发规则信息
 type ForwardRuleInfo struct {
-	Port     string `json:"port"`
-	Protocol string `json:"protocol"`
-	TargetIP string `json:"targetIP"`
+	Port       string `json:"port"`
+	Protocol   string `json:"protocol"`
+	TargetIP   string `json:"targetIP"`
 	TargetPort string `json:"targetPort"`
 }
 

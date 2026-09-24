@@ -97,16 +97,47 @@ func (g *NginxConfigGenerator) Generate(site model.Website) (string, error) {
 }
 
 func (g *NginxConfigGenerator) collectDomains(site model.Website) []string {
-	domains := []string{site.PrimaryDomain}
-	if site.Domains != "" {
-		for _, d := range strings.Split(site.Domains, ",") {
-			d = strings.TrimSpace(d)
-			if d != "" && d != site.PrimaryDomain {
-				domains = append(domains, d)
-			}
+	return splitSiteDomains(site.PrimaryDomain, site.Domains)
+}
+
+func splitSiteDomains(primary, extra string) []string {
+	seen := make(map[string]struct{})
+	var domains []string
+	add := func(domain string) {
+		domain = strings.Trim(strings.TrimSpace(domain), ".")
+		if domain == "" {
+			return
 		}
+		if _, exists := seen[domain]; exists {
+			return
+		}
+		seen[domain] = struct{}{}
+		domains = append(domains, domain)
+	}
+	add(primary)
+	for _, domain := range strings.FieldsFunc(extra, isDomainSeparator) {
+		add(domain)
 	}
 	return domains
+}
+
+func normalizeExtraDomains(primary, extra string) string {
+	var extras []string
+	for _, domain := range splitSiteDomains(primary, extra) {
+		if domain != strings.TrimSpace(primary) {
+			extras = append(extras, domain)
+		}
+	}
+	return strings.Join(extras, ",")
+}
+
+func isDomainSeparator(value rune) bool {
+	switch value {
+	case ',', '，', ';', '；', ' ', '\n', '\t', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 func (g *NginxConfigGenerator) writeListenHTTP(b *strings.Builder, site model.Website) {
@@ -315,7 +346,7 @@ func (g *NginxConfigGenerator) writeStaticCacheBlock(b *strings.Builder, site mo
 func (g *NginxConfigGenerator) writeServerBody(b *strings.Builder, site model.Website, isHTTPS bool, certPath, keyPath string) {
 	logDir := g.getSiteLogDir()
 	if site.AccessLog {
-		fmt.Fprintf(b, "    access_log %s/%s.access.log;\n", logDir, site.PrimaryDomain)
+		fmt.Fprintf(b, "    access_log %s/%s.access.log xpanel;\n", logDir, site.PrimaryDomain)
 	} else {
 		b.WriteString("    access_log off;\n")
 	}
@@ -536,6 +567,24 @@ func GetSiteConfPath(alias string) string {
 	return filepath.Join(global.CONF.Nginx.GetSitesDir(), alias+".conf")
 }
 
+const xpanelLogFormat = "log_format xpanel '$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\" $request_time \"$upstream_response_time\"';"
+
+func EnsureAccessLogFormat() error {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return nil
+	}
+	mainConf := nc.GetMainConf()
+	data, err := os.ReadFile(mainConf)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(data), "log_format xpanel") {
+		return nil
+	}
+	return insertNginxInclude(mainConf, string(data), xpanelLogFormat)
+}
+
 // EnsureNginxInclude 确保 nginx.conf 包含站点配置目录
 func EnsureNginxInclude() error {
 	nc := global.CONF.Nginx
@@ -545,17 +594,19 @@ func EnsureNginxInclude() error {
 		mainConf := nc.GetMainConf()
 		data, err := os.ReadFile(mainConf)
 		if err != nil {
+			_ = EnsureAccessLogFormat()
 			return nil
 		}
 		content := string(data)
 		if strings.Contains(content, "sites-enabled") {
-			// Ensure directories exist
 			os.MkdirAll(nc.GetSitesAvailableDir(), 0755)
 			os.MkdirAll(nc.GetSitesDir(), 0755)
-			return nil
+			return EnsureAccessLogFormat()
 		}
-		// If sites-enabled not included, add it
-		return insertNginxInclude(mainConf, content, "include /etc/nginx/sites-enabled/*;")
+		if err := insertNginxInclude(mainConf, content, "include /etc/nginx/sites-enabled/*;"); err != nil {
+			return err
+		}
+		return EnsureAccessLogFormat()
 	}
 
 	// Prefix mode
@@ -566,9 +617,12 @@ func EnsureNginxInclude() error {
 	}
 	content := string(data)
 	if strings.Contains(content, "conf.d/*.conf") || strings.Contains(content, "conf/conf.d/*.conf") {
-		return nil
+		return EnsureAccessLogFormat()
 	}
-	return insertNginxInclude(mainConf, content, "include conf.d/*.conf;")
+	if err := insertNginxInclude(mainConf, content, "include conf.d/*.conf;"); err != nil {
+		return err
+	}
+	return EnsureAccessLogFormat()
 }
 
 const limitConnZoneLine = "limit_conn_zone $binary_remote_addr zone=perip:10m;"

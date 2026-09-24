@@ -20,8 +20,10 @@ type Website struct {
 	WebSocket bool   `gorm:"default:false" json:"webSocket"`
 
 	// SSL
-	SSLEnable     bool   `gorm:"default:false" json:"sslEnable"`
-	CertificateID uint   `json:"certificateID"`
+	SSLEnable     bool `gorm:"default:false" json:"sslEnable"`
+	CertificateID uint `json:"certificateID"`
+	// SkipCertAdapt 开启后，证书失效或域名不符时不自动更换。
+	SkipCertAdapt bool   `gorm:"default:false" json:"skipCertAdapt"`
 	HttpConfig    string `gorm:"default:'HTTPSRedirect'" json:"httpConfig"` // httpOnly | httpsOnly | HTTPSRedirect | HTTPAlso
 	HSTS          bool   `gorm:"default:false" json:"hsts"`
 	Http2Enable   bool   `gorm:"default:true" json:"http2Enable"`

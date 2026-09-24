@@ -18,6 +18,7 @@ type ISettingRepo interface {
 	CreateOrUpdate(key, value string) error
 	CreateOrUpdateMany(values map[string]string) error
 	CreateIfMissingOrEmpty(key, value string) (bool, error)
+	ClaimInitialAdmin(username, passwordHash string) (bool, error)
 	Delete(opts ...DBOption) error
 }
 
@@ -154,6 +155,49 @@ func (s *SettingRepo) CreateIfMissingOrEmpty(key, value string) (bool, error) {
 			return result.Error
 		}
 		written = result.RowsAffected == 1
+		return nil
+	})
+	return written, err
+}
+
+func (s *SettingRepo) ClaimInitialAdmin(username, passwordHash string) (bool, error) {
+	protectedPassword, err := protectSettingValue("Password", passwordHash)
+	if err != nil {
+		return false, err
+	}
+	protectedName, err := protectSettingValue("UserName", username)
+	if err != nil {
+		return false, err
+	}
+	written := false
+	err = getDB().Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.Setting{}).
+			Where("`key` = ? AND `value` = ''", "Password").
+			Update("value", protectedPassword)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 1 {
+			written = true
+		} else {
+			result = tx.Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&model.Setting{Key: "Password", Value: protectedPassword})
+			if result.Error != nil {
+				return result.Error
+			}
+			written = result.RowsAffected == 1
+			if !written {
+				return nil
+			}
+		}
+		result = tx.Model(&model.Setting{}).Where("`key` = ?", "UserName").Update("value", protectedName)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return tx.Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&model.Setting{Key: "UserName", Value: protectedName}).Error
+		}
 		return nil
 	})
 	return written, err

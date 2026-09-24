@@ -46,6 +46,12 @@ func TestActivateCertificateConsumersReportsNginxReloadFailure(t *testing.T) {
 	}
 
 	cert := createAppliedCertificate(t)
+	if err := global.DB.Create(&model.Website{
+		PrimaryDomain: "renew.example.com", Alias: "renew_example_com", Type: "static",
+		Status: "running", CertificateID: cert.ID, SSLEnable: true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 	svc := NewICertificateService().(*CertificateService)
 	err := svc.activateCertificateConsumers(cert.ID, discardLogger())
 	if err == nil {

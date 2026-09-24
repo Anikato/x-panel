@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 
 	"xpanel/global"
@@ -22,10 +23,7 @@ func InitMonitorDB() {
 	}
 
 	logLevel := logger.Silent
-	db, err := gorm.Open(sqlite.Open(monitorPath), &gorm.Config{
-		Logger:                                   logger.Default.LogMode(logLevel),
-		DisableForeignKeyConstraintWhenMigrating: true,
-	})
+	db, err := openSQLite(monitorPath, logLevel)
 	if err != nil {
 		global.LOG.Errorf("Failed to open monitor database: %v", err)
 		return
@@ -54,10 +52,7 @@ func Init() {
 		logLevel = logger.Info
 	}
 
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		Logger:                                   logger.Default.LogMode(logLevel),
-		DisableForeignKeyConstraintWhenMigrating: true,
-	})
+	db, err := openSQLite(dbPath, logLevel)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect database: %v", err))
 	}
@@ -67,6 +62,44 @@ func Init() {
 
 	global.DB = db
 	global.LOG.Info("Database initialized")
+}
+
+func sqliteDSN(path string) string {
+	return (&url.URL{
+		Scheme:   "file",
+		Path:     path,
+		RawQuery: "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)",
+	}).String()
+}
+
+func openSQLite(path string, logLevel logger.LogLevel) (*gorm.DB, error) {
+	db, err := gorm.Open(sqlite.Open(sqliteDSN(path)), &gorm.Config{
+		Logger:                                   logger.Default.LogMode(logLevel),
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := configureSQLite(db); err != nil {
+		if sqlDB, dbErr := db.DB(); dbErr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, err
+	}
+	return db, nil
+}
+
+func configureSQLite(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	if err := db.Exec("PRAGMA busy_timeout = 5000").Error; err != nil {
+		return err
+	}
+	return db.Exec("PRAGMA journal_mode = WAL").Error
 }
 
 func hardenSQLiteFiles(path string) error {

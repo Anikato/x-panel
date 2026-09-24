@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 
 	"xpanel/app/dto"
@@ -11,6 +12,8 @@ import (
 	"xpanel/global"
 	"xpanel/utils/encrypt"
 	jwtUtil "xpanel/utils/jwt"
+
+	"gorm.io/gorm"
 )
 
 // IAuthService 认证服务接口
@@ -86,26 +89,26 @@ func (a *AuthService) Login(info dto.Login) (*dto.UserLoginInfo, error) {
 }
 
 func (a *AuthService) InitUser(info dto.InitUser) error {
-	// 检查是否已初始化
 	passwordSetting, err := settingRepo.Get(repo.WithByKey("Password"))
-	if err != nil {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	if passwordSetting.Value != "" {
+	if err == nil && passwordSetting.Value != "" {
 		return buserr.New(constant.ErrRecordExist)
 	}
 
-	// 哈希密码
 	hashed, err := encrypt.HashPassword(info.Password)
 	if err != nil {
 		return buserr.WithErr(constant.ErrInternalServer, err)
 	}
-
-	// 更新用户名和密码
-	if err := settingRepo.Update("UserName", info.Name); err != nil {
+	written, err := settingRepo.ClaimInitialAdmin(info.Name, hashed)
+	if err != nil {
 		return err
 	}
-	return settingRepo.Update("Password", hashed)
+	if !written {
+		return buserr.New(constant.ErrRecordExist)
+	}
+	return nil
 }
 
 func (a *AuthService) IsInitialized() bool {

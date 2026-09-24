@@ -153,6 +153,54 @@ func TestUpdateDoesNotRegisterDisabledJobWhenDatabaseWriteFails(t *testing.T) {
 	}
 }
 
+func TestStatusPersistFailureRestoresScheduler(t *testing.T) {
+	svc := setupCronjobTest(t)
+	if err := svc.Create(dto.CronjobCreate{Name: "job", Type: "shell", Spec: "@every 1h", Script: "true"}); err != nil {
+		t.Fatal(err)
+	}
+	if countCronEntries(t) != 1 {
+		t.Fatalf("entries = %d, want 1", countCronEntries(t))
+	}
+	jobs, err := svc.cronjobRepo.List()
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("jobs = %d err=%v", len(jobs), err)
+	}
+	base := svc.cronjobRepo
+	svc.cronjobRepo = cronRepoHook{ICronjobRepo: base, failFields: true}
+	if err := svc.UpdateStatus(jobs[0].ID, constant.StatusDisable); err == nil {
+		t.Fatal("expected status persist failure")
+	}
+	if countCronEntries(t) != 1 {
+		t.Fatalf("disable persist failure left %d schedules", countCronEntries(t))
+	}
+	stored, err := base.Get(jobs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != constant.StatusEnable {
+		t.Fatalf("status = %q, want enable", stored.Status)
+	}
+
+	svc.cronjobRepo = base
+	if err := svc.UpdateStatus(jobs[0].ID, constant.StatusDisable); err != nil {
+		t.Fatal(err)
+	}
+	svc.cronjobRepo = cronRepoHook{ICronjobRepo: base, failFields: true}
+	if err := svc.UpdateStatus(jobs[0].ID, constant.StatusEnable); err == nil {
+		t.Fatal("expected enable persist failure")
+	}
+	if countCronEntries(t) != 0 {
+		t.Fatalf("enable persist failure left %d schedules", countCronEntries(t))
+	}
+	stored, err = base.Get(jobs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != constant.StatusDisable {
+		t.Fatalf("status = %q, want disable", stored.Status)
+	}
+}
+
 func TestAddCronJobRemovesScheduleWhenEntryPersistFails(t *testing.T) {
 	svc := setupCronjobTest(t)
 	if err := svc.Create(dto.CronjobCreate{Name: "on", Type: "shell", Spec: "@every 5h", Script: "true"}); err != nil {

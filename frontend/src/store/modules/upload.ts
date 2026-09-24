@@ -84,7 +84,6 @@ export const useUploadStore = defineStore('upload', () => {
           }
         )
         item.progress = 100
-        item.speed = 0
         success++
       } catch (error) {
         item.error = true
@@ -183,6 +182,7 @@ async function uploadFileInChunks(
   const uploadID = createUploadID(cryptoProvider)
   const chunkCount = getUploadChunkCount(file.size)
   const headers = buildUploadRequestHeaders(getToken(), nodeID)
+  const rate = createRateSampler()
   let confirmedBytes = 0
   let lastSpeed = 0
 
@@ -191,7 +191,6 @@ async function uploadFileInChunks(
       const { start, end } = getUploadChunkBounds(file.size, chunkIndex)
       const chunk = file.slice(start, end)
       const checksum = await sha256Hex(chunk, cryptoProvider)
-      const rate = createRateSampler()
       const formData = new FormData()
       formData.append('path', path)
       formData.append('relativePath', relativePath)
@@ -205,13 +204,13 @@ async function uploadFileInChunks(
       await sendXHR('/api/v1/files/upload/chunk', formData, headers, (loaded, total) => {
         const chunkLoaded = total > 0 ? Math.min(chunk.size, Math.round(loaded / total * chunk.size)) : 0
         const progress = calculateChunkUploadProgress(confirmedBytes, chunkLoaded, file.size)
-        const speed = rate.sample(chunkLoaded)
+        const speed = rate.sample(confirmedBytes + chunkLoaded)
         if (speed !== undefined) lastSpeed = speed
         onProgress({ ...progress, total: file.size, speed })
       })
 
       confirmedBytes += chunk.size
-      lastSpeed = rate.average(chunk.size)
+      lastSpeed = rate.average(confirmedBytes)
       const progress = calculateChunkUploadProgress(confirmedBytes, 0, file.size)
       onProgress({ ...progress, total: file.size, speed: lastSpeed })
     }
@@ -278,8 +277,13 @@ function createRateSampler() {
   return {
     sample(bytes: number): number | undefined {
       const now = performance.now()
+      if (bytes <= 0) return undefined
       const elapsed = now - lastTime
-      if (elapsed < 500) return undefined
+      if (elapsed < 400) {
+        const sinceStart = now - startedAt
+        if (sinceStart < 150) return undefined
+        return Math.max(0, Math.round(bytes * 1000 / sinceStart))
+      }
       const speed = Math.max(0, Math.round((bytes - lastBytes) * 1000 / elapsed))
       lastTime = now
       lastBytes = bytes

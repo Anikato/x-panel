@@ -40,6 +40,13 @@ func (f *fakeGostRuntime) CreateService(cfg gostutil.ServiceConfig) error {
 	return nil
 }
 
+func (f *fakeGostRuntime) UpdateService(name string, cfg gostutil.ServiceConfig) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.services[cfg.Name] = true
+	return nil
+}
+
 func (f *fakeGostRuntime) DeleteService(name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

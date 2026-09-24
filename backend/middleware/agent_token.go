@@ -19,7 +19,7 @@ func AgentTokenAuth() gin.HandlerFunc {
 		}
 
 		agentToken, _ := settingRepo.GetValueByKey("AgentToken")
-		if agentToken == "" || agentToken != token {
+		if !secretEqual(token, agentToken) {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "invalid agent token"})
 			c.Abort()
 			return

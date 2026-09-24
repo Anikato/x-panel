@@ -432,6 +432,15 @@ export interface Certificate {
   notAfter: string
   acmeAccountEmail?: string
   dnsAccountName?: string
+  consumers?: CertificateConsumer[]
+}
+
+export interface CertificateConsumer {
+  kind: string
+  id: number
+  name: string
+  detail: string
+  active: boolean
 }
 
 export type CertificateRenewalManagementType = 'local' | 'synced' | 'manual'
@@ -701,6 +710,7 @@ export interface NetInterface {
   connected?: boolean
   kind?: string
   speedMbps?: number
+  speedState?: string
   duplex?: string
   operState?: string
 }

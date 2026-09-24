@@ -101,7 +101,7 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 
 	site := model.Website{
 		PrimaryDomain:     req.PrimaryDomain,
-		Domains:           req.Domains,
+		Domains:           normalizeExtraDomains(req.PrimaryDomain, req.Domains),
 		Alias:             alias,
 		Type:              req.Type,
 		Status:            "stopped",
@@ -188,7 +188,7 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 		site.PrimaryDomain = req.PrimaryDomain
 	}
 
-	site.Domains = req.Domains
+	site.Domains = normalizeExtraDomains(site.PrimaryDomain, req.Domains)
 	site.SiteDir = req.SiteDir
 	site.IndexFile = req.IndexFile
 	site.HttpPort = req.HttpPort
@@ -197,6 +197,7 @@ func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
 	site.WebSocket = req.WebSocket
 	site.SSLEnable = req.SSLEnable
 	site.CertificateID = req.CertificateID
+	site.SkipCertAdapt = req.SkipCertAdapt
 	site.HttpConfig = req.HttpConfig
 	site.HSTS = req.HSTS
 	site.Http2Enable = req.Http2Enable
@@ -264,28 +265,31 @@ func (s *WebsiteService) Delete(id uint) error {
 		return s.websiteRepo.Delete(repo.WithByID(id))
 	}
 
-	nc := global.CONF.Nginx
-	needReload := site.Status == "running" && site.ConfigMode != "source"
-
-	// 清理所有 nginx 配置文件（无论网站状态）
-	if site.ConfigMode != "source" {
-		if nc.IsSystemMode() {
-			os.Remove(filepath.Join(nc.GetSitesDir(), site.Alias+".conf"))
-			os.Remove(filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf"))
-		} else {
-			os.Remove(GetSiteConfPath(site.Alias))
+	paths := websiteRuntimePaths(site, true)
+	snaps, err := snapshotFiles(paths)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := removeFiles(paths); err != nil {
+		_ = restoreFiles(snaps)
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	reload := siteServesTraffic(site)
+	if reload {
+		if err := s.reloadNginx(); err != nil {
+			_ = restoreFiles(snaps)
+			_ = s.reloadNginx()
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
 	}
-
-	// 删除 htpasswd 文件
-	authDir := filepath.Join(nc.GetConfDir(), "auth")
-	os.Remove(filepath.Join(authDir, site.Alias+".htpasswd"))
-
-	if needReload {
-		s.reloadNginx()
+	if err := s.websiteRepo.Delete(repo.WithByID(id)); err != nil {
+		_ = restoreFiles(snaps)
+		if reload {
+			_ = s.reloadNginx()
+		}
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
-
-	return s.websiteRepo.Delete(repo.WithByID(id))
+	return nil
 }
 
 func (s *WebsiteService) SearchWithPage(req dto.WebsiteSearch) (int64, []dto.WebsiteInfo, error) {
@@ -353,6 +357,7 @@ func (s *WebsiteService) GetDetail(id uint) (*dto.WebsiteDetail, error) {
 		WebSocket:             site.WebSocket,
 		SSLEnable:             site.SSLEnable,
 		CertificateID:         site.CertificateID,
+		SkipCertAdapt:         site.SkipCertAdapt,
 		HttpConfig:            site.HttpConfig,
 		HSTS:                  site.HSTS,
 		Http2Enable:           site.Http2Enable,
@@ -441,12 +446,21 @@ func (s *WebsiteService) Enable(id uint) error {
 		global.LOG.Warnf("Ensure nginx include failed: %v", err)
 	}
 
+	snaps, err := snapshotFiles(websiteRuntimePaths(site, true))
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
 	if err := s.applyConfig(site); err != nil {
 		return err
 	}
 
 	site.Status = "running"
-	return s.websiteRepo.Save(&site)
+	if err := s.websiteRepo.Save(&site); err != nil {
+		_ = restoreFiles(snaps)
+		_ = s.reloadNginx()
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	return nil
 }
 
 func (s *WebsiteService) Disable(id uint) error {
@@ -461,11 +475,28 @@ func (s *WebsiteService) Disable(id uint) error {
 		return nil
 	}
 
-	s.removeConfig(site)
-	s.reloadNginx()
+	paths := websiteRuntimePaths(site, false)
+	snaps, err := snapshotFiles(paths)
+	if err != nil {
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := removeFiles(paths); err != nil {
+		_ = restoreFiles(snaps)
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	if err := s.reloadNginx(); err != nil {
+		_ = restoreFiles(snaps)
+		_ = s.reloadNginx()
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
 
 	site.Status = "stopped"
-	return s.websiteRepo.Save(&site)
+	if err := s.websiteRepo.Save(&site); err != nil {
+		_ = restoreFiles(snaps)
+		_ = s.reloadNginx()
+		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	}
+	return nil
 }
 
 func (s *WebsiteService) GetNginxConfig(id uint) (string, error) {
@@ -791,16 +822,25 @@ func (s *WebsiteService) SwitchConfigMode(id uint, mode string) error {
 		return nil
 	}
 
+	previousMode := site.ConfigMode
 	site.ConfigMode = mode
-	if err := s.websiteRepo.Save(&site); err != nil {
-		return err
-	}
-
-	// When switching back to managed, regenerate config
 	if mode == "managed" && site.Status == "running" {
-		return s.applyConfig(site)
+		snaps, err := snapshotFiles(websiteRuntimePaths(site, true))
+		if err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		if err := s.applyConfig(site); err != nil {
+			return err
+		}
+		if err := s.websiteRepo.Save(&site); err != nil {
+			site.ConfigMode = previousMode
+			_ = restoreFiles(snaps)
+			_ = s.reloadNginx()
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
+		return nil
 	}
-	return nil
+	return s.websiteRepo.Save(&site)
 }
 
 // --- Nginx 配置文件管理 ---
@@ -822,29 +862,7 @@ func (s *WebsiteService) SaveMainConf(content string) error {
 	if !nc.IsInstalled() {
 		return buserr.New(constant.ErrNginxNotInstalled)
 	}
-	mainConf := nc.GetMainConf()
-
-	backup, readErr := os.ReadFile(mainConf)
-	existed := readErr == nil
-	if readErr != nil && !os.IsNotExist(readErr) {
-		return readErr
-	}
-	_ = s.createConfigBackup(mainConf)
-
-	if err := os.WriteFile(mainConf, []byte(content), 0644); err != nil {
-		return err
-	}
-
-	if err := s.testNginxConfig(); err != nil {
-		if existed {
-			_ = os.WriteFile(mainConf, backup, 0644)
-		} else {
-			_ = os.Remove(mainConf)
-		}
-		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
-	}
-
-	return s.reloadNginx()
+	return s.replaceNginxFile(nc.GetMainConf(), []byte(content))
 }
 
 func (s *WebsiteService) ListConfFiles() ([]dto.NginxConfFileInfo, error) {
@@ -904,30 +922,18 @@ func (s *WebsiteService) SaveConfFile(req dto.NginxConfUpdate) error {
 	if !global.CONF.Nginx.IsInstalled() {
 		return buserr.New(constant.ErrNginxNotInstalled)
 	}
-	nc := global.CONF.Nginx
-	confDir := nc.GetConfDir()
 	filePath := filepath.Clean(req.FilePath)
-	if !strings.HasPrefix(filePath, confDir) {
+	if !s.isAllowedNginxConfPath(filePath) {
 		return buserr.New(constant.ErrInvalidParams)
 	}
-
-	backup, _ := os.ReadFile(filePath)
-	_ = s.createConfigBackup(filePath)
-
-	if err := os.WriteFile(filePath, []byte(req.Content), 0644); err != nil {
-		return err
-	}
-
-	if err := s.testNginxConfig(); err != nil {
-		os.WriteFile(filePath, backup, 0644)
-		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
-	}
-
-	return s.reloadNginx()
+	return s.replaceNginxFile(filePath, []byte(req.Content))
 }
 
 func (s *WebsiteService) ListConfBackups(filePath string) ([]dto.NginxConfBackupInfo, error) {
-	dir := s.configBackupDir(filepath.Clean(filePath))
+	dir, err := s.configBackupDir(filepath.Clean(filePath))
+	if err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -962,23 +968,16 @@ func (s *WebsiteService) RestoreConfBackup(req dto.NginxConfRestoreReq) error {
 	if !s.isAllowedNginxConfPath(filePath) {
 		return buserr.New(constant.ErrInvalidParams)
 	}
-	backupPath := filepath.Join(s.configBackupDir(filePath), filepath.Base(req.BackupName))
+	backupDir, err := s.configBackupDir(filePath)
+	if err != nil {
+		return err
+	}
+	backupPath := filepath.Join(backupDir, filepath.Base(req.BackupName))
 	content, err := os.ReadFile(backupPath)
 	if err != nil {
 		return err
 	}
-	current, _ := os.ReadFile(filePath)
-	_ = s.createConfigBackup(filePath)
-	if err := os.WriteFile(filePath, content, 0644); err != nil {
-		return err
-	}
-	if err := s.testNginxConfig(); err != nil {
-		if current != nil {
-			_ = os.WriteFile(filePath, current, 0644)
-		}
-		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
-	}
-	return s.reloadNginx()
+	return s.replaceNginxFile(filePath, content)
 }
 
 func (s *WebsiteService) createConfigBackup(filePath string) error {
@@ -990,7 +989,10 @@ func (s *WebsiteService) createConfigBackup(filePath string) error {
 	if err != nil || len(data) == 0 {
 		return err
 	}
-	dir := s.configBackupDir(filePath)
+	dir, err := s.configBackupDir(filePath)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -998,16 +1000,195 @@ func (s *WebsiteService) createConfigBackup(filePath string) error {
 	return os.WriteFile(filepath.Join(dir, name), data, 0644)
 }
 
-func (s *WebsiteService) configBackupDir(filePath string) string {
+func (s *WebsiteService) configBackupDir(filePath string) (string, error) {
+	dataDir := strings.TrimSpace(global.CONF.System.DataDir)
+	if dataDir == "" || !filepath.IsAbs(dataDir) {
+		return "", fmt.Errorf("data directory is not configured")
+	}
 	safe := strings.NewReplacer("/", "__", "\\", "__", ":", "_").Replace(filepath.Clean(filePath))
-	return filepath.Join(global.CONF.System.DataDir, "nginx-backups", safe)
+	return filepath.Join(dataDir, "nginx-backups", safe), nil
 }
 
 func (s *WebsiteService) isAllowedNginxConfPath(filePath string) bool {
 	nc := global.CONF.Nginx
 	confDir := filepath.Clean(nc.GetConfDir())
 	mainConf := filepath.Clean(nc.GetMainConf())
-	return filePath == mainConf || strings.HasPrefix(filePath, confDir+string(os.PathSeparator))
+	filePath = filepath.Clean(filePath)
+	lexicalOK := filePath == mainConf || strings.HasPrefix(filePath, confDir+string(os.PathSeparator))
+	if !lexicalOK {
+		return false
+	}
+	if info, err := os.Lstat(filePath); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return false
+	} else if err != nil && !os.IsNotExist(err) {
+		return false
+	}
+	parent := filepath.Dir(filePath)
+	resolvedParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	root, err := filepath.EvalSymlinks(confDir)
+	if err != nil {
+		root = confDir
+	}
+	resolvedParent = filepath.Clean(resolvedParent)
+	root = filepath.Clean(root)
+	if resolvedParent == root || strings.HasPrefix(resolvedParent, root+string(os.PathSeparator)) {
+		return true
+	}
+	mainParent, err := filepath.EvalSymlinks(filepath.Dir(mainConf))
+	if err != nil {
+		return false
+	}
+	return filePath == mainConf && filepath.Clean(mainParent) == resolvedParent
+}
+
+func (s *WebsiteService) replaceNginxFile(path string, content []byte) error {
+	snap, err := snapshotFile(path)
+	if err != nil {
+		return err
+	}
+	if snap.existed && snap.symlink == "" {
+		_ = s.createConfigBackup(path)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	mode := os.FileMode(0644)
+	if snap.existed && snap.symlink == "" && snap.mode != 0 {
+		mode = snap.mode
+	}
+	if err := os.WriteFile(path, content, mode); err != nil {
+		return err
+	}
+	if err := s.testNginxConfig(); err != nil {
+		_ = snap.restore()
+		return buserr.WithDetail(constant.ErrNginxConfigTest, err.Error(), err)
+	}
+	if err := s.reloadNginx(); err != nil {
+		_ = snap.restore()
+		_ = s.reloadNginx()
+		return err
+	}
+	return nil
+}
+
+func siteServesTraffic(site model.Website) bool {
+	return site.Status == "running" && site.ConfigMode != "source"
+}
+
+func websiteRuntimePaths(site model.Website, includeStored bool) []string {
+	if site.ConfigMode == "source" {
+		if includeStored {
+			return []string{websiteHtpasswdPath(site.Alias)}
+		}
+		return nil
+	}
+	nc := global.CONF.Nginx
+	var paths []string
+	if nc.IsSystemMode() {
+		paths = append(paths, filepath.Join(nc.GetSitesDir(), site.Alias+".conf"))
+		if includeStored {
+			paths = append(paths, filepath.Join(nc.GetSitesAvailableDir(), site.Alias+".conf"))
+		}
+	} else {
+		paths = append(paths, GetSiteConfPath(site.Alias))
+	}
+	if includeStored {
+		paths = append(paths, websiteHtpasswdPath(site.Alias))
+	}
+	return paths
+}
+
+type fileSnapshot struct {
+	path    string
+	existed bool
+	data    []byte
+	mode    os.FileMode
+	symlink string
+}
+
+func snapshotFiles(paths []string) ([]fileSnapshot, error) {
+	snaps := make([]fileSnapshot, 0, len(paths))
+	for _, path := range paths {
+		snap, err := snapshotFile(path)
+		if err != nil {
+			return nil, err
+		}
+		snaps = append(snaps, snap)
+	}
+	return snaps, nil
+}
+
+func snapshotFile(path string) (fileSnapshot, error) {
+	snap := fileSnapshot{path: path, mode: 0644}
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return snap, nil
+	}
+	if err != nil {
+		return fileSnapshot{}, err
+	}
+	snap.existed = true
+	if perm := info.Mode().Perm(); perm != 0 {
+		snap.mode = perm
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return fileSnapshot{}, err
+		}
+		snap.symlink = target
+		return snap, nil
+	}
+	if !info.Mode().IsRegular() {
+		return fileSnapshot{}, fmt.Errorf("not a regular file: %s", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fileSnapshot{}, err
+	}
+	snap.data = data
+	return snap, nil
+}
+
+func (snap fileSnapshot) restore() error {
+	if !snap.existed {
+		if err := os.Remove(snap.path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(snap.path), 0755); err != nil {
+		return err
+	}
+	if snap.symlink != "" {
+		if err := os.Remove(snap.path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return os.Symlink(snap.symlink, snap.path)
+	}
+	return os.WriteFile(snap.path, snap.data, snap.mode)
+}
+
+func restoreFiles(snaps []fileSnapshot) error {
+	var first error
+	for i := len(snaps) - 1; i >= 0; i-- {
+		if err := snaps[i].restore(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+func removeFiles(paths []string) error {
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *WebsiteService) CheckHealth(id uint) (*dto.WebsiteHealthResp, error) {
@@ -1290,18 +1471,6 @@ func (s *WebsiteService) applyConfigWithRollback(site model.Website) (func() err
 		return nil, err
 	}
 	return rollback, nil
-}
-
-func (s *WebsiteService) removeConfig(site model.Website) {
-	nc := global.CONF.Nginx
-	if nc.IsSystemMode() {
-		enabledPath := filepath.Join(nc.GetSitesDir(), site.Alias+".conf")
-		os.Remove(enabledPath)
-		// Keep sites-available for reference
-	} else {
-		confPath := GetSiteConfPath(site.Alias)
-		os.Remove(confPath)
-	}
 }
 
 func (s *WebsiteService) testNginxConfig() error {

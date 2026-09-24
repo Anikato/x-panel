@@ -1,18 +1,16 @@
 package server
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
 	"os"
 	"sync"
-	"time"
 )
 
 type tlsCertificateFileState struct {
-	certModTime time.Time
-	certSize    int64
-	keyModTime  time.Time
-	keySize     int64
+	certSum [32]byte
+	keySum  [32]byte
 }
 
 type tlsCertificateReloader struct {
@@ -69,16 +67,21 @@ func (r *tlsCertificateReloader) filesChanged() (bool, error) {
 }
 
 func (r *tlsCertificateReloader) readFileState() (tlsCertificateFileState, error) {
-	certInfo, err := os.Stat(r.certPath)
+	certSum, err := fileSum(r.certPath)
 	if err != nil {
 		return tlsCertificateFileState{}, err
 	}
-	keyInfo, err := os.Stat(r.keyPath)
+	keySum, err := fileSum(r.keyPath)
 	if err != nil {
 		return tlsCertificateFileState{}, err
 	}
-	return tlsCertificateFileState{
-		certModTime: certInfo.ModTime(), certSize: certInfo.Size(),
-		keyModTime: keyInfo.ModTime(), keySize: keyInfo.Size(),
-	}, nil
+	return tlsCertificateFileState{certSum: certSum, keySum: keySum}, nil
+}
+
+func fileSum(path string) ([32]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(data), nil
 }

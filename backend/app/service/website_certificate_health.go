@@ -467,26 +467,7 @@ func (s *WebsiteService) websiteCertificateContext(site model.Website) ([]string
 }
 
 func websiteDomains(site model.Website) []string {
-	seen := make(map[string]struct{})
-	var domains []string
-	add := func(domain string) {
-		domain = strings.TrimSpace(domain)
-		if domain == "" {
-			return
-		}
-		if _, exists := seen[domain]; exists {
-			return
-		}
-		seen[domain] = struct{}{}
-		domains = append(domains, domain)
-	}
-	add(site.PrimaryDomain)
-	for _, domain := range strings.FieldsFunc(site.Domains, func(value rune) bool {
-		return value == ',' || value == ';' || value == ' ' || value == '\n' || value == '\t'
-	}) {
-		add(domain)
-	}
-	return domains
+	return splitSiteDomains(site.PrimaryDomain, site.Domains)
 }
 
 func (s *WebsiteService) configuredCertificateSnapshot(site model.Website) *dto.CertificateHealthSnapshot {

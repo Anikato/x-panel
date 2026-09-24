@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -16,42 +18,36 @@ const (
 )
 
 // SecurityEntrance 安全入口中间件
-// 如果配置了安全入口，用户必须先访问 /{entrance} 获取 cookie 后才能访问面板
-// API 路由 (/api/*) 不受影响（通过 JWT 保护）
+// 如果配置了安全入口，用户必须先访问 /{entrance} 获取 cookie 后才能访问面板。
+// 健康检查和证书服务不检查入口。数据库尚未打开时放行。
 func SecurityEntrance() gin.HandlerFunc {
 	settingRepo := repo.NewISettingRepo()
 
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
-
-		// API 和 WebSocket 请求不受安全入口限制
-		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/.well-known/acme-challenge/") {
+		if entranceExempt(path) || global.DB == nil {
 			c.Next()
 			return
 		}
 
-		// 查询安全入口配置
 		entrance, err := settingRepo.GetValueByKey("SecurityEntrance")
 		if err != nil || entrance == "" {
-			// 未配置安全入口，直接放行
 			c.Next()
 			return
 		}
 
-		// 检查是否正在访问安全入口路径
 		entrancePath := "/" + entrance
 		if path == entrancePath || path == entrancePath+"/" {
-			// 设置 cookie 并重定向到首页
 			secure := c.Request.TLS != nil
+			c.SetSameSite(http.SameSiteLaxMode)
 			c.SetCookie(entranceCookieName, entrance, entranceCookieAge, "/", "", secure, true)
 			c.Redirect(http.StatusTemporaryRedirect, "/")
 			c.Abort()
 			return
 		}
 
-		// 检查 cookie 是否有效
 		cookie, err := c.Cookie(entranceCookieName)
-		if err == nil && cookie == entrance {
+		if err == nil && secretEqual(cookie, entrance) {
 			c.Next()
 			return
 		}
@@ -63,4 +59,26 @@ func SecurityEntrance() gin.HandlerFunc {
 		c.String(http.StatusNotFound, "404 page not found")
 		c.Abort()
 	}
+}
+
+func entranceExempt(path string) bool {
+	switch {
+	case strings.HasPrefix(path, "/.well-known/acme-challenge/"):
+		return true
+	case path == "/api/v1/version" || strings.HasPrefix(path, "/api/v1/version/"):
+		return true
+	case path == "/api/v1/cert-server" || strings.HasPrefix(path, "/api/v1/cert-server/"):
+		return true
+	default:
+		return false
+	}
+}
+
+func secretEqual(got, want string) bool {
+	if want == "" {
+		return false
+	}
+	sumGot := sha256.Sum256([]byte(got))
+	sumWant := sha256.Sum256([]byte(want))
+	return subtle.ConstantTimeCompare(sumGot[:], sumWant[:]) == 1
 }

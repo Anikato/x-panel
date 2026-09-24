@@ -148,8 +148,7 @@
           <div class="form-tip">{{ $t('website.aliasHint') }}</div>
         </el-form-item>
         <el-form-item :label="$t('website.otherDomains')">
-          <el-input v-model="createForm.domains" placeholder="www.example.com" />
-          <div class="form-tip">{{ $t('website.otherDomainsHint') }}</div>
+          <DomainListInput v-model="createForm.domains" />
         </el-form-item>
         <el-form-item v-if="createForm.type === 'static'" :label="$t('website.siteDir')">
           <div style="display:flex; gap:8px; width:100%;">
@@ -273,6 +272,8 @@ import {
 } from '@/api/modules/website'
 import { listFiles } from '@/api/modules/file'
 import type { ExternalNginxSitePreview, Website, WebsiteCertificateHealth } from '@/api/interface'
+import DomainListInput from '@/components/website/DomainListInput.vue'
+import { parseDomainList } from '@/utils/domains'
 
 const router = useRouter()
 const route = useRoute()
@@ -508,7 +509,7 @@ const handleDelete = async (row: Website) => {
 }
 
 const additionalDomains = (row: Website) => {
-  return row.domains.split(',').map(item => item.trim()).filter(item => item && item !== row.primaryDomain)
+  return parseDomainList(row.domains || '').filter(item => item !== row.primaryDomain)
 }
 
 const additionalDomainCount = (row: Website) => additionalDomains(row).length

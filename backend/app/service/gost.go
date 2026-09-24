@@ -51,11 +51,22 @@ func NewIGostService() IGostService {
 type gostRuntime interface {
 	Ping() bool
 	CreateService(gostutil.ServiceConfig) error
+	UpdateService(name string, cfg gostutil.ServiceConfig) error
 	DeleteService(name string) error
 	SaveConfig() error
 }
 
 var newGostRuntime = func() gostRuntime { return newGostClient() }
+
+type gostChainRuntime interface {
+	Ping() bool
+	CreateChain(gostutil.ChainConfig) error
+	UpdateChain(name string, chain gostutil.ChainConfig) error
+	DeleteChain(name string) error
+	SaveConfig() error
+}
+
+var newGostChainRuntime = func() gostChainRuntime { return newGostClient() }
 
 // --- Service CRUD ---
 
@@ -271,11 +282,21 @@ func (s *GostService) DeleteService(id uint) error {
 	if err := s.serviceRepo.Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
-
-	client := newGostClient()
-	if client.Ping() {
-		s.deleteServiceFromGost(client, existing.Name, existing.Type)
-		client.SaveConfig()
+	client := newGostRuntime()
+	restore := func() error {
+		item := existing
+		return s.serviceRepo.Create(&item)
+	}
+	if !client.Ping() {
+		return combineRuntimeError(fmt.Errorf("gost api unreachable"), restore())
+	}
+	if err := s.deleteServiceFromGost(client, existing.Name, existing.Type); err != nil {
+		_ = s.restoreGostServices(client, existing, existing.Name)
+		return combineRuntimeError(err, restore())
+	}
+	if err := client.SaveConfig(); err != nil {
+		_ = s.restoreGostServices(client, existing, existing.Name)
+		return combineRuntimeError(err, restore())
 	}
 	return nil
 }
@@ -339,7 +360,11 @@ func (s *GostService) CreateChain(req dto.GostChainCreate) error {
 	if err := s.chainRepo.Create(&chain); err != nil {
 		return err
 	}
-	return s.pushChainToGost(chain)
+	if err := s.pushChainToGost(chain); err != nil {
+		_ = s.chainRepo.Delete(repo.WithByID(chain.ID))
+		return err
+	}
+	return nil
 }
 
 func (s *GostService) UpdateChain(req dto.GostChainUpdate) error {
@@ -360,20 +385,48 @@ func (s *GostService) UpdateChain(req dto.GostChainUpdate) error {
 	}); err != nil {
 		return err
 	}
+	restoreRecord := func() error {
+		return s.chainRepo.Update(existing.ID, map[string]interface{}{
+			"name":   existing.Name,
+			"hops":   existing.Hops,
+			"remark": existing.Remark,
+		})
+	}
 
-	client := newGostClient()
+	client := newGostChainRuntime()
 	if !client.Ping() {
-		return nil
+		return combineRuntimeError(fmt.Errorf("gost api unreachable"), restoreRecord())
 	}
-	updated, _ := s.chainRepo.Get(repo.WithByID(req.ID))
+	updated, err := s.chainRepo.Get(repo.WithByID(req.ID))
+	if err != nil {
+		return combineRuntimeError(err, restoreRecord())
+	}
 	cfg := s.buildChainConfig(updated)
+	oldCfg := s.buildChainConfig(existing)
 	if oldName != req.Name {
-		client.DeleteChain(oldName)
-		client.CreateChain(cfg)
-	} else {
-		client.UpdateChain(updated.Name, cfg)
+		if err := client.DeleteChain(oldName); err != nil {
+			return combineRuntimeError(err, restoreRecord())
+		}
+		if err := client.CreateChain(cfg); err != nil {
+			_ = client.CreateChain(oldCfg)
+			_ = client.SaveConfig()
+			return combineRuntimeError(err, restoreRecord())
+		}
+	} else if err := client.UpdateChain(updated.Name, cfg); err != nil {
+		_ = client.UpdateChain(oldName, oldCfg)
+		_ = client.SaveConfig()
+		return combineRuntimeError(err, restoreRecord())
 	}
-	client.SaveConfig()
+	if err := client.SaveConfig(); err != nil {
+		if oldName != req.Name {
+			_ = client.DeleteChain(req.Name)
+			_ = client.CreateChain(oldCfg)
+		} else {
+			_ = client.UpdateChain(oldName, oldCfg)
+		}
+		_ = client.SaveConfig()
+		return combineRuntimeError(err, restoreRecord())
+	}
 	return nil
 }
 
@@ -550,11 +603,21 @@ func (s *GostService) DeleteChain(id uint) error {
 	if err := s.chainRepo.Delete(repo.WithByID(id)); err != nil {
 		return err
 	}
-
-	client := newGostClient()
-	if client.Ping() {
-		client.DeleteChain(existing.Name)
-		client.SaveConfig()
+	client := newGostChainRuntime()
+	restore := func() error {
+		item := existing
+		return s.chainRepo.Create(&item)
+	}
+	if !client.Ping() {
+		return combineRuntimeError(fmt.Errorf("gost api unreachable"), restore())
+	}
+	if err := client.DeleteChain(existing.Name); err != nil {
+		return combineRuntimeError(err, restore())
+	}
+	if err := client.SaveConfig(); err != nil {
+		_ = client.CreateChain(s.buildChainConfig(existing))
+		_ = client.SaveConfig()
+		return combineRuntimeError(err, restore())
 	}
 	return nil
 }
@@ -562,19 +625,23 @@ func (s *GostService) DeleteChain(id uint) error {
 // --- Sync ---
 
 func (s *GostService) SyncAll() error {
-	client := newGostClient()
+	client := newGostRuntime()
 	if !client.Ping() {
 		return fmt.Errorf("GOST API not reachable")
 	}
+	chainClient := newGostChainRuntime()
 
 	chains, err := s.chainRepo.GetList()
 	if err != nil {
 		return err
 	}
+	var syncErr error
 	for _, chain := range chains {
 		cfg := s.buildChainConfig(chain)
-		if err := client.CreateChain(cfg); err != nil {
-			client.UpdateChain(chain.Name, cfg)
+		if err := chainClient.CreateChain(cfg); err != nil {
+			if uerr := chainClient.UpdateChain(chain.Name, cfg); uerr != nil {
+				syncErr = errors.Join(syncErr, fmt.Errorf("chain %s: %w", chain.Name, uerr))
+			}
 		}
 	}
 
@@ -588,12 +655,22 @@ func (s *GostService) SyncAll() error {
 		}
 		for _, cfg := range s.buildServiceConfigs(svc) {
 			if err := client.CreateService(cfg); err != nil {
-				client.UpdateService(cfg.Name, cfg)
+				if uerr := client.UpdateService(cfg.Name, cfg); uerr != nil {
+					syncErr = errors.Join(syncErr, fmt.Errorf("service %s: %w", cfg.Name, uerr))
+				}
 			}
 		}
 	}
 
-	client.SaveConfig()
+	if err := chainClient.SaveConfig(); err != nil {
+		syncErr = errors.Join(syncErr, err)
+	}
+	if err := client.SaveConfig(); err != nil {
+		syncErr = errors.Join(syncErr, err)
+	}
+	if syncErr != nil {
+		return syncErr
+	}
 	global.LOG.Infof("Synced %d chains and %d services to GOST", len(chains), len(services))
 	return nil
 }
@@ -705,22 +782,33 @@ func gostServiceSnapshot(item model.GostService) map[string]interface{} {
 	}
 }
 
-func (s *GostService) deleteServiceFromGost(client gostRuntime, name, svcType string) {
+func (s *GostService) deleteServiceFromGost(client gostRuntime, name, svcType string) error {
+	var first error
 	for _, runtimeName := range gostRuntimeNames(name, svcType) {
-		_ = client.DeleteService(runtimeName)
+		if err := client.DeleteService(runtimeName); err != nil && first == nil {
+			first = err
+		}
 	}
+	return first
 }
 
 func (s *GostService) pushChainToGost(chain model.GostChain) error {
-	client := newGostClient()
+	client := newGostChainRuntime()
 	if !client.Ping() {
-		return nil
+		return fmt.Errorf("gost api unreachable")
 	}
 	cfg := s.buildChainConfig(chain)
 	if err := client.CreateChain(cfg); err != nil {
 		return err
 	}
 	return client.SaveConfig()
+}
+
+func combineRuntimeError(action, restore error) error {
+	if restore == nil {
+		return action
+	}
+	return fmt.Errorf("%v; restore: %w", action, restore)
 }
 
 func (s *GostService) buildServiceConfigs(svc model.GostService) []gostutil.ServiceConfig {

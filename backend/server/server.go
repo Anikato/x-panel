@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -63,7 +64,13 @@ func Start() {
 	i18n.Init()
 
 	// 6. 登录 IP 跟踪器
-	global.IPTracker = initAuth.NewIPTracker()
+	tracker := initAuth.NewIPTracker()
+	if dir := strings.TrimSpace(global.CONF.System.DataDir); dir != "" {
+		if err := tracker.UseFile(filepath.Join(dir, "login-failures.json")); err != nil && global.LOG != nil {
+			global.LOG.Warnf("login failure history unavailable: %v", err)
+		}
+	}
+	global.IPTracker = tracker
 
 	// 6.5 IP 归属地数据库
 	iplocation.GetService().Init(global.CONF.System.DataDir)

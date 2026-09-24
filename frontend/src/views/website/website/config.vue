@@ -117,7 +117,7 @@
             <el-input v-model="detail.primaryDomain" />
           </el-form-item>
           <el-form-item :label="$t('website.otherDomains')">
-            <el-input v-model="detail.domains" :placeholder="$t('website.otherDomainsHint')" />
+            <DomainListInput v-model="detail.domains" />
           </el-form-item>
           <template v-if="detail.type === 'static'">
             <el-form-item :label="$t('website.siteDir')">
@@ -200,6 +200,10 @@
         <el-form :model="detail" label-width="120px" class="config-form">
           <el-form-item :label="$t('website.sslEnable')">
             <el-switch v-model="detail.sslEnable" />
+          </el-form-item>
+          <el-form-item label="不自动更换证书">
+            <el-switch v-model="detail.skipCertAdapt" />
+            <div class="form-tip">开启后，证书过期或域名不符时不会自动换成别的证书。自签证书、内网证书适合打开。</div>
           </el-form-item>
           <template v-if="detail.sslEnable">
             <el-form-item :label="$t('website.selectCert')">
@@ -437,29 +441,7 @@
             </el-row>
           </div>
 
-          <!-- Top 排行 -->
-          <div v-if="logAnalysisData" class="analysis-rankings">
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-card shadow="never">
-                  <template #header>{{ $t('website.topURLs') }}</template>
-                  <el-table :data="logAnalysisData.topUrls || []" size="small" stripe>
-                    <el-table-column label="URL" prop="name" show-overflow-tooltip />
-                    <el-table-column :label="$t('website.visits')" prop="count" width="100" align="right" />
-                  </el-table>
-                </el-card>
-              </el-col>
-              <el-col :span="12">
-                <el-card shadow="never">
-                  <template #header>{{ $t('website.topIPs') }}</template>
-                  <el-table :data="logAnalysisData.topIps || []" size="small" stripe>
-                    <el-table-column label="IP" prop="name" />
-                    <el-table-column :label="$t('website.visits')" prop="count" width="100" align="right" />
-                  </el-table>
-                </el-card>
-              </el-col>
-            </el-row>
-          </div>
+          <SiteLogInsights v-if="logAnalysisData" :analysis="logAnalysisData" :site-id="siteId" :days="analysisDays" />
 
           <el-empty v-if="logAnalysisData && logAnalysisData.totalRequests === 0" :description="$t('website.noLogData')" />
         </div>
@@ -548,7 +530,7 @@
               <el-input v-model="detail.primaryDomain" :disabled="isExternalSite" />
             </el-form-item>
             <el-form-item :label="$t('website.otherDomains')">
-              <el-input v-model="detail.domains" :disabled="isExternalSite" :placeholder="$t('website.otherDomainsHint')" />
+              <DomainListInput v-model="detail.domains" :disabled="isExternalSite" />
             </el-form-item>
             <el-form-item :label="$t('website.siteDir')">
               <div style="display:flex; gap:8px; width:100%;">
@@ -629,6 +611,7 @@
               <el-col :span="6"><el-card shadow="never" class="stat-card"><div class="stat-value">{{ logAnalysisData.errorRate.toFixed(1) }}%</div><div class="stat-label">{{ $t('website.errorRate') }}</div></el-card></el-col>
             </el-row>
           </div>
+          <SiteLogInsights v-if="logAnalysisData" :analysis="logAnalysisData" :site-id="siteId" :days="analysisDays" />
           <el-empty v-if="logAnalysisData && logAnalysisData.totalRequests === 0" :description="$t('website.noLogData')" />
         </el-tab-pane>
       </el-tabs>
@@ -681,10 +664,12 @@ import {
 } from '@/api/modules/website'
 import type { NginxLogAnalysisMeta } from '@/api/modules/website'
 import LogAnalysisMetaBanner from '@/views/website/nginx/LogAnalysisMetaBanner.vue'
+import SiteLogInsights from '@/views/website/nginx/SiteLogInsights.vue'
 import { analysisViewState, abortAnalysisRequest, beginAnalysisRequest, createAnalysisRequestState, isCurrentAnalysisRequest } from '@/views/website/nginx/log-analysis-request'
 import { listFiles } from '@/api/modules/file'
 import { searchCertificate } from '@/api/modules/ssl'
 import type { Certificate, CertificateHealthSnapshot, WebsiteCertificateHealth } from '@/api/interface'
+import DomainListInput from '@/components/website/DomainListInput.vue'
 import type * as Monaco from 'monaco-editor'
 import * as echarts from 'echarts/core'
 import { BarChart, PieChart, LineChart } from 'echarts/charts'
@@ -710,6 +695,7 @@ interface WebsiteDetail {
   defaultServer: boolean
   webSocket: boolean
   certificateID: number
+  skipCertAdapt: boolean
   httpConfig: string
   http2Enable: boolean
   hsts: boolean
@@ -1161,7 +1147,7 @@ const renderStatusChart = () => {
   const data = Object.entries(codes).map(([name, value]) => ({
     name,
     value,
-    itemStyle: { color: colorMap[name] || tokens.muted },
+    itemStyle: { color: colorMap[name] || colorMap[`${name.charAt(0)}xx`] || tokens.muted },
   }))
 
   if (!data.length) { statusChart.clear(); return }

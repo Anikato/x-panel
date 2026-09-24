@@ -33,7 +33,7 @@
             {{ formatLinkSpeed(row.speedMbps) }}
             <span v-if="duplexLabel(row.duplex)" class="duplex">· {{ duplexLabel(row.duplex) }}</span>
           </span>
-          <span v-else class="text-muted">{{ t('nic.unnegotiated') }}</span>
+          <span v-else class="text-muted">{{ speedFallback(row.speedState) }}</span>
         </template>
       </el-table-column>
       <el-table-column :label="t('nic.ipv4')" min-width="160">
@@ -84,6 +84,11 @@ const kindLabel = (kind?: string) => {
     virtual: 'nic.kindVirtual',
   }
   return kind && keys[kind] ? t(keys[kind]) : kind || '-'
+}
+
+const speedFallback = (state?: string) => {
+  if (state === 'unreported') return t('nic.unreported')
+  return t('nic.unnegotiated')
 }
 
 const duplexLabel = (duplex?: string) => {

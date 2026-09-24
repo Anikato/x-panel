@@ -285,6 +285,31 @@
             </el-col>
           </el-row>
 
+          <el-row :gutter="16" style="margin-top: 16px">
+            <el-col :xs="24" :lg="12">
+              <article class="xp-deck rank-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">慢请求</h3></div>
+                <div class="muted-text" style="margin-bottom: 8px">平均 {{ formatMs(analysis.avgRequestMs) }}，超过 1 秒 {{ formatNumber(analysis.slowRequests || 0) }} 次</div>
+                <el-table :data="analysis.topSlowUrls || []" size="small" stripe max-height="260">
+                  <el-table-column label="URL" prop="name" show-overflow-tooltip />
+                  <el-table-column label="最慢" width="100" align="right">
+                    <template #default="{ row }">{{ formatMs(row.maxMs) }}</template>
+                  </el-table-column>
+                  <el-table-column :label="$t('nginx.requests')" prop="count" width="80" align="right" />
+                </el-table>
+              </article>
+            </el-col>
+            <el-col :xs="24" :lg="12">
+              <article class="xp-deck rank-card">
+                <div class="xp-section" style="margin-top:0"><h3 class="chart-title">错误日志</h3></div>
+                <el-table :data="analysis.errorSummary || []" size="small" stripe max-height="260">
+                  <el-table-column label="原因" prop="name" show-overflow-tooltip />
+                  <el-table-column :label="$t('nginx.requests')" prop="count" width="90" align="right" />
+                </el-table>
+              </article>
+            </el-col>
+          </el-row>
+
           <!-- 无数据 -->
           <el-empty v-if="!analyzing && analysis.totalRequests === 0" :description="$t('nginx.noLogData')" />
         </div>
@@ -700,7 +725,7 @@ const renderStatusChart = () => {
   const palette = statusColors()
   const tokens = chartTokens()
   const data = Object.entries(codes).map(([name, value]) => ({
-    name, value, itemStyle: { color: palette[name] || tokens.muted },
+    name, value, itemStyle: { color: palette[name] || palette[`${name.charAt(0)}xx`] || tokens.muted },
   }))
 
   if (data.length === 0) { statusChart.clear(); return }
@@ -786,6 +811,12 @@ const formatNumber = (n: number) => {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
   return String(n)
+}
+
+const formatMs = (value?: number) => {
+  if (!value) return '0 ms'
+  if (value >= 1000) return `${(value / 1000).toFixed(2)} s`
+  return `${Math.round(value)} ms`
 }
 
 const formatBytes = (bytes: number) => {

@@ -34,10 +34,13 @@ type rawIface struct {
 }
 
 var (
-	nicNameSafe     = regexp.MustCompile(`^[A-Za-z0-9:._-]+$`)
-	inventoryDrop   = regexp.MustCompile(`^(lo|docker\d*|docker_gwbridge|br-[0-9a-f]{6,}|veth|fwbr|fwln|fwpr|tap|tunl|tun\d*|cni|flannel|cali|virbr|vnet|dummy|tailscale)`)
-	wifiBitrateLine = regexp.MustCompile(`(?i)(?:rx |tx )?bitrate:\s*([\d.]+)\s*MBit`)
-	lookupWifiSpeed = wifiLinkSpeedMbps
+	nicNameSafe       = regexp.MustCompile(`^[A-Za-z0-9:._-]+$`)
+	inventoryDrop     = regexp.MustCompile(`^(lo|docker\d*|docker_gwbridge|br-[0-9a-f]{6,}|veth|fwbr|fwln|fwpr|tap|tunl|tun\d*|cni|flannel|cali|virbr|vnet|dummy|tailscale)`)
+	wifiBitrateLine   = regexp.MustCompile(`(?i)(?:rx |tx )?bitrate:\s*([\d.]+)\s*MBit`)
+	ethtoolSpeedLine  = regexp.MustCompile(`(?i)^Speed:\s*(\d+)\s*Mb/s`)
+	ethtoolDuplexLine = regexp.MustCompile(`(?i)^Duplex:\s*(Full|Half)\b`)
+	lookupWifiSpeed   = wifiLinkSpeedMbps
+	lookupEthtoolLink = ethtoolLink
 )
 
 func classifyKind(fs nicSysfs) string {
@@ -99,6 +102,53 @@ func carrierConnected(raw string) bool {
 	return strings.TrimSpace(raw) == "1"
 }
 
+func normalizeDuplex(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "full":
+		return "full"
+	case "half":
+		return "half"
+	default:
+		return ""
+	}
+}
+
+func parseEthtoolLink(raw string) (int, string) {
+	speed := 0
+	duplex := ""
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if match := ethtoolSpeedLine.FindStringSubmatch(line); match != nil {
+			speed = parseSpeedMbps(match[1])
+		}
+		if match := ethtoolDuplexLine.FindStringSubmatch(line); match != nil {
+			duplex = normalizeDuplex(match[1])
+		}
+	}
+	return speed, duplex
+}
+
+func ethtoolLink(name string) (int, string) {
+	if !nicNameSafe.MatchString(name) {
+		return 0, ""
+	}
+	out, err := exec.Command("ethtool", name).Output()
+	if err != nil {
+		return 0, ""
+	}
+	return parseEthtoolLink(string(out))
+}
+
+func speedState(mbps int, connected bool) string {
+	if mbps > 0 {
+		return "negotiated"
+	}
+	if connected {
+		return "unreported"
+	}
+	return "unnegotiated"
+}
+
 func isInventoryNIC(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if n == "" {
@@ -114,9 +164,10 @@ func assembleInterface(name, mac string, flags net.Flags, addrs []string, fs nic
 		OperState: fs.OperState,
 		Kind:      classifyKind(fs),
 		SpeedMbps: parseSpeedMbps(fs.Speed),
-		Duplex:    strings.TrimSpace(fs.Duplex),
+		Duplex:    normalizeDuplex(fs.Duplex),
 		Connected: carrierConnected(fs.Carrier),
 	}
+	info.SpeedState = speedState(info.SpeedMbps, info.Connected)
 	if flags&net.FlagUp != 0 {
 		info.Status = "up"
 	} else {
@@ -149,6 +200,16 @@ func listNicsFrom(list func() ([]rawIface, error), sysfs func(string) nicSysfs, 
 		if info.Kind == "wifi" && info.SpeedMbps == 0 && lookupWifiSpeed != nil {
 			info.SpeedMbps = lookupWifiSpeed(iface.Name)
 		}
+		if info.SpeedMbps == 0 && info.Connected && lookupEthtoolLink != nil {
+			mbps, duplex := lookupEthtoolLink(iface.Name)
+			if mbps > 0 {
+				info.SpeedMbps = mbps
+			}
+			if info.Duplex == "" && duplex != "" {
+				info.Duplex = duplex
+			}
+		}
+		info.SpeedState = speedState(info.SpeedMbps, info.Connected)
 		result = append(result, info)
 	}
 	return result

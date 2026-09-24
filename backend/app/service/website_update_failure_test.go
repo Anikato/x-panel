@@ -98,6 +98,144 @@ func TestSaveMainConfDoesNotLeaveEmptyFileWhenBackupMissingAndTestFails(t *testi
 	}
 }
 
+func TestDisableKeepsSiteAndConfigWhenReloadFails(t *testing.T) {
+	setupManagedWebsiteNginx(t)
+	writeReloadFailingNginx(t, global.CONF.Nginx.InstallDir)
+	site := model.Website{
+		PrimaryDomain: "keep.example.com",
+		Alias:         "keep_example_com",
+		Type:          "static",
+		Status:        "running",
+		SiteDir:       "/var/www/keep",
+		IndexFile:     "index.html",
+	}
+	if err := repo.NewIWebsiteRepo().Create(&site); err != nil {
+		t.Fatal(err)
+	}
+	confPath := GetSiteConfPath(site.Alias)
+	original := "server { server_name keep.example.com; }\n"
+	if err := os.WriteFile(confPath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc := &WebsiteService{websiteRepo: repo.NewIWebsiteRepo(), certRepo: repo.NewICertificateRepo()}
+	if err := svc.Disable(site.ID); err == nil {
+		t.Fatal("expected reload failure")
+	}
+	stored, err := repo.NewIWebsiteRepo().Get(repo.WithByID(site.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "running" {
+		t.Fatalf("status = %q, want running", stored.Status)
+	}
+	got, err := os.ReadFile(confPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != original {
+		t.Fatalf("config = %q, want original", got)
+	}
+}
+
+func TestEnableKeepsStoppedStateWhenSaveFails(t *testing.T) {
+	setupManagedWebsiteNginx(t)
+	site := model.Website{
+		PrimaryDomain: "off.example.com",
+		Alias:         "off_example_com",
+		Type:          "static",
+		Status:        "stopped",
+		SiteDir:       "/var/www/off",
+		IndexFile:     "index.html",
+	}
+	base := repo.NewIWebsiteRepo()
+	if err := base.Create(&site); err != nil {
+		t.Fatal(err)
+	}
+	confPath := GetSiteConfPath(site.Alias)
+	svc := &WebsiteService{
+		websiteRepo: saveFailingWebsiteRepo{IWebsiteRepo: base},
+		certRepo:    repo.NewICertificateRepo(),
+	}
+	if err := svc.Enable(site.ID); err == nil {
+		t.Fatal("expected save failure")
+	}
+	stored, err := base.Get(repo.WithByID(site.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "stopped" {
+		t.Fatalf("status = %q, want stopped", stored.Status)
+	}
+	if _, statErr := os.Stat(confPath); !os.IsNotExist(statErr) {
+		t.Fatalf("enable left config behind: %v", statErr)
+	}
+}
+
+func TestSaveConfFileRejectsSiblingPathAndSymlink(t *testing.T) {
+	installFakeNginx(t, false)
+	confDir := global.CONF.Nginx.GetConfDir()
+	svc := &WebsiteService{}
+	sibling := filepath.Join(filepath.Dir(confDir), "conf2", "a.conf")
+	if err := os.MkdirAll(filepath.Dir(sibling), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SaveConfFile(dto.NginxConfUpdate{FilePath: sibling, Content: "events {}\n"}); err == nil {
+		t.Fatal("expected sibling path to be rejected")
+	}
+	if _, err := os.Stat(sibling); !os.IsNotExist(err) {
+		t.Fatalf("sibling file created: %v", err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(confDir, "link.conf")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SaveConfFile(dto.NginxConfUpdate{FilePath: link, Content: "pwned\n"}); err == nil {
+		t.Fatal("expected symlink to be rejected")
+	}
+	got, err := os.ReadFile(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "secret" {
+		t.Fatalf("symlink target changed: %q", got)
+	}
+}
+
+func TestSaveConfFileDoesNotLeaveEmptyFileWhenTestFails(t *testing.T) {
+	installFakeNginx(t, false)
+	writeFailingNginx(t, global.CONF.Nginx.InstallDir)
+	confDir := global.CONF.Nginx.GetConfDir()
+	target := filepath.Join(confDir, "site.conf")
+	original := "events {}\nhttp {}\n"
+	if err := os.WriteFile(target, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc := &WebsiteService{}
+	if err := svc.SaveConfFile(dto.NginxConfUpdate{FilePath: target, Content: "not nginx"}); err == nil {
+		t.Fatal("expected nginx test failure")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != original {
+		t.Fatalf("config = %q, want original", got)
+	}
+
+	missing := filepath.Join(confDir, "missing.conf")
+	if err := svc.SaveConfFile(dto.NginxConfUpdate{FilePath: missing, Content: "not nginx"}); err == nil {
+		t.Fatal("expected nginx test failure for new file")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("invalid new config left behind: %v", err)
+	}
+}
+
 func TestSaveMainConfRestoresOriginalWhenTestFails(t *testing.T) {
 	installFakeNginx(t, false)
 	writeFailingNginx(t, global.CONF.Nginx.InstallDir)

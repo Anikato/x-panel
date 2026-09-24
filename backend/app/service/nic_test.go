@@ -10,7 +10,51 @@ import (
 
 func TestMain(m *testing.M) {
 	lookupWifiSpeed = func(string) int { return 0 }
+	lookupEthtoolLink = func(string) (int, string) { return 0, "" }
 	os.Exit(m.Run())
+}
+
+func TestParseEthtoolLink(t *testing.T) {
+	raw := "Settings for eth0:\n\tSpeed: 10000Mb/s\n\tDuplex: Full\n"
+	mbps, duplex := parseEthtoolLink(raw)
+	if mbps != 10000 || duplex != "full" {
+		t.Fatalf("ethtool = %d %q", mbps, duplex)
+	}
+	mbps, duplex = parseEthtoolLink("Speed: Unknown!\nDuplex: Unknown! (255)\n")
+	if mbps != 0 || duplex != "" {
+		t.Fatalf("unknown ethtool = %d %q", mbps, duplex)
+	}
+}
+
+func TestListNics_UsesEthtoolWhenVirtualSysfsSpeedMissing(t *testing.T) {
+	prev := lookupEthtoolLink
+	lookupEthtoolLink = func(name string) (int, string) {
+		if name == "eth0" {
+			return 10000, "full"
+		}
+		return 0, ""
+	}
+	defer func() { lookupEthtoolLink = prev }()
+
+	listed := listNicsFrom(func() ([]rawIface, error) {
+		return []rawIface{{Name: "eth0", Flags: net.FlagUp}}, nil
+	}, func(string) nicSysfs {
+		return nicSysfs{OperState: "up", Carrier: "1", Speed: "-1", Duplex: "unknown", HasDevice: true}
+	}, true)
+	if len(listed) != 1 || listed[0].SpeedMbps != 10000 || listed[0].Duplex != "full" || listed[0].SpeedState != "negotiated" {
+		t.Fatalf("virtio speed = %#v", listed)
+	}
+}
+
+func TestListNics_ConnectedWithoutSpeedIsUnreported(t *testing.T) {
+	listed := listNicsFrom(func() ([]rawIface, error) {
+		return []rawIface{{Name: "eth0", Flags: net.FlagUp}}, nil
+	}, func(string) nicSysfs {
+		return nicSysfs{OperState: "up", Carrier: "1", Speed: "-1", HasDevice: true}
+	}, true)
+	if len(listed) != 1 || listed[0].SpeedMbps != 0 || listed[0].SpeedState != "unreported" {
+		t.Fatalf("missing virtual speed = %#v", listed)
+	}
 }
 
 func TestListNics_UsesWifiBitrateWhenSysfsSpeedMissing(t *testing.T) {
@@ -147,6 +191,9 @@ func TestAssembleInterface_DisconnectedPhysical(t *testing.T) {
 	if info.SpeedMbps != 0 {
 		t.Fatalf("speed = %d, want 0 when unnegotiated", info.SpeedMbps)
 	}
+	if info.SpeedState != "unnegotiated" {
+		t.Fatalf("speed state = %q", info.SpeedState)
+	}
 }
 
 func TestAssembleInterface_ConnectedGigabit(t *testing.T) {
@@ -160,8 +207,8 @@ func TestAssembleInterface_ConnectedGigabit(t *testing.T) {
 	if !info.Connected {
 		t.Fatal("carrier up should be connected")
 	}
-	if info.SpeedMbps != 1000 {
-		t.Fatalf("speed = %d, want 1000", info.SpeedMbps)
+	if info.SpeedMbps != 1000 || info.SpeedState != "negotiated" {
+		t.Fatalf("speed = %d state=%q, want 1000 negotiated", info.SpeedMbps, info.SpeedState)
 	}
 	if info.Duplex != "full" {
 		t.Fatalf("duplex = %q, want full", info.Duplex)

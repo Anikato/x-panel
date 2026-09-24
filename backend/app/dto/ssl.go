@@ -117,8 +117,26 @@ type CertificateInfo struct {
 	NotBefore     time.Time `json:"notBefore"`
 	NotAfter      time.Time `json:"notAfter"`
 	// 关联
-	AcmeAccountEmail string `json:"acmeAccountEmail"`
-	DnsAccountName   string `json:"dnsAccountName"`
+	AcmeAccountEmail string                `json:"acmeAccountEmail"`
+	DnsAccountName   string                `json:"dnsAccountName"`
+	Consumers        []CertificateConsumer `json:"consumers"`
+}
+
+const (
+	CertificateConsumerWebsite = "website"
+	CertificateConsumerHAProxy = "haproxy"
+	CertificateConsumerGOST    = "gost"
+	CertificateConsumerPanel   = "panel"
+	CertificateConsumerNginx   = "nginx"
+)
+
+// CertificateConsumer 正在使用这张证书的面板对象或 Nginx 配置。
+type CertificateConsumer struct {
+	Kind   string `json:"kind"`
+	ID     uint   `json:"id"`
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
+	Active bool   `json:"active"`
 }
 
 type CertificateDetail struct {

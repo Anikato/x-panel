@@ -2,13 +2,17 @@ package service
 
 import (
 	"fmt"
+	"net"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"xpanel/app/dto"
 	"xpanel/global"
 	"xpanel/utils/cmd"
 )
+
+var execCommand = cmd.ExecWithOutput
 
 type IFirewallService interface {
 	GetBaseInfo() (*dto.FirewallBaseInfo, error)
@@ -29,7 +33,7 @@ func (s *FirewallService) GetBaseInfo() (*dto.FirewallBaseInfo, error) {
 	info := &dto.FirewallBaseInfo{}
 
 	// 检查 ufw 是否安装
-	version, err := cmd.ExecWithOutput("ufw", "version")
+	version, err := execCommand("ufw", "version")
 	if err != nil {
 		info.IsExist = false
 		info.Name = "-"
@@ -46,7 +50,7 @@ func (s *FirewallService) GetBaseInfo() (*dto.FirewallBaseInfo, error) {
 	}
 
 	// 检查状态
-	status, _ := cmd.ExecWithOutput("ufw", "status")
+	status, _ := execCommand("ufw", "status")
 	info.IsActive = strings.Contains(status, "Status: active")
 
 	return info, nil
@@ -68,7 +72,7 @@ func (s *FirewallService) Operate(operation string) error {
 		return fmt.Errorf("unsupported operation: %s", operation)
 	}
 
-	output, err := cmd.ExecWithOutput(args[0], args[1:]...)
+	output, err := execCommand(args[0], args[1:]...)
 	if err != nil {
 		return fmt.Errorf("%s: %s", err.Error(), output)
 	}
@@ -80,33 +84,22 @@ func (s *FirewallService) ListPortRules(req dto.PortRuleSearch) (int64, []dto.Po
 	if !isUFWInstalled() {
 		return 0, nil, nil
 	}
-	output, err := cmd.ExecWithOutput("ufw", "status", "numbered")
+	output, err := execCommand("ufw", "status", "numbered")
 	if err != nil {
 		return 0, nil, err
 	}
 
 	var rules []dto.PortRuleInfo
-	re := regexp.MustCompile(`\[\s*\d+\]\s+(.+?)\s+(ALLOW|DENY)\s+(?:IN\s+)?(.+)`)
-
-	for _, line := range strings.Split(output, "\n") {
-		m := re.FindStringSubmatch(strings.TrimSpace(line))
-		if m == nil {
+	for _, rule := range parseUFWRules(output) {
+		if !rule.IsPort {
 			continue
 		}
-		target := strings.TrimSpace(m[1])
-		strategy := strings.ToLower(strings.TrimSpace(m[2]))
-		from := strings.TrimSpace(m[3])
-
-		port, proto := parseUFWTarget(target)
-		if port == "" {
-			continue
-		}
-
 		rule := dto.PortRuleInfo{
-			Port:     port,
-			Protocol: proto,
-			Strategy: strategy,
-			From:     from,
+			Number:   rule.Number,
+			Port:     rule.Port,
+			Protocol: rule.Protocol,
+			Strategy: rule.Strategy,
+			From:     rule.From,
 		}
 
 		// 过滤
@@ -124,6 +117,9 @@ func (s *FirewallService) ListPortRules(req dto.PortRuleSearch) (int64, []dto.Po
 	total := int64(len(rules))
 	start := (req.Page - 1) * req.PageSize
 	end := start + req.PageSize
+	if start < 0 {
+		start = 0
+	}
 	if start > int(total) {
 		return total, nil, nil
 	}
@@ -136,6 +132,12 @@ func (s *FirewallService) ListPortRules(req dto.PortRuleSearch) (int64, []dto.Po
 func (s *FirewallService) CreatePortRule(req dto.PortRuleCreate) error {
 	if !isUFWInstalled() {
 		return fmt.Errorf("ufw is not installed")
+	}
+	if !validPortSpec(req.Port) {
+		return fmt.Errorf("invalid port")
+	}
+	if req.From != "" && req.From != "Anywhere" && !validIPSpec(req.From) {
+		return fmt.Errorf("invalid source address")
 	}
 	args := []string{"ufw"}
 	if req.Strategy == "deny" {
@@ -166,7 +168,7 @@ func (s *FirewallService) CreatePortRule(req dto.PortRuleCreate) error {
 		}
 	}
 
-	output, err := cmd.ExecWithOutput(args[0], args[1:]...)
+	output, err := execCommand(args[0], args[1:]...)
 	if err != nil {
 		return fmt.Errorf("%s: %s", err.Error(), output)
 	}
@@ -177,6 +179,9 @@ func (s *FirewallService) CreatePortRule(req dto.PortRuleCreate) error {
 func (s *FirewallService) DeletePortRule(req dto.PortRuleDelete) error {
 	if !isUFWInstalled() {
 		return fmt.Errorf("ufw is not installed")
+	}
+	if req.Number > 0 {
+		return deleteUFWByNumber(req.Number)
 	}
 	args := []string{"ufw", "delete"}
 	if req.Strategy == "deny" {
@@ -198,7 +203,7 @@ func (s *FirewallService) DeletePortRule(req dto.PortRuleDelete) error {
 		args = append(args, portStr)
 	}
 
-	output, err := cmd.ExecWithOutput(args[0], args[1:]...)
+	output, err := execCommand(args[0], args[1:]...)
 	if err != nil {
 		return fmt.Errorf("%s: %s", err.Error(), output)
 	}
@@ -210,22 +215,19 @@ func (s *FirewallService) ListIPRules() ([]dto.IPRuleInfo, error) {
 	if !isUFWInstalled() {
 		return nil, nil
 	}
-	output, err := cmd.ExecWithOutput("ufw", "status", "numbered")
+	output, err := execCommand("ufw", "status", "numbered")
 	if err != nil {
 		return nil, err
 	}
-
 	var rules []dto.IPRuleInfo
-	re := regexp.MustCompile(`\[\s*\d+\]\s+Anywhere\s+(ALLOW|DENY)\s+(?:IN\s+)?(\S+)`)
-
-	for _, line := range strings.Split(output, "\n") {
-		m := re.FindStringSubmatch(strings.TrimSpace(line))
-		if m == nil {
+	for _, rule := range parseUFWRules(output) {
+		if rule.IsPort {
 			continue
 		}
 		rules = append(rules, dto.IPRuleInfo{
-			Strategy: strings.ToLower(m[1]),
-			Address:  m[2],
+			Number:   rule.Number,
+			Address:  rule.Address,
+			Strategy: rule.Strategy,
 		})
 	}
 	return rules, nil
@@ -235,6 +237,9 @@ func (s *FirewallService) CreateIPRule(req dto.IPRuleCreate) error {
 	if !isUFWInstalled() {
 		return fmt.Errorf("ufw is not installed")
 	}
+	if !validIPSpec(req.Address) {
+		return fmt.Errorf("invalid address")
+	}
 	var args []string
 	if req.Strategy == "deny" {
 		args = []string{"ufw", "deny", "from", req.Address}
@@ -242,7 +247,7 @@ func (s *FirewallService) CreateIPRule(req dto.IPRuleCreate) error {
 		args = []string{"ufw", "allow", "from", req.Address}
 	}
 
-	output, err := cmd.ExecWithOutput(args[0], args[1:]...)
+	output, err := execCommand(args[0], args[1:]...)
 	if err != nil {
 		return fmt.Errorf("%s: %s", err.Error(), output)
 	}
@@ -253,6 +258,9 @@ func (s *FirewallService) DeleteIPRule(req dto.IPRuleDelete) error {
 	if !isUFWInstalled() {
 		return fmt.Errorf("ufw is not installed")
 	}
+	if req.Number > 0 {
+		return deleteUFWByNumber(req.Number)
+	}
 	var args []string
 	if req.Strategy == "deny" {
 		args = []string{"ufw", "delete", "deny", "from", req.Address}
@@ -260,7 +268,15 @@ func (s *FirewallService) DeleteIPRule(req dto.IPRuleDelete) error {
 		args = []string{"ufw", "delete", "allow", "from", req.Address}
 	}
 
-	output, err := cmd.ExecWithOutput(args[0], args[1:]...)
+	output, err := execCommand(args[0], args[1:]...)
+	if err != nil {
+		return fmt.Errorf("%s: %s", err.Error(), output)
+	}
+	return nil
+}
+
+func deleteUFWByNumber(number int) error {
+	output, err := execCommand("ufw", "--force", "delete", strconv.Itoa(number))
 	if err != nil {
 		return fmt.Errorf("%s: %s", err.Error(), output)
 	}
@@ -269,7 +285,96 @@ func (s *FirewallService) DeleteIPRule(req dto.IPRuleDelete) error {
 
 // isUFWInstalled 检查 ufw 是否安装
 func isUFWInstalled() bool {
-	_, err := cmd.ExecWithOutput("which", "ufw")
+	_, err := execCommand("which", "ufw")
+	return err == nil
+}
+
+type parsedUFWRule struct {
+	Number   int
+	IsPort   bool
+	Port     string
+	Protocol string
+	Address  string
+	Strategy string
+	From     string
+}
+
+var ufwNumberedRe = regexp.MustCompile(`^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY)(?:\s+IN)?\s+(.+)$`)
+
+func parseUFWRules(output string) []parsedUFWRule {
+	var rules []parsedUFWRule
+	for _, line := range strings.Split(output, "\n") {
+		m := ufwNumberedRe.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
+			continue
+		}
+		number, _ := strconv.Atoi(m[1])
+		to := strings.TrimSpace(m[2])
+		strategy := strings.ToLower(m[3])
+		from := strings.TrimSpace(m[4])
+		to = strings.TrimSuffix(to, " (v6)")
+		from = strings.TrimSuffix(from, " (v6)")
+		if isAnywhere(to) && validIPSpec(from) {
+			rules = append(rules, parsedUFWRule{Number: number, Address: from, Strategy: strategy, From: from})
+			continue
+		}
+		if port, proto, ok := splitPortTarget(to); ok {
+			rules = append(rules, parsedUFWRule{
+				Number: number, IsPort: true, Port: port, Protocol: proto, Strategy: strategy, From: from,
+			})
+			continue
+		}
+		if validIPSpec(to) {
+			rules = append(rules, parsedUFWRule{Number: number, Address: to, Strategy: strategy, From: from})
+		}
+	}
+	return rules
+}
+
+func isAnywhere(value string) bool {
+	return value == "" || strings.EqualFold(value, "Anywhere")
+}
+
+func splitPortTarget(target string) (string, string, bool) {
+	target = strings.TrimSpace(target)
+	port, proto := target, "tcp/udp"
+	if strings.Contains(target, "/") {
+		parts := strings.SplitN(target, "/", 2)
+		port, proto = parts[0], parts[1]
+	}
+	if !validPortSpec(port) {
+		return "", "", false
+	}
+	switch proto {
+	case "tcp", "udp", "tcp/udp":
+		return port, proto, true
+	default:
+		return "", "", false
+	}
+}
+
+func validPortSpec(port string) bool {
+	parts := strings.Split(port, ":")
+	if len(parts) == 0 || len(parts) > 2 {
+		return false
+	}
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 1 || n > 65535 {
+			return false
+		}
+	}
+	return true
+}
+
+func validIPSpec(value string) bool {
+	if value == "" || strings.ContainsAny(value, " \t\r\n") {
+		return false
+	}
+	if net.ParseIP(value) != nil {
+		return true
+	}
+	_, _, err := net.ParseCIDR(value)
 	return err == nil
 }
 

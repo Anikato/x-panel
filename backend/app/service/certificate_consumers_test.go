@@ -55,7 +55,7 @@ func installCertificateConsumerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := database.AutoMigrate(&model.Website{}, &model.HAProxyLB{}, &model.GostService{}); err != nil {
+	if err := database.AutoMigrate(&model.Website{}, &model.HAProxyLB{}, &model.GostService{}, &model.Certificate{}, &model.Setting{}); err != nil {
 		t.Fatalf("migrate consumers: %v", err)
 	}
 	previous := global.DB
@@ -78,15 +78,15 @@ func TestReloadNginxGlobalTestsConfigBeforeReload(t *testing.T) {
 	}
 }
 
-func TestFindCertificateConsumerTargetsSelectsRunningNginxWithoutWebsiteRows(t *testing.T) {
+func TestFindCertificateConsumerTargetsIgnoresRunningNginxWithoutUsers(t *testing.T) {
 	installCertificateConsumerDatabase(t)
 	installFakeNginx(t, true)
 	targets, err := findCertificateConsumerTargets([]uint{7})
 	if err != nil {
 		t.Fatalf("find consumers: %v", err)
 	}
-	if !targets.Nginx {
-		t.Fatalf("targets = %#v, want running nginx", targets)
+	if targets.Nginx || targets.HAProxy || targets.GOST {
+		t.Fatalf("targets = %#v, unused certificate must not reload services", targets)
 	}
 }
 
