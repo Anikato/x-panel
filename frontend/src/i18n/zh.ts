@@ -1010,7 +1010,6 @@ export default {
     deleteConfirm: '确定要删除该规则吗？',
     anywhere: '任意来源',
     forwardRules: '端口转发',
-    forwardTip: '使用 nftables，不需要安装 ufw。目标端口留空则保持原端口。ufw 已启用时会补一条转发放行。',
     targetIP: '目标 IP',
     targetPort: '目标端口',
     targetPortHint: '留空表示不改端口，端口段必须留空',

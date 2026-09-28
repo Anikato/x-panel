@@ -12,8 +12,6 @@
         </template>
     </div>
 
-    <el-alert v-if="!baseInfo.isExist" class="forward-note" type="info" :closable="false" :title="$t('firewall.forwardTip')" />
-
     <el-tabs v-model="activeTab">
       <el-tab-pane v-if="baseInfo.isExist" :label="$t('firewall.portRules')" name="port">
         <div class="toolbar">
@@ -76,14 +74,15 @@
 
       <el-tab-pane :label="$t('firewall.forwardRules')" name="forward">
         <div class="toolbar">
-          <span class="form-tip">{{ $t('firewall.forwardTip') }}</span>
           <el-button size="small" type="primary" @click="forwardDialogVisible = true">
             <el-icon><Plus /></el-icon>
             {{ $t('firewall.addRule') }}
           </el-button>
         </div>
         <el-table :data="forwards" size="small" v-loading="forwardLoading">
-          <el-table-column prop="protocol" :label="$t('firewall.protocol')" width="100" />
+          <el-table-column :label="$t('firewall.protocol')" width="110">
+            <template #default="{ row }">{{ row.protocol === 'both' ? 'TCP/UDP' : row.protocol.toUpperCase() }}</template>
+          </el-table-column>
           <el-table-column prop="port" :label="$t('firewall.port')" width="160" />
           <el-table-column prop="targetIP" :label="$t('firewall.targetIP')" min-width="180" />
           <el-table-column :label="$t('firewall.targetPort')" width="140">
@@ -152,13 +151,14 @@
           <el-select v-model="forwardForm.protocol" style="width: 100%">
             <el-option label="TCP" value="tcp" />
             <el-option label="UDP" value="udp" />
+            <el-option label="TCP/UDP" value="both" />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('firewall.port')">
-          <el-input v-model="forwardForm.port" placeholder="5061 或 10000:10100" />
+          <el-input v-model="forwardForm.port" placeholder="80 或 8000:8100" />
         </el-form-item>
         <el-form-item :label="$t('firewall.targetIP')">
-          <el-input v-model="forwardForm.targetIP" placeholder="100.100.100.222" />
+          <el-input v-model="forwardForm.targetIP" placeholder="192.168.1.10" />
         </el-form-item>
         <el-form-item :label="$t('firewall.targetPort')">
           <el-input v-model="forwardForm.targetPort" :placeholder="$t('firewall.targetPortHint')" />

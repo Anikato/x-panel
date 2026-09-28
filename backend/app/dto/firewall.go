@@ -83,7 +83,7 @@ type ForwardRuleDelete struct {
 // ForwardRuleCreate 创建转发规则
 type ForwardRuleCreate struct {
 	Port       string `json:"port" binding:"required"`
-	Protocol   string `json:"protocol" binding:"required,oneof=tcp udp"`
+	Protocol   string `json:"protocol" binding:"required,oneof=tcp udp both"`
 	TargetIP   string `json:"targetIP" binding:"required"`
 	TargetPort string `json:"targetPort"`
 }

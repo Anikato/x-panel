@@ -90,8 +90,8 @@ func (s *FirewallService) applyStoredForwards() error {
 
 func normalizeForwardRule(req dto.ForwardRuleCreate) (model.FirewallForward, error) {
 	protocol := strings.ToLower(strings.TrimSpace(req.Protocol))
-	if protocol != "tcp" && protocol != "udp" {
-		return model.FirewallForward{}, fmt.Errorf("协议只支持 tcp 或 udp")
+	if protocol != "tcp" && protocol != "udp" && protocol != "both" {
+		return model.FirewallForward{}, fmt.Errorf("协议只支持 tcp、udp 或 both")
 	}
 	port, err := normalizePortRange(req.Port)
 	if err != nil {
@@ -129,7 +129,7 @@ func normalizePortRange(value string) (string, error) {
 		return strconv.Itoa(port), nil
 	}
 	if len(parts) != 2 {
-		return "", fmt.Errorf("端口格式应为 5061 或 10000:10100")
+		return "", fmt.Errorf("端口格式应为 80 或 8000:8100")
 	}
 	start, err := parsePortNumber(parts[0])
 	if err != nil {
@@ -164,23 +164,36 @@ func renderPortForwardNFT(rules []model.FirewallForward) string {
 	b.WriteString("  chain prerouting {\n")
 	b.WriteString("    type nat hook prerouting priority dstnat; policy accept;\n")
 	for _, rule := range rules {
-		fmt.Fprintf(&b, "    %s dport %s dnat to %s\n", rule.Protocol, rule.Port, natDestination(rule))
+		for _, protocol := range forwardProtocols(rule.Protocol) {
+			fmt.Fprintf(&b, "    %s dport %s dnat to %s\n", protocol, rule.Port, natDestination(rule))
+		}
 	}
 	b.WriteString("  }\n")
 	b.WriteString("  chain postrouting {\n")
 	b.WriteString("    type nat hook postrouting priority srcnat; policy accept;\n")
 	for _, rule := range rules {
-		fmt.Fprintf(&b, "    ip daddr %s %s dport %s masquerade\n", rule.TargetIP, rule.Protocol, masqueradePort(rule))
+		for _, protocol := range forwardProtocols(rule.Protocol) {
+			fmt.Fprintf(&b, "    ip daddr %s %s dport %s masquerade\n", rule.TargetIP, protocol, masqueradePort(rule))
+		}
 	}
 	b.WriteString("  }\n")
 	b.WriteString("  chain forward {\n")
 	b.WriteString("    type filter hook forward priority -10; policy accept;\n")
 	for _, rule := range rules {
-		fmt.Fprintf(&b, "    ip daddr %s %s dport %s accept\n", rule.TargetIP, rule.Protocol, masqueradePort(rule))
+		for _, protocol := range forwardProtocols(rule.Protocol) {
+			fmt.Fprintf(&b, "    ip daddr %s %s dport %s accept\n", rule.TargetIP, protocol, masqueradePort(rule))
+		}
 	}
 	b.WriteString("  }\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+func forwardProtocols(protocol string) []string {
+	if protocol == "both" {
+		return []string{"tcp", "udp"}
+	}
+	return []string{protocol}
 }
 
 func natDestination(rule model.FirewallForward) string {
@@ -243,10 +256,12 @@ func allowUFWRoute(rule model.FirewallForward) error {
 	if !ufwIsActive() {
 		return nil
 	}
-	args := []string{"route", "allow", "proto", rule.Protocol, "to", rule.TargetIP, "port", ufwPort(masqueradePort(rule))}
-	output, err := exec.Command("ufw", args...).CombinedOutput()
-	if err != nil && !strings.Contains(strings.ToLower(string(output)), "existing") {
-		return fmt.Errorf("%s", strings.TrimSpace(string(output)))
+	for _, protocol := range forwardProtocols(rule.Protocol) {
+		args := []string{"route", "allow", "proto", protocol, "to", rule.TargetIP, "port", ufwPort(masqueradePort(rule))}
+		output, err := exec.Command("ufw", args...).CombinedOutput()
+		if err != nil && !strings.Contains(strings.ToLower(string(output)), "existing") {
+			return fmt.Errorf("%s", strings.TrimSpace(string(output)))
+		}
 	}
 	return nil
 }
@@ -255,10 +270,12 @@ func deleteUFWRoute(rule model.FirewallForward) error {
 	if !ufwIsActive() {
 		return nil
 	}
-	args := []string{"route", "delete", "allow", "proto", rule.Protocol, "to", rule.TargetIP, "port", ufwPort(masqueradePort(rule))}
-	output, err := exec.Command("ufw", args...).CombinedOutput()
-	if err != nil && !strings.Contains(strings.ToLower(string(output)), "could not delete") {
-		return fmt.Errorf("%s", strings.TrimSpace(string(output)))
+	for _, protocol := range forwardProtocols(rule.Protocol) {
+		args := []string{"route", "delete", "allow", "proto", protocol, "to", rule.TargetIP, "port", ufwPort(masqueradePort(rule))}
+		output, err := exec.Command("ufw", args...).CombinedOutput()
+		if err != nil && !strings.Contains(strings.ToLower(string(output)), "could not delete") {
+			return fmt.Errorf("%s", strings.TrimSpace(string(output)))
+		}
 	}
 	return nil
 }

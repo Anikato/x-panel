@@ -42,6 +42,22 @@ func TestNormalizeForwardRuleRejectsMappedPortRange(t *testing.T) {
 	}
 }
 
+func TestRenderPortForwardBothProtocols(t *testing.T) {
+	script := renderPortForwardNFT([]model.FirewallForward{
+		{Protocol: "both", Port: "80", TargetIP: "192.168.1.10", TargetPort: "8080"},
+	})
+	for _, want := range []string{
+		"tcp dport 80 dnat to 192.168.1.10:8080",
+		"udp dport 80 dnat to 192.168.1.10:8080",
+		"tcp dport 8080 masquerade",
+		"udp dport 8080 masquerade",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("script missing %q\n%s", want, script)
+		}
+	}
+}
+
 func TestRenderPortForwardRemovesTableWhenEmpty(t *testing.T) {
 	script := renderPortForwardNFT(nil)
 	if !strings.Contains(script, "delete table ip xpanel_nat") || strings.Contains(script, "dnat") {
