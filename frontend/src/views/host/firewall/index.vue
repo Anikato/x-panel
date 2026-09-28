@@ -12,9 +12,10 @@
         </template>
     </div>
 
-    <el-tabs v-model="activeTab" v-if="baseInfo.isExist">
-      <!-- 端口规则 -->
-      <el-tab-pane :label="$t('firewall.portRules')" name="port">
+    <el-alert v-if="!baseInfo.isExist" class="forward-note" type="info" :closable="false" :title="$t('firewall.forwardTip')" />
+
+    <el-tabs v-model="activeTab">
+      <el-tab-pane v-if="baseInfo.isExist" :label="$t('firewall.portRules')" name="port">
         <div class="toolbar">
           <el-input v-model="portSearch" :placeholder="$t('commons.search')" prefix-icon="Search" size="small" clearable class="search-input" @input="loadPortRules" />
           <el-button size="small" type="primary" @click="portDialogVisible = true">
@@ -48,7 +49,7 @@
       </el-tab-pane>
 
       <!-- IP 规则 -->
-      <el-tab-pane :label="$t('firewall.ipRules')" name="ip">
+      <el-tab-pane v-if="baseInfo.isExist" :label="$t('firewall.ipRules')" name="ip">
         <div class="toolbar">
           <el-button size="small" type="primary" @click="ipDialogVisible = true">
             <el-icon><Plus /></el-icon>
@@ -72,9 +73,30 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
-    </el-tabs>
 
-    <el-empty v-else-if="!loading" :description="$t('firewall.notInstalled') + ' (ufw)'" />
+      <el-tab-pane :label="$t('firewall.forwardRules')" name="forward">
+        <div class="toolbar">
+          <span class="form-tip">{{ $t('firewall.forwardTip') }}</span>
+          <el-button size="small" type="primary" @click="forwardDialogVisible = true">
+            <el-icon><Plus /></el-icon>
+            {{ $t('firewall.addRule') }}
+          </el-button>
+        </div>
+        <el-table :data="forwards" size="small" v-loading="forwardLoading">
+          <el-table-column prop="protocol" :label="$t('firewall.protocol')" width="100" />
+          <el-table-column prop="port" :label="$t('firewall.port')" width="160" />
+          <el-table-column prop="targetIP" :label="$t('firewall.targetIP')" min-width="180" />
+          <el-table-column :label="$t('firewall.targetPort')" width="140">
+            <template #default="{ row }">{{ row.targetPort || row.port }}</template>
+          </el-table-column>
+          <el-table-column :label="$t('commons.actions')" width="80">
+            <template #default="{ row }">
+              <el-button link type="danger" size="small" @click="handleDeleteForward(row)">{{ $t('commons.delete') }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 端口规则对话框 -->
     <el-dialog v-model="portDialogVisible" :title="$t('firewall.addRule')" width="460px" destroy-on-close>
@@ -123,12 +145,37 @@
         <el-button type="primary" @click="handleCreateIP" :loading="ipSubmitting">{{ $t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="forwardDialogVisible" :title="$t('firewall.forwardRules')" width="460px" destroy-on-close>
+      <el-form :model="forwardForm" label-width="90px">
+        <el-form-item :label="$t('firewall.protocol')">
+          <el-select v-model="forwardForm.protocol" style="width: 100%">
+            <el-option label="TCP" value="tcp" />
+            <el-option label="UDP" value="udp" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('firewall.port')">
+          <el-input v-model="forwardForm.port" placeholder="5061 或 10000:10100" />
+        </el-form-item>
+        <el-form-item :label="$t('firewall.targetIP')">
+          <el-input v-model="forwardForm.targetIP" placeholder="100.100.100.222" />
+        </el-form-item>
+        <el-form-item :label="$t('firewall.targetPort')">
+          <el-input v-model="forwardForm.targetPort" :placeholder="$t('firewall.targetPortHint')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="forwardDialogVisible = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button type="primary" @click="handleCreateForward" :loading="forwardSubmitting">{{ $t('commons.confirm') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { getFirewallBase, operateFirewall, searchPortRules, createPortRule, deletePortRule, getIPRules, createIPRule, deleteIPRule } from '@/api/modules/firewall'
+import { Plus } from '@element-plus/icons-vue'
+import { getFirewallBase, operateFirewall, searchPortRules, createPortRule, deletePortRule, getIPRules, createIPRule, deleteIPRule, listForwards, createForward, deleteForward } from '@/api/modules/firewall'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 
@@ -173,6 +220,12 @@ const ipRules = ref<IPRule[]>([])
 const ipDialogVisible = ref(false)
 const ipSubmitting = ref(false)
 const ipForm = ref({ address: '', strategy: 'deny' })
+
+const forwardLoading = ref(false)
+const forwards = ref<Array<{ id: number; protocol: string; port: string; targetIP: string; targetPort: string }>>([])
+const forwardDialogVisible = ref(false)
+const forwardSubmitting = ref(false)
+const forwardForm = ref({ protocol: 'tcp', port: '', targetIP: '', targetPort: '' })
 
 const loadBase = async () => {
   loading.value = true
@@ -252,15 +305,53 @@ const handleDeleteIP = async (row: IPRule) => {
   } catch { /* handled */ }
 }
 
+const loadForwards = async () => {
+  forwardLoading.value = true
+  try {
+    const res = await listForwards()
+    forwards.value = res.data || []
+  } catch { forwards.value = [] }
+  finally { forwardLoading.value = false }
+}
+
+const handleCreateForward = async () => {
+  if (!forwardForm.value.port || !forwardForm.value.targetIP) {
+    ElMessage.warning('请填写外部端口和目标 IP')
+    return
+  }
+  forwardSubmitting.value = true
+  try {
+    await createForward(forwardForm.value)
+    ElMessage.success(t('commons.success'))
+    forwardDialogVisible.value = false
+    forwardForm.value = { protocol: 'tcp', port: '', targetIP: '', targetPort: '' }
+    loadForwards()
+  } catch { /* handled */ }
+  finally { forwardSubmitting.value = false }
+}
+
+const handleDeleteForward = async (row: { id: number }) => {
+  await ElMessageBox.confirm(t('firewall.deleteConfirm'), t('commons.tip'), { type: 'warning' })
+  try {
+    await deleteForward(row.id)
+    ElMessage.success(t('commons.success'))
+    loadForwards()
+  } catch { /* handled */ }
+}
+
 watch(activeTab, (val) => {
   if (val === 'ip' && ipRules.value.length === 0) loadIPRules()
+  if (val === 'forward') loadForwards()
 })
 
 onMounted(async () => {
   await loadBase()
   if (baseInfo.value.isExist) {
     loadPortRules()
+  } else {
+    activeTab.value = 'forward'
   }
+  loadForwards()
 })
 </script>
 

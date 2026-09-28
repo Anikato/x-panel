@@ -23,6 +23,9 @@ type IFirewallService interface {
 	ListIPRules() ([]dto.IPRuleInfo, error)
 	CreateIPRule(req dto.IPRuleCreate) error
 	DeleteIPRule(req dto.IPRuleDelete) error
+	ListForwards() ([]dto.ForwardRuleInfo, error)
+	CreateForward(req dto.ForwardRuleCreate) error
+	DeleteForward(id uint) error
 }
 
 type FirewallService struct{}

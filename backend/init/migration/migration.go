@@ -41,6 +41,7 @@ func Init() {
 		&model.TrafficSnapshot{},
 		&model.GostService{},
 		&model.GostChain{},
+		&model.FirewallForward{},
 		&model.CertSource{},
 		&model.CertSyncLog{},
 		&model.CertServerAccessLog{},

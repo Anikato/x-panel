@@ -321,7 +321,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, markRaw } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, markRaw } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting, InfoFilled, Brush, User } from '@element-plus/icons-vue'
 import { getSettingInfo, updateSetting, updatePort, testProxy, getPanelSSL, updatePanelSSL, restartPanel } from '@/api/modules/setting'
@@ -334,9 +335,18 @@ import type { UpgradeInfo, Certificate } from '@/api/interface'
 import AppearancePanel from './appearance-panel.vue'
 
 const { t } = useI18n()
+const route = useRoute()
 const globalStore = useGlobalStore()
 
-const activeSection = ref('appearance')
+const sectionFromHash = (hash: string) => {
+  if (hash === '#setting-version') return 'update'
+  if (hash === '#setting-appearance') return 'appearance'
+  if (hash === '#setting-security') return 'panel'
+  if (hash === '#setting-account') return 'account'
+  return ''
+}
+
+const activeSection = ref(sectionFromHash(route.hash) || 'appearance')
 const settingSections = computed(() => [
   { id: 'appearance', title: t('setting.appearance'), icon: markRaw(Brush) },
   { id: 'panel', title: t('setting.panelSection'), icon: markRaw(Setting) },
@@ -706,6 +716,10 @@ onMounted(() => {
   fetchSettings()
   fetchPanelSSL()
   fetchReadyCertificates()
+})
+watch(() => route.hash, (hash) => {
+  const section = sectionFromHash(hash)
+  if (section) activeSection.value = section
 })
 onUnmounted(() => { if (logTimer) clearInterval(logTimer) })
 </script>

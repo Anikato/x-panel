@@ -32,6 +32,16 @@
             <span>{{ t('header.serverClock') }}</span><strong class="mono">{{ serverClock }}</strong>
           </div>
           <div class="summary-row"><span>{{ t('home.panelVersion') }}</span><strong>{{ globalStore.version || '—' }}</strong></div>
+          <div class="summary-update">
+            <el-button size="small" :loading="checkingUpdate" @click="handleHeaderCheckUpdate">
+              {{ checkingUpdate ? t('setting.checking') : t('setting.checkUpdate') }}
+            </el-button>
+            <span v-if="headerUpgrade && !headerUpgrade.hasUpdate" class="update-ok">{{ t('setting.noUpdate') }}</span>
+            <template v-else-if="headerUpgrade?.hasUpdate">
+              <span>{{ t('setting.hasUpdate') }} {{ headerUpgrade.latestVersion }}</span>
+              <el-button size="small" type="primary" link @click="goToUpdate">{{ t('header.goUpdate') }}</el-button>
+            </template>
+          </div>
           <div class="summary-actions">
             <el-button size="small" @click="handleRestartPanel">{{ t('home.restartPanel') }}</el-button>
             <el-button size="small" type="danger" plain @click="handleRebootServer">{{ t('home.rebootServer') }}</el-button>
@@ -205,7 +215,7 @@ import { useUploadStore } from '@/store/modules/upload'
 import { useFileTaskStore } from '@/store/modules/fileTask'
 import { logout as logoutApi } from '@/api/modules/auth'
 import { getSystemStats } from '@/api/modules/monitor'
-import { getCurrentVersion } from '@/api/modules/upgrade'
+import { checkUpdate, getCurrentVersion } from '@/api/modules/upgrade'
 import { rebootServer, restartPanel } from '@/api/modules/setting'
 import {
   getNotificationSummary,
@@ -214,7 +224,7 @@ import {
   markNotificationsRead,
 } from '@/api/modules/notification'
 import { useI18n } from 'vue-i18n'
-import type { NotificationItem } from '@/api/interface'
+import type { NotificationItem, UpgradeInfo } from '@/api/interface'
 import { searchNavigation, type NavHit } from '@/navigation/registry'
 import TaskDrawer from './TaskDrawer.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -383,6 +393,25 @@ const handleRebootServer = async () => {
   await ElMessageBox.confirm(t('home.rebootConfirm'), t('commons.tip'), { type: 'warning', confirmButtonText: t('home.rebootServer') })
   await rebootServer()
   ElMessage.success(t('home.rebootSuccess'))
+}
+
+const checkingUpdate = ref(false)
+const headerUpgrade = ref<UpgradeInfo | null>(null)
+
+const handleHeaderCheckUpdate = async () => {
+  checkingUpdate.value = true
+  try {
+    const res = await checkUpdate()
+    headerUpgrade.value = res.data || null
+  } catch {
+    ElMessage.error(t('setting.upgradeFailed'))
+  } finally {
+    checkingUpdate.value = false
+  }
+}
+
+const goToUpdate = () => {
+  router.push({ path: '/setting', hash: '#setting-version' })
 }
 
 const handleRestartPanel = async () => {
@@ -676,6 +705,19 @@ onUnmounted(() => {
   justify-content: flex-end;
   margin-top: 8px;
   gap: 8px;
+}
+
+.summary-update {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--xp-text-secondary);
+  font-size: 12px;
+}
+
+.update-ok {
+  color: var(--xp-text-muted);
 }
 
 .notification-panel-actions {

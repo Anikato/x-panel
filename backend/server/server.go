@@ -51,6 +51,7 @@ func Start() {
 
 	initDatabaseAndMigrations()
 	service.MarkInterruptedCertificateApplications()
+	service.ApplyStoredFirewallForwards()
 	service.LoadSessionsFromDB()
 
 	// 4.4 Mirror bundled Nezha Agent config.yml into settings (never start/enable).

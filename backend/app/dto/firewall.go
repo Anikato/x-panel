@@ -68,10 +68,16 @@ type IPRuleDelete struct {
 
 // ForwardRuleInfo 转发规则信息
 type ForwardRuleInfo struct {
+	ID         uint   `json:"id"`
 	Port       string `json:"port"`
 	Protocol   string `json:"protocol"`
 	TargetIP   string `json:"targetIP"`
 	TargetPort string `json:"targetPort"`
+}
+
+// ForwardRuleDelete 删除转发规则
+type ForwardRuleDelete struct {
+	ID uint `json:"id" binding:"required"`
 }
 
 // ForwardRuleCreate 创建转发规则
@@ -79,5 +85,5 @@ type ForwardRuleCreate struct {
 	Port       string `json:"port" binding:"required"`
 	Protocol   string `json:"protocol" binding:"required,oneof=tcp udp"`
 	TargetIP   string `json:"targetIP" binding:"required"`
-	TargetPort string `json:"targetPort" binding:"required"`
+	TargetPort string `json:"targetPort"`
 }

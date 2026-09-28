@@ -12,7 +12,7 @@ type CertSource struct {
 	ServerAddr       string     `gorm:"not null" json:"serverAddr"`
 	Token            string     `gorm:"not null" json:"-"`
 	TLSFingerprint   string     `json:"tlsFingerprint"`
-	SyncInterval     int        `gorm:"not null" json:"syncInterval"` // minutes, 0=manual only; UI defaults new sources to 10
+	SyncInterval     int        `gorm:"not null" json:"syncInterval"` // minutes, 0=manual only; UI defaults new sources to weekly
 	SyncStrategy     string     `gorm:"not null;default:fingerprint" json:"syncStrategy"`
 	PostSyncCommand  string     `json:"postSyncCommand"`
 	Enabled          bool       `gorm:"not null;default:true" json:"enabled"`

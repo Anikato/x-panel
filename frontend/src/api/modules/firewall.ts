@@ -31,3 +31,15 @@ export const createIPRule = (params: { address: string; strategy: string }) => {
 export const deleteIPRule = (params: { number?: number; address: string; strategy: string }) => {
   return http.post('/firewall/ip/del', params)
 }
+
+export const listForwards = () => {
+  return http.get('/firewall/forward')
+}
+
+export const createForward = (params: { port: string; protocol: string; targetIP: string; targetPort?: string }) => {
+  return http.post('/firewall/forward', params)
+}
+
+export const deleteForward = (id: number) => {
+  return http.post('/firewall/forward/del', { id })
+}

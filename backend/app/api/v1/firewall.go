@@ -94,6 +94,41 @@ func (a *FirewallAPI) CreateIPRule(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *FirewallAPI) ListForwards(c *gin.Context) {
+	items, err := service.NewIFirewallService().ListForwards()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, items)
+}
+
+func (a *FirewallAPI) CreateForward(c *gin.Context) {
+	var req dto.ForwardRuleCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFirewallService().CreateForward(req); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
+func (a *FirewallAPI) DeleteForward(c *gin.Context) {
+	var req dto.ForwardRuleDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	if err := service.NewIFirewallService().DeleteForward(req.ID); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithOutData(c)
+}
+
 func (a *FirewallAPI) DeleteIPRule(c *gin.Context) {
 	var req dto.IPRuleDelete
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

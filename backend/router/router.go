@@ -230,6 +230,9 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/firewall/ip", api.ListIPRules)
 		privateGroup.POST("/firewall/ip", api.CreateIPRule)
 		privateGroup.POST("/firewall/ip/del", api.DeleteIPRule)
+		privateGroup.GET("/firewall/forward", api.ListForwards)
+		privateGroup.POST("/firewall/forward", api.CreateForward)
+		privateGroup.POST("/firewall/forward/del", api.DeleteForward)
 
 		// 磁盘管理
 		privateGroup.GET("/disk/info", api.GetDiskInfo)

@@ -638,8 +638,16 @@
             <el-option :label="$t('ssl.intervalWeekly')" :value="10080" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="$t('ssl.postSyncCommand')">
-          <el-input v-model="sourceForm.postSyncCommand" placeholder="systemctl reload nginx" />
+        <el-form-item>
+          <template #label>
+            <span class="label-with-help">
+              {{ $t('ssl.postSyncCommand') }}
+              <el-tooltip :content="$t('ssl.postSyncCommandHelp')" placement="top">
+                <el-icon class="help-icon"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </span>
+          </template>
+          <el-input v-model="sourceForm.postSyncCommand" placeholder="/data/asterisk/sbin/reload-lp-cert.sh" />
           <div class="form-tip">{{ $t('ssl.postSyncCommandTip') }}</div>
         </el-form-item>
         <el-form-item :label="$t('commons.enable')">
@@ -1209,7 +1217,7 @@ const defaultSourceForm = () => ({
   name: '',
   serverAddr: '',
   token: '',
-  syncInterval: 10,
+  syncInterval: 10080,
   syncStrategy: 'fingerprint',
   postSyncCommand: '',
   enabled: true,
@@ -1686,6 +1694,18 @@ onUnmounted(() => {
 
 .text-danger {
   color: var(--xp-danger);
+}
+
+.label-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.help-icon {
+  color: var(--xp-text-muted);
+  cursor: help;
+  font-size: 14px;
 }
 
 .form-tip {
