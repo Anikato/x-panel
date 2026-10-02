@@ -579,10 +579,97 @@ func EnsureAccessLogFormat() error {
 	if err != nil {
 		return err
 	}
-	if strings.Contains(string(data), "log_format xpanel") {
+	content := string(data)
+	if xpanelLogFormatReady(content) {
 		return nil
 	}
-	return insertNginxInclude(mainConf, string(data), xpanelLogFormat)
+	content = removeUncommentedLineContaining(content, "log_format xpanel")
+	updated, err := insertAfterHTTPOpen(content, xpanelLogFormat)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(mainConf, []byte(updated), 0644)
+}
+
+func xpanelLogFormatReady(content string) bool {
+	if countUncommentedLinesContaining(content, "log_format xpanel") != 1 {
+		return false
+	}
+	formatAt := uncommentedLineIndex(content, "log_format xpanel")
+	includeAt := firstSiteIncludeIndex(content)
+	if includeAt < 0 {
+		return formatAt >= 0
+	}
+	return formatAt >= 0 && formatAt < includeAt
+}
+
+func firstSiteIncludeIndex(content string) int {
+	best := -1
+	offset := 0
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") && strings.Contains(trimmed, "include") &&
+			(strings.Contains(trimmed, "sites-enabled") || strings.Contains(trimmed, "conf.d")) {
+			idx := offset + strings.Index(line, "include")
+			if best < 0 || idx < best {
+				best = idx
+			}
+		}
+		offset += len(line) + 1
+	}
+	return best
+}
+
+func uncommentedLineIndex(content, needle string) int {
+	offset := 0
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") && strings.Contains(trimmed, needle) {
+			return offset + strings.Index(line, needle)
+		}
+		offset += len(line) + 1
+	}
+	return -1
+}
+
+func countUncommentedLinesContaining(content, needle string) int {
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") && strings.Contains(trimmed, needle) {
+			count++
+		}
+	}
+	return count
+}
+
+func removeUncommentedLineContaining(content, needle string) string {
+	lines := strings.Split(content, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") && strings.Contains(trimmed, needle) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
+func insertAfterHTTPOpen(content, line string) (string, error) {
+	httpIdx := strings.Index(content, "http {")
+	if httpIdx < 0 {
+		httpIdx = strings.Index(content, "http{")
+	}
+	if httpIdx < 0 {
+		return "", fmt.Errorf("nginx.conf missing http block")
+	}
+	braceRel := strings.Index(content[httpIdx:], "{")
+	if braceRel < 0 {
+		return "", fmt.Errorf("nginx.conf missing http block")
+	}
+	insertPos := httpIdx + braceRel + 1
+	return content[:insertPos] + "\n    " + line + "\n" + content[insertPos:], nil
 }
 
 // EnsureNginxInclude 确保 nginx.conf 包含站点配置目录
