@@ -133,6 +133,10 @@ func (s *SettingAPI) UpdatePanelSSL(c *gin.Context) {
 
 // RestartPanel 重启面板
 func (s *SettingAPI) RestartPanel(c *gin.Context) {
+	if err := service.GuardPanelProcessRestart(); err != nil {
+		helper.ErrorWithDetail(c, http.StatusConflict, err.Error())
+		return
+	}
 	global.LOG.Warn("Panel restart requested by user")
 	helper.SuccessWithData(c, nil)
 	go func() {

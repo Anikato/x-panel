@@ -1,6 +1,9 @@
 package v1
 
 import (
+	"errors"
+	"net/http"
+
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
 	"xpanel/app/service"
@@ -41,6 +44,11 @@ func (a *UpgradeAPI) DoUpgrade(c *gin.Context) {
 	}
 	svc := service.NewIUpgradeService()
 	if err := svc.DoUpgrade(req); err != nil {
+		var blocked *service.BackgroundTerminalsError
+		if errors.As(err, &blocked) {
+			helper.ErrorWithDetail(c, http.StatusConflict, err.Error())
+			return
+		}
 		helper.HandleError(c, err)
 		return
 	}

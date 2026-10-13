@@ -1,10 +1,21 @@
 import axios from 'axios'
+import type { AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/routers'
 import { getToken, removeToken } from '@/utils/auth'
 import i18n from '@/i18n'
 
 const t = (key: string) => String(i18n.global.t(key))
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipErrorMessage?: boolean
+  }
+}
+
+interface QuietRequestConfig extends AxiosRequestConfig {
+  skipErrorMessage?: boolean
+}
 
 // 使用唯一请求 ID（自增）作为 key，避免同名接口互相覆盖 AbortController
 let _reqIdCounter = 0
@@ -80,7 +91,9 @@ http.interceptors.response.use(
     if (res.code === 0) {
       return res
     }
-    ElMessage.error(res.message || t('commons.requestFailed'))
+    if (!(response.config as QuietRequestConfig).skipErrorMessage) {
+      ElMessage.error(res.message || t('commons.requestFailed'))
+    }
     return Promise.reject(new Error(res.message || t('commons.requestFailed')))
   },
   (error) => {
@@ -95,14 +108,15 @@ http.interceptors.response.use(
 
     if (error.response) {
       const { status, data } = error.response
+      const silent = Boolean((error.config as QuietRequestConfig | undefined)?.skipErrorMessage)
       if (status === 401) {
         removeToken()
         router.push('/login')
         ElMessage.error(t('commons.loginExpired'))
-      } else {
+      } else if (!silent) {
         ElMessage.error(data?.message || t('commons.serverError'))
       }
-    } else if (error.code !== 'ERR_CANCELED') {
+    } else if (error.code !== 'ERR_CANCELED' && !(error.config as QuietRequestConfig | undefined)?.skipErrorMessage) {
       ElMessage.error(t('commons.networkError'))
     }
     return Promise.reject(error)

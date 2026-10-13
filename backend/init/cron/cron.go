@@ -1,6 +1,8 @@
 package cron
 
 import (
+	"errors"
+
 	"xpanel/app/dto"
 	"xpanel/app/service"
 	"xpanel/global"
@@ -70,6 +72,11 @@ func autoUpgrade() {
 		DownloadURL: info.DownloadURL,
 		ChecksumURL: info.ChecksumURL,
 	}); err != nil {
+		var blocked *service.BackgroundTerminalsError
+		if errors.As(err, &blocked) {
+			global.LOG.Warnf("Auto-upgrade skipped: %s", err.Error())
+			return
+		}
 		global.LOG.Errorf("Auto-upgrade failed: %v", err)
 	}
 }

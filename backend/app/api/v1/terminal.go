@@ -64,7 +64,9 @@ func (a *TerminalAPI) WsTerminal(c *gin.Context) {
 	containerID := c.Query("containerID")
 	cwd := c.Query("cwd")
 
-	if containerID != "" {
+	if sessionID := strings.TrimSpace(c.Query("session")); sessionID != "" {
+		a.handleAttachTerminal(conn, sessionID)
+	} else if containerID != "" {
 		a.handleContainerTerminal(conn, containerID, c.Query("command"), c.Query("user"))
 	} else if hostID > 0 {
 		a.handleSSHTerminal(conn, uint(hostID))
@@ -92,7 +94,7 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn, cwd string) {
 	shell := getShell()
 	cmd := exec.Command(shell, "-l")
 	cmd.Dir = resolveLocalTerminalDir(cwd)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LANG=en_US.UTF-8")
+	cmd.Env = terminalShellEnv()
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -102,67 +104,95 @@ func (a *TerminalAPI) handleLocalTerminal(conn *websocket.Conn, cwd string) {
 				"\x1b[33m请检查 /dev/ptmx 设备权限，或以 root 权限运行后端\x1b[0m\r\n"))
 		return
 	}
-	defer func() {
-		ptmx.Close()
+	view, err := service.RegisterTerminalSession(ptmx, cmd, "", cmd.Dir)
+	if err != nil {
+		_ = ptmx.Close()
 		if cmd.Process != nil {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
 		}
-	}()
+		global.LOG.Errorf("Terminal session register failed: %v", err)
+		sc.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m终端启动失败\x1b[0m\r\n"))
+		return
+	}
+	writeTerminalControl(sc, "session", view.ID, "false")
+	if global.LOG != nil {
+		global.LOG.Infof("Local terminal session %s started", view.ID)
+	}
+	a.handleAttachTerminal(conn, view.ID)
+}
 
-	global.LOG.Info("Local terminal session started")
+func (a *TerminalAPI) handleAttachTerminal(conn *websocket.Conn, id string) {
+	sc := &safeConn{conn: conn}
+	replay, sub, err := service.SubscribeTerminalSession(id)
+	if err != nil {
+		writeTerminalControl(sc, "missing", "", "后台终端已经没了")
+		return
+	}
+	defer service.UnsubscribeTerminalSession(id, sub)
+	if len(replay) > 0 {
+		if err := sc.WriteMessage(websocket.BinaryMessage, replay); err != nil {
+			return
+		}
+	}
+
 	var once sync.Once
 	done := make(chan struct{})
-
-	// PTY → WebSocket (BinaryMessage to avoid UTF-8 validation issues with raw terminal data)
+	finish := func() { once.Do(func() { close(done) }) }
 	go func() {
-		buf := make([]byte, 4096)
+		defer finish()
 		for {
-			n, err := ptmx.Read(buf)
-			if err != nil {
-				once.Do(func() { close(done) })
+			select {
+			case <-done:
 				return
-			}
-			if n > 0 {
-				if err := sc.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-					once.Do(func() { close(done) })
+			case ev := <-sub.Events:
+				writeTerminalControl(sc, ev, "", "")
+				return
+			case chunk, ok := <-sub.Chunks:
+				if !ok {
+					return
+				}
+				if err := sc.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
 					return
 				}
 			}
 		}
 	}()
-
-	// WebSocket → PTY
 	go func() {
+		defer finish()
 		for {
 			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
-				once.Do(func() { close(done) })
 				return
 			}
 			if len(msg) == 0 {
 				continue
 			}
-			// Binary frames with prefix byte 1 are resize commands
 			if msgType == websocket.BinaryMessage && msg[0] == 1 {
 				var resize resizeMsg
-				if err := json.Unmarshal(msg[1:], &resize); err == nil {
-					pty.Setsize(ptmx, &pty.Winsize{Rows: resize.Rows, Cols: resize.Cols})
+				if json.Unmarshal(msg[1:], &resize) == nil {
+					_ = service.ResizeTerminalSession(id, resize.Rows, resize.Cols)
 				}
 				continue
 			}
-			// Text frames are terminal input
-			if _, err := ptmx.Write(msg); err != nil {
-				once.Do(func() { close(done) })
+			if msgType == websocket.BinaryMessage && msg[0] == 2 {
+				continue
+			}
+			if err := service.WriteTerminalSession(id, msg); err != nil {
 				return
 			}
 		}
 	}()
-
-	// 心跳
 	go wsHeartbeat(sc, done, &once)
 	<-done
-	global.LOG.Info("Local terminal session closed")
+}
+
+func writeTerminalControl(sc *safeConn, op, id, message string) {
+	payload, err := json.Marshal(map[string]string{"op": op, "id": id, "message": message})
+	if err != nil {
+		return
+	}
+	_ = sc.WriteMessage(websocket.TextMessage, payload)
 }
 
 func resolveLocalTerminalDir(cwd string) string {
@@ -294,7 +324,7 @@ func (a *TerminalAPI) handleContainerTerminal(conn *websocket.Conn, containerID,
 	}
 
 	cmd := exec.Command("docker", args...)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LANG=en_US.UTF-8")
+	cmd.Env = terminalShellEnv()
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		global.LOG.Errorf("Container terminal start failed: %v", err)
@@ -427,6 +457,26 @@ func wsHeartbeat(sc *safeConn, done chan struct{}, once *sync.Once) {
 			}
 		}
 	}
+}
+
+// Grok still emits OSC 52 from an unknown terminal, then toasts
+// "Clipboard unreachable" because it will not confirm that route.
+// It does confirm the route for VS Code, whose terminal is xterm.js.
+// This page is xterm.js and writes OSC 52 to the browser clipboard.
+func terminalShellEnv() []string {
+	env := make([]string, 0, len(os.Environ())+4)
+	for _, item := range os.Environ() {
+		if strings.HasPrefix(item, "TERM_PROGRAM=") || strings.HasPrefix(item, "TERM_PROGRAM_VERSION=") {
+			continue
+		}
+		env = append(env, item)
+	}
+	return append(env,
+		"TERM=xterm-256color",
+		"LANG=en_US.UTF-8",
+		"TERM_PROGRAM=vscode",
+		"TERM_PROGRAM_VERSION=1.95.0",
+	)
 }
 
 func getShell() string {

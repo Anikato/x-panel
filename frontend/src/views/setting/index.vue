@@ -328,6 +328,7 @@ import { Refresh, Setting, InfoFilled, Brush, User } from '@element-plus/icons-v
 import { getSettingInfo, updateSetting, updatePort, testProxy, getPanelSSL, updatePanelSSL, restartPanel } from '@/api/modules/setting'
 import { searchCertificate } from '@/api/modules/ssl'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
+import { confirmPanelProcessRestart } from '@/utils/panel-restart-guard'
 import { updatePassword } from '@/api/modules/auth'
 import { useGlobalStore } from '@/store/modules/global'
 import { useI18n } from 'vue-i18n'
@@ -413,6 +414,7 @@ const handleSavePanelSSL = async () => {
 }
 
 const handleRestartPanelForSsl = async () => {
+  if (!await confirmPanelProcessRestart()) return
   try {
     await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), {
       type: 'warning',
@@ -509,6 +511,7 @@ const handleCheckUpdate = async () => {
 
 const handleUpgrade = async () => {
   if (!upgradeInfo.value) return
+  if (!await confirmPanelProcessRestart()) return
   try {
     await ElMessageBox.confirm(
       t('setting.upgradeConfirm', { version: upgradeInfo.value.latestVersion }),

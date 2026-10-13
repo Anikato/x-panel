@@ -19,6 +19,12 @@
         </el-radio-group>
       </div>
       <div class="header-right" v-if="currentView === 'terminal'">
+        <el-button v-if="activeTerm?.locked" size="small" @click="disconnectActive">
+          {{ $t('terminal.disconnect') }}
+        </el-button>
+        <el-button v-if="activeTerm?.locked" size="small" type="danger" plain @click="terminateActive">
+          {{ sessionStatus(activeTerm) === 'exited' ? $t('terminal.dismiss') : $t('terminal.terminate') }}
+        </el-button>
         <div class="term-settings">
           <el-tooltip :content="$t('terminal.fontSize')" placement="bottom">
             <div class="font-size-control">
@@ -144,6 +150,16 @@
             :class="{ active: activeTab === tab.id, disconnected: tab.status === 'disconnected', reconnecting: tab.status === 'reconnecting' }"
             @click="switchTab(tab.id)"
           >
+            <button
+              v-if="!tab.hostId"
+              type="button"
+              class="tab-lock"
+              :class="{ locked: tab.locked }"
+              :title="tab.locked ? $t('terminal.unlockBackground') : $t('terminal.lockBackground')"
+              @click.stop="toggleLock(tab)"
+            >
+              <el-icon :size="12"><Lock v-if="tab.locked" /><Unlock v-else /></el-icon>
+            </button>
             <span class="tab-status-dot" />
             <el-icon :size="14" :class="{ remote: !!tab.hostId }">
               <Connection v-if="tab.hostId" />
@@ -160,20 +176,22 @@
                 <RefreshRight />
               </el-icon>
             </el-tooltip>
-            <el-icon
+            <button
               v-if="tabs.length > 1"
+              type="button"
               class="tab-close"
-              :size="12"
-              @click.stop="closeTab(idx)"
+              :title="$t('commons.close')"
+              @click.stop="requestCloseTab(idx)"
             >
-              <Close />
-            </el-icon>
+              <el-icon :size="12"><Close /></el-icon>
+            </button>
           </div>
           <div class="terminal-tab add-tab" @click="addLocalTab">
             <el-icon :size="14"><Plus /></el-icon>
           </div>
         </div>
         <div class="terminal-container xp-term-stage" @click="focusActiveTerminal">
+          <div v-if="tabs.length === 0" class="terminal-empty">{{ $t('terminal.backgroundEmpty') }}</div>
           <div
             v-for="tab in tabs"
             :key="tab.id"
@@ -243,19 +261,26 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'Terminal' })
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { getHostTree, getCommandTree } from '@/api/modules/host'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { HostTreeGroup, CommandItem, CommandGroup } from '@/api/interface'
 import { Search, Minus, RefreshRight } from '@element-plus/icons-vue'
 import HostManage from './host/index.vue'
 import CommandManage from './command/index.vue'
 import { issueAccessTicket } from '@/api/modules/auth'
 import { buildTerminalWsUrl } from '@/utils/terminal-ws'
+import { readTerminalServerFrame } from '@/utils/terminal-frame'
+import { installTerminalClipboard } from '@/utils/terminal-clipboard'
+import { toggleBackgroundLock } from '@/utils/terminal-lock'
+import { getTermThemeByKey, getTermFontByKey, applyBgOpacity, loadTerminalIconFont } from '@/utils/terminal-theme'
+import { useGlobalStore } from '@/store/modules/global'
+import { useAppearanceStore } from '@/store/modules/appearance'
+import { useTerminalSessionStore, type BackgroundTerminal } from '@/store/modules/terminal-session'
 
 interface TermTab {
   id: string
@@ -270,12 +295,20 @@ interface TermTab {
   reconnectTimer?: number
   reconnecting?: boolean
   closedByUser?: boolean
+  suppressReconnect?: boolean
+  connectGeneration?: number
+  sessionId?: string
+  locked?: boolean
 }
 
 const { t } = useI18n()
+const globalStore = useGlobalStore()
+const appearance = useAppearanceStore()
+const sessionStore = useTerminalSessionStore()
 const currentView = ref<'terminal' | 'hosts' | 'commands'>('terminal')
 const tabs = ref<TermTab[]>([])
 const activeTab = ref('')
+const activeTerm = computed(() => tabs.value.find((tab) => tab.id === activeTab.value))
 const termFontSize = computed(() => globalStore.termFontSize)
 
 const changeFontSize = (delta: number) => {
@@ -403,22 +436,104 @@ const focusActiveTerminal = () => {
   tab?.terminal?.focus()
 }
 
-const getWsUrl = async (hostId?: number) => {
+const getWsUrl = async (tab: TermTab) => {
   const res = await issueAccessTicket({ scope: 'terminal' })
   return buildTerminalWsUrl({
     protocol: location.protocol,
     host: location.host,
     ticket: res.data.ticket,
-    hostId,
+    hostId: tab.sessionId ? undefined : tab.hostId,
+    sessionId: tab.sessionId,
   })
 }
 
-import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
-import { useGlobalStore } from '@/store/modules/global'
-import { useAppearanceStore } from '@/store/modules/appearance'
+const sessionStatus = (tab?: TermTab) =>
+  sessionStore.items.find((item) => item.id === tab?.sessionId)?.status
 
-const globalStore = useGlobalStore()
-const appearance = useAppearanceStore()
+const toggleLock = (tab: TermTab) => toggleBackgroundLock(tab, sessionStore, t)
+
+const disconnectActive = () => {
+  const idx = tabs.value.findIndex((tab) => tab.id === activeTab.value)
+  if (idx >= 0) void requestCloseTab(idx)
+}
+
+const terminateActive = async () => {
+  const tab = activeTerm.value
+  if (!tab?.sessionId) return
+  try {
+    await sessionStore.terminate(tab.sessionId)
+  } catch {
+    return
+  }
+  const idx = tabs.value.findIndex((item) => item.id === tab.id)
+  if (idx >= 0) closeTab(idx)
+}
+
+const openBackgroundSession = async (item: BackgroundTerminal) => {
+  const existing = tabs.value.find((tab) => tab.sessionId === item.id)
+  if (existing) {
+    currentView.value = 'terminal'
+    switchTab(existing.id)
+    return
+  }
+  tabCounter++
+  const tab: TermTab = {
+    id: `term-${tabCounter}`,
+    title: item.name,
+    sessionId: item.id,
+    locked: true,
+  }
+  tabs.value.push(tab)
+  activeTab.value = tab.id
+  currentView.value = 'terminal'
+  await createTerminal(tab)
+}
+
+const handleTerminalControl = (tab: TermTab, op: string, id: string, message: string) => {
+  if (!tabs.value.includes(tab)) return
+  if (op === 'session') {
+    tab.sessionId = id
+    tab.locked = message === 'true'
+    return
+  }
+  if (op === 'detached') {
+    tab.closedByUser = true
+    clearReconnectTimer(tab)
+    void (async () => {
+      await sessionStore.refresh().catch(() => {})
+      const idx = tabs.value.findIndex((item) => item.id === tab.id)
+      if (idx >= 0) closeTab(idx)
+    })()
+    return
+  }
+  if (tab.closedByUser) return
+  if (op === 'detach_rejected') {
+    tab.terminal?.write(`\r\n\x1b[31m${message || t('terminal.detachFailed')}\x1b[0m\r\n`)
+    return
+  }
+  if (op === 'taken') {
+    tab.suppressReconnect = true
+    tab.terminal?.write(`\r\n\x1b[33m${t('terminal.attachedElsewhere')}\x1b[0m\r\n`)
+    return
+  }
+  if (op === 'missing') {
+    tab.suppressReconnect = true
+    tab.terminal?.write(`\r\n\x1b[31m${message || t('terminal.sessionGone')}\x1b[0m\r\n`)
+    sessionStore.refresh().catch(() => {})
+    return
+  }
+  if (op === 'exited') {
+    tab.suppressReconnect = true
+    tab.status = 'disconnected'
+    sessionStore.refresh().catch(() => {})
+    return
+  }
+  if (op === 'overflow') {
+    tab.terminal?.reset()
+    tab.terminal?.write(`\r\n\x1b[33m${t('terminal.outputOverflow')}\x1b[0m\r\n`)
+    connectTabSocket(tab, true)
+  }
+}
 
 const sendResize = (ws: WebSocket, rows: number, cols: number) => {
   const resizeData = JSON.stringify({ rows, cols })
@@ -440,23 +555,45 @@ const clearReconnectTimer = (tab: TermTab) => {
 }
 
 const connectTabSocket = async (tab: TermTab, isReconnect = false) => {
-  if (!tab.terminal) return
+  if (!tab.terminal || tab.closedByUser || !tabs.value.includes(tab)) return
+  const generation = (tab.connectGeneration || 0) + 1
+  tab.connectGeneration = generation
 
   const terminal = tab.terminal
-  if (tab.ws) {
-    tab.ws.onclose = null
-    tab.ws.onerror = null
-    tab.ws.onmessage = null
-    tab.ws.onopen = null
-    try { tab.ws.close() } catch { /* ignore stale socket close */ }
+  const previous = tab.ws
+  if (previous) {
+    previous.onclose = null
+    previous.onerror = null
+    previous.onmessage = null
+    previous.onopen = null
+    try { previous.close() } catch { /* ignore stale socket close */ }
   }
 
+  tab.suppressReconnect = false
   tab.status = isReconnect ? 'reconnecting' : 'connecting'
-  const ws = new WebSocket(await getWsUrl(tab.hostId))
+  let url = ''
+  try {
+    url = await getWsUrl(tab)
+  } catch {
+    if (generation !== tab.connectGeneration || tab.closedByUser || !tabs.value.includes(tab)) return
+    tab.status = 'disconnected'
+    terminal.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
+    scheduleReconnect(tab)
+    return
+  }
+  if (generation !== tab.connectGeneration || tab.closedByUser || !tabs.value.includes(tab)) return
+
+  const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
+  if (generation !== tab.connectGeneration || tab.closedByUser || !tabs.value.includes(tab)) {
+    ws.close()
+    return
+  }
+  if (tab.sessionId) terminal.reset()
   tab.ws = ws
 
   ws.onopen = () => {
+    if (tab.ws !== ws) return
     tab.status = 'connected'
     tab.reconnectAttempts = 0
     tab.reconnecting = false
@@ -466,23 +603,27 @@ const connectTabSocket = async (tab: TermTab, isReconnect = false) => {
   }
 
   ws.onmessage = (e: MessageEvent) => {
-    if (e.data instanceof ArrayBuffer) {
-      terminal.write(new Uint8Array(e.data))
-    } else {
-      terminal.write(e.data)
+    if (tab.ws !== ws) return
+    const frame = readTerminalServerFrame(e.data)
+    if (frame.kind === 'control') {
+      handleTerminalControl(tab, frame.op, frame.id, frame.message)
+      return
     }
+    if ('bytes' in frame) terminal.write(frame.bytes)
+    else terminal.write(frame.text)
   }
 
   ws.onclose = () => {
-    tab.ws = ws
-    if (tab.closedByUser) return
+    if (tab.ws !== ws) return
+    if (tab.closedByUser || tab.suppressReconnect) return
+    if (!tab.locked) tab.sessionId = undefined
     tab.status = 'disconnected'
     terminal.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
     scheduleReconnect(tab)
   }
 
   ws.onerror = () => {
-    if (tab.closedByUser) return
+    if (tab.ws !== ws || tab.closedByUser) return
     terminal.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
   }
 }
@@ -515,6 +656,8 @@ const createTerminal = async (tab: TermTab) => {
   await nextTick()
   const el = termRefs[tab.id]
   if (!el) return
+  await loadTerminalIconFont()
+  if (!termRefs[tab.id] || tab.closedByUser || !tabs.value.includes(tab)) return
 
   const terminal = new Terminal({
     cursorBlink: true,
@@ -526,6 +669,7 @@ const createTerminal = async (tab: TermTab) => {
     allowProposedApi: true,
     allowTransparency: true,
   })
+  installTerminalClipboard(terminal)
 
   // 自定义按键处理：解决 vim/tmux 等程序的快捷键冲突
   terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
@@ -611,8 +755,29 @@ const switchTab = (id: string) => {
   })
 }
 
+const requestCloseTab = async (idx: number) => {
+  const tab = tabs.value[idx]
+  if (!tab || tab.closedByUser) return
+  if (tab.locked) {
+    try {
+      await ElMessageBox.confirm(t('terminal.leaveLockedConfirm'), t('commons.tip'), {
+        type: 'warning',
+        confirmButtonText: t('terminal.leaveLocked'),
+        cancelButtonText: t('commons.cancel'),
+      })
+    } catch {
+      return
+    }
+    if (tab.closedByUser) return
+    idx = tabs.value.indexOf(tab)
+    if (idx < 0) return
+  }
+  closeTab(idx)
+}
+
 const closeTab = (idx: number) => {
   const tab = tabs.value[idx]
+  if (!tab || tab.closedByUser) return
   tab.closedByUser = true
   clearReconnectTimer(tab)
   if (tab.ws) tab.ws.close()
@@ -623,6 +788,17 @@ const closeTab = (idx: number) => {
     activeTab.value = tabs.value[Math.min(idx, tabs.value.length - 1)].id
   }
 }
+
+watch(
+  () => sessionStore.items.map((item) => item.id).join('\n'),
+  (joined) => {
+    const ids = new Set(joined ? joined.split('\n') : [])
+    for (let i = tabs.value.length - 1; i >= 0; i--) {
+      const tab = tabs.value[i]
+      if (tab.locked && tab.sessionId && !ids.has(tab.sessionId)) closeTab(i)
+    }
+  },
+)
 
 const sendBatchCommand = () => {
   if (!batchCommand.value.trim()) return
@@ -707,7 +883,23 @@ onMounted(() => {
   document.addEventListener('keydown', handleGlobalKeydown)
 })
 
+onActivated(async () => {
+  sessionStore.surface = 'page'
+  await sessionStore.refresh().catch(() => {})
+  for (const item of sessionStore.items) {
+    if (!tabs.value.some((tab) => tab.sessionId === item.id)) await openBackgroundSession(item)
+  }
+})
+
+onDeactivated(() => {
+  for (let i = tabs.value.length - 1; i >= 0; i--) {
+    if (tabs.value[i].locked) closeTab(i)
+  }
+  sessionStore.surface = 'float'
+})
+
 onBeforeUnmount(() => {
+  sessionStore.surface = 'float'
   document.removeEventListener('keydown', handleGlobalKeydown)
   for (const tab of tabs.value) {
     tab.closedByUser = true
@@ -956,6 +1148,23 @@ onBeforeUnmount(() => {
     white-space: nowrap;
     user-select: none;
 
+    .tab-lock {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--xp-radius-sm);
+      background: transparent;
+      color: var(--xp-text-muted);
+      cursor: pointer;
+
+      &.locked { color: var(--xp-accent); }
+      &:hover { background: var(--xp-accent-muted); color: var(--xp-accent); }
+    }
+
     &:hover {
       color: var(--xp-text-secondary);
       background: var(--xp-accent-muted);
@@ -1006,9 +1215,16 @@ onBeforeUnmount(() => {
     }
 
     .tab-close {
-      margin-left: 4px;
-      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 8px;
       padding: 2px;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
 
       &:hover {
         background: var(--xp-accent-muted);
@@ -1047,6 +1263,16 @@ onBeforeUnmount(() => {
   overflow: hidden;
   position: relative;
   padding: 0;
+
+  .terminal-empty {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    color: var(--xp-text-muted);
+    font-size: 13px;
+  }
 
   .terminal-instance {
     position: absolute;

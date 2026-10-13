@@ -2,25 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildTerminalWsUrl } from './terminal-ws.ts'
 
-test('builds a local terminal websocket URL with cwd', () => {
-  const url = buildTerminalWsUrl({
+test('background session url carries the session id and not a new cwd', () => {
+  const url = new URL(buildTerminalWsUrl({
     protocol: 'https:',
-    host: 'panel.example',
-    ticket: 'ticket-value',
-    cwd: '/etc/apparmor.d',
-  })
-
-  assert.equal(url, 'wss://panel.example/api/v1/terminal?ticket=ticket-value&cwd=%2Fetc%2Fapparmor.d')
-})
-
-test('does not attach cwd to remote host terminal URLs', () => {
-  const url = buildTerminalWsUrl({
-    protocol: 'http:',
-    host: 'panel.example',
-    ticket: 'ticket',
-    hostId: 12,
-    cwd: '/etc/app',
-  })
-
-  assert.equal(url, 'ws://panel.example/api/v1/terminal?ticket=ticket&id=12')
+    host: 'panel.example:8080',
+    ticket: 'once',
+    cwd: '/tmp/work',
+    sessionId: 'abc',
+  }))
+  assert.equal(url.protocol, 'wss:')
+  assert.equal(url.pathname, '/api/v1/terminal')
+  assert.equal(url.searchParams.get('ticket'), 'once')
+  assert.equal(url.searchParams.get('session'), 'abc')
+  assert.equal(url.searchParams.get('cwd'), null)
 })

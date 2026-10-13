@@ -68,7 +68,9 @@
           @keydown.enter.prevent="toggleFloatTerm"
           @keydown.space.prevent="toggleFloatTerm"
         >
-          <el-icon :size="16"><Monitor /></el-icon>
+          <el-badge :value="terminalSessions.runningCount" :hidden="terminalSessions.runningCount <= 0" :max="9">
+            <el-icon :size="16"><Monitor /></el-icon>
+          </el-badge>
         </div>
       </el-tooltip>
 
@@ -213,6 +215,8 @@ import type { ThemeMode } from '@/theme/types.ts'
 import { useUserStore } from '@/store/modules/user'
 import { useUploadStore } from '@/store/modules/upload'
 import { useFileTaskStore } from '@/store/modules/fileTask'
+import { useTerminalSessionStore } from '@/store/modules/terminal-session'
+import { confirmPanelProcessRestart } from '@/utils/panel-restart-guard'
 import { logout as logoutApi } from '@/api/modules/auth'
 import { getSystemStats } from '@/api/modules/monitor'
 import { checkUpdate, getCurrentVersion } from '@/api/modules/upgrade'
@@ -237,6 +241,7 @@ const appearanceStore = useAppearanceStore()
 const userStore = useUserStore()
 const uploadStore = useUploadStore()
 const fileTaskStore = useFileTaskStore()
+const terminalSessions = useTerminalSessionStore()
 const { t } = useI18n()
 
 const searchShortcut = searchShortcutLabel()
@@ -415,9 +420,18 @@ const goToUpdate = () => {
 }
 
 const handleRestartPanel = async () => {
-  await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), { type: 'warning' })
-  await restartPanel()
-  ElMessage.success(t('home.restartPanelSuccess'))
+  if (!await confirmPanelProcessRestart()) return
+  try {
+    await ElMessageBox.confirm(t('home.restartPanelConfirm'), t('commons.tip'), { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await restartPanel()
+    ElMessage.success(t('home.restartPanelSuccess'))
+  } catch {
+    // The request interceptor already shows the error.
+  }
 }
 
 const handleCommand = async (command: string) => {

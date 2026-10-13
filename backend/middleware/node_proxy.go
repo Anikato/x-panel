@@ -5,15 +5,24 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"xpanel/app/service"
 
 	"github.com/gin-gonic/gin"
 )
 
+func localTerminalRequest(path string) bool {
+	return path == "/api/v1/terminal" || strings.HasPrefix(path, "/api/v1/terminal/")
+}
+
 func NodeProxy() gin.HandlerFunc {
 	nodeService := service.NewINodeService()
 	return func(c *gin.Context) {
+		if localTerminalRequest(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
 		nodeIDStr := c.GetHeader("X-Node-ID")
 		if nodeIDStr == "" || nodeIDStr == "0" {
 			c.Next()

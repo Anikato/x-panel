@@ -11,6 +11,24 @@
 @use './recipes';
 @use './utilities';
 
+// Terminal icon fallback. ASCII stays on the selected face; this face only
+// supplies the Nerd Font glyphs Oh My Posh prints.
+@font-face {
+  font-family: 'MesloLGS Nerd Font Mono';
+  src: url('/fonts/MesloLGSNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MesloLGS Nerd Font Mono';
+  src: url('/fonts/MesloLGSNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 // ---- Reset ----
 * {
   margin: 0;

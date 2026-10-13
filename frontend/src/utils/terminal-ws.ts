@@ -6,6 +6,7 @@ export interface TerminalWsUrlOptions {
   ticket: string
   hostId?: number
   cwd?: string | null
+  sessionId?: string | null
 }
 
 export function buildTerminalWsUrl(options: TerminalWsUrlOptions): string {
@@ -13,7 +14,9 @@ export function buildTerminalWsUrl(options: TerminalWsUrlOptions): string {
   const url = new URL(`${proto}//${options.host}/api/v1/terminal`)
   url.searchParams.set('ticket', options.ticket)
 
-  if (options.hostId) {
+  if (options.sessionId) {
+    url.searchParams.set('session', options.sessionId)
+  } else if (options.hostId) {
     url.searchParams.set('id', String(options.hostId))
   } else if (options.cwd) {
     url.searchParams.set('cwd', normalizeTerminalCwd(options.cwd))

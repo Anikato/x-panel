@@ -1,0 +1,6 @@
+MesloLGS Nerd Font Mono Regular
+
+Meslo LG is licensed under the Apache License, Version 2.0.
+The Nerd Fonts glyph patch is licensed under the MIT License.
+This file is the Nerd Fonts build of MesloLGS NF Mono Regular.
+The panel terminal loads it so Oh My Posh icons have a glyph to draw.

@@ -322,6 +322,9 @@ func (s *UpgradeService) DoUpgrade(req dto.UpgradeReq) error {
 	if err := validateUpgradeRequest(req); err != nil {
 		return err
 	}
+	if err := GuardPanelProcessRestart(); err != nil {
+		return err
+	}
 	release, err := s.beginUpgrade()
 	if err != nil {
 		return err
@@ -342,6 +345,9 @@ func (s *UpgradeService) DoUpgrade(req dto.UpgradeReq) error {
 // the authoritative success/failure signal.
 func (s *UpgradeService) DoUpgradeSync(req dto.UpgradeReq) error {
 	if err := validateUpgradeRequest(req); err != nil {
+		return err
+	}
+	if err := GuardPanelProcessRestart(); err != nil {
 		return err
 	}
 	release, err := s.beginUpgrade()

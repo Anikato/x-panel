@@ -37,11 +37,12 @@
 import { computed, nextTick, reactive, ref, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Terminal } from '@xterm/xterm'
+import { installTerminalClipboard } from '@/utils/terminal-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { Container } from '@/api/interface'
 import { issueAccessTicket } from '@/api/modules/auth'
-import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
+import { getTermThemeByKey, getTermFontByKey, applyBgOpacity, loadTerminalIconFont } from '@/utils/terminal-theme'
 import { useGlobalStore } from '@/store/modules/global'
 
 const { t } = useI18n()
@@ -77,7 +78,9 @@ const open = async (row: Container) => {
   setTimeout(initTerminal, 100)
 }
 
-const initTerminal = () => {
+const initTerminal = async () => {
+  if (!terminalRef.value || terminal) return
+  await loadTerminalIconFont()
   if (!terminalRef.value || terminal) return
 
   terminal = new Terminal({
@@ -90,6 +93,7 @@ const initTerminal = () => {
     allowProposedApi: true,
     allowTransparency: true,
   })
+  installTerminalClipboard(terminal)
 
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)

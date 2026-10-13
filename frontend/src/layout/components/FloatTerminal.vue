@@ -12,6 +12,15 @@
       <el-icon :size="12" class="bar-close" @click.stop="globalStore.floatTermVisible = false"><Close /></el-icon>
     </div>
 
+    <button
+      v-if="!globalStore.floatTermVisible && sessionStore.surface === 'float' && sessionStore.items.length"
+      type="button"
+      class="float-term-sessions"
+      @click="showBackgroundTabs"
+    >
+      {{ t('terminal.backgroundHint', { count: sessionStore.items.length }) }}
+    </button>
+
     <!-- 展开状态：悬浮面板 -->
     <div
       v-show="globalStore.floatTermVisible && !globalStore.floatTermMinimized"
@@ -34,6 +43,18 @@
           <el-icon :size="11" class="action-btn" @click="changeFontSize(-1)"><Minus /></el-icon>
           <span class="fs-label">{{ globalStore.termFontSize }}</span>
           <el-icon :size="11" class="action-btn" @click="changeFontSize(1)"><Plus /></el-icon>
+          <button
+            v-if="activeTabInfo?.locked"
+            type="button"
+            class="action-text"
+            @click="disconnectActive"
+          >{{ t('terminal.disconnect') }}</button>
+          <button
+            v-if="activeTabInfo?.locked"
+            type="button"
+            class="action-text danger"
+            @click="terminateTab(activeTabInfo)"
+          >{{ sessionStatus(activeTabInfo) === 'exited' ? t('terminal.dismiss') : t('terminal.terminate') }}</button>
           <!-- 重连 -->
           <el-icon
             v-if="activeTabInfo && activeTabInfo.status !== 'connected' && activeTabInfo.status !== 'connecting'"
@@ -52,7 +73,7 @@
       </div>
 
       <!-- 标签栏（多标签时显示） -->
-      <div v-if="tabs.length > 1" class="float-term-tabs">
+      <div v-if="tabs.length" class="float-term-tabs">
         <div
           v-for="(tab, idx) in tabs"
           :key="tab.id"
@@ -60,14 +81,27 @@
           :class="{ active: activeTab === tab.id, disconnected: tab.status === 'disconnected', reconnecting: tab.status === 'reconnecting' }"
           @click="switchTab(tab.id)"
         >
+          <button
+            v-if="!tab.hostId"
+            type="button"
+            class="ft-tab-lock"
+            :class="{ locked: tab.locked }"
+            :title="tab.locked ? t('terminal.unlockBackground') : t('terminal.lockBackground')"
+            @click.stop="toggleLock(tab)"
+          >
+            <el-icon :size="11"><Lock v-if="tab.locked" /><Unlock v-else /></el-icon>
+          </button>
           <span class="ft-tab-dot" />
           <span>{{ tab.title }}</span>
-          <el-icon :size="10" class="ft-tab-close" @click.stop="closeTab(idx)"><Close /></el-icon>
+          <button type="button" class="ft-tab-close" :title="t('commons.close')" @click.stop="requestCloseTab(idx)">
+            <el-icon :size="10"><Close /></el-icon>
+          </button>
         </div>
       </div>
 
       <!-- 终端区域 -->
       <div class="float-term-body xp-term-stage" ref="bodyRef">
+        <div v-if="tabs.length === 0" class="ft-empty">{{ t('terminal.backgroundEmpty') }}</div>
         <div
           v-for="tab in tabs"
           :key="tab.id"
@@ -92,15 +126,21 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useGlobalStore } from '@/store/modules/global'
 import { useAppearanceStore } from '@/store/modules/appearance'
-import { getTermThemeByKey, getTermFontByKey, applyBgOpacity } from '@/utils/terminal-theme'
+import { getTermThemeByKey, getTermFontByKey, applyBgOpacity, loadTerminalIconFont } from '@/utils/terminal-theme'
 import { normalizeTerminalCwd } from '@/utils/terminal-cwd'
 import { buildTerminalWsUrl } from '@/utils/terminal-ws'
 import { issueAccessTicket } from '@/api/modules/auth'
+import { readTerminalServerFrame } from '@/utils/terminal-frame'
+import { installTerminalClipboard } from '@/utils/terminal-clipboard'
+import { toggleBackgroundLock } from '@/utils/terminal-lock'
+import { useTerminalSessionStore, type BackgroundTerminal } from '@/store/modules/terminal-session'
+import { ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const globalStore = useGlobalStore()
 const appearance = useAppearanceStore()
+const sessionStore = useTerminalSessionStore()
 const bodyRef = ref<HTMLElement | null>(null)
 
 // ==================== 面板位置/尺寸 ====================
@@ -166,7 +206,11 @@ interface TermTab {
   reconnectTimer?: ReturnType<typeof setTimeout>
   reconnectDelay?: number
   closing?: boolean
+  suppressReconnect?: boolean
+  connectGeneration?: number
   cwd?: string
+  sessionId?: string
+  locked?: boolean
 }
 
 const tabs = ref<TermTab[]>([])
@@ -193,15 +237,116 @@ const fitActive = () => {
   })
 }
 
-const getWsUrl = async (hostId?: number, cwd?: string | null) => {
+const getWsUrl = async (tab: TermTab) => {
   const res = await issueAccessTicket({ scope: 'terminal' })
   return buildTerminalWsUrl({
     protocol: location.protocol,
     host: location.host,
     ticket: res.data.ticket,
-    hostId,
-    cwd,
+    hostId: tab.sessionId ? undefined : tab.hostId,
+    cwd: tab.sessionId ? undefined : tab.cwd,
+    sessionId: tab.sessionId,
   })
+}
+
+const sessionStatus = (tab?: TermTab) =>
+  sessionStore.items.find((item) => item.id === tab?.sessionId)?.status
+
+const handleTerminalControl = (tab: TermTab, op: string, id: string, message: string) => {
+  if (!tabs.value.includes(tab)) return
+  const term = tab.terminal
+  if (op === 'session') {
+    tab.sessionId = id
+    tab.locked = message === 'true'
+    return
+  }
+  if (op === 'detached') {
+    tab.closing = true
+    clearReconnectTimer(tab)
+    void (async () => {
+      await sessionStore.refresh().catch(() => {})
+      const idx = tabs.value.findIndex((item) => item.id === tab.id)
+      if (idx >= 0) closeTab(idx)
+    })()
+    return
+  }
+  if (tab.closing) return
+  if (op === 'detach_rejected') {
+    term?.write(`\r\n\x1b[31m${message || t('terminal.detachFailed')}\x1b[0m\r\n`)
+    return
+  }
+  if (op === 'taken') {
+    tab.suppressReconnect = true
+    term?.write(`\r\n\x1b[33m${t('terminal.attachedElsewhere')}\x1b[0m\r\n`)
+    return
+  }
+  if (op === 'missing') {
+    tab.suppressReconnect = true
+    term?.write(`\r\n\x1b[31m${message || t('terminal.sessionGone')}\x1b[0m\r\n`)
+    sessionStore.refresh().catch(() => {})
+    return
+  }
+  if (op === 'exited') {
+    tab.suppressReconnect = true
+    tab.status = 'disconnected'
+    sessionStore.refresh().catch(() => {})
+    return
+  }
+  if (op === 'overflow') {
+    term?.reset()
+    term?.write(`\r\n\x1b[33m${t('terminal.outputOverflow')}\x1b[0m\r\n`)
+    connectWebSocket(tab)
+  }
+}
+
+const toggleLock = (tab: TermTab) => toggleBackgroundLock(tab, sessionStore, t)
+
+const showBackgroundTabs = () => {
+  sessionStore.surface = 'float'
+  globalStore.floatTermVisible = true
+  globalStore.floatTermMinimized = false
+}
+
+const ensureSessionTabs = async () => {
+  await sessionStore.refresh().catch(() => {})
+  for (const item of sessionStore.items) {
+    if (tabs.value.some((tab) => tab.sessionId === item.id)) continue
+    await openBackgroundSession(item)
+  }
+}
+
+const disconnectActive = () => {
+  const tab = activeTabInfo.value
+  if (!tab) return
+  const idx = tabs.value.findIndex((item) => item.id === tab.id)
+  if (idx >= 0) void requestCloseTab(idx)
+}
+
+const terminateTab = async (tab?: TermTab) => {
+  if (!tab?.sessionId) return
+  try {
+    await sessionStore.terminate(tab.sessionId)
+  } catch {
+    return
+  }
+  const idx = tabs.value.findIndex((item) => item.id === tab.id)
+  if (idx >= 0) closeTab(idx)
+}
+
+const openBackgroundSession = async (item: BackgroundTerminal) => {
+  globalStore.floatTermVisible = true
+  globalStore.floatTermMinimized = false
+  const existing = tabs.value.find((tab) => tab.sessionId === item.id)
+  if (existing) {
+    switchTab(existing.id)
+    return
+  }
+  const tab = createTab(item.name, item.cwd)
+  tab.sessionId = item.id
+  tab.locked = true
+  tabs.value.push(tab)
+  activeTab.value = tab.id
+  await createTerminal(tab)
 }
 
 const sendResize = (ws: WebSocket, rows: number, cols: number) => {
@@ -233,25 +378,46 @@ const scheduleReconnect = (tab: TermTab) => {
 }
 
 const connectWebSocket = async (tab: TermTab) => {
-  if (!tab.terminal) return
+  if (!tab.terminal || tab.closing || !tabs.value.includes(tab)) return
+  const generation = (tab.connectGeneration || 0) + 1
+  tab.connectGeneration = generation
   clearReconnectTimer(tab)
-  tab.closing = false
+  tab.suppressReconnect = false
   tab.status = tab.reconnectAttempts > 0 ? 'reconnecting' : 'connecting'
 
-  if (tab.ws && tab.ws.readyState !== WebSocket.CLOSED) {
-    tab.ws.onclose = null
-    tab.ws.onerror = null
-    tab.ws.onmessage = null
-    tab.ws.onopen = null
-    tab.ws.close()
+  const previous = tab.ws
+  if (previous && previous.readyState !== WebSocket.CLOSED) {
+    previous.onclose = null
+    previous.onerror = null
+    previous.onmessage = null
+    previous.onopen = null
+    previous.close()
   }
 
+  let url = ''
+  try {
+    url = await getWsUrl(tab)
+  } catch {
+    if (generation !== tab.connectGeneration || tab.closing || !tabs.value.includes(tab)) return
+    tab.status = 'disconnected'
+    tab.terminal?.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
+    scheduleReconnect(tab)
+    return
+  }
+  if (generation !== tab.connectGeneration || tab.closing || !tabs.value.includes(tab)) return
+
   const term = tab.terminal
-  const ws = new WebSocket(await getWsUrl(tab.hostId, tab.cwd))
+  const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
+  if (generation !== tab.connectGeneration || tab.closing || !tabs.value.includes(tab)) {
+    ws.close()
+    return
+  }
+  if (tab.sessionId) term.reset()
   tab.ws = ws
 
   ws.onopen = () => {
+    if (tab.ws !== ws) return
     tab.status = 'connected'
     tab.reconnectAttempts = 0
     tab.reconnectDelay = undefined
@@ -259,17 +425,26 @@ const connectWebSocket = async (tab: TermTab) => {
     term.focus()
   }
   ws.onmessage = (e) => {
-    if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
-    else term.write(e.data)
+    if (tab.ws !== ws) return
+    const frame = readTerminalServerFrame(e.data)
+    if (frame.kind === 'control') {
+      handleTerminalControl(tab, frame.op, frame.id, frame.message)
+      return
+    }
+    if ('bytes' in frame) term.write(frame.bytes)
+    else term.write(frame.text)
   }
   ws.onclose = () => {
-    if (tab.closing || !tabs.value.includes(tab)) return
+    if (tab.ws !== ws) return
+    if (tab.closing || tab.suppressReconnect || !tabs.value.includes(tab)) return
+    if (!tab.locked) tab.sessionId = undefined
     tab.status = 'disconnected'
     term.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
     scheduleReconnect(tab)
   }
   ws.onerror = () => {
-    if (!tab.closing) term.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
+    if (tab.ws !== ws || tab.closing) return
+    term.write(`\r\n\x1b[31m${t('terminal.connError')}\x1b[0m\r\n`)
   }
 }
 
@@ -285,6 +460,8 @@ const createTerminal = async (tab: TermTab) => {
   await nextTick()
   const el = termRefs[tab.id]
   if (!el) return
+  await loadTerminalIconFont()
+  if (!termRefs[tab.id] || tab.closing || !tabs.value.includes(tab)) return
 
   const term = new Terminal({
     cursorBlink: true, cursorStyle: 'bar',
@@ -293,6 +470,7 @@ const createTerminal = async (tab: TermTab) => {
     theme: applyBgOpacity(getTermThemeByKey(globalStore.termTheme), globalStore.termBgOpacity),
     scrollback: 10000, allowProposedApi: true, allowTransparency: true,
   })
+  installTerminalClipboard(term)
 
   term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
     if (e.ctrlKey && e.shiftKey && ['c','v'].includes(e.key.toLowerCase())) return false
@@ -346,8 +524,29 @@ const switchTab = (id: string) => {
   })
 }
 
+const requestCloseTab = async (idx: number) => {
+  const tab = tabs.value[idx]
+  if (!tab || tab.closing) return
+  if (tab.locked) {
+    try {
+      await ElMessageBox.confirm(t('terminal.leaveLockedConfirm'), t('commons.tip'), {
+        type: 'warning',
+        confirmButtonText: t('terminal.leaveLocked'),
+        cancelButtonText: t('commons.cancel'),
+      })
+    } catch {
+      return
+    }
+    if (tab.closing) return
+    idx = tabs.value.indexOf(tab)
+    if (idx < 0) return
+  }
+  closeTab(idx)
+}
+
 const closeTab = (idx: number) => {
   const tab = tabs.value[idx]
+  if (!tab || tab.closing) return
   tab.closing = true
   clearReconnectTimer(tab)
   tab.ws?.close(); tab.terminal?.dispose(); tab._observer?.disconnect()
@@ -356,8 +555,19 @@ const closeTab = (idx: number) => {
     activeTab.value = tabs.value[Math.min(idx, tabs.value.length - 1)].id
     nextTick(() => { const t = tabs.value.find(x => x.id === activeTab.value); try { t?.fitAddon?.fit() } catch { /* */ } })
   }
-  if (tabs.value.length === 0) globalStore.floatTermVisible = false
+  if (tabs.value.length === 0 && sessionStore.items.length === 0) globalStore.floatTermVisible = false
 }
+
+watch(
+  () => sessionStore.items.map((item) => item.id).join('\n'),
+  (joined) => {
+    const ids = new Set(joined ? joined.split('\n') : [])
+    for (let i = tabs.value.length - 1; i >= 0; i--) {
+      const tab = tabs.value[i]
+      if (tab.locked && tab.sessionId && !ids.has(tab.sessionId)) closeTab(i)
+    }
+  },
+)
 
 const changeFontSize = (delta: number) => {
   const n = Math.max(10, Math.min(24, globalStore.termFontSize + delta))
@@ -384,15 +594,17 @@ watch(() => globalStore.termFontSize, (size) => {
 
 // 显示时自动打开第一个终端；最小化恢复时 refit
 watch(() => globalStore.floatTermVisible, async (visible) => {
-  if (visible && tabs.value.length === 0) {
-    await nextTick()
-    if (tabs.value.length === 0 && !globalStore.terminalTrigger) {
-      await addLocalTab()
-    }
+  if (!visible) return
+  if (sessionStore.surface === 'float') await ensureSessionTabs()
+  if (tabs.value.length === 0 && !globalStore.terminalTrigger) await addLocalTab()
+  if (!globalStore.floatTermMinimized) setTimeout(fitActive, 150)
+})
+watch(() => sessionStore.surface, (surface) => {
+  if (surface !== 'page') return
+  for (let i = tabs.value.length - 1; i >= 0; i--) {
+    if (tabs.value[i].locked) closeTab(i)
   }
-  if (visible && !globalStore.floatTermMinimized) {
-    setTimeout(fitActive, 150)
-  }
+  if (tabs.value.length === 0) globalStore.floatTermVisible = false
 })
 watch(() => globalStore.floatTermMinimized, (min) => {
   if (!min) setTimeout(fitActive, 150)
@@ -409,13 +621,23 @@ watch(() => globalStore.terminalTrigger, async (trigger) => {
   }
 })
 
+let sessionTimer: ReturnType<typeof setInterval> | undefined
+
 onMounted(() => {
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
   window.addEventListener('resize', updateStyle)
+  sessionStore.refresh().then(() => {
+    if (sessionStore.surface === 'float' && sessionStore.items.length) {
+      globalStore.floatTermVisible = true
+      globalStore.floatTermMinimized = false
+    }
+  }).catch(() => {})
+  sessionTimer = setInterval(() => sessionStore.refresh().catch(() => {}), 15000)
 })
 
 onBeforeUnmount(() => {
+  if (sessionTimer) clearInterval(sessionTimer)
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
   window.removeEventListener('resize', updateStyle)
@@ -549,7 +771,19 @@ onBeforeUnmount(() => {
     &.reconnecting .ft-tab-dot { background: var(--xp-warning); }
 
     .ft-tab-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      margin-left: 6px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--xp-radius-sm);
+      background: transparent;
+      color: inherit;
       opacity: 0.5;
+      cursor: pointer;
       &:hover { opacity: 1; color: var(--xp-danger); }
     }
   }
@@ -572,6 +806,65 @@ onBeforeUnmount(() => {
 
     :deep(.xterm) { height: 100%; }
   }
+
+  .ft-empty {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    color: var(--xp-text-muted);
+    font-size: 12px;
+  }
+}
+
+.float-term-sessions {
+  position: fixed;
+  right: 24px;
+  bottom: 0;
+  z-index: 3000;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 12px;
+  background: var(--xp-terminal-bg);
+  border: 1px solid var(--xp-accent-muted);
+  border-bottom: none;
+  border-radius: var(--xp-radius-sm) var(--xp-radius-sm) 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+  color: var(--xp-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ft-tab-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--xp-radius-sm);
+  background: transparent;
+  color: var(--xp-text-muted);
+  cursor: pointer;
+
+  &.locked { color: var(--xp-accent); }
+  &:hover { background: var(--xp-accent-muted); color: var(--xp-accent); }
+}
+
+.action-text {
+  border: 0;
+  background: transparent;
+  color: var(--xp-text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--xp-radius-sm);
+
+  &:hover { color: var(--xp-accent); background: var(--xp-accent-muted); }
+  &.danger:hover { color: var(--xp-danger); background: color-mix(in srgb, var(--xp-danger) 12%, transparent); }
 }
 
 // 最小化小条
@@ -613,6 +906,16 @@ onBeforeUnmount(() => {
   }
 }
 
+</style>
+
+<style lang="scss">
+/* The float panel is z-index 3000. Element Plus message boxes start near 2000, so a confirm opened from a tab sits under the panel. */
+.el-overlay.is-message-box {
+  z-index: 4100 !important;
+}
+</style>
+
+<style lang="scss" scoped>
 // 调整大小手柄
 .resize-handle {
   position: absolute;

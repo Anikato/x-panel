@@ -217,12 +217,36 @@ export const TERMINAL_FONT_PRESETS = [
   { key: 'system', name: '系统等宽', family: "monospace" },
 ]
 
+const TERMINAL_ICON_FONT = "'MesloLGS Nerd Font Mono'"
+
 export function getTermThemeByKey(key: string): ITheme {
   return TERMINAL_THEME_PRESETS.find(p => p.key === key)?.theme || defaultTheme
 }
 
 export function getTermFontByKey(key: string): string {
-  return TERMINAL_FONT_PRESETS.find(p => p.key === key)?.family || TERMINAL_FONT_PRESETS[0].family
+  const family = TERMINAL_FONT_PRESETS.find(p => p.key === key)?.family || TERMINAL_FONT_PRESETS[0].family
+  return withTerminalIconFont(family)
+}
+
+function withTerminalIconFont(family: string): string {
+  const parts = family.split(',').map(part => part.trim()).filter(Boolean)
+  if (parts.some(part => part.replace(/['"]/g, '') === 'MesloLGS Nerd Font Mono')) return parts.join(', ')
+  const monospaceAt = parts.findIndex(part => part === 'monospace')
+  if (monospaceAt === -1) return [...parts, TERMINAL_ICON_FONT].join(', ')
+  parts.splice(monospaceAt, 0, TERMINAL_ICON_FONT)
+  return parts.join(', ')
+}
+
+let iconFontReady: Promise<void> | null = null
+
+export function loadTerminalIconFont(): Promise<void> {
+  if (iconFontReady) return iconFontReady
+  if (typeof document === 'undefined' || !document.fonts?.load) {
+    iconFontReady = Promise.resolve()
+    return iconFontReady
+  }
+  iconFontReady = document.fonts.load(`16px ${TERMINAL_ICON_FONT}`).then(() => undefined).catch(() => undefined)
+  return iconFontReady
 }
 
 export function applyBgOpacity(theme: ITheme, opacity: number): ITheme {

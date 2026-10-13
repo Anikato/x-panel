@@ -101,6 +101,10 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/settings/reboot", api.RebootServer)
 		privateGroup.POST("/settings/shutdown", api.ShutdownServer)
 		privateGroup.POST("/settings/restart-panel", api.RestartPanel)
+		privateGroup.GET("/terminal/sessions", api.ListTerminalSessions)
+		privateGroup.POST("/terminal/sessions/rename", api.RenameTerminalSession)
+		privateGroup.POST("/terminal/sessions/lock", api.LockTerminalSession)
+		privateGroup.POST("/terminal/sessions/del", api.CloseTerminalSession)
 
 		// 日志
 		privateGroup.GET("/logs/system", api.GetSystemLog)
