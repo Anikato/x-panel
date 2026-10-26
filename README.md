@@ -7,6 +7,8 @@
 [![Vue Version](https://img.shields.io/badge/vue-3.4+-4FC08D?style=flat&logo=vue.js)](https://vuejs.org/)
 [![Build](https://github.com/Anikato/x-panel/actions/workflows/release.yml/badge.svg)](https://github.com/Anikato/x-panel/actions)
 
+面板、定制 Agent、Nezha Dashboard 和管理后台是四个仓库。地址和职责见 [docs/repository-map.md](docs/repository-map.md)。
+
 ## ✨ 特性
 
 - 🚀 **现代化技术栈**：Go 1.24+ / Gin / GORM / SQLite + Vue 3 / TypeScript / Element Plus

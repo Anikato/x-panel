@@ -43,6 +43,9 @@ docs/*
 !docs/versioning.md
 !docs/nezha-agent.md
 !docs/dashboard-agent-xpanel.md
+!docs/repository-map.md
+!docs/dev-suite-readme.md
+!docs/xpanel-collaboration.md
 !docs/archive/
 docs/archive/*
 !docs/archive/README.md
