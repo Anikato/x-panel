@@ -106,6 +106,7 @@ func parseNginxSiteMetadata(content string) (nginxSiteMetadata, error) {
 	metadata := nginxSiteMetadata{Type: "static"}
 	domainSeen := make(map[string]struct{})
 	serverBlocks := 0
+	disjointNames := false
 	for i := 0; i+1 < len(tokens); i++ {
 		if tokens[i] != "server" || tokens[i+1] != "{" {
 			continue
@@ -115,10 +116,28 @@ func parseNginxSiteMetadata(content string) (nginxSiteMetadata, error) {
 			return nginxSiteMetadata{}, fmt.Errorf("nginx server 块未闭合")
 		}
 		serverBlocks++
+		knownBefore := make(map[string]struct{}, len(domainSeen))
+		for name := range domainSeen {
+			knownBefore[name] = struct{}{}
+		}
+		var blockNames []string
 		for _, directive := range nginxDirectives(tokens[i+2 : end]) {
 			applyNginxDirective(&metadata, directive, domainSeen)
+			if len(directive) >= 2 && strings.EqualFold(directive[0], "server_name") {
+				for _, domain := range directive[1:] {
+					if validNginxServerName(domain) {
+						blockNames = append(blockNames, domain)
+					}
+				}
+			}
+		}
+		if len(blockNames) > 0 && len(knownBefore) > 0 && !nginxNamesOverlap(knownBefore, blockNames) {
+			disjointNames = true
 		}
 		i = end
+	}
+	if disjointNames {
+		metadata.Warnings = append(metadata.Warnings, nginxDisjointServerNamesWarning)
 	}
 	if serverBlocks == 0 {
 		return nginxSiteMetadata{}, fmt.Errorf("nginx 配置未包含 server 块")
@@ -215,6 +234,21 @@ func applyNginxDirective(metadata *nginxSiteMetadata, directive []string, domain
 	case "ssl_certificate_key":
 		setNginxPath(&metadata.KeyPath, values[0], "ssl_certificate_key", metadata)
 	}
+}
+
+const (
+	nginxDisjointServerNamesWarning = "同一配置文件包含多组互不相关的域名，导入后会并成一个站点"
+	nginxSiteDirMissingWarning      = "网站目录不存在"
+	nginxSiteDirUnrecognizedWarning = "未识别到网站目录"
+)
+
+func nginxNamesOverlap(known map[string]struct{}, names []string) bool {
+	for _, name := range names {
+		if _, ok := known[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func validNginxServerName(value string) bool {
@@ -550,4 +584,163 @@ func (s *WebsiteService) matchPanelCertificate(certPath, keyPath string) uint {
 		}
 	}
 	return 0
+}
+
+func (s *WebsiteService) ScanActiveNginxSites() ([]dto.NginxSiteScanItem, error) {
+	nc := global.CONF.Nginx
+	if !nc.IsInstalled() {
+		return nil, buserr.New(constant.ErrNginxNotInstalled)
+	}
+	active, err := collectActiveNginxConfigPaths(nc.GetMainConf())
+	if err != nil {
+		return nil, buserr.WithDetail(constant.ErrWebsiteExternalConfigInvalid, nc.GetMainConf(), err)
+	}
+	mainConf, err := canonicalNginxConfigFile(nc.GetMainConf())
+	if err != nil {
+		return nil, buserr.WithDetail(constant.ErrWebsiteExternalConfigInvalid, nc.GetMainConf(), err)
+	}
+	owned := s.ownedNginxConfigPaths()
+	paths := make([]string, 0, len(active))
+	for path := range active {
+		if path == mainConf {
+			continue
+		}
+		if _, ok := owned[path]; ok {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	items := make([]dto.NginxSiteScanItem, 0, len(paths))
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			items = append(items, dto.NginxSiteScanItem{Path: path, Reason: err.Error()})
+			continue
+		}
+		metadata, err := parseNginxSiteMetadata(string(content))
+		if err != nil {
+			if ignorableNginxSiteParseError(err) {
+				continue
+			}
+			items = append(items, dto.NginxSiteScanItem{Path: path, Reason: err.Error()})
+			continue
+		}
+		items = append(items, s.nginxScanItem(path, metadata))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].PrimaryDomain == items[j].PrimaryDomain {
+			return items[i].Path < items[j].Path
+		}
+		return items[i].PrimaryDomain < items[j].PrimaryDomain
+	})
+	return items, nil
+}
+
+func (s *WebsiteService) ImportScannedNginxSites(req dto.NginxSiteImportReq) ([]dto.NginxSiteImportResult, error) {
+	if len(req.Paths) == 0 {
+		return nil, buserr.New(constant.ErrInvalidParams)
+	}
+	results := make([]dto.NginxSiteImportResult, 0, len(req.Paths))
+	for _, path := range req.Paths {
+		result := dto.NginxSiteImportResult{Path: path}
+		site, err := s.CreateExternalNginxSite(dto.ExternalNginxSiteCreateReq{Path: path})
+		if err != nil {
+			result.Error = err.Error()
+		} else {
+			result.ID = site.ID
+			result.PrimaryDomain = site.PrimaryDomain
+			result.Root = site.SiteDir
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (s *WebsiteService) nginxScanItem(path string, metadata nginxSiteMetadata) dto.NginxSiteScanItem {
+	item := dto.NginxSiteScanItem{
+		Path:          path,
+		PrimaryDomain: metadata.PrimaryDomain,
+		Domains:       metadata.Domains,
+		Type:          metadata.Type,
+		Root:          metadata.Root,
+		ProxyPass:     metadata.ProxyPass,
+		HTTPPort:      metadata.HTTPPort,
+		HTTPSPort:     metadata.HTTPSPort,
+		SSL:           metadata.SSL,
+		Warnings:      append([]string{}, metadata.Warnings...),
+		Importable:    true,
+	}
+	if metadata.Root == "" && metadata.Type != "reverse_proxy" {
+		item.Warnings = append(item.Warnings, nginxSiteDirUnrecognizedWarning)
+	} else if metadata.Root != "" {
+		info, err := os.Stat(metadata.Root)
+		if err != nil || !info.IsDir() {
+			item.Warnings = append(item.Warnings, nginxSiteDirMissingWarning)
+		}
+	}
+	if existing, _ := s.websiteRepo.Get(repo.WithByPrimaryDomain(metadata.PrimaryDomain)); existing.ID > 0 {
+		item.Importable = false
+		item.Reason = "主域名已在面板中"
+		return item
+	}
+	alias := domainToAlias(metadata.PrimaryDomain)
+	if existing, _ := s.websiteRepo.Get(repo.WithByAlias(alias)); existing.ID > 0 {
+		item.Importable = false
+		item.Reason = "别名已存在"
+	}
+	return item
+}
+
+func (s *WebsiteService) ownedNginxConfigPaths() map[string]struct{} {
+	owned := make(map[string]struct{})
+	if s.websiteRepo == nil {
+		return owned
+	}
+	sites, err := s.websiteRepo.GetList()
+	if err != nil {
+		return owned
+	}
+	for _, site := range sites {
+		s.rememberNginxConfigPath(owned, site.NginxConfPath)
+		for _, path := range managedNginxConfigCandidates(site) {
+			s.rememberNginxConfigPath(owned, path)
+		}
+	}
+	return owned
+}
+
+func (s *WebsiteService) rememberNginxConfigPath(owned map[string]struct{}, path string) {
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	canonical, err := canonicalNginxConfigFile(path)
+	if err != nil {
+		return
+	}
+	owned[canonical] = struct{}{}
+}
+
+func managedNginxConfigCandidates(site model.Website) []string {
+	if strings.TrimSpace(site.Alias) == "" {
+		return nil
+	}
+	nc := global.CONF.Nginx
+	name := site.Alias + ".conf"
+	if nc.IsSystemMode() {
+		return []string{
+			filepath.Join(nc.GetSitesAvailableDir(), name),
+			filepath.Join(nc.GetSitesDir(), name),
+		}
+	}
+	return []string{filepath.Join(nc.GetSitesDir(), name)}
+}
+
+func ignorableNginxSiteParseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "未包含 server 块") || strings.Contains(message, "未包含有效的 server_name")
 }

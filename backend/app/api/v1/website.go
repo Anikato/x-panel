@@ -68,6 +68,29 @@ func (a *WebsiteAPI) CreateExternalNginxSite(c *gin.Context) {
 	helper.SuccessWithData(c, site)
 }
 
+func (a *WebsiteAPI) ScanExternalNginxSites(c *gin.Context) {
+	items, err := websiteService.ScanActiveNginxSites()
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, items)
+}
+
+func (a *WebsiteAPI) ImportExternalNginxSites(c *gin.Context) {
+	var req dto.NginxSiteImportReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	results, err := websiteService.ImportScannedNginxSites(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, results)
+}
+
 func (a *WebsiteAPI) RefreshExternalNginxSite(c *gin.Context) {
 	var req dto.ExternalNginxSiteRefreshReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

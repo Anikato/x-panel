@@ -225,6 +225,33 @@ type ExternalNginxSiteRefreshReq struct {
 	ID uint `json:"id" binding:"required"`
 }
 
+type NginxSiteScanItem struct {
+	Path          string   `json:"path"`
+	PrimaryDomain string   `json:"primaryDomain"`
+	Domains       []string `json:"domains"`
+	Type          string   `json:"type"`
+	Root          string   `json:"root"`
+	ProxyPass     string   `json:"proxyPass"`
+	HTTPPort      int      `json:"httpPort"`
+	HTTPSPort     int      `json:"httpsPort"`
+	SSL           bool     `json:"ssl"`
+	Warnings      []string `json:"warnings"`
+	Importable    bool     `json:"importable"`
+	Reason        string   `json:"reason"`
+}
+
+type NginxSiteImportReq struct {
+	Paths []string `json:"paths" binding:"required,min=1"`
+}
+
+type NginxSiteImportResult struct {
+	Path          string `json:"path"`
+	ID            uint   `json:"id"`
+	PrimaryDomain string `json:"primaryDomain"`
+	Root          string `json:"root"`
+	Error         string `json:"error"`
+}
+
 type ExternalNginxSitePreview struct {
 	Path          string   `json:"path"`
 	PrimaryDomain string   `json:"primaryDomain"`

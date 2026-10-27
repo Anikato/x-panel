@@ -550,6 +550,29 @@ export interface Website {
   configuredCertificate?: CertificateHealthSnapshot
 }
 
+export interface NginxSiteScanItem {
+  path: string
+  primaryDomain: string
+  domains: string[]
+  type: string
+  root: string
+  proxyPass: string
+  httpPort: number
+  httpsPort: number
+  ssl: boolean
+  warnings: string[]
+  importable: boolean
+  reason: string
+}
+
+export interface NginxSiteImportResult {
+  path: string
+  id: number
+  primaryDomain: string
+  root: string
+  error: string
+}
+
 export interface ExternalNginxSitePreview {
   path: string
   primaryDomain: string

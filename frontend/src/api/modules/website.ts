@@ -1,5 +1,5 @@
 import http from '@/api/http'
-import type { ExternalNginxSitePreview, SiteConfContent, WebsiteCertificateHealth } from '@/api/interface'
+import type { ExternalNginxSitePreview, NginxSiteImportResult, NginxSiteScanItem, SiteConfContent, WebsiteCertificateHealth } from '@/api/interface'
 
 // --- 网站管理 ---
 export const searchWebsite = (params: { page: number; pageSize: number; info?: string; type?: string; status?: string }) => {
@@ -16,6 +16,14 @@ export const inspectExternalNginxSite = (path: string) => {
 
 export const createExternalNginxSite = (params: { path: string; alias?: string; remark?: string }) => {
   return http.post('/websites/external', params)
+}
+
+export const scanExternalNginxSites = () => {
+  return http.post<NginxSiteScanItem[]>('/websites/external/scan')
+}
+
+export const importExternalNginxSites = (paths: string[]) => {
+  return http.post<NginxSiteImportResult[]>('/websites/external/import', { paths })
 }
 
 export const refreshExternalNginxSite = (id: number) => {

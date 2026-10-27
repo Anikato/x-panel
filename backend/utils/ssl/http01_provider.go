@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,10 +67,17 @@ func GetHTTP01KeyAuth(token string) (string, bool) {
 
 func HTTP01WebRoot() string {
 	dataDir := "."
-	if global.CONF.System.DataDir != "" {
-		dataDir = global.CONF.System.DataDir
+	if dir := strings.TrimSpace(global.CONF.System.DataDir); dir != "" {
+		dataDir = dir
 	}
-	return filepath.Join(dataDir, "acme-http")
+	dataDir = filepath.Clean(dataDir)
+	parent := filepath.Dir(dataDir)
+	// The data directory is mode 0700. Challenge files must sit beside it so
+	// Nginx's worker can traverse to them without opening the private tree.
+	if parent == dataDir {
+		return filepath.Join(dataDir, "acme-http")
+	}
+	return filepath.Join(parent, "acme-http")
 }
 
 func HTTP01ChallengeDir() string {
@@ -81,8 +89,44 @@ func HTTP01ChallengeFile(token string) string {
 }
 
 func WriteHTTP01KeyAuth(token, keyAuth string) error {
-	if err := os.MkdirAll(HTTP01ChallengeDir(), 0755); err != nil {
+	dir := HTTP01ChallengeDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(HTTP01ChallengeFile(token), []byte(keyAuth), 0644)
+	// The panel process uses umask 0077, so the mode passed to MkdirAll and
+	// WriteFile is not what lands on disk. Nginx workers run as another user.
+	if err := chmodHTTP01Directories(dir); err != nil {
+		return err
+	}
+	path := HTTP01ChallengeFile(token)
+	if err := os.WriteFile(path, []byte(keyAuth), 0644); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0644)
+}
+
+func chmodHTTP01Directories(dir string) error {
+	root := filepath.Clean(HTTP01WebRoot())
+	dir = filepath.Clean(dir)
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("http-01 directory %s is outside %s", dir, root)
+	}
+	current := root
+	if err := os.Chmod(current, 0755); err != nil {
+		return err
+	}
+	if rel == "." {
+		return nil
+	}
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, part)
+		if err := os.Chmod(current, 0755); err != nil {
+			return err
+		}
+	}
+	return nil
 }

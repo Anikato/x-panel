@@ -16,6 +16,7 @@
         <el-button :loading="certificateBatchLoading" @click="handleCertificateBatch">
           {{ $t('website.checkAllCertificates') }}
         </el-button>
+        <el-button @click="openScanDialog">{{ $t('website.scanNginxSites') }}</el-button>
         <el-button @click="openImportDialog">{{ $t('website.importExisting') }}</el-button>
         <el-button type="primary" @click="openCreateDialog">
           <el-icon><Plus /></el-icon>
@@ -66,7 +67,10 @@
       </el-table-column>
       <el-table-column :label="$t('website.target')" min-width="180">
         <template #default="{ row }">
-          <code class="target-path" :title="row.proxyPass || row.siteDir || row.nginxConfPath">{{ row.proxyPass || row.siteDir || row.nginxConfPath || '—' }}</code>
+          <div class="target-cell">
+            <code class="target-path" :title="row.proxyPass || row.siteDir || row.nginxConfPath">{{ row.proxyPass || row.siteDir || row.nginxConfPath || '—' }}</code>
+            <el-button v-if="row.siteDir" link type="primary" :icon="FolderOpened" :title="$t('website.openInFiles')" @click="openSiteDir(row.siteDir)" />
+          </div>
         </template>
       </el-table-column>
       <el-table-column :label="$t('commons.actions')" width="160" fixed="right">
@@ -202,6 +206,44 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="scanDialogVisible" :title="$t('website.scanNginxSites')" width="920px" destroy-on-close>
+      <p class="form-tip scan-hint">{{ $t('website.scanNginxSitesHint') }}</p>
+      <el-table v-loading="scanLoading" :data="scanItems" row-key="path" @selection-change="onScanSelection">
+        <el-table-column type="selection" width="48" :selectable="scanRowSelectable" />
+        <el-table-column :label="$t('website.domain')" min-width="180">
+          <template #default="{ row }">
+            <div>{{ row.primaryDomain || '—' }}</div>
+            <div v-if="row.reason" class="muted-text">{{ row.reason }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('website.siteDir')" min-width="220">
+          <template #default="{ row }">
+            <code class="target-path" :title="row.root || row.proxyPass">{{ row.root || row.proxyPass || '—' }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('website.configPath')" min-width="240">
+          <template #default="{ row }">
+            <code class="target-path" :title="row.path">{{ row.path }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column :label="$t('website.scanNote')" min-width="220">
+          <template #default="{ row }">
+            <div v-for="warning in row.warnings" :key="warning">{{ warning }}</div>
+            <span v-if="!row.warnings?.length && row.importable">{{ $t('website.scanReady') }}</span>
+          </template>
+        </el-table-column>
+        <template #empty>
+          <el-empty :description="$t('website.scanEmpty')" />
+        </template>
+      </el-table>
+      <template #footer>
+        <el-button @click="scanDialogVisible = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button type="primary" :loading="scanImporting" :disabled="scanSelected.length === 0" @click="importScannedSites">
+          {{ $t('website.scanImport', { count: scanSelected.length }) }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="certificateDialogVisible" :title="$t('website.certificateCheckResults')" width="860px">
       <el-table :data="certificateBatchResults" max-height="520">
         <el-table-column prop="websiteId" label="ID" width="70" />
@@ -269,9 +311,10 @@ import { FolderOpened, RefreshRight, ArrowUp, Folder } from '@element-plus/icons
 import {
   searchWebsite, createWebsite, deleteWebsite, enableWebsite, disableWebsite,
   inspectExternalNginxSite, createExternalNginxSite, checkWebsiteCertificateHealthBatch,
+  scanExternalNginxSites, importExternalNginxSites,
 } from '@/api/modules/website'
 import { listFiles } from '@/api/modules/file'
-import type { ExternalNginxSitePreview, Website, WebsiteCertificateHealth } from '@/api/interface'
+import type { ExternalNginxSitePreview, NginxSiteScanItem, Website, WebsiteCertificateHealth } from '@/api/interface'
 import DomainListInput from '@/components/website/DomainListInput.vue'
 import { parseDomainList } from '@/utils/domains'
 
@@ -399,6 +442,62 @@ const openCreateDialog = () => {
 const openImportDialog = () => {
   openCreateDialog()
   createForm.value.configMode = 'external'
+}
+
+const scanDialogVisible = ref(false)
+const scanLoading = ref(false)
+const scanImporting = ref(false)
+const scanItems = ref<NginxSiteScanItem[]>([])
+const scanSelected = ref<NginxSiteScanItem[]>([])
+
+const openSiteDir = (path: string) => {
+  router.push({ path: '/host/files', query: { path } })
+}
+
+const openScanDialog = async () => {
+  scanDialogVisible.value = true
+  scanLoading.value = true
+  scanSelected.value = []
+  scanItems.value = []
+  try {
+    const res = await scanExternalNginxSites()
+    scanItems.value = res.data || []
+  } catch {
+    scanItems.value = []
+  } finally {
+    scanLoading.value = false
+  }
+}
+
+const onScanSelection = (rows: NginxSiteScanItem[]) => {
+  scanSelected.value = rows
+}
+
+const scanRowSelectable = (row: NginxSiteScanItem) => row.importable
+
+const importScannedSites = async () => {
+  const paths = scanSelected.value.map(item => item.path)
+  if (!paths.length) return
+  scanImporting.value = true
+  try {
+    const res = await importExternalNginxSites(paths)
+    const results = res.data || []
+    const failed = results.filter(item => item.error)
+    if (failed.length === 0) {
+      ElMessage.success(t('website.scanImportOk', { count: results.length }))
+      scanDialogVisible.value = false
+    } else {
+      ElMessage.warning(t('website.scanImportPartial', { ok: results.length - failed.length, failed: failed.length }))
+      scanItems.value = scanItems.value.map(item => {
+        const result = results.find(entry => entry.path === item.path)
+        if (!result?.error) return item
+        return { ...item, importable: false, reason: result.error }
+      })
+    }
+    await loadWebsites()
+  } finally {
+    scanImporting.value = false
+  }
 }
 
 const onFilterChange = () => {
@@ -636,19 +735,37 @@ onMounted(() => {
   }
 }
 
-.remark-text,
-.target-path {
+.remark-text {
   margin-top: 4px;
   color: var(--xp-text-muted);
   font-size: 12px;
 }
 
+.target-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.scan-hint {
+  margin: 0 0 12px;
+}
+
 .target-path {
   display: block;
+  min-width: 0;
   overflow: hidden;
+  color: var(--xp-text-muted);
   font-family: var(--xp-font-mono);
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.target-cell .target-path {
+  flex: 1;
+  margin-top: 0;
 }
 
 .type-cell {

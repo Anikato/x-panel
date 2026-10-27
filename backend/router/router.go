@@ -522,6 +522,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.POST("/websites/search", api.SearchWebsite)
 		privateGroup.POST("/websites", api.CreateWebsite)
 		privateGroup.POST("/websites/external/inspect", api.InspectExternalNginxSite)
+		privateGroup.POST("/websites/external/scan", api.ScanExternalNginxSites)
+		privateGroup.POST("/websites/external/import", api.ImportExternalNginxSites)
 		privateGroup.POST("/websites/external", api.CreateExternalNginxSite)
 		privateGroup.POST("/websites/external/refresh", api.RefreshExternalNginxSite)
 		privateGroup.POST("/websites/certificate-health", api.CheckWebsiteCertificateHealth)

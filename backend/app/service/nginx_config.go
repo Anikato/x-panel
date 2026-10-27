@@ -65,7 +65,11 @@ func (g *NginxConfigGenerator) Generate(site model.Website) (string, error) {
 		fmt.Fprintf(&b, "    server_name %s;\n", serverName)
 		b.WriteString("\n")
 		g.writeACMEChallengeBlock(&b)
-		b.WriteString("    return 301 https://$host$request_uri;\n")
+		// A server-level return runs before location matching, so the ACME
+		// location above would never see the challenge request.
+		b.WriteString("    location / {\n")
+		b.WriteString("        return 301 https://$host$request_uri;\n")
+		b.WriteString("    }\n")
 		b.WriteString("}\n\n")
 	}
 

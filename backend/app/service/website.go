@@ -26,6 +26,8 @@ type IWebsiteService interface {
 	Create(req dto.WebsiteCreate) error
 	InspectExternalNginxSite(path string) (*dto.ExternalNginxSitePreview, error)
 	CreateExternalNginxSite(req dto.ExternalNginxSiteCreateReq) (*model.Website, error)
+	ScanActiveNginxSites() ([]dto.NginxSiteScanItem, error)
+	ImportScannedNginxSites(req dto.NginxSiteImportReq) ([]dto.NginxSiteImportResult, error)
 	RefreshExternalNginxSite(id uint) (*model.Website, error)
 	CheckWebsiteCertificateHealth(id uint) (*dto.WebsiteCertificateHealthResp, error)
 	CheckWebsiteCertificateHealthBatch(req dto.WebsiteCertificateHealthBatchReq) ([]dto.WebsiteCertificateHealthResp, error)
@@ -1395,6 +1397,11 @@ func (s *WebsiteService) applyConfigWithRollback(site model.Website) (func() err
 	config, err := gen.Generate(site)
 	if err != nil {
 		return nil, err
+	}
+	if site.AccessLog {
+		if err := EnsureAccessLogFormat(); err != nil {
+			return nil, err
+		}
 	}
 
 	nc := global.CONF.Nginx
