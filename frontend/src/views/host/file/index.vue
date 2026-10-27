@@ -406,7 +406,7 @@
 
 <script setup lang="ts">
 defineOptions({ name: 'FileManager' })
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, onActivated, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -478,6 +478,13 @@ function saveStoredLastPath(path: string) {
 function getInitialPath(): string {
   const queryPath = typeof route.query.path === 'string' ? route.query.path : ''
   return queryPath || getStoredLastPath()
+}
+
+function applyRouteDirectory() {
+  const queryPath = typeof route.query.path === 'string' ? route.query.path : ''
+  if (!queryPath || currentTab.value?.path === queryPath) return
+  navigateTo(queryPath)
+  saveStoredLastPath(queryPath)
 }
 
 // 目录大小计算
@@ -1284,6 +1291,9 @@ onMounted(() => {
   document.addEventListener('click', closeContextMenu)
   document.addEventListener('keydown', handleKeydown)
 })
+
+onActivated(applyRouteDirectory)
+watch(() => route.query.path, applyRouteDirectory)
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateTableHeight)
