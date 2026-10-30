@@ -41,9 +41,13 @@ func decodeInvokeRequest(r io.Reader) (invokeRequest, error) {
 }
 
 func dispatchInvoke(req invokeRequest, db *gorm.DB) invokeResponse {
+	return dispatchInvokeWithHealthCollector(req, db, collectHealthRuntime)
+}
+
+func dispatchInvokeWithHealthCollector(req invokeRequest, db *gorm.DB, collectHealth func(*service.HealthSnapshotData)) invokeResponse {
 	switch req.Capability {
 	case "sites.snapshot":
-		if len(req.Payload) > 0 && !bytes.Equal(req.Payload, []byte("{}")) {
+		if !isEmptyInvokePayload(req.Payload) {
 			return invokeResponse{Capability: req.Capability, Error: "invalid_request"}
 		}
 		if db == nil {
@@ -59,9 +63,35 @@ func dispatchInvoke(req invokeRequest, db *gorm.DB) invokeResponse {
 			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 			Data:        snapshot,
 		}
+	case "health.snapshot":
+		if !isEmptyInvokePayload(req.Payload) {
+			return invokeResponse{Capability: req.Capability, Error: "invalid_request"}
+		}
+		if db == nil {
+			return invokeResponse{Capability: req.Capability, Error: "database_unreadable"}
+		}
+		snapshot, err := service.BuildHealthSnapshot(db, time.Now())
+		if err != nil {
+			return invokeResponse{Capability: req.Capability, Error: invokeDBErrorCode(classifyInvokeDBError(err))}
+		}
+		collectHealth(snapshot)
+		return invokeResponse{
+			OK:          true,
+			Capability:  req.Capability,
+			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+			Data:        snapshot,
+		}
 	default:
 		return invokeResponse{Capability: req.Capability, Error: "unknown_capability"}
 	}
+}
+
+func isEmptyInvokePayload(payload json.RawMessage) bool {
+	if len(bytes.TrimSpace(payload)) == 0 {
+		return true
+	}
+	var value map[string]json.RawMessage
+	return json.Unmarshal(payload, &value) == nil && value != nil && len(value) == 0
 }
 
 func encodeInvokeResponse(w io.Writer, resp invokeResponse) error {

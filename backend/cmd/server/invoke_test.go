@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"xpanel/app/model"
+	"xpanel/app/service"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -60,6 +61,68 @@ func TestDispatchSitesSnapshotRejectsNonEmptyPayload(t *testing.T) {
 	resp = dispatchInvoke(req, nil)
 	if resp.OK || resp.Error != "database_unreadable" {
 		t.Fatalf("omitted payload: %+v", resp)
+	}
+}
+
+func TestDispatchHealthSnapshotRejectsNonEmptyPayloadAndRequiresDatabase(t *testing.T) {
+	resp := dispatchInvoke(invokeRequest{Capability: "health.snapshot", Payload: json.RawMessage(`{"unexpected":true}`)}, nil)
+	if resp.OK || resp.Error != "invalid_request" {
+		t.Fatalf("non-empty payload: %+v", resp)
+	}
+	resp = dispatchInvoke(invokeRequest{Capability: "health.snapshot", Payload: json.RawMessage(`{ }`)}, nil)
+	if resp.OK || resp.Error != "database_unreadable" {
+		t.Fatalf("empty payload: %+v", resp)
+	}
+}
+
+func TestDispatchHealthSnapshotReturnsStableDatabaseError(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:healthinvoke-missing-schema?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := dispatchInvoke(invokeRequest{Capability: "health.snapshot", Payload: json.RawMessage(`{}`)}, db)
+	if resp.OK || resp.Error != "database_unreadable" {
+		t.Fatalf("resp=%+v", resp)
+	}
+}
+
+func TestDispatchHealthSnapshotUsesCollectorAndDoesNotLeakSecrets(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:healthinvoke?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(
+		&model.Website{},
+		&model.Certificate{},
+		&model.BackupRecord{},
+		&model.Cronjob{},
+		&model.CronjobRecord{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	secret := "HEALTH-INVOKE-SECRET"
+	if err := db.Create(&model.Certificate{PrimaryDomain: "secret.example", Pem: secret, PrivateKey: secret}).Error; err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	resp := dispatchInvokeWithHealthCollector(invokeRequest{Capability: "health.snapshot", Payload: json.RawMessage(`{}`)}, db, func(data *service.HealthSnapshotData) {
+		called = true
+		data.Panel.Version = "v-test"
+		data.Services = []service.HealthServiceSnapshot{{Name: "xpanel", Unit: "xpanel.service", ActiveState: "active", UnitFileState: "enabled"}}
+	})
+	if !resp.OK || resp.Error != "" || !called {
+		t.Fatalf("resp=%+v called=%v", resp, called)
+	}
+	data, ok := resp.Data.(*service.HealthSnapshotData)
+	if !ok || data.SchemaVersion != service.HealthSnapshotSchemaVersion || data.Panel.Version != "v-test" {
+		t.Fatalf("data=%#v", resp.Data)
+	}
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(secret)) || bytes.Contains(raw, []byte("PRIVATE KEY")) {
+		t.Fatalf("secret leaked: %s", raw)
 	}
 }
 

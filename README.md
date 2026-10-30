@@ -254,6 +254,7 @@ npm run dev
 
 ## 📚 文档
 
+- [产品路线图](docs/product-roadmap.md) - 后续功能版本的主要推进方向、阶段边界与验收标准
 - [正式发布手册](RELEASE.md) - GitHub Actions、Agent 绑定版本和 `xpanel.qm.mk` 发布验证
 - [Dashboard、Agent 与 X-Panel 的关系](docs/dashboard-agent-xpanel.md) - 组件职责、通信、升级和当前实现状态
 - [云控 Agent 运维说明](docs/nezha-agent.md) - 安全安装、配置、生命周期、冲突处理与升级行为
