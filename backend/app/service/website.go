@@ -20,6 +20,7 @@ import (
 	"xpanel/constant"
 	"xpanel/global"
 	"xpanel/utils/cmd"
+	"xpanel/utils/websitecontent"
 )
 
 type IWebsiteService interface {
@@ -141,11 +142,16 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 	}
 
 	if site.ConfigMode != "source" && site.Type == "static" && site.SiteDir != "" {
-		os.MkdirAll(site.SiteDir, 0755)
+		policy := websitecontent.DefaultPolicy()
+		if err := websitecontent.EnsureDirectory(site.SiteDir, policy); err != nil {
+			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+		}
 		indexPath := filepath.Join(site.SiteDir, "index.html")
 		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
 			defaultHTML := fmt.Sprintf("<!DOCTYPE html>\n<html>\n<head><title>%s</title></head>\n<body>\n<h1>Welcome to %s</h1>\n<p>Site is working.</p>\n</body>\n</html>", site.PrimaryDomain, site.PrimaryDomain)
-			os.WriteFile(indexPath, []byte(defaultHTML), 0644)
+			if _, err := websitecontent.CreateFileIfMissing(indexPath, []byte(defaultHTML), policy); err != nil {
+				return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+			}
 		}
 	}
 

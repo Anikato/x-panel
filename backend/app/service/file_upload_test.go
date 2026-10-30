@@ -11,9 +11,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 
 	"xpanel/app/dto"
+	"xpanel/utils/websitecontent"
 )
 
 func uploadChunkChecksum(data []byte) string {
@@ -31,6 +33,12 @@ func uploadChunkRequest(root, relativePath, uploadID string, index, count int, t
 		TotalSize:    totalSize,
 		Checksum:     uploadChunkChecksum(data),
 	}
+}
+
+func managedUploadService(policy websitecontent.Policy) *FileService {
+	return &FileService{websiteContentPolicy: func(string) (websitecontent.Policy, bool) {
+		return policy, true
+	}}
 }
 
 func TestPreflightUploadReportsNestedConflicts(t *testing.T) {
@@ -84,6 +92,54 @@ func TestSaveUploadCreatesNestedDirectories(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(root, "site", "assets", "app.js"))
 	if err != nil || string(data) != "new" {
 		t.Fatalf("data=%q err=%v", data, err)
+	}
+}
+
+func TestSaveUploadAppliesManagedWebsitePermissions(t *testing.T) {
+	previous := syscall.Umask(0o077)
+	defer syscall.Umask(previous)
+
+	root := t.TempDir()
+	policy := websitecontent.Policy{UID: os.Geteuid(), GID: os.Getegid(), DirectoryMode: 0o750, FileMode: 0o640}
+	if _, err := managedUploadService(policy).SaveUpload(root, "assets/js/app.js", false, strings.NewReader("new")); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(root, "assets"), filepath.Join(root, "assets", "js")} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != policy.DirectoryMode {
+			t.Fatalf("directory %s mode=%v err=%v", path, info.Mode().Perm(), err)
+		}
+	}
+	info, err := os.Stat(filepath.Join(root, "assets", "js", "app.js"))
+	if err != nil || info.Mode().Perm() != policy.FileMode {
+		t.Fatalf("file mode=%v err=%v", info.Mode().Perm(), err)
+	}
+}
+
+func TestCompleteUploadChunksAppliesManagedWebsitePermissions(t *testing.T) {
+	previous := syscall.Umask(0o077)
+	defer syscall.Umask(previous)
+
+	root := t.TempDir()
+	policy := websitecontent.Policy{UID: os.Geteuid(), GID: os.Getegid(), DirectoryMode: 0o750, FileMode: 0o640}
+	svc := managedUploadService(policy)
+	data := []byte("chunked")
+	uploadID := "99999999999999999999999999999999"
+	if err := svc.SaveUploadChunk(uploadChunkRequest(root, "assets/app.js", uploadID, 0, 1, int64(len(data)), data), bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CompleteUploadChunks(dto.FileUploadChunkCompleteReq{
+		TargetPath: root, RelativePath: "assets/app.js", UploadID: uploadID, TotalSize: int64(len(data)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dirInfo, err := os.Stat(filepath.Join(root, "assets"))
+	if err != nil || dirInfo.Mode().Perm() != policy.DirectoryMode {
+		t.Fatalf("directory mode=%v err=%v", dirInfo.Mode().Perm(), err)
+	}
+	fileInfo, err := os.Stat(filepath.Join(root, "assets", "app.js"))
+	if err != nil || fileInfo.Mode().Perm() != policy.FileMode {
+		t.Fatalf("file mode=%v err=%v", fileInfo.Mode().Perm(), err)
 	}
 }
 

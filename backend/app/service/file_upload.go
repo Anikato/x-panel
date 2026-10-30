@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"xpanel/app/dto"
+	"xpanel/utils/websitecontent"
 )
 
 const (
@@ -110,7 +111,8 @@ func (s *FileService) SaveUpload(targetPath, relativePath string, overwrite bool
 	defer root.Close()
 
 	parent := path.Dir(relativePath)
-	if err := root.MkdirAll(parent, 0o755); err != nil {
+	policy, managed := s.contentPolicy(targetPath)
+	if err := ensureUploadParent(root, parent, managed, policy); err != nil {
 		return "", err
 	}
 
@@ -126,12 +128,21 @@ func (s *FileService) SaveUpload(targetPath, relativePath string, overwrite bool
 			_ = root.Remove(relativePath)
 			return "", writeErr
 		}
+		if managed {
+			if err := applyRootFilePolicy(root, relativePath, policy); err != nil {
+				_ = root.Remove(relativePath)
+				return "", err
+			}
+		}
 		return relativePath, nil
 	}
 
 	mode, uid, gid, preserveOwner, err := uploadTargetMetadata(root, relativePath)
 	if err != nil {
 		return "", err
+	}
+	if managed && !preserveOwner {
+		mode, uid, gid, preserveOwner = policy.FileMode, policy.UID, policy.GID, true
 	}
 	tempPath, file, err := createUploadTemp(root, parent, mode)
 	if err != nil {
@@ -171,7 +182,8 @@ func (s *FileService) SaveUploadChunk(req dto.FileUploadChunkReq, src io.Reader)
 	defer root.Close()
 
 	parent := path.Dir(relativePath)
-	if err := root.MkdirAll(parent, 0o755); err != nil {
+	policy, managed := s.contentPolicy(req.TargetPath)
+	if err := ensureUploadParent(root, parent, managed, policy); err != nil {
 		return err
 	}
 	if req.ChunkIndex == 0 {
@@ -282,6 +294,7 @@ func (s *FileService) CompleteUploadChunks(req dto.FileUploadChunkCompleteReq) (
 		return "", ErrUploadSizeMismatch
 	}
 
+	policy, managed := s.contentPolicy(req.TargetPath)
 	mode, uid, gid, preserveOwner := os.FileMode(0o644), 0, 0, false
 	if req.Overwrite {
 		mode, uid, gid, preserveOwner, err = uploadTargetMetadata(root, relativePath)
@@ -299,6 +312,9 @@ func (s *FileService) CompleteUploadChunks(req dto.FileUploadChunkCompleteReq) (
 		if !errors.Is(statErr, fs.ErrNotExist) {
 			return "", statErr
 		}
+	}
+	if managed && !preserveOwner {
+		mode, uid, gid, preserveOwner = policy.FileMode, policy.UID, policy.GID, true
 	}
 	if err := file.Chmod(mode); err != nil {
 		return "", err
@@ -490,6 +506,52 @@ func createUploadTemp(root *os.Root, parent string, mode os.FileMode) (string, *
 		return name, file, err
 	}
 	return "", nil, errors.New("failed to allocate upload temporary file")
+}
+
+func (s *FileService) contentPolicy(targetPath string) (websitecontent.Policy, bool) {
+	if s != nil && s.websiteContentPolicy != nil {
+		return s.websiteContentPolicy(targetPath)
+	}
+	return websitecontent.Policy{}, false
+}
+
+func ensureUploadParent(root *os.Root, parent string, managed bool, policy websitecontent.Policy) error {
+	if !managed || parent == "." {
+		return root.MkdirAll(parent, 0o755)
+	}
+	missing := make([]string, 0)
+	for current := parent; current != "."; current = path.Dir(current) {
+		info, err := root.Lstat(current)
+		if err == nil {
+			if !info.IsDir() {
+				return fmt.Errorf("upload parent is not a directory: %s", current)
+			}
+			break
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		missing = append(missing, current)
+	}
+	if err := root.MkdirAll(parent, policy.DirectoryMode); err != nil {
+		return err
+	}
+	for index := len(missing) - 1; index >= 0; index-- {
+		if err := root.Chown(missing[index], policy.UID, policy.GID); err != nil {
+			return err
+		}
+		if err := root.Chmod(missing[index], policy.DirectoryMode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyRootFilePolicy(root *os.Root, relativePath string, policy websitecontent.Policy) error {
+	if err := root.Chown(relativePath, policy.UID, policy.GID); err != nil {
+		return err
+	}
+	return root.Chmod(relativePath, policy.FileMode)
 }
 
 func copyAndCloseUpload(dst *os.File, src io.Reader) error {

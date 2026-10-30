@@ -25,6 +25,7 @@ import (
 	"xpanel/buserr"
 	"xpanel/constant"
 	"xpanel/global"
+	"xpanel/utils/websitecontent"
 )
 
 type IFileService interface {
@@ -55,10 +56,12 @@ type IFileService interface {
 	AbortUploadChunks(req dto.FileUploadChunkAbortReq) error
 }
 
-type FileService struct{}
+type FileService struct {
+	websiteContentPolicy func(string) (websitecontent.Policy, bool)
+}
 
 func NewIFileService() IFileService {
-	return &FileService{}
+	return &FileService{websiteContentPolicy: managedWebsiteContentPolicy}
 }
 
 const maxReadSize = 10 * 1024 * 1024 // 10MB

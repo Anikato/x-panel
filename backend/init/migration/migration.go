@@ -8,6 +8,7 @@ import (
 
 	"xpanel/app/model"
 	"xpanel/global"
+	"xpanel/utils/websitecontent"
 
 	"github.com/google/uuid"
 	hostUtil "github.com/shirou/gopsutil/v4/host"
@@ -59,6 +60,9 @@ func Init() {
 
 	if err := runOnceDataMigrations(); err != nil {
 		panic("Failed to run security-critical data migrations: " + err.Error())
+	}
+	if err := repairManagedWebsitePermissions(global.DB, websitecontent.DefaultPolicy()); err != nil {
+		global.LOG.Warnf("Migration: repair managed website permissions failed: %v", err)
 	}
 
 	initDefaultSettings()
