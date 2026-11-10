@@ -46,6 +46,33 @@ func setupExternalWebsiteFixture(t *testing.T, content string) (string, *Website
 	return confPath, &WebsiteService{websiteRepo: repo.NewIWebsiteRepo(), certRepo: repo.NewICertificateRepo()}
 }
 
+func TestWebsiteListReturnsConfigFilePaths(t *testing.T) {
+	externalPath, service := setupExternalWebsiteFixture(t, `server { listen 80; server_name external.example.com; }`)
+	external, err := service.CreateExternalNginxSite(dto.ExternalNginxSiteCreateReq{Path: externalPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := model.Website{PrimaryDomain: "managed.example.com", Alias: "managed", ConfigMode: "managed"}
+	if err := service.websiteRepo.Create(&managed); err != nil {
+		t.Fatal(err)
+	}
+	_, items, err := service.SearchWithPage(dto.WebsiteSearch{PageInfo: dto.PageInfo{Page: 1, PageSize: 10}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make(map[uint]string)
+	for _, item := range items {
+		paths[item.ID] = item.ConfigFilePath
+	}
+	if paths[external.ID] != externalPath {
+		t.Fatalf("external path = %q, want %q", paths[external.ID], externalPath)
+	}
+	want := filepath.Join(global.CONF.Nginx.GetSitesDir(), "managed.conf")
+	if paths[managed.ID] != want {
+		t.Fatalf("managed path = %q, want %q", paths[managed.ID], want)
+	}
+}
+
 func TestWebsiteExternalPathPersistsAndQueries(t *testing.T) {
 	openWebsiteExternalTestDB(t)
 	path := "/data/site/example/conf/site.conf"

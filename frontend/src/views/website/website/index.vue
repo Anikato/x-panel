@@ -82,6 +82,7 @@
               <el-dropdown-menu>
                 <el-dropdown-item v-if="row.status === 'stopped' && row.configMode !== 'source'" command="enable">{{ $t('website.enable') }}</el-dropdown-item>
                 <el-dropdown-item v-else-if="row.configMode !== 'source'" command="disable">{{ $t('website.disable') }}</el-dropdown-item>
+                <el-dropdown-item command="copyConfigPath" :disabled="!row.configFilePath">{{ $t('website.copyConfigPath') }}</el-dropdown-item>
                 <el-dropdown-item command="delete" divided>{{ $t('commons.delete') }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -619,7 +620,38 @@ const modeLabel = (row: Website) => {
   return t('website.modeManaged')
 }
 
+const copyConfigPath = async (path: string) => {
+  if (!path) return
+  try {
+    let copied = false
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(path)
+        copied = true
+      } catch { /* Try the fallback when clipboard permission is unavailable. */ }
+    }
+    if (!copied) {
+      const input = document.createElement('textarea')
+      input.value = path
+      input.setAttribute('readonly', '')
+      input.style.position = 'fixed'
+      input.style.left = '-9999px'
+      document.body.appendChild(input)
+      try {
+        input.select()
+        if (!document.execCommand('copy')) throw new Error('copy failed')
+      } finally {
+        input.remove()
+      }
+    }
+    ElMessage.success(t('commons.copySuccess'))
+  } catch {
+    ElMessage.error(t('commons.copyFailed'))
+  }
+}
+
 const handleMore = (cmd: string, row: Website) => {
+  if (cmd === 'copyConfigPath') void copyConfigPath(row.configFilePath)
   if (cmd === 'enable') handleEnable(row)
   if (cmd === 'disable') handleDisable(row)
   if (cmd === 'delete') handleDelete(row)

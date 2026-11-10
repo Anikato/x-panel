@@ -545,6 +545,7 @@ export interface Website {
   accessLogPath: string
   errorLogPath: string
   nginxConfPath: string
+  configFilePath: string
   configActive: boolean
   configIssues: string[]
   configuredCertificate?: CertificateHealthSnapshot

@@ -126,12 +126,17 @@ func (a *TerminalAPI) handleAttachTerminal(conn *websocket.Conn, id string) {
 	sc := &safeConn{conn: conn}
 	replay, sub, err := service.SubscribeTerminalSession(id)
 	if err != nil {
+		global.LOG.Infof("Terminal session %s attach failed: missing", id)
 		writeTerminalControl(sc, "missing", "", "后台终端已经没了")
 		return
 	}
 	defer service.UnsubscribeTerminalSession(id, sub)
+	if os.Getenv("XPANEL_TERMINAL_DEBUG") == "1" {
+		global.LOG.Infof("Terminal session %s debug: replay_bytes=%d", id, len(replay))
+	}
 	if len(replay) > 0 {
 		if err := sc.WriteMessage(websocket.BinaryMessage, replay); err != nil {
+			global.LOG.Infof("Terminal session %s replay write failed: %v", id, err)
 			return
 		}
 	}
@@ -146,14 +151,20 @@ func (a *TerminalAPI) handleAttachTerminal(conn *websocket.Conn, id string) {
 			case <-done:
 				return
 			case ev := <-sub.Events:
+				global.LOG.Infof("Terminal session %s connection ended: event=%s", id, ev)
 				writeTerminalControl(sc, ev, "", "")
 				return
 			case chunk, ok := <-sub.Chunks:
 				if !ok {
 					return
 				}
+				started := time.Now()
 				if err := sc.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
+					global.LOG.Infof("Terminal session %s connection ended: output write: %v", id, err)
 					return
+				}
+				if os.Getenv("XPANEL_TERMINAL_DEBUG") == "1" && time.Since(started) >= 100*time.Millisecond {
+					global.LOG.Infof("Terminal session %s debug: slow websocket write bytes=%d duration=%s queue=%d", id, len(chunk), time.Since(started), len(sub.Chunks))
 				}
 			}
 		}
@@ -163,6 +174,7 @@ func (a *TerminalAPI) handleAttachTerminal(conn *websocket.Conn, id string) {
 		for {
 			msgType, msg, err := conn.ReadMessage()
 			if err != nil {
+				global.LOG.Infof("Terminal session %s connection ended: websocket read: %v", id, err)
 				return
 			}
 			if len(msg) == 0 {
@@ -179,11 +191,12 @@ func (a *TerminalAPI) handleAttachTerminal(conn *websocket.Conn, id string) {
 				continue
 			}
 			if err := service.WriteTerminalSession(id, msg); err != nil {
+				global.LOG.Infof("Terminal session %s connection ended: PTY write: %v", id, err)
 				return
 			}
 		}
 	}()
-	go wsHeartbeat(sc, done, &once)
+	go wsHeartbeat(sc, done, &once, id)
 	<-done
 }
 
@@ -428,6 +441,9 @@ type safeConn struct {
 func (sc *safeConn) WriteMessage(messageType int, data []byte) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+	if err := sc.conn.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		return err
+	}
 	return sc.conn.WriteMessage(messageType, data)
 }
 
@@ -443,7 +459,7 @@ func (w *wsWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func wsHeartbeat(sc *safeConn, done chan struct{}, once *sync.Once) {
+func wsHeartbeat(sc *safeConn, done chan struct{}, once *sync.Once, sessionID ...string) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -452,6 +468,9 @@ func wsHeartbeat(sc *safeConn, done chan struct{}, once *sync.Once) {
 			return
 		case <-ticker.C:
 			if err := sc.WriteMessage(websocket.PingMessage, nil); err != nil {
+				if len(sessionID) > 0 {
+					global.LOG.Infof("Terminal session %s connection ended: heartbeat: %v", sessionID[0], err)
+				}
 				once.Do(func() { close(done) })
 				return
 			}

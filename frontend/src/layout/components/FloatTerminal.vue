@@ -437,7 +437,6 @@ const connectWebSocket = async (tab: TermTab) => {
   ws.onclose = () => {
     if (tab.ws !== ws) return
     if (tab.closing || tab.suppressReconnect || !tabs.value.includes(tab)) return
-    if (!tab.locked) tab.sessionId = undefined
     tab.status = 'disconnected'
     term.write(`\r\n\x1b[31m${t('terminal.disconnected')}\x1b[0m\r\n`)
     scheduleReconnect(tab)
@@ -549,6 +548,7 @@ const closeTab = (idx: number) => {
   if (!tab || tab.closing) return
   tab.closing = true
   clearReconnectTimer(tab)
+  if (!tab.locked && tab.sessionId) void sessionStore.terminate(tab.sessionId).catch(() => {})
   tab.ws?.close(); tab.terminal?.dispose(); tab._observer?.disconnect()
   tabs.value.splice(idx, 1)
   if (activeTab.value === tab.id && tabs.value.length > 0) {

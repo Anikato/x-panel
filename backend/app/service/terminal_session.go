@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"xpanel/global"
+
 	"github.com/creack/pty"
 )
 
@@ -20,6 +22,7 @@ const (
 	MaxRunningTerminalSessions  = 8
 	terminalSessionBufferBytes  = 1 << 20
 	terminalSessionChunkBacklog = 64
+	terminalReconnectGrace      = 30 * time.Second
 )
 
 var (
@@ -41,8 +44,10 @@ type TerminalSessionInfo struct {
 
 // TerminalSubscription receives live output for one attached browser.
 type TerminalSubscription struct {
-	Chunks chan []byte
-	Events chan string
+	Chunks   chan []byte
+	Events   chan string
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // BackgroundTerminalsError refuses panel upgrade or restart while shells are running.
@@ -90,18 +95,22 @@ func (r *terminalRing) snapshot() []byte {
 }
 
 type terminalSession struct {
-	id        string
-	name      string
-	cwd       string
-	startedAt time.Time
-	ptmx      *os.File
-	cmd       *exec.Cmd
-	ring      *terminalRing
-	sub       *TerminalSubscription
-	exited    bool
-	locked    bool
-	mu        sync.Mutex
-	waitOnce  sync.Once
+	id          string
+	name        string
+	cwd         string
+	startedAt   time.Time
+	ptmx        *os.File
+	cmd         *exec.Cmd
+	ring        *terminalRing
+	sub         *TerminalSubscription
+	exited      bool
+	locked      bool
+	mu          sync.Mutex
+	waitOnce    sync.Once
+	detachTimer *time.Timer
+	debugBytes  uint64
+	debugChunks uint64
+	debugLast   time.Time
 }
 
 type terminalRegistry struct {
@@ -272,7 +281,14 @@ func CloseTerminalSession(id string) error {
 		return ErrTerminalSessionNotFound
 	}
 	delete(backgroundTerminals.items, id)
+	session.mu.Lock()
+	if session.detachTimer != nil {
+		session.detachTimer.Stop()
+		session.detachTimer = nil
+	}
+	session.mu.Unlock()
 	backgroundTerminals.mu.Unlock()
+	terminalLog("session %s deleted: explicit close", id)
 	session.halt()
 	return nil
 }
@@ -280,28 +296,36 @@ func CloseTerminalSession(id string) error {
 // SubscribeTerminalSession replays the retained tail and attaches one browser.
 // A later subscribe takes the previous browser's place.
 func SubscribeTerminalSession(id string) ([]byte, *TerminalSubscription, error) {
-	session := lookupTerminalSession(id)
+	backgroundTerminals.mu.Lock()
+	session := backgroundTerminals.items[id]
 	if session == nil {
+		backgroundTerminals.mu.Unlock()
 		return nil, nil, ErrTerminalSessionNotFound
 	}
 	session.mu.Lock()
+	backgroundTerminals.mu.Unlock()
 	defer session.mu.Unlock()
+	if session.detachTimer != nil {
+		session.detachTimer.Stop()
+		session.detachTimer = nil
+	}
+	terminalLog("session %s attached", id)
 	replay := session.ring.snapshot()
 	if session.sub != nil {
 		notifyTerminalEvent(session.sub, "taken")
+		session.sub.stop()
 		session.sub = nil
 	}
 	sub := newTerminalSubscription()
+	session.sub = sub
 	if session.exited {
 		notifyTerminalEvent(sub, "exited")
 		return replay, sub, nil
 	}
-	session.sub = sub
 	return replay, sub, nil
 }
 
-// UnsubscribeTerminalSession detaches only the current browser.
-// An unlocked shell ends when its last browser leaves.
+// UnsubscribeTerminalSession allows an unlocked session a short reconnect window.
 func UnsubscribeTerminalSession(id string, sub *TerminalSubscription) {
 	if sub == nil {
 		return
@@ -314,16 +338,43 @@ func UnsubscribeTerminalSession(id string, sub *TerminalSubscription) {
 	}
 	session.mu.Lock()
 	if session.sub == sub {
+		sub.stop()
 		session.sub = nil
+		if !session.locked {
+			if session.detachTimer != nil {
+				session.detachTimer.Stop()
+			}
+			var timer *time.Timer
+			timer = time.AfterFunc(terminalReconnectGrace, func() { expireDetachedTerminal(id, session, timer) })
+			session.detachTimer = timer
+			terminalLog("session %s detached: unlocked; reconnect grace=%s", id, terminalReconnectGrace)
+		} else {
+			terminalLog("session %s detached: retained in background", id)
+		}
 	}
-	drop := session.sub == nil && !session.locked
+	session.mu.Unlock()
+	backgroundTerminals.mu.Unlock()
+}
+
+func expireDetachedTerminal(id string, session *terminalSession, timer *time.Timer) {
+	backgroundTerminals.mu.Lock()
+	session.mu.Lock()
+	drop := backgroundTerminals.items[id] == session && session.detachTimer == timer && session.sub == nil && !session.locked
 	if drop {
 		delete(backgroundTerminals.items, id)
+		session.detachTimer = nil
 	}
 	session.mu.Unlock()
 	backgroundTerminals.mu.Unlock()
 	if drop {
+		terminalLog("session %s deleted: reconnect grace expired", id)
 		session.halt()
+	}
+}
+
+func terminalLog(format string, args ...interface{}) {
+	if global.LOG != nil {
+		global.LOG.Infof("Terminal "+format, args...)
 	}
 }
 
@@ -343,6 +394,10 @@ func SetTerminalSessionLocked(id string, locked bool, name string) error {
 		return ErrTooManyTerminalSessions
 	}
 	session.locked = locked
+	if locked && session.detachTimer != nil {
+		session.detachTimer.Stop()
+		session.detachTimer = nil
+	}
 	if strings.TrimSpace(name) != "" {
 		session.name = normalizeTerminalSessionName(name, session.cwd)
 	}
@@ -353,6 +408,7 @@ func SetTerminalSessionLocked(id string, locked bool, name string) error {
 	session.mu.Unlock()
 	backgroundTerminals.mu.Unlock()
 	if drop {
+		terminalLog("session %s deleted: unlocked while detached", id)
 		session.halt()
 	}
 	return nil
@@ -402,6 +458,7 @@ func (s *terminalSession) readLoop() {
 			s.publish(buf[:n])
 		}
 		if err != nil {
+			terminalLog("session %s PTY read ended: %v", s.id, err)
 			s.markExited()
 			return
 		}
@@ -412,6 +469,18 @@ func (s *terminalSession) publish(p []byte) {
 	chunk := append([]byte(nil), p...)
 	s.mu.Lock()
 	s.ring.write(chunk)
+	if os.Getenv("XPANEL_TERMINAL_DEBUG") == "1" {
+		s.debugBytes += uint64(len(chunk))
+		s.debugChunks++
+		if time.Since(s.debugLast) >= 5*time.Second {
+			depth := 0
+			if s.sub != nil {
+				depth = len(s.sub.Chunks)
+			}
+			terminalLog("session %s debug: output_bytes=%d chunks=%d queue=%d/%d retained_bytes=%d", s.id, s.debugBytes, s.debugChunks, depth, terminalSessionChunkBacklog, len(s.ring.buf))
+			s.debugLast = time.Now()
+		}
+	}
 	sub := s.sub
 	s.mu.Unlock()
 	if sub == nil {
@@ -419,8 +488,21 @@ func (s *terminalSession) publish(p []byte) {
 	}
 	select {
 	case sub.Chunks <- chunk:
+		return
+	case <-sub.done:
+		return
 	default:
-		notifyTerminalEvent(sub, "overflow")
+	}
+	started := time.Now()
+	if os.Getenv("XPANEL_TERMINAL_DEBUG") == "1" {
+		terminalLog("session %s debug: output backpressure queue=%d/%d", s.id, len(sub.Chunks), terminalSessionChunkBacklog)
+	}
+	select {
+	case sub.Chunks <- chunk:
+	case <-sub.done:
+	}
+	if os.Getenv("XPANEL_TERMINAL_DEBUG") == "1" {
+		terminalLog("session %s debug: output backpressure ended duration=%s", s.id, time.Since(started))
 	}
 }
 
@@ -433,7 +515,6 @@ func (s *terminalSession) markExited() {
 	s.exited = true
 	ptmx := s.ptmx
 	sub := s.sub
-	s.sub = nil
 	s.mu.Unlock()
 	if ptmx != nil {
 		_ = ptmx.Close()
@@ -447,6 +528,9 @@ func (s *terminalSession) halt() {
 	cmd := s.cmd
 	ptmx := s.ptmx
 	exited := s.exited
+	if s.sub != nil {
+		s.sub.stop()
+	}
 	s.mu.Unlock()
 	if !exited && cmd != nil && cmd.Process != nil {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
@@ -469,7 +553,12 @@ func newTerminalSubscription() *TerminalSubscription {
 	return &TerminalSubscription{
 		Chunks: make(chan []byte, terminalSessionChunkBacklog),
 		Events: make(chan string, 4),
+		done:   make(chan struct{}),
 	}
+}
+
+func (sub *TerminalSubscription) stop() {
+	sub.stopOnce.Do(func() { close(sub.done) })
 }
 
 func notifyTerminalEvent(sub *TerminalSubscription, event string) {

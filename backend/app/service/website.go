@@ -319,6 +319,10 @@ func (s *WebsiteService) SearchWithPage(req dto.WebsiteSearch) (int64, []dto.Web
 
 	var items []dto.WebsiteInfo
 	for _, site := range sites {
+		configFilePath := site.NginxConfPath
+		if configFilePath == "" {
+			configFilePath, _ = s.resolveSiteConfPath(site)
+		}
 		configActive, configIssues := s.externalConfigState(site)
 		configuredCertificate := s.configuredCertificateSnapshot(site)
 		items = append(items, dto.WebsiteInfo{
@@ -333,6 +337,7 @@ func (s *WebsiteService) SearchWithPage(req dto.WebsiteSearch) (int64, []dto.Web
 			Remark:                site.Remark,
 			SiteDir:               site.SiteDir,
 			NginxConfPath:         site.NginxConfPath,
+			ConfigFilePath:        configFilePath,
 			ConfigActive:          configActive,
 			ConfigIssues:          configIssues,
 			ConfiguredCertificate: configuredCertificate,

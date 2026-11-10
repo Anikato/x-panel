@@ -114,6 +114,7 @@ type WebsiteInfo struct {
 	Remark                string                     `json:"remark"`
 	SiteDir               string                     `json:"siteDir"`
 	NginxConfPath         string                     `json:"nginxConfPath"`
+	ConfigFilePath        string                     `json:"configFilePath"`
 	ConfigActive          bool                       `json:"configActive"`
 	ConfigIssues          []string                   `json:"configIssues"`
 	ConfiguredCertificate *CertificateHealthSnapshot `json:"configuredCertificate,omitempty"`

@@ -1308,6 +1308,7 @@ export default {
     scanImportOk: '已导入 {count} 个站点',
     scanImportPartial: '导入完成：成功 {ok} 个，未导入 {failed} 个',
     more: '更多',
+    copyConfigPath: '复制配置文件路径',
     https: 'HTTPS',
     httpsOn: '已启用',
     httpsOff: '未启用',

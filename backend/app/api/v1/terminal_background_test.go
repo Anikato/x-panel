@@ -72,6 +72,40 @@ func TestLockLocalTerminalKeepsSessionAndReattach(t *testing.T) {
 	}
 }
 
+func TestUnlockedLocalTerminalReconnectsAfterDisconnect(t *testing.T) {
+	srv := startTerminalTestServer(t)
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/terminal"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack := readTerminalControl(t, conn)
+	id := ack["id"]
+	t.Cleanup(func() { _ = service.CloseTerminalSession(id) })
+	if err := conn.WriteMessage(websocket.TextMessage, []byte("export XP_RECONNECT_TEST=preserved\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, []byte("printf 'ready-reconnect\\n'\n")); err != nil {
+		t.Fatal(err)
+	}
+	if !readTerminalOutputContains(t, conn, "ready-reconnect") {
+		t.Fatal("shell did not start")
+	}
+	_ = conn.Close()
+	time.Sleep(100 * time.Millisecond)
+	again, _, err := websocket.DefaultDialer.Dial(wsURL+"?session="+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if err := again.WriteMessage(websocket.TextMessage, []byte("printf 'state-%s-done\\n' \"$XP_RECONNECT_TEST\"\n")); err != nil {
+		t.Fatal(err)
+	}
+	if !readTerminalOutputContains(t, again, "state-preserved-done") {
+		t.Fatal("reattach did not preserve shell state")
+	}
+}
+
 func TestClosingLocalTerminalKillsTheShell(t *testing.T) {
 	srv := startTerminalTestServer(t)
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/terminal"
@@ -81,6 +115,10 @@ func TestClosingLocalTerminalKillsTheShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	pid := waitForShell(t, before)
+	ack := readTerminalControl(t, conn)
+	if err := service.CloseTerminalSession(ack["id"]); err != nil {
+		t.Fatal(err)
+	}
 	_ = conn.Close()
 	deadline := time.Now().Add(3 * time.Second)
 	for processExists(pid) && time.Now().Before(deadline) {

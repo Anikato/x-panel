@@ -164,6 +164,38 @@ func TestTerminalRingKeepsTail(t *testing.T) {
 	}
 }
 
+func TestTerminalOutputBackpressureAndDetach(t *testing.T) {
+	sub := newTerminalSubscription()
+	session := &terminalSession{id: "test", ring: newTerminalRing(1024), sub: sub}
+	for i := 0; i < terminalSessionChunkBacklog; i++ {
+		session.publish([]byte("x"))
+	}
+	finished := make(chan struct{})
+	go func() { session.publish([]byte("y")); close(finished) }()
+	select {
+	case <-finished:
+		t.Fatal("full queue did not apply backpressure")
+	case <-time.After(50 * time.Millisecond):
+	}
+	<-sub.Chunks
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("output did not resume after queue drained")
+	}
+	if n := len(sub.Chunks); n != terminalSessionChunkBacklog {
+		t.Fatalf("queue length = %d", n)
+	}
+	detached := make(chan struct{})
+	go func() { session.publish([]byte("z")); close(detached) }()
+	sub.stop()
+	select {
+	case <-detached:
+	case <-time.After(time.Second):
+		t.Fatal("detached subscriber left output blocked")
+	}
+}
+
 func TestSecondSubscribeTakesOverTheSession(t *testing.T) {
 	resetTerminalSessionsForTest(t)
 
@@ -229,7 +261,7 @@ func resetTerminalSessionsForTest(t *testing.T) {
 	})
 }
 
-func TestUnlockedSessionIsHiddenAndEndsWhenDetached(t *testing.T) {
+func TestUnlockedSessionReconnectAndExpiry(t *testing.T) {
 	resetTerminalSessionsForTest(t)
 
 	cmd := exec.Command("sleep", "60")
@@ -255,9 +287,34 @@ func TestUnlockedSessionIsHiddenAndEndsWhenDetached(t *testing.T) {
 		t.Fatal(err)
 	}
 	UnsubscribeTerminalSession(view.ID, sub)
+	session := lookupTerminalSession(view.ID)
+	if session == nil {
+		t.Fatal("session removed before reconnect")
+	}
+	session.mu.Lock()
+	oldTimer := session.detachTimer
+	session.mu.Unlock()
+	_, next, err := SubscribeTerminalSession(view.ID)
+	if err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	expireDetachedTerminal(view.ID, session, oldTimer)
+	if lookupTerminalSession(view.ID) == nil {
+		t.Fatal("stale timer removed reattached session")
+	}
+	UnsubscribeTerminalSession(view.ID, sub)
+	if lookupTerminalSession(view.ID) == nil {
+		t.Fatal("stale unsubscribe removed session")
+	}
+	UnsubscribeTerminalSession(view.ID, next)
+	session.mu.Lock()
+	timer := session.detachTimer
+	session.mu.Unlock()
+	timer.Stop()
+	expireDetachedTerminal(view.ID, session, timer)
 	waitForProcessExit(t, cmd.Process.Pid)
-	if _, err := terminalSessionByID(view.ID); err == nil {
-		t.Fatal("detached unlocked session still listed")
+	if lookupTerminalSession(view.ID) != nil {
+		t.Fatal("expired session still exists")
 	}
 }
 
@@ -291,6 +348,12 @@ func TestLockThenUnlockWithoutBrowserEndsTheShell(t *testing.T) {
 		t.Fatalf("unlock while attached killed the shell: %v", err)
 	}
 	UnsubscribeTerminalSession(view.ID, sub)
+	session := lookupTerminalSession(view.ID)
+	session.mu.Lock()
+	timer := session.detachTimer
+	session.mu.Unlock()
+	timer.Stop()
+	expireDetachedTerminal(view.ID, session, timer)
 	waitForProcessExit(t, cmd.Process.Pid)
 }
 
