@@ -132,3 +132,13 @@ func TestUpgradeLatestPassesResolvedAssetToSyncCore(t *testing.T) {
 		t.Fatalf("upgrade core called %d times", called)
 	}
 }
+
+func TestCompareDateVersionsWithSameDayReleases(t *testing.T) {
+	versions := []string{"v0.8.8", "v2026.11.16", "v2026.11.16.1", "v2026.11.16.2", "v2026.11.17"}
+	for index := 1; index < len(versions); index++ {
+		current, next := versions[index-1], versions[index]
+		if compareVersions(next, current) <= 0 {
+			t.Errorf("%s should receive %s as an update", current, next)
+		}
+	}
+}

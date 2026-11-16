@@ -1,12 +1,10 @@
 package service
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +23,7 @@ const defaultProxyBypass = "localhost,127.0.0.1,::1"
 var proxySettingsMu sync.Mutex
 
 func readProxySettings() (map[string]string, error) {
-	keys := []string{"ProxyEnable", "ProxyType", "ProxyAddress", "ProxyNoProxy", "ProxyDocker"}
+	keys := []string{"ProxyEnable", "ProxyType", "ProxyAddress", "ProxyNoProxy", "ProxyDocker", "ProxySystem"}
 	settings, err := settingRepo.GetList(func(db *gorm.DB) *gorm.DB {
 		return db.Where("`key` IN ?", keys)
 	})
@@ -44,6 +42,19 @@ func proxyState(enabled bool) string {
 		return "enable"
 	}
 	return "disable"
+}
+
+func proxyScope(values map[string]string) string {
+	if values["ProxyEnable"] != "enable" {
+		return "off"
+	}
+	if values["ProxySystem"] == "enable" {
+		return "system"
+	}
+	if values["ProxyDocker"] == "enable" {
+		return "panel-docker"
+	}
+	return "panel"
 }
 
 func proxyURL(proxyType, address string) (*url.URL, error) {
@@ -126,14 +137,31 @@ func (s *SettingService) SaveProxy(req dto.ProxyConfigUpdate) (*dto.ProxyConfigR
 		"ProxyEnable":  proxyState(req.Enabled && !req.ClearAddress),
 		"ProxyDocker":  proxyState(req.Docker && !req.ClearAddress),
 		"ProxyAddress": previous["ProxyAddress"],
+		"ProxySystem":  previous["ProxySystem"],
 		"ProxyNoProxy": proxyBypass(req.NoProxy),
+	}
+	switch req.Scope {
+	case "off", "panel", "panel-docker", "system":
+		values["ProxyEnable"] = proxyState(req.Scope != "off")
+		values["ProxyDocker"] = proxyState(req.Scope == "panel-docker" || req.Scope == "system")
+		values["ProxySystem"] = proxyState(req.Scope == "system")
+	case "":
+		// Older clients have no system scope field.
+		if req.Enabled && previous["ProxySystem"] == "enable" {
+			values["ProxyDocker"] = "enable"
+		} else {
+			values["ProxySystem"] = "disable"
+		}
+	default:
+		return nil, buserr.New(constant.ErrInvalidParams)
 	}
 	if req.ClearAddress {
 		values["ProxyAddress"] = ""
+		values["ProxyEnable"], values["ProxyDocker"], values["ProxySystem"] = "disable", "disable", "disable"
 	} else if strings.TrimSpace(req.Address) != "" {
 		values["ProxyAddress"] = strings.TrimSpace(req.Address)
 	}
-	return saveProxySettings(previous, values)
+	return saveProxySettings(previous, values, hostProxyPaths, req.Scope != "")
 }
 
 func (s *SettingService) updateLegacyProxySetting(req dto.SettingUpdate) error {
@@ -149,13 +177,16 @@ func (s *SettingService) updateLegacyProxySetting(req dto.SettingUpdate) error {
 	}
 	values[req.Key] = req.Value
 	if req.Key == "ProxyAddress" && req.Clear {
-		values["ProxyEnable"], values["ProxyDocker"] = "disable", "disable"
+		values["ProxyEnable"], values["ProxyDocker"], values["ProxySystem"] = "disable", "disable", "disable"
 	}
-	_, err = saveProxySettings(previous, values)
+	if req.Key == "ProxyEnable" && req.Value != "enable" {
+		values["ProxySystem"] = "disable"
+	}
+	_, err = saveProxySettings(previous, values, hostProxyPaths, false)
 	return err
 }
 
-func saveProxySettings(previous, values map[string]string) (*dto.ProxyConfigResult, error) {
+func saveProxySettings(previous, values map[string]string, paths proxyConfigPaths, migrateLegacy bool) (*dto.ProxyConfigResult, error) {
 	if values["ProxyEnable"] == "enable" || (values["ProxyAddress"] != "" && values["ProxyAddress"] != previous["ProxyAddress"]) {
 		if _, err := proxyURL(values["ProxyType"], values["ProxyAddress"]); err != nil {
 			return nil, buserr.WithDetail(constant.ErrInvalidParams, err.Error(), nil)
@@ -172,23 +203,86 @@ func saveProxySettings(previous, values map[string]string) (*dto.ProxyConfigResu
 	if err != nil {
 		return nil, err
 	}
-	if oldDocker == nil && newDocker == nil {
-		return &dto.ProxyConfigResult{}, settingRepo.CreateOrUpdateMany(values)
-	}
 
 	dockerDaemonConfigMu.Lock()
 	defer dockerDaemonConfigMu.Unlock()
-	rollback, err := saveDockerProxyConfig(daemonJSONPath, oldDocker, newDocker)
+
+	legacy := hasLegacySystemProxy(paths)
+	migrateLegacy = migrateLegacy && legacy
+	var changes []proxyFileChange
+	if previous["ProxySystem"] == "enable" || values["ProxySystem"] == "enable" || migrateLegacy {
+		systemAddress := ""
+		if values["ProxySystem"] == "enable" {
+			systemAddress = newDocker["http-proxy"]
+		}
+		changes, err = planSystemProxy(paths, systemAddress, proxyBypass(values["ProxyNoProxy"]))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	pending, err := dockerProxyRestartPending()
 	if err != nil {
 		return nil, err
 	}
-	if err := settingRepo.CreateOrUpdateMany(values); err != nil {
-		if rollback != nil {
-			err = errors.Join(err, rollback())
+	var rollbacks []func() error
+	revert := func(err error) (*dto.ProxyConfigResult, error) {
+		for i := len(rollbacks) - 1; i >= 0; i-- {
+			err = errors.Join(err, rollbacks[i]())
 		}
 		return nil, err
 	}
-	return &dto.ProxyConfigResult{DockerChanged: rollback != nil}, nil
+
+	if oldDocker != nil || newDocker != nil {
+		rollback, err := saveDockerProxyConfig(paths.docker, oldDocker, newDocker)
+		if err != nil {
+			return nil, err
+		}
+		if rollback != nil {
+			rollbacks = append(rollbacks, rollback)
+		}
+	}
+	if migrateLegacy {
+		dropIn, err := readProxyFile(paths.dockerDropIn)
+		if err != nil {
+			return revert(err)
+		}
+		if dropIn.hasMarker(legacyProxyDocker) {
+			rollback, err := (proxyFileChange{file: dropIn}).apply()
+			if err != nil {
+				return revert(err)
+			}
+			rollbacks = append(rollbacks, rollback)
+		}
+	}
+	dockerChanged := len(rollbacks) != 0
+	if dockerChanged {
+		pending = true
+		values["ProxyDockerRestartPending"] = "enable"
+	}
+	for _, change := range changes {
+		rollback, err := change.apply()
+		if err != nil {
+			return revert(err)
+		}
+		if rollback != nil {
+			rollbacks = append(rollbacks, rollback)
+		}
+	}
+	if err := settingRepo.CreateOrUpdateMany(values); err != nil {
+		return revert(err)
+	}
+	return &dto.ProxyConfigResult{
+		DockerChanged: dockerChanged, DockerRestartPending: pending, LegacySystemProxy: legacy && !migrateLegacy,
+	}, nil
+}
+
+func dockerProxyRestartPending() (bool, error) {
+	state, err := settingRepo.GetValueByKey("ProxyDockerRestartPending")
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return state == "enable", err
 }
 
 func (s *SettingService) TestProxy(req dto.ProxyTest) error {
@@ -220,17 +314,4 @@ func (s *SettingService) TestProxy(req dto.ProxyTest) error {
 		return fmt.Errorf("测试目标返回 HTTP %d", resp.StatusCode)
 	}
 	return nil
-}
-
-func hasLegacySystemProxy() bool {
-	for path, marker := range map[string]string{
-		"/etc/profile.d/xpanel-proxy.sh":                       "# Managed by X-Panel",
-		"/etc/apt/apt.conf.d/99xpanel-proxy":                   "// Managed by X-Panel",
-		"/etc/systemd/system/docker.service.d/http-proxy.conf": "# Managed by X-Panel",
-	} {
-		if content, err := os.ReadFile(path); err == nil && bytes.HasPrefix(content, []byte(marker)) {
-			return true
-		}
-	}
-	return false
 }

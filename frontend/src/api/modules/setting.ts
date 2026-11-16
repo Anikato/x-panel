@@ -15,11 +15,17 @@ export const updatePort = (data: { port: string }) => {
   return http.post('/settings/port/update', data)
 }
 
-/** 测试代理连通性 */
-export const saveProxy = (data: {
-  type: string; address: string; noProxy: string; enabled: boolean; docker: boolean; clearAddress?: boolean
-}) => http.post<{ dockerChanged: boolean }>('/settings/proxy', data)
+export type ProxyScope = 'off' | 'panel' | 'panel-docker' | 'system'
 
+export const saveProxy = (data: {
+  type: string; address: string; noProxy: string; scope: ProxyScope; clearAddress?: boolean
+}) => http.post<{
+  dockerChanged: boolean
+  dockerRestartPending: boolean
+  legacySystemProxy: boolean
+}>('/settings/proxy', data)
+
+/** 测试代理连通性 */
 export const testProxy = (data: { address: string; type: string }) => {
   return http.post('/settings/proxy/test', data)
 }

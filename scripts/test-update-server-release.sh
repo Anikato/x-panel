@@ -12,10 +12,10 @@ file_mode() {
 
 LIVE="$TMP_ROOT/live"
 STAGE="$LIVE/.staging/run-1"
-VERSION="v0.7.83"
+VERSION="v2026.11.16.1"
 mkdir -p "$LIVE/releases" "$STAGE/releases/$VERSION"
-printf '{"version":"v0.7.82"}\n' >"$LIVE/releases/latest.json"
-printf '{"version":"v0.7.82"}\n' >"$LIVE/version.json"
+printf '{"version":"v2026.11.16"}\n' >"$LIVE/releases/latest.json"
+printf '{"version":"v2026.11.16"}\n' >"$LIVE/version.json"
 printf 'old installer\n' >"$LIVE/install-online.sh"
 printf 'old xpctl installer\n' >"$LIVE/install-xpctl.sh"
 chmod 0750 "$LIVE/install-online.sh"
@@ -28,14 +28,14 @@ for arch in amd64 arm64; do
 	cp "$STAGE/releases/$VERSION/$name" "$STAGE/$name"
 	cp "$STAGE/releases/$VERSION/$name.sha256" "$STAGE/$name.sha256"
 done
-printf '{"version":"v0.7.83"}\n' >"$STAGE/releases/latest.json"
-printf '{"version":"v0.7.83"}\n' >"$STAGE/version.json"
+printf '{"version":"v2026.11.16.1"}\n' >"$STAGE/releases/latest.json"
+printf '{"version":"v2026.11.16.1"}\n' >"$STAGE/version.json"
 printf 'new installer\n' >"$STAGE/install-online.sh"
 printf 'new xpctl installer\n' >"$STAGE/install-xpctl.sh"
 chmod 0755 "$STAGE/install-online.sh" "$STAGE/install-xpctl.sh"
 
 mkdir -p "$TMP_ROOT/path-alias"
-if multiline_output="$(bash "$SCRIPT" stage "$LIVE" "$STAGE" $'v0.7.83\ninvalid' 2>&1)"; then
+if multiline_output="$(bash "$SCRIPT" stage "$LIVE" "$STAGE" $'v2026.11.16.1\ninvalid' 2>&1)"; then
 	echo "stage unexpectedly accepted a multi-line VERSION" >&2
 	exit 1
 fi
@@ -46,7 +46,7 @@ if bash "$SCRIPT" stage "$TMP_ROOT/path-alias/../live" "$STAGE" "$VERSION"; then
 fi
 
 bash "$SCRIPT" stage "$LIVE" "$STAGE" "$VERSION"
-grep -q 'v0.7.82' "$LIVE/releases/latest.json"
+grep -Fxq '{"version":"v2026.11.16"}' "$LIVE/releases/latest.json"
 grep -q 'old installer' "$LIVE/install-online.sh"
 grep -q 'old xpctl installer' "$LIVE/install-xpctl.sh"
 test "$(file_mode "$LIVE/install-online.sh")" = 750
@@ -54,14 +54,14 @@ test "$(file_mode "$LIVE/install-xpctl.sh")" = 751
 test -f "$LIVE/releases/$VERSION/xpanel-$VERSION-linux-amd64.tar.gz"
 
 bash "$SCRIPT" activate "$LIVE" "$STAGE" "$VERSION"
-grep -q 'v0.7.83' "$LIVE/releases/latest.json"
+grep -Fxq '{"version":"v2026.11.16.1"}' "$LIVE/releases/latest.json"
 grep -q 'new installer' "$LIVE/install-online.sh"
 grep -q 'new xpctl installer' "$LIVE/install-xpctl.sh"
 test "$(file_mode "$LIVE/install-online.sh")" = 755
 test "$(file_mode "$LIVE/install-xpctl.sh")" = 755
 
 bash "$SCRIPT" rollback "$LIVE" "$STAGE" "$VERSION"
-grep -q 'v0.7.82' "$LIVE/releases/latest.json"
+grep -Fxq '{"version":"v2026.11.16"}' "$LIVE/releases/latest.json"
 grep -q 'old installer' "$LIVE/install-online.sh"
 grep -q 'old xpctl installer' "$LIVE/install-xpctl.sh"
 test "$(file_mode "$LIVE/install-online.sh")" = 750
@@ -87,16 +87,16 @@ if bash "$SCRIPT" activate "$LIVE" "$STAGE" "$VERSION"; then
 	echo "activate unexpectedly succeeded without staged latest.json" >&2
 	exit 1
 fi
-grep -q 'v0.7.82' "$LIVE/version.json"
-grep -q 'v0.7.82' "$LIVE/releases/latest.json"
+grep -Fxq '{"version":"v2026.11.16"}' "$LIVE/version.json"
+grep -Fxq '{"version":"v2026.11.16"}' "$LIVE/releases/latest.json"
 grep -q 'old installer' "$LIVE/install-online.sh"
 grep -q 'old xpctl installer' "$LIVE/install-xpctl.sh"
 
-printf '{"version":"v0.7.83"}\n' >"$STAGE/releases/latest.json"
+printf '{"version":"v2026.11.16.1"}\n' >"$STAGE/releases/latest.json"
 bash "$SCRIPT" activate "$LIVE" "$STAGE" "$VERSION"
 bash "$SCRIPT" finalize "$LIVE" "$STAGE" "$VERSION"
 test ! -e "$STAGE"
-grep -q 'v0.7.83' "$LIVE/releases/latest.json"
+grep -Fxq '{"version":"v2026.11.16.1"}' "$LIVE/releases/latest.json"
 
 BROKEN_LIVE="$TMP_ROOT/broken-live"
 BROKEN_VERSION="v0.7.84"

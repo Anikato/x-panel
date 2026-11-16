@@ -41,7 +41,7 @@ Repository secret 是只写配置，AI、GitHub API 和普通仓库读取操作�
 1. 确认需要发布的源码已经进入目标 GitHub 仓库的正确提交。GitHub Actions 看不到只存在于本地工作树的修改。
 2. 确认 `CUSTOM_AGENT_REPO` 和 `CUSTOM_AGENT_VERSION` 指向经过测试的 Agent 制品。
 3. 打开 GitHub 仓库的 Actions 页面，选择 `Build & Release`。
-4. 选择 Run workflow，输入新的版本号，例如 `v0.7.83`。
+4. 选择 Run workflow，输入北京时间的版本号 `v年.月.日`，月和日不补零。同一天再次发布时依次追加 `.1`、`.2`，例如 `v2026.11.16.1`。
 5. 等待工作流完成，不要同时运行第二个正式发布。
 
 工作流依次执行：输入和资产预检、Shell/Go/前端测试、amd64/arm64 构建、Draft Release、更新服务器暂存、SHA256 校验、`latest.json` 激活、公网下载校验、正式发布 GitHub Release。公网校验或正式发布失败时会恢复旧更新清单，保留 Draft 供同版本重试。

@@ -75,7 +75,7 @@ esac
 case "$STAGE_INPUT" in
 */./* | */../* | */. | */..) die "STAGE must not contain dot path segments" ;;
 esac
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || die "invalid VERSION"
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\.[1-9][0-9]*)?(-[0-9A-Za-z.]+)?$ ]] || die "invalid VERSION"
 [ -d "$ROOT_INPUT" ] || die "ROOT does not exist"
 [ -d "$STAGE_INPUT" ] || die "STAGE does not exist"
 

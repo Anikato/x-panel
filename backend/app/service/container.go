@@ -712,26 +712,41 @@ func (s *ContainerService) UpdateDockerMirrors(mirrors []string) error {
 		return err
 	}
 
-	// reload + restart docker
-	if output, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
-		return fmt.Errorf("daemon-reload failed: %s", string(output))
-	}
-	if output, err := exec.Command("systemctl", "restart", "docker").CombinedOutput(); err != nil {
-		return fmt.Errorf("restart docker failed: %s", string(output))
-	}
-	return nil
+	return controlDockerService("restart", true)
 }
 
-// ControlDockerService controls the Docker systemd service (start / stop / restart)
+// ControlDockerService controls the Docker systemd service (start / stop / restart).
 func (s *ContainerService) ControlDockerService(action string) error {
+	dockerDaemonConfigMu.Lock()
+	defer dockerDaemonConfigMu.Unlock()
+	return controlDockerService(action, false)
+}
+
+func controlDockerService(action string, reload bool) error {
 	switch action {
 	case "start", "stop", "restart":
-		out, err := exec.Command("systemctl", action, "docker").CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("systemctl %s docker failed: %s", action, string(out))
-		}
-		return nil
 	default:
 		return fmt.Errorf("unsupported docker service action: %s (use start/stop/restart)", action)
 	}
+	var pending bool
+	if action != "stop" {
+		var err error
+		pending, err = dockerProxyRestartPending()
+		if err != nil {
+			return err
+		}
+	}
+	if reload || pending {
+		if output, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+			return fmt.Errorf("daemon-reload failed: %s", string(output))
+		}
+	}
+	if output, err := exec.Command("systemctl", action, "docker").CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl %s docker failed: %s", action, string(output))
+	}
+	// Starting an already running daemon does not load its new configuration.
+	if pending && action == "restart" {
+		return settingRepo.Update("ProxyDockerRestartPending", "disable")
+	}
+	return nil
 }

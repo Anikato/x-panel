@@ -199,6 +199,27 @@
 
         <el-collapse-item :title="t('setting.proxy')" name="proxy">
           <el-form label-width="140px" class="xp-form-medium">
+            <el-alert
+              v-if="legacySystemProxy"
+              type="warning"
+              :title="t('setting.proxyLegacyHint')"
+              show-icon
+              :closable="false"
+              class="xp-mb-16"
+            />
+            <el-form-item :label="t('setting.proxyScope')">
+              <el-radio-group v-model="proxyForm.scope">
+                <el-radio v-for="scope in proxyScopes" :key="scope" :value="scope">
+                  {{ t(proxyScopeLabels[scope]) }}
+                </el-radio>
+              </el-radio-group>
+              <div class="xp-form-tip">
+                <el-text type="info" size="small">{{ t(proxyScopeHints[proxyForm.scope]) }}</el-text>
+              </div>
+              <div v-if="proxyUsesDocker && proxyForm.type === 'socks5'" class="xp-form-tip">
+                <el-text type="warning" size="small">{{ t('setting.proxySocks5Warning') }}</el-text>
+              </div>
+            </el-form-item>
             <el-form-item :label="t('setting.proxyType')">
               <el-radio-group v-model="proxyForm.type">
                 <el-radio-button value="mix">
@@ -219,7 +240,7 @@
               <el-input v-model="proxyForm.address" :placeholder="proxyAddressSet ? t('setting.secretConfiguredPlaceholder') : proxyAddressPlaceholder" clearable />
               <div v-if="proxyAddressSet" class="xp-secret-row">
                 <span>{{ t('setting.secretConfigured') }}</span>
-                <button type="button" class="xp-secret-clear" :disabled="savingProxy" @click="handleSaveProxy(true)">{{ t('setting.clearSecret') }}</button>
+                <button type="button" class="xp-secret-clear" :disabled="savingProxy || restartingDocker" @click="handleSaveProxy(true)">{{ t('setting.clearSecret') }}</button>
               </div>
               <div class="xp-form-tip">
                 <el-text type="info" size="small">{{ proxyAddressHint }}</el-text>
@@ -231,36 +252,21 @@
                 <el-text type="info" size="small">{{ t('setting.proxyNoProxyHint') }}</el-text>
               </div>
             </el-form-item>
-            <el-alert
-              v-if="legacySystemProxy"
-              type="warning"
-              :title="t('setting.proxyLegacyHint')"
-              show-icon
-              :closable="false"
-              class="xp-mb-16"
-            />
-            <el-form-item :label="t('setting.proxyEnable')">
+            <el-form-item>
+              <el-button type="primary" :disabled="restartingDocker || (proxyUsesDocker && proxyForm.type === 'socks5')" :loading="savingProxy" @click="handleSaveProxy()">
+                {{ t('setting.save') }}
+              </el-button>
+              <el-button :loading="testingProxy" :disabled="(!proxyForm.address && !proxyAddressSet) || savingProxy" @click="handleTestProxy">
+                {{ testingProxy ? t('setting.proxyTesting') : t('setting.proxyTest') }}
+              </el-button>
+            </el-form-item>
+            <el-form-item v-if="dockerRestartPending">
               <div class="xp-setting-line">
-                <el-switch v-model="proxyForm.enabled" />
-                <el-button :loading="testingProxy" :disabled="(!proxyForm.address && !proxyAddressSet) || savingProxy" @click="handleTestProxy">
-                  {{ testingProxy ? t('setting.proxyTesting') : t('setting.proxyTest') }}
+                <el-tag type="warning">{{ t('setting.proxyDockerRestartPending') }}</el-tag>
+                <el-button :disabled="savingProxy" :loading="restartingDocker" @click="handleRestartDocker">
+                  {{ t('setting.proxyRestartDocker') }}
                 </el-button>
               </div>
-              <div class="xp-form-tip">
-                <el-text type="info" size="small">{{ t('setting.proxyHint') }}</el-text>
-              </div>
-            </el-form-item>
-            <el-form-item :label="t('setting.proxyDocker')">
-              <el-switch v-model="proxyForm.docker" :disabled="!proxyForm.enabled || proxyForm.type === 'socks5'" />
-              <div class="xp-form-tip">
-                <el-text type="info" size="small">{{ t(proxyForm.type === 'socks5' ? 'setting.proxySocks5Warning' : 'setting.proxyDockerHint') }}</el-text>
-              </div>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingProxy" @click="handleSaveProxy()">{{ t('setting.save') }}</el-button>
-              <el-button v-if="dockerProxySaved || dockerRestartPending" :disabled="savingProxy" :loading="restartingDocker" @click="handleRestartDocker">
-                {{ t('setting.proxyRestartDocker') }}
-              </el-button>
             </el-form-item>
           </el-form>
         </el-collapse-item>
@@ -329,7 +335,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch, markRaw } from 
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Setting, InfoFilled, Brush, User } from '@element-plus/icons-vue'
-import { getSettingInfo, updateSetting, updatePort, testProxy, saveProxy, getPanelSSL, updatePanelSSL, restartPanel } from '@/api/modules/setting'
+import { getSettingInfo, updateSetting, updatePort, testProxy, saveProxy, getPanelSSL, updatePanelSSL, restartPanel, type ProxyScope } from '@/api/modules/setting'
 import { controlDockerService } from '@/api/modules/container'
 import { searchCertificate } from '@/api/modules/ssl'
 import { getCurrentVersion, checkUpdate, doUpgrade, getUpgradeLog } from '@/api/modules/upgrade'
@@ -448,9 +454,22 @@ const agentTokenSet = ref(false)
 
 const savingProxy = ref(false)
 const testingProxy = ref(false)
-const proxyForm = reactive({ type: 'mix', address: '', noProxy: 'localhost,127.0.0.1,::1', enabled: false, docker: false })
+const proxyForm = reactive({ type: 'mix', address: '', noProxy: 'localhost,127.0.0.1,::1', scope: 'off' as ProxyScope })
+const proxyScopes: ProxyScope[] = ['off', 'panel', 'panel-docker', 'system']
+const proxyScopeLabels: Record<ProxyScope, string> = {
+  off: 'setting.proxyScopeOff',
+  panel: 'setting.proxyScopePanel',
+  'panel-docker': 'setting.proxyScopeDocker',
+  system: 'setting.proxyScopeSystem',
+}
+const proxyScopeHints: Record<ProxyScope, string> = {
+  off: 'setting.proxyScopeOffHint',
+  panel: 'setting.proxyScopePanelHint',
+  'panel-docker': 'setting.proxyScopeDockerHint',
+  system: 'setting.proxyScopeSystemHint',
+}
+const proxyUsesDocker = computed(() => proxyForm.scope === 'panel-docker' || proxyForm.scope === 'system')
 const legacySystemProxy = ref(false)
-const dockerProxySaved = ref(false)
 const dockerRestartPending = ref(false)
 const restartingDocker = ref(false)
 const proxyAddressSet = ref(false)
@@ -597,10 +616,11 @@ const fetchSettings = async () => {
       proxyForm.address = ''
       proxyAddressSet.value = res.data.proxyAddressSet === true
       proxyForm.noProxy = res.data.proxyNoProxy || 'localhost,127.0.0.1,::1'
-      proxyForm.enabled = res.data.proxyEnable === 'enable'
-      proxyForm.docker = res.data.proxyDocker === true
+      proxyForm.scope = res.data.proxyScope || (res.data.proxyEnable === 'enable'
+        ? (res.data.proxyDocker ? 'panel-docker' : 'panel')
+        : 'off')
       legacySystemProxy.value = res.data.legacySystemProxy === true
-      dockerProxySaved.value = proxyForm.enabled && proxyForm.docker
+      dockerRestartPending.value = res.data.dockerRestartPending === true
     }
   } catch { /* */ } finally { loading.value = false }
 }
@@ -668,21 +688,19 @@ const handleSavePassword = async () => {
 }
 
 const handleSaveProxy = async (clearAddress = false) => {
-  if (!clearAddress && proxyForm.enabled && !proxyForm.address.trim() && !proxyAddressSet.value) {
+  if (!clearAddress && proxyForm.scope !== 'off' && !proxyForm.address.trim() && !proxyAddressSet.value) {
     ElMessage.warning(proxyAddressPlaceholder.value)
     return
   }
   savingProxy.value = true
   try {
-    const docker = proxyForm.docker && proxyForm.type !== 'socks5' && !clearAddress
-    const res = await saveProxy({ ...proxyForm, docker, clearAddress })
+    const res = await saveProxy({ ...proxyForm, clearAddress })
     proxyAddressSet.value = !clearAddress && (proxyAddressSet.value || Boolean(proxyForm.address.trim()))
     proxyForm.address = ''
-    proxyForm.docker = docker
-    if (clearAddress) proxyForm.enabled = false
-    dockerProxySaved.value = proxyForm.enabled && docker
-    if (res.data?.dockerChanged) {
-      dockerRestartPending.value = true
+    if (clearAddress) proxyForm.scope = 'off'
+    legacySystemProxy.value = res.data.legacySystemProxy
+    dockerRestartPending.value = res.data.dockerRestartPending
+    if (res.data.dockerChanged) {
       ElMessage.success(t('setting.proxyDockerPending'))
     } else {
       ElMessage.success(t('commons.success'))
