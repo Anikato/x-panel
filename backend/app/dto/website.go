@@ -207,9 +207,10 @@ type SaveSiteConfReq struct {
 }
 
 type SiteConfContentResp struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	Hash    string `json:"hash"`
+	Path      string `json:"path"`
+	Content   string `json:"content"`
+	Hash      string `json:"hash"`
+	Generated bool   `json:"generated"`
 }
 
 type ExternalNginxSiteInspectReq struct {

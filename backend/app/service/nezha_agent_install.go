@@ -189,7 +189,7 @@ func exactGitHubAgentAssetURLs(repoName, releaseVersion, arch, token string) (st
 	if token != "" {
 		req.Header.Set("Authorization", "token "+token)
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := NewPanelHTTPClient(15 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve current GitHub release: %w", err)

@@ -43,6 +43,14 @@ export const uploadCertificate = (params: { privateKey: string; certificate: str
   return http.post('/certificates/upload', params)
 }
 
+export const updateManualCertificate = (params: { id: number; privateKey: string; certificate: string }) => {
+  return http.post<{ activationError?: string }>('/certificates/upload/update', params, { timeout: 300000 })
+}
+
+export const restoreManualCertificate = (params: { id: number; savedAt: string }) => {
+  return http.post<{ activationError?: string }>('/certificates/upload/restore', params, { timeout: 300000 })
+}
+
 export const deleteCertificate = (id: number) => {
   return http.post('/certificates/del', { id })
 }

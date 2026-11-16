@@ -91,6 +91,20 @@ func (s *SettingAPI) ShutdownServer(c *gin.Context) {
 	}()
 }
 
+func (s *SettingAPI) SaveProxy(c *gin.Context) {
+	var req dto.ProxyConfigUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	result, err := settingService.SaveProxy(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
 // TestProxy 测试代理连通性
 func (s *SettingAPI) TestProxy(c *gin.Context) {
 	var req dto.ProxyTest

@@ -43,6 +43,12 @@ func setupCertificateServiceDB(t *testing.T) *CertificateService {
 
 func generateUploadPEMs(t *testing.T) (string, string) {
 	t.Helper()
+	now := time.Now()
+	return generateUploadPEMsForPeriod(t, now.Add(-time.Hour), now.Add(24*time.Hour))
+}
+
+func generateUploadPEMsForPeriod(t *testing.T, notBefore, notAfter time.Time) (string, string) {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -51,8 +57,8 @@ func generateUploadPEMs(t *testing.T) (string, string) {
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: "upload.example.com"},
 		DNSNames:     []string{"upload.example.com"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(24 * time.Hour),
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)

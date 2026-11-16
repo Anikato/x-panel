@@ -22,6 +22,7 @@ func Init() {
 	if err := global.DB.AutoMigrate(
 		&model.Setting{},
 		&model.LoginLog{},
+		&model.PanelAccessLog{},
 		&model.OperationLog{},
 		&model.Host{},
 		&model.Command{},

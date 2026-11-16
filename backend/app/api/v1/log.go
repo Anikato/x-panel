@@ -3,10 +3,13 @@ package v1
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
+	"xpanel/app/model"
 	"xpanel/app/service"
+	"xpanel/global"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +18,25 @@ import (
 type LogAPI struct{}
 
 var logService = service.NewILogService()
+
+func (l *LogAPI) PagePanelAccessLog(c *gin.Context) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 || page > 10000 {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "页码无效")
+		return
+	}
+	pageSize, err := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	if err != nil || pageSize < 1 || pageSize > 100 {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, "分页大小无效")
+		return
+	}
+	total, logs, err := service.PagePanelAccessLogs(global.DB, page, pageSize, strings.TrimSpace(c.Query("ip")), model.PanelAccessKind(c.Query("kind")))
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithPage(c, total, logs)
+}
 
 // PageLoginLog 分页查询登录日志
 func (l *LogAPI) PageLoginLog(c *gin.Context) {

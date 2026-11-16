@@ -128,7 +128,7 @@ func (s *UpgradeService) checkUpdateFromGitHub(repoURL string) (*dto.UpgradeInfo
 
 	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", GitHubAPIBase, repo)
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := NewPanelHTTPClient(15 * time.Second)
 	req, _ := s.newGitHubRequest("GET", apiURL)
 
 	resp, err := client.Do(req)
@@ -205,7 +205,7 @@ func (s *UpgradeService) checkUpdateFromGitHub(repoURL string) (*dto.UpgradeInfo
 // checkUpdateFromCustomServer 从自建服务器检查更新（兼容旧版）
 func (s *UpgradeService) checkUpdateFromCustomServer(releaseURL string) (*dto.UpgradeInfo, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(releaseURL), "/")
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := NewPanelHTTPClient(15 * time.Second)
 
 	manifest, manifestBaseURL, err := fetchRemoteUpdateManifest(client, baseURL)
 	if err != nil {
@@ -543,7 +543,7 @@ func (s *UpgradeService) openLog(logFile string) *os.File {
 
 // downloadFile 下载文件（支持 GitHub Token 认证）
 func downloadFile(url, dst string, githubToken string) error {
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := NewPanelHTTPClient(10 * time.Minute)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err

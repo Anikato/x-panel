@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
@@ -78,7 +79,11 @@ func verifyUpdatedNginxCertificateConsumers(certIDs []uint) error {
 			defer waitGroup.Done()
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			if err := websiteService.verifyWebsiteLocalCertificate(context.Background(), site, ops); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			if err := verifyNginxCertificateWithRetry(ctx, 250*time.Millisecond, func(ctx context.Context) error {
+				return websiteService.verifyWebsiteLocalCertificate(ctx, site, ops)
+			}); err != nil {
 				errorsBySite <- fmt.Errorf("网站 %s: %w", site.PrimaryDomain, err)
 			}
 		}()
@@ -90,6 +95,26 @@ func verifyUpdatedNginxCertificateConsumers(certIDs []uint) error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// Nginx may keep serving the old certificate until its new workers start.
+func verifyNginxCertificateWithRetry(ctx context.Context, interval time.Duration, verify func(context.Context) error) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		err := verify(ctx)
+		if !errors.Is(err, errWebsiteCertificateFingerprintMismatch) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-ticker.C:
+			if ctx.Err() != nil {
+				return err
+			}
+		}
+	}
 }
 
 func findCertificateConsumerTargets(certIDs []uint) (certificateConsumerTargets, error) {

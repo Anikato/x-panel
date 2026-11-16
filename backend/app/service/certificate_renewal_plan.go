@@ -8,23 +8,24 @@ import (
 	"xpanel/app/repo"
 )
 
-const certificateRenewBefore = 15 * 24 * time.Hour
+const certificateRenewBefore = 20 * 24 * time.Hour
 
 const (
 	renewalManagementLocal  = "local"
 	renewalManagementSynced = "synced"
 	renewalManagementManual = "manual"
 
-	renewalPlanExpired        = "expired"
-	renewalPlanApplying       = "applying"
-	renewalPlanSyncPaused     = "sync_paused"
-	renewalPlanRenewError     = "renew_error"
-	renewalPlanSyncError      = "sync_error"
-	renewalPlanRenewDue       = "renew_due"
-	renewalPlanExpiringManual = "expiring_manual"
-	renewalPlanWaitingSync    = "waiting_sync"
-	renewalPlanScheduled      = "scheduled"
-	renewalPlanManual         = "manual"
+	renewalPlanExpired          = "expired"
+	renewalPlanApplying         = "applying"
+	renewalPlanSyncPaused       = "sync_paused"
+	renewalPlanRenewError       = "renew_error"
+	renewalPlanActivationFailed = "activation_failed"
+	renewalPlanSyncError        = "sync_error"
+	renewalPlanRenewDue         = "renew_due"
+	renewalPlanExpiringManual   = "expiring_manual"
+	renewalPlanWaitingSync      = "waiting_sync"
+	renewalPlanScheduled        = "scheduled"
+	renewalPlanManual           = "manual"
 )
 
 func nextLocalAutoRenewAt(cert model.Certificate, now time.Time, location *time.Location) *time.Time {
@@ -149,6 +150,9 @@ func buildCertificateRenewalPlanItem(
 			if item.StatusMessage == "" {
 				item.StatusMessage = "最近一次申请或续签失败"
 			}
+		case shouldRetryCertificateActivation(cert):
+			item.Status = renewalPlanActivationFailed
+			item.StatusMessage = cert.Message
 		case item.NextAutoRenewAt == nil:
 			item.Status = renewalPlanManual
 			item.StatusMessage = "本机自动续签未启用或证书材料不完整"
@@ -211,7 +215,7 @@ func buildCertificateRenewalPlanItem(
 		if expired {
 			item.Status = renewalPlanExpired
 			item.StatusMessage = "证书已过期"
-		} else if !cert.ExpireDate.IsZero() && !cert.ExpireDate.After(now.Add(certificateRenewBefore)) {
+		} else if !cert.ExpireDate.IsZero() && !cert.ExpireDate.After(now.Add(certificateExpiringDays*24*time.Hour)) {
 			item.Status = renewalPlanExpiringManual
 			item.StatusMessage = "证书即将到期，请手动更换"
 		} else {

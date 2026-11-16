@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -366,7 +365,7 @@ func (s *GostInstallService) doInstall(version string) {
 
 func (s *GostInstallService) fetchLatestVersion() (string, error) {
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", gostGitHubRepo)
-	resp, err := http.Get(apiURL)
+	resp, err := NewPanelHTTPClient(15 * time.Second).Get(apiURL)
 	if err != nil {
 		return "", err
 	}
@@ -441,7 +440,7 @@ func generateRandomPassword(n int) string {
 }
 
 func gostDownloadFile(url, dest string) error {
-	resp, err := http.Get(url)
+	resp, err := NewPanelHTTPClient(10 * time.Minute).Get(url)
 	if err != nil {
 		return err
 	}

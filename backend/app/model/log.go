@@ -1,5 +1,28 @@
 package model
 
+import "time"
+
+type PanelAccessKind string
+
+const (
+	PanelAccessEntranceBlocked PanelAccessKind = "entrance_blocked"
+	PanelAccessEntranceMatched PanelAccessKind = "entrance_matched"
+	PanelAccessPageOpened      PanelAccessKind = "page_opened"
+	PanelAccessLoginFailed     PanelAccessKind = "login_failed"
+	PanelAccessCaptchaBlocked  PanelAccessKind = "captcha_blocked"
+	PanelAccessLoginSucceeded  PanelAccessKind = "login_succeeded"
+)
+
+type PanelAccessLog struct {
+	ID        uint            `gorm:"primaryKey" json:"id"`
+	IP        string          `gorm:"size:64;not null;uniqueIndex:idx_panel_access_bucket" json:"ip"`
+	Kind      PanelAccessKind `gorm:"size:24;not null;uniqueIndex:idx_panel_access_bucket" json:"kind"`
+	Bucket    int64           `gorm:"not null;uniqueIndex:idx_panel_access_bucket" json:"-"`
+	Hits      uint64          `gorm:"not null" json:"hits"`
+	FirstSeen time.Time       `gorm:"not null" json:"firstSeen"`
+	LastSeen  time.Time       `gorm:"not null;index" json:"lastSeen"`
+}
+
 // LoginLog 登录日志
 type LoginLog struct {
 	BaseModel

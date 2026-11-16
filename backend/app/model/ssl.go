@@ -57,6 +57,13 @@ type Certificate struct {
 	Message                      string     `json:"message"`
 	Description                  string     `json:"description"`
 
+	BackupPEM         string     `gorm:"column:backup_pem;type:text" json:"-"`
+	BackupPrivateKey  string     `gorm:"type:text" json:"-"`
+	BackupSavedAt     *time.Time `json:"-"`
+	BackupExpireDate  *time.Time `json:"-"`
+	PendingPEM        string     `gorm:"column:pending_pem;type:text" json:"-"`
+	PendingPrivateKey string     `gorm:"type:text" json:"-"`
+
 	AcmeAccount AcmeAccount `json:"acmeAccount" gorm:"-:migration"`
 	DnsAccount  DnsAccount  `json:"dnsAccount" gorm:"-:migration"`
 }

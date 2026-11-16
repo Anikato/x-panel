@@ -678,6 +678,8 @@ func (s *ContainerService) LoadDockerMirrors() ([]string, error) {
 }
 
 func (s *ContainerService) UpdateDockerMirrors(mirrors []string) error {
+	dockerDaemonConfigMu.Lock()
+	defer dockerDaemonConfigMu.Unlock()
 	var conf map[string]interface{}
 
 	data, err := os.ReadFile(daemonJSONPath)

@@ -61,8 +61,8 @@ export const getFail2banLogs = (lines = 200) => http.get(`/toolbox/fail2ban/logs
 
 export const lookupIP = (ip: string) => http.get(`/toolbox/ip/lookup?ip=${ip}`)
 export const lookupIPBatch = (ips: string[]) => http.post('/toolbox/ip/lookup/batch', { ips })
-export const getIPDBInfo = () => http.get('/toolbox/ip/db/info')
-export const downloadIPDB = () => http.post('/toolbox/ip/db/download')
+export const getIPDBInfo = () => http.get<{ loaded: boolean; size: number; updatedAt: string }>('/toolbox/ip/db/info')
+export const downloadIPDB = () => http.post('/toolbox/ip/db/download', {}, { timeout: 310000 })
 
 // ====== Systemd Service Manager ======
 

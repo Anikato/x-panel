@@ -244,10 +244,11 @@ export const NAV_MODULES: NavModule[] = [
     icon: 'Document',
     placement: 'footer',
     defaultPath: '/log/system',
-    keywords: ['面板日志', '运行日志', '登录日志', '操作日志'],
+    keywords: ['面板日志', '运行日志', '访问记录', '登录日志', '操作日志'],
     localNav: 'tabs',
     items: [
       { id: 'log-system', titleKey: 'nav.runLog', path: '/log/system', keywords: ['运行日志'] },
+      { id: 'log-panel-access', titleKey: 'nav.panelAccessLog', path: '/log/panel-access', keywords: ['面板访问', '安全入口', '爆破'] },
       { id: 'log-login', titleKey: 'nav.loginLog', path: '/log/login', keywords: ['登录日志'] },
       { id: 'log-operation', titleKey: 'nav.operationLog', path: '/log/operation', keywords: ['操作日志'] },
     ],

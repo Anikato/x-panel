@@ -390,6 +390,7 @@
               <el-radio-button :value="30">{{ $t('website.last30days') }}</el-radio-button>
             </el-radio-group>
             <el-button size="small" @click="() => loadLogAnalysis(true)" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
+            <IPLocationDatabase @updated="loadLogAnalysis(true)" />
           </div>
           <LogAnalysisMetaBanner :meta="logAnalysisData?.meta" :view="analysisView" :error="analysisError" />
 
@@ -514,9 +515,15 @@
 
       <!-- 配置预览 (托管模式) -->
       <el-tab-pane :label="$t('website.configPreview')" name="preview">
-        <div class="config-preview">
-          <el-button size="small" style="margin-bottom: 8px" @click="loadDetail">{{ $t('commons.refresh') }}</el-button>
-          <pre class="preview-content">{{ detail.nginxConfig || '暂无配置' }}</pre>
+        <div class="config-preview" v-loading="previewLoading">
+          <div class="source-editor-toolbar">
+            <div class="source-file-meta">
+              <span class="source-file-label">{{ nginxPreview?.path }}</span>
+              <span class="source-file-note">{{ $t(nginxPreview?.generated ? 'website.configPreviewGenerated' : 'website.configPreviewReadOnly') }}</span>
+            </div>
+            <el-button size="small" :loading="previewLoading" @click="loadNginxPreview">{{ $t('commons.refresh') }}</el-button>
+          </div>
+          <pre v-if="nginxPreview" class="preview-content">{{ nginxPreview.content }}</pre>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -601,6 +608,7 @@
               <el-radio-button :value="30">{{ $t('website.last30days') }}</el-radio-button>
             </el-radio-group>
             <el-button size="small" @click="() => loadLogAnalysis(true)" :loading="analysisLoading">{{ $t('commons.refresh') }}</el-button>
+            <IPLocationDatabase @updated="loadLogAnalysis(true)" />
           </div>
           <LogAnalysisMetaBanner :meta="logAnalysisData?.meta" :view="analysisView" :error="analysisError" />
           <div v-if="logAnalysisData" class="analysis-overview">
@@ -663,6 +671,7 @@ import {
   refreshExternalNginxSite, checkWebsiteCertificateHealth,
 } from '@/api/modules/website'
 import type { NginxLogAnalysisMeta } from '@/api/modules/website'
+import IPLocationDatabase from '@/components/IPLocationDatabase.vue'
 import LogAnalysisMetaBanner from '@/views/website/nginx/LogAnalysisMetaBanner.vue'
 import SiteLogInsights from '@/views/website/nginx/SiteLogInsights.vue'
 import { analysisViewState, abortAnalysisRequest, beginAnalysisRequest, createAnalysisRequestState, isCurrentAnalysisRequest } from '@/views/website/nginx/log-analysis-request'
@@ -837,6 +846,21 @@ const configMode = ref<'managed' | 'source'>('managed')
 const sourceActiveTab = ref('overview')
 const sourceSaving = ref(false)
 const sourceConfPath = ref('')
+const nginxPreview = ref<Awaited<ReturnType<typeof getSiteConfContent>>['data']>()
+const previewLoading = ref(false)
+
+const loadNginxPreview = async () => {
+  if (previewLoading.value) return
+  previewLoading.value = true
+  try {
+    const res = await getSiteConfContent(siteId)
+    nginxPreview.value = res.data
+  } catch {
+    nginxPreview.value = undefined
+  } finally {
+    previewLoading.value = false
+  }
+}
 const sourceConfHash = ref('')
 const refreshingExternal = ref(false)
 const certificateChecking = ref(false)
@@ -1327,6 +1351,9 @@ watch(sourceActiveTab, (val) => {
 })
 
 watch(activeTab, (val) => {
+  if (val === 'preview') {
+    void loadNginxPreview()
+  }
   if (val === 'logAnalysis' && !logAnalysisData.value) {
     loadLogAnalysis()
   }

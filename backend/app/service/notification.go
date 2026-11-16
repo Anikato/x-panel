@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -156,10 +157,17 @@ func notifySSLRenewFailed(domain string, err error) {
 	if err != nil {
 		content = err.Error()
 	}
+	title := fmt.Sprintf("证书「%s」自动续签失败", domain)
+	level := "error"
+	var activationErr *certificateActivationError
+	if errors.As(err, &activationErr) {
+		title = fmt.Sprintf("证书「%s」已签发，服务加载待确认", domain)
+		level = "warning"
+	}
 	CreateNotification(dto.NotificationCreate{
-		Type:      "error",
+		Type:      level,
 		Event:     "ssl.renew.failed",
-		Title:     fmt.Sprintf("证书「%s」自动续签失败", domain),
+		Title:     title,
 		Content:   content,
 		Source:    "system",
 		TargetURL: "/website/ssl",

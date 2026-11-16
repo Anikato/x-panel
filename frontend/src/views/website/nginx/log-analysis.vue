@@ -17,6 +17,7 @@
           <el-option :label="$t('nginx.last7d')" value="7d" />
           <el-option :label="$t('nginx.last30d')" value="30d" />
         </el-select>
+        <IPLocationDatabase @updated="handleAnalyze(true)" />
       </div>
       <el-button :icon="Refresh" @click="() => handleAnalyze(true)" :loading="analyzing" size="small">
         {{ $t('nginx.refreshLog') }}
@@ -434,6 +435,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { detectNginxSites, analyzeNginxSiteLog, tailNginxLog, drilldownNginxLog } from '@/api/modules/website'
 import { banFail2banIP, unbanFail2banIP } from '@/api/modules/toolbox'
 import { ElMessage } from 'element-plus'
+import IPLocationDatabase from '@/components/IPLocationDatabase.vue'
 import LogAnalysisMetaBanner from './LogAnalysisMetaBanner.vue'
 import { analysisViewState, abortAnalysisRequest, beginAnalysisRequest, createAnalysisRequestState, isCurrentAnalysisRequest } from './log-analysis-request'
 import * as echarts from 'echarts/core'

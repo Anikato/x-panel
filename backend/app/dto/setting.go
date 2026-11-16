@@ -23,11 +23,27 @@ type SettingInfo struct {
 	ProxyAddress        string `json:"-"`
 	ProxyAddressSet     bool   `json:"proxyAddressSet"`
 	ProxyNoProxy        string `json:"proxyNoProxy"`
+	ProxyDocker         bool   `json:"proxyDocker"`
+	LegacySystemProxy   bool   `json:"legacySystemProxy"`
 }
 
 // ProxyTest 代理连通性测试请求
 type ProxyTest struct {
-	Address string `json:"address" binding:"required"`
+	Address string `json:"address"`
+	Type    string `json:"type" binding:"omitempty,oneof=mix http socks5"`
+}
+
+type ProxyConfigUpdate struct {
+	Type         string `json:"type" binding:"required,oneof=mix http socks5"`
+	Address      string `json:"address"`
+	ClearAddress bool   `json:"clearAddress"`
+	NoProxy      string `json:"noProxy"`
+	Enabled      bool   `json:"enabled"`
+	Docker       bool   `json:"docker"`
+}
+
+type ProxyConfigResult struct {
+	DockerChanged bool `json:"dockerChanged"`
 }
 
 // SettingUpdate 设置更新请求

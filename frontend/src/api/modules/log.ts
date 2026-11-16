@@ -5,6 +5,26 @@ interface PageParams {
   pageSize: number
 }
 
+export type PanelAccessKind =
+  | 'entrance_blocked'
+  | 'entrance_matched'
+  | 'page_opened'
+  | 'login_failed'
+  | 'captcha_blocked'
+  | 'login_succeeded'
+
+export interface PanelAccessLog {
+  id: number
+  ip: string
+  kind: PanelAccessKind
+  hits: number
+  firstSeen: string
+  lastSeen: string
+}
+
+export const getPanelAccessLogs = (params: PageParams & { ip?: string; kind?: PanelAccessKind }) =>
+  http.get<{ items: PanelAccessLog[]; total: number }>('/logs/panel-access', { params })
+
 /** 登录日志分页查询 */
 export const getLoginLogs = (data: PageParams) => {
   return http.post('/logs/login', data)

@@ -433,6 +433,7 @@ export interface Certificate {
   acmeAccountEmail?: string
   dnsAccountName?: string
   consumers?: CertificateConsumer[]
+  backup?: { savedAt: string; expireDate: string }
 }
 
 export interface CertificateConsumer {
@@ -595,6 +596,7 @@ export interface SiteConfContent {
   path: string
   content: string
   hash: string
+  generated: boolean
 }
 
 export interface CertificateHealthSnapshot {

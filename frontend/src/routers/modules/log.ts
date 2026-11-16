@@ -2,6 +2,12 @@ import type { RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/log/panel-access',
+    name: 'PanelAccessLog',
+    component: () => import('@/views/log/panel-access/index.vue'),
+    meta: { title: 'menu.panelAccessLog', icon: 'Document' },
+  },
+  {
     path: '/log/login',
     name: 'LoginLog',
     component: () => import('@/views/log/login/index.vue'),

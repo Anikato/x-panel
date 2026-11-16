@@ -287,6 +287,9 @@ func readFieldRows(db *gorm.DB, spec FieldSpec) ([]credentialValueRow, error) {
 	if err := validateIdentifier(spec.Column); err != nil {
 		return nil, err
 	}
+	if spec.OptionalColumn && !db.Migrator().HasColumn(spec.Table, spec.Column) {
+		return nil, nil
+	}
 	var rows []credentialValueRow
 	selectSQL := fmt.Sprintf("id, %s AS value", quoteIdentifier(spec.Column))
 	whereSQL := fmt.Sprintf("%s IS NOT NULL AND %s <> ''", quoteIdentifier(spec.Column), quoteIdentifier(spec.Column))

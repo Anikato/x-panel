@@ -20,7 +20,7 @@ func TestShouldAutoRenewCertificateRetriesExistingFailedAndInterruptedRenewals(t
 			PrivateKey: "key",
 			ExpireDate: now.Add(24 * time.Hour),
 		}
-		if !shouldAutoRenewCertificate(cert, now, 15*24*time.Hour) {
+		if !shouldAutoRenewCertificate(cert, now, certificateRenewBefore) {
 			t.Fatalf("status %q must remain retryable", status)
 		}
 	}
@@ -50,14 +50,14 @@ func TestShouldAutoRenewCertificateRejectsUnissuedOrIneligibleCertificates(t *te
 		{name: "missing expiration", cert: func() model.Certificate { c := base; c.ExpireDate = time.Time{}; return c }()},
 		{name: "outside renewal window", cert: func() model.Certificate {
 			c := base
-			c.ExpireDate = now.Add(15*time.Hour*24 + time.Nanosecond)
+			c.ExpireDate = now.Add(20*24*time.Hour + time.Nanosecond)
 			return c
 		}()},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if shouldAutoRenewCertificate(tt.cert, now, 15*24*time.Hour) {
+			if shouldAutoRenewCertificate(tt.cert, now, certificateRenewBefore) {
 				t.Fatal("certificate must not be automatically renewed")
 			}
 		})

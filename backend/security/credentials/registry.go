@@ -3,9 +3,10 @@ package credentials
 import "sort"
 
 type FieldSpec struct {
-	Table  string
-	Column string
-	Scope  string
+	Table          string
+	Column         string
+	Scope          string
+	OptionalColumn bool
 }
 
 var FieldSpecs = []FieldSpec{
@@ -22,6 +23,8 @@ var FieldSpecs = []FieldSpec{
 	{Table: "acme_accounts", Column: "eab_hmac_key", Scope: "acme_accounts.eab_hmac_key"},
 	{Table: "dns_accounts", Column: "authorization", Scope: "dns_accounts.authorization"},
 	{Table: "certificates", Column: "private_key", Scope: "certificates.private_key"},
+	{Table: "certificates", Column: "backup_private_key", Scope: "certificates.backup_private_key", OptionalColumn: true},
+	{Table: "certificates", Column: "pending_private_key", Scope: "certificates.pending_private_key", OptionalColumn: true},
 	{Table: "cert_sources", Column: "token", Scope: "cert_sources.token"},
 	{Table: "websites", Column: "basic_password", Scope: "websites.basic_password"},
 	{Table: "gost_services", Column: "auth_pass", Scope: "gost_services.auth_pass"},

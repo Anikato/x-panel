@@ -577,12 +577,17 @@ func (s *WebsiteService) GetSiteConfContent(id uint) (*dto.SiteConfContentResp, 
 	if err != nil {
 		return nil, buserr.New(constant.ErrRecordNotFound)
 	}
+	return s.readSiteConfContent(site)
+}
+
+func (s *WebsiteService) readSiteConfContent(site model.Website) (*dto.SiteConfContentResp, error) {
 	confPath, err := s.resolveSiteConfPath(site)
 	if err != nil {
 		return nil, err
 	}
 	content, err := os.ReadFile(confPath)
-	if os.IsNotExist(err) && site.NginxConfPath == "" {
+	generated := os.IsNotExist(err) && site.NginxConfPath == ""
+	if generated {
 		generated, generateErr := NewNginxConfigGenerator().Generate(site)
 		if generateErr != nil {
 			return nil, generateErr
@@ -594,7 +599,7 @@ func (s *WebsiteService) GetSiteConfContent(id uint) (*dto.SiteConfContentResp, 
 		return nil, err
 	}
 	return &dto.SiteConfContentResp{
-		Path: confPath, Content: string(content), Hash: contentSHA256(content),
+		Path: confPath, Content: string(content), Hash: contentSHA256(content), Generated: generated,
 	}, nil
 }
 
@@ -602,6 +607,9 @@ func (s *WebsiteService) SaveSiteConfContent(req dto.SaveSiteConfReq) error {
 	site, err := s.websiteRepo.Get(repo.WithByID(req.ID))
 	if err != nil {
 		return buserr.New(constant.ErrRecordNotFound)
+	}
+	if site.NginxConfPath == "" && site.ConfigMode != "source" {
+		return buserr.WithDetail(constant.ErrInvalidParams, "托管模式中的 Nginx 配置是只读的", nil)
 	}
 	confPath, err := s.resolveSiteConfPath(site)
 	if err != nil {

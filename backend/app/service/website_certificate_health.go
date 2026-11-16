@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -26,6 +27,8 @@ import (
 )
 
 const certificateExpiringDays = 15
+
+var errWebsiteCertificateFingerprintMismatch = errors.New("配置证书与本机实际证书指纹不一致")
 
 type tlsCertificateProbe func(context.Context, string, string) ([]*x509.Certificate, error)
 
@@ -432,7 +435,7 @@ func (s *WebsiteService) verifyWebsiteLocalCertificate(
 		return fmt.Errorf("本机 TLS 证书不可用: %s: %s", local.Status, local.Error)
 	}
 	if configured.FingerprintSHA256 == "" || local.FingerprintSHA256 == "" || configured.FingerprintSHA256 != local.FingerprintSHA256 {
-		return fmt.Errorf("配置证书与本机实际证书指纹不一致")
+		return errWebsiteCertificateFingerprintMismatch
 	}
 	return nil
 }

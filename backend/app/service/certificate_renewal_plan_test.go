@@ -27,7 +27,7 @@ func TestNextLocalAutoRenewAtUsesFirstDailyRunAfterWindowStarts(t *testing.T) {
 	}
 
 	got := nextLocalAutoRenewAt(cert, now, location)
-	want := time.Date(2026, 7, 18, 2, 0, 0, 0, location)
+	want := time.Date(2026, 7, 13, 2, 0, 0, 0, location)
 	if got == nil || !got.Equal(want) {
 		t.Fatalf("nextLocalAutoRenewAt() = %v, want %v", got, want)
 	}
@@ -397,7 +397,7 @@ func TestBuildCertificateRenewalPlanItemForExpiringManualCertificate(t *testing.
 		PrimaryDomain: "manual.example.com",
 		Type:          "upload",
 		SourceType:    "upload",
-		ExpireDate:    now.Add(10 * 24 * time.Hour),
+		ExpireDate:    now.Add(15 * 24 * time.Hour),
 		Status:        "applied",
 	}
 
@@ -411,6 +411,11 @@ func TestBuildCertificateRenewalPlanItemForExpiringManualCertificate(t *testing.
 	}
 	if item.Status != renewalPlanExpiringManual {
 		t.Fatalf("status = %q, want %q", item.Status, renewalPlanExpiringManual)
+	}
+	cert.ExpireDate = cert.ExpireDate.Add(time.Second)
+	item = buildCertificateRenewalPlanItem(cert, nil, now, time.UTC)
+	if item.Status != renewalPlanManual {
+		t.Fatalf("status just outside the warning window = %q, want %q", item.Status, renewalPlanManual)
 	}
 }
 

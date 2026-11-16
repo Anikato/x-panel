@@ -26,7 +26,7 @@ func (s *CertificateService) BatchDelete(ids []uint) (*dto.CertificateDeleteResu
 	if err != nil {
 		return nil, err
 	}
-	return s.deleteCertificates(ids, certs)
+	return s.deleteCertificates(ids, certs, time.Time{})
 }
 
 func (s *CertificateService) CleanupExpired(now time.Time) (*dto.CertificateDeleteResult, error) {
@@ -44,7 +44,7 @@ func (s *CertificateService) CleanupExpired(now time.Time) (*dto.CertificateDele
 	for _, cert := range certs {
 		ids = append(ids, cert.ID)
 	}
-	return s.deleteCertificates(ids, certs)
+	return s.deleteCertificates(ids, certs, now)
 }
 
 func normalizeCertificateIDs(ids []uint) []uint {
@@ -64,7 +64,7 @@ func normalizeCertificateIDs(ids []uint) []uint {
 	return out
 }
 
-func (s *CertificateService) deleteCertificates(requested []uint, certs []model.Certificate) (*dto.CertificateDeleteResult, error) {
+func (s *CertificateService) deleteCertificates(requested []uint, certs []model.Certificate, expiryCutoff time.Time) (*dto.CertificateDeleteResult, error) {
 	result := &dto.CertificateDeleteResult{
 		Skipped: []dto.CertificateDeleteIssue{},
 		Failed:  []dto.CertificateDeleteIssue{},
@@ -84,25 +84,46 @@ func (s *CertificateService) deleteCertificates(requested []uint, certs []model.
 			result.Failed = append(result.Failed, certificateDeleteIssue(id, "", "证书不存在"))
 			continue
 		}
-		if cert.Status == "applying" {
-			result.Skipped = append(result.Skipped, certificateDeleteIssue(id, cert.PrimaryDomain, "证书正在申请或续签"))
+		release, err := acquireCertificateRenewal(id)
+		if err != nil {
+			result.Skipped = append(result.Skipped, certificateDeleteIssue(id, cert.PrimaryDomain, "证书正在申请、续签或更新"))
 			continue
 		}
-		if reason := references[id]; reason != "" {
-			result.Skipped = append(result.Skipped, certificateDeleteIssue(id, cert.PrimaryDomain, reason))
-			continue
-		}
-		if err := removeCertificateDirectory(certDirPath(sslDir, cert)); err != nil {
-			result.Failed = append(result.Failed, certificateDeleteIssue(id, cert.PrimaryDomain, "删除证书目录失败: "+err.Error()))
-			continue
-		}
-		if err := s.certRepo.Delete(repo.WithByID(id)); err != nil {
-			result.Failed = append(result.Failed, certificateDeleteIssue(id, cert.PrimaryDomain, "删除证书记录失败: "+err.Error()))
-			continue
-		}
-		result.DeletedCount++
+		s.deleteCertificateIfUnused(result, cert, references[id], sslDir, expiryCutoff)
+		release()
 	}
 	return result, nil
+}
+
+func (s *CertificateService) deleteCertificateIfUnused(result *dto.CertificateDeleteResult, cert model.Certificate, reason, sslDir string, expiryCutoff time.Time) {
+	id := cert.ID
+	current, err := s.certRepo.Get(repo.WithByID(id))
+	if err != nil {
+		result.Failed = append(result.Failed, certificateDeleteIssue(id, cert.PrimaryDomain, "读取证书失败: "+err.Error()))
+		return
+	}
+	cert = current
+	if !expiryCutoff.IsZero() && (cert.ExpireDate.IsZero() || !cert.ExpireDate.Before(expiryCutoff)) {
+		result.Skipped = append(result.Skipped, certificateDeleteIssue(id, cert.PrimaryDomain, "证书未过期"))
+		return
+	}
+	if cert.Status == "applying" {
+		result.Skipped = append(result.Skipped, certificateDeleteIssue(id, cert.PrimaryDomain, "证书正在申请或续签"))
+		return
+	}
+	if reason != "" {
+		result.Skipped = append(result.Skipped, certificateDeleteIssue(id, cert.PrimaryDomain, reason))
+		return
+	}
+	if err := removeCertificateDirectory(certDirPath(sslDir, cert)); err != nil {
+		result.Failed = append(result.Failed, certificateDeleteIssue(id, cert.PrimaryDomain, "删除证书目录失败: "+err.Error()))
+		return
+	}
+	if err := s.certRepo.Delete(repo.WithByID(id)); err != nil {
+		result.Failed = append(result.Failed, certificateDeleteIssue(id, cert.PrimaryDomain, "删除证书记录失败: "+err.Error()))
+		return
+	}
+	result.DeletedCount++
 }
 
 func certificateDeleteIssue(id uint, domain, reason string) dto.CertificateDeleteIssue {

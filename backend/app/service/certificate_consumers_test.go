@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"xpanel/app/model"
 	"xpanel/global"
@@ -190,5 +192,43 @@ func TestCertificateSyncStatusKeepsRefreshFailureRetryable(t *testing.T) {
 	status := certificateSyncStatus(1, 0, 0, errors.New("consumer refresh failed"))
 	if status != "warning" {
 		t.Fatalf("expected refresh failure to remain retryable as warning, got %q", status)
+	}
+}
+
+func TestVerifyNginxCertificateRetriesTransientFingerprintMismatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	probes := 0
+	err := verifyNginxCertificateWithRetry(ctx, time.Millisecond, func(context.Context) error {
+		probes++
+		if probes < 3 {
+			return errWebsiteCertificateFingerprintMismatch
+		}
+		return nil
+	})
+	if err != nil || probes != 3 {
+		t.Fatalf("verification error=%v, probes=%d; want success after three attempts", err, probes)
+	}
+}
+
+func TestVerifyNginxCertificateRetainsPermanentFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := verifyNginxCertificateWithRetry(ctx, time.Hour, func(context.Context) error {
+		cancel()
+		return errWebsiteCertificateFingerprintMismatch
+	})
+	if !errors.Is(err, errWebsiteCertificateFingerprintMismatch) {
+		t.Fatalf("verification error=%v; want the actual mismatch", err)
+	}
+
+	probes := 0
+	badConfig := errors.New("invalid certificate")
+	err = verifyNginxCertificateWithRetry(context.Background(), time.Millisecond, func(context.Context) error {
+		probes++
+		return badConfig
+	})
+	if !errors.Is(err, badConfig) || probes != 1 {
+		t.Fatalf("verification error=%v, probes=%d; want a single configuration failure", err, probes)
 	}
 }

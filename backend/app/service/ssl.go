@@ -32,6 +32,8 @@ type ICertificateService interface {
 	Create(req dto.CertificateCreate) error
 	Update(req dto.CertificateUpdate) error
 	Upload(req dto.CertificateUpload) error
+	UpdateManual(req dto.ManualCertificateUpdate) (*dto.ManualCertificateUpdateResult, error)
+	RestoreManual(req dto.ManualCertificateRestore) (*dto.ManualCertificateUpdateResult, error)
 	Delete(id uint) error
 	BatchDelete(ids []uint) (*dto.CertificateDeleteResult, error)
 	CleanupExpired(now time.Time) (*dto.CertificateDeleteResult, error)
@@ -254,6 +256,9 @@ func (s *CertificateService) GetDetail(id uint) (*dto.CertificateDetail, error) 
 		PrivateKeySet: cert.PrivateKey != "",
 		FilePath:      certPath,
 	}
+	if isManualUploadedCertificate(cert) && cert.BackupSavedAt != nil && cert.BackupExpireDate != nil {
+		detail.Backup = &dto.ManualCertificateBackupInfo{SavedAt: *cert.BackupSavedAt, ExpireDate: *cert.BackupExpireDate}
+	}
 	redactCertificateSecret(detail, cert)
 	return detail, nil
 }
@@ -315,6 +320,9 @@ func (s *CertificateService) Apply(id uint) (err error) {
 		return buserr.New(constant.ErrRecordNotFound)
 	}
 
+	if !isRenewableCertificate(cert) {
+		return buserr.WithDetail(constant.ErrInvalidParams, "此证书不能通过 ACME 申请", nil)
+	}
 	// 更新状态为 applying
 	s.certRepo.Update(id, map[string]interface{}{"status": "applying", "message": ""})
 
@@ -645,6 +653,13 @@ func (s *CertificateService) renew(id uint, trigger certificateRenewalTrigger) (
 
 const certificateActivationFailedPrefix = "服务激活失败: "
 
+type certificateActivationError struct {
+	err error
+}
+
+func (e *certificateActivationError) Error() string { return e.err.Error() }
+func (e *certificateActivationError) Unwrap() error { return e.err }
+
 func shouldRetryCertificateActivation(cert model.Certificate) bool {
 	return cert.Status == "applied" && strings.HasPrefix(cert.Message, certificateActivationFailedPrefix)
 }
@@ -659,7 +674,7 @@ func (s *CertificateService) activateCertificateConsumers(id uint, logger *log.L
 			logger.Printf("[警告] %s", msg)
 		}
 		_ = s.certRepo.Update(id, map[string]interface{}{"message": msg})
-		return err
+		return &certificateActivationError{err: err}
 	}
 	if logger != nil {
 		logger.Printf("[成功] 证书消费者已刷新")
@@ -1133,6 +1148,26 @@ func shouldAutoRenewCertificate(cert model.Certificate, now time.Time, renewBefo
 		!cert.ExpireDate.IsZero() && !cert.ExpireDate.After(now.Add(renewBefore))
 }
 
+func shouldRetryAutomaticCertificateActivation(cert model.Certificate) bool {
+	return cert.AutoRenew && isRenewableCertificate(cert) && shouldRetryCertificateActivation(cert)
+}
+
+func (s *CertificateService) retryAutomaticCertificateActivation(id uint) error {
+	release, err := acquireCertificateRenewal(id)
+	if err != nil {
+		return err
+	}
+	defer release()
+	cert, err := s.certRepo.Get(repo.WithByID(id))
+	if err != nil {
+		return err
+	}
+	if !shouldRetryAutomaticCertificateActivation(cert) {
+		return nil
+	}
+	return s.activateCertificateConsumers(id, nil)
+}
+
 // AutoRenewCerts 自动续期即将过期的证书（由 cron 调用）
 func AutoRenewCerts() {
 	certService := NewICertificateService().(*CertificateService)
@@ -1147,7 +1182,8 @@ func AutoRenewCerts() {
 	sem := make(chan struct{}, 3) // 最多 3 个并发续签
 
 	for _, cert := range certs {
-		if !shouldAutoRenewCertificate(cert, now, certificateRenewBefore) {
+		activationOnly := shouldRetryAutomaticCertificateActivation(cert)
+		if !activationOnly && !shouldAutoRenewCertificate(cert, now, certificateRenewBefore) {
 			continue
 		}
 
@@ -1157,6 +1193,16 @@ func AutoRenewCerts() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			if activationOnly {
+				if err := certService.retryAutomaticCertificateActivation(c.ID); err != nil {
+					if !errors.Is(err, errCertificateRenewalInProgress) {
+						global.LOG.Warnf("[auto-renew] Service activation for %s still pending: %v", c.PrimaryDomain, err)
+					}
+				} else {
+					global.LOG.Infof("[auto-renew] Retried service activation for %s", c.PrimaryDomain)
+				}
+				return
+			}
 			global.LOG.Infof("[auto-renew] Certificate %s (ID=%d) expires at %s, renewing...",
 				c.PrimaryDomain, c.ID, c.ExpireDate.Format("2006-01-02"))
 			if err := certService.renew(c.ID, certificateRenewalAuto); err != nil {
@@ -1164,7 +1210,12 @@ func AutoRenewCerts() {
 					global.LOG.Infof("[auto-renew] Certificate %d (%s) is already being renewed, skipping", c.ID, c.PrimaryDomain)
 					return
 				}
-				global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", c.PrimaryDomain, err)
+				var activationErr *certificateActivationError
+				if errors.As(err, &activationErr) {
+					global.LOG.Warnf("[auto-renew] Certificate %s issued; service activation failed: %v", c.PrimaryDomain, err)
+				} else {
+					global.LOG.Errorf("[auto-renew] Failed to renew %s: %v", c.PrimaryDomain, err)
+				}
 				notifySSLRenewFailed(c.PrimaryDomain, err)
 			} else {
 				global.LOG.Infof("[auto-renew] Successfully renewed %s", c.PrimaryDomain)

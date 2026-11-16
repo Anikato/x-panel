@@ -289,9 +289,17 @@ func revealDNSAccount(item *model.DnsAccount) error {
 }
 
 func protectCertificate(item *model.Certificate) error {
-	return protectFields(secureField{Scope: "certificates.private_key", Value: &item.PrivateKey})
+	return protectFields(
+		secureField{Scope: "certificates.private_key", Value: &item.PrivateKey},
+		secureField{Scope: "certificates.backup_private_key", Value: &item.BackupPrivateKey},
+		secureField{Scope: "certificates.pending_private_key", Value: &item.PendingPrivateKey},
+	)
 }
 
 func revealCertificate(item *model.Certificate) error {
-	return revealFields(secureField{Scope: "certificates.private_key", Value: &item.PrivateKey})
+	return revealFields(
+		secureField{Scope: "certificates.private_key", Value: &item.PrivateKey},
+		secureField{Scope: "certificates.backup_private_key", Value: &item.BackupPrivateKey},
+		secureField{Scope: "certificates.pending_private_key", Value: &item.PendingPrivateKey},
+	)
 }

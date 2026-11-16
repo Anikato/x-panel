@@ -5,6 +5,7 @@ import (
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
+	"xpanel/app/model"
 	"xpanel/app/service"
 	"xpanel/global"
 	"xpanel/utils/accessticket"
@@ -30,6 +31,7 @@ func (a *AuthAPI) Login(c *gin.Context) {
 
 	if global.IPTracker != nil && global.IPTracker.NeedCaptcha(clientIP) {
 		if req.CaptchaID == "" || req.Captcha == "" || !captcha.VerifyCaptcha(req.CaptchaID, req.Captcha) {
+			service.RecordPanelAccess(clientIP, model.PanelAccessCaptchaBlocked)
 			helper.SuccessWithData(c, &dto.UserLoginInfo{NeedCaptcha: true})
 			return
 		}
@@ -41,6 +43,7 @@ func (a *AuthAPI) Login(c *gin.Context) {
 			global.IPTracker.IncrementFail(clientIP)
 		}
 		needCaptcha := global.IPTracker != nil && global.IPTracker.NeedCaptcha(clientIP)
+		service.RecordPanelAccess(clientIP, model.PanelAccessLoginFailed)
 		service.SaveLoginLog(clientIP, helper.GetUserAgent(c), err)
 		helper.SuccessWithData(c, &dto.UserLoginInfo{NeedCaptcha: needCaptcha})
 		return
@@ -51,6 +54,7 @@ func (a *AuthAPI) Login(c *gin.Context) {
 	}
 
 	if info.Token != "" {
+		service.RecordPanelAccess(clientIP, model.PanelAccessLoginSucceeded)
 		service.SaveLoginLog(clientIP, helper.GetUserAgent(c), nil)
 	}
 

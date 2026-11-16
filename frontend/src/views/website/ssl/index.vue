@@ -46,7 +46,7 @@
               <el-icon><Plus /></el-icon>
               {{ $t('ssl.applyCert') }}
             </el-button>
-            <el-button size="small" @click="uploadVisible = true">
+            <el-button size="small" @click="openCertificateUpload()">
               <el-icon><Upload /></el-icon>
               {{ $t('ssl.uploadCert') }}
             </el-button>
@@ -93,9 +93,12 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('ssl.provider')" width="100">
+          <el-table-column :label="$t('ssl.provider')" min-width="124" show-overflow-tooltip>
             <template #default="{ row }">
-              {{ row.type === 'upload' ? '手动上传' : row.provider?.toUpperCase() }}
+              <el-tooltip v-if="isSyncedCertificate(row)" :content="sourceUpdateHint(row)">
+                <span>{{ sourceLabel(row) }}</span>
+              </el-tooltip>
+              <span v-else>{{ canUpdateManualCertificate(row) ? '手动上传' : row.provider?.toUpperCase() }}</span>
             </template>
           </el-table-column>
           <el-table-column label="使用者" min-width="160" show-overflow-tooltip>
@@ -124,9 +127,12 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column :label="$t('commons.actions')" width="220" fixed="right">
+          <el-table-column :label="$t('commons.actions')" width="250" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="row.status !== 'applied'" link type="primary" size="small" @click="handleApply(row.id)">
+              <el-button v-if="canUpdateManualCertificate(row)" link type="primary" size="small" @click="openCertificateUpload(row)">
+                {{ $t('ssl.updateManual') }}
+              </el-button>
+              <el-button v-if="row.status !== 'applied' && canRenewCertificate(row)" link type="primary" size="small" @click="handleApply(row.id)">
                 {{ $t('ssl.apply') }}
               </el-button>
               <el-button v-if="row.status === 'applied' && canRenewCertificate(row)" link type="success" size="small" @click="handleRenew(row.id)">
@@ -192,7 +198,7 @@
           </el-table-column>
           <el-table-column :label="$t('ssl.expireDate')" min-width="165">
             <template #default="{ row }">
-              <span :class="{ 'text-danger': row.status === 'expired' || row.status === 'expiring_manual' }">
+              <span :class="{ 'text-danger': isExpiring(row.expireDate) }">
                 {{ formatDateTime(row.expireDate) }}
               </span>
             </template>
@@ -457,7 +463,8 @@
     </el-dialog>
 
     <!-- 上传证书对话框 -->
-    <el-dialog v-model="uploadVisible" :title="$t('ssl.uploadCert')" width="560px" destroy-on-close>
+    <el-dialog v-model="uploadVisible" :title="$t(updatingCertificate ? 'ssl.updateManual' : 'ssl.uploadCert')" width="560px" destroy-on-close :close-on-click-modal="!uploadSubmitting" :close-on-press-escape="!uploadSubmitting" :show-close="!uploadSubmitting" @closed="clearCertificateUpload">
+      <p v-if="updatingCertificate">{{ $t('ssl.updateManualHint', { domain: updatingCertificate.primaryDomain }) }}</p>
       <el-form :model="uploadForm" label-width="90px">
         <el-form-item :label="$t('ssl.certificate')">
           <el-input v-model="uploadForm.certificate" type="textarea" :rows="6" placeholder="-----BEGIN CERTIFICATE-----" />
@@ -465,12 +472,12 @@
         <el-form-item :label="$t('ssl.privateKey')">
           <el-input v-model="uploadForm.privateKey" type="textarea" :rows="6" placeholder="-----BEGIN RSA PRIVATE KEY-----" />
         </el-form-item>
-        <el-form-item :label="$t('commons.description')">
+        <el-form-item v-if="!updatingCertificate" :label="$t('commons.description')">
           <el-input v-model="uploadForm.description" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="uploadVisible = false">{{ $t('commons.cancel') }}</el-button>
+        <el-button :disabled="uploadSubmitting" @click="uploadVisible = false">{{ $t('commons.cancel') }}</el-button>
         <el-button type="primary" @click="handleUploadCert" :loading="uploadSubmitting">{{ $t('commons.confirm') }}</el-button>
       </template>
     </el-dialog>
@@ -541,13 +548,22 @@
     </el-dialog>
 
     <!-- 证书详情对话框 -->
-    <el-dialog v-model="detailVisible" :title="$t('ssl.detail')" width="600px" destroy-on-close>
+    <el-dialog
+      v-model="detailVisible"
+      :title="$t('ssl.detail')"
+      width="600px"
+      destroy-on-close
+      :close-on-click-modal="!restoringCertificate"
+      :close-on-press-escape="!restoringCertificate"
+      :show-close="!restoringCertificate"
+    >
       <template v-if="certDetail">
         <el-descriptions :column="2" border size="small">
           <el-descriptions-item :label="$t('ssl.primaryDomain')">{{ certDetail.primaryDomain }}</el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.status')">
             <el-tag :type="statusType(certDetail.status)" size="small">{{ statusLabel(certDetail.status) }}</el-tag>
           </el-descriptions-item>
+          <el-descriptions-item v-if="certDetail.message" :label="$t('ssl.status')" :span="2">{{ certDetail.message }}</el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.expireDate')">{{ certDetail.expireDate ? formatDate(certDetail.expireDate) : '-' }}</el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.startDate')">{{ certDetail.startDate ? formatDate(certDetail.startDate) : '-' }}</el-descriptions-item>
           <el-descriptions-item label="证书来源">{{ sourceLabel(certDetail) }}</el-descriptions-item>
@@ -565,6 +581,15 @@
               <span v-if="allCertDomains(certDetail).length === 0">-</span>
             </div>
           </el-descriptions-item>
+          <el-descriptions-item v-if="certDetail.backup" :label="$t('ssl.manualBackup')" :span="2">
+            {{ $t('ssl.manualBackupInfo', {
+              saved: formatDateTime(certDetail.backup.savedAt),
+              expires: formatDateTime(certDetail.backup.expireDate),
+            }) }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="isSyncedCertificate(certDetail)" :label="$t('ssl.updateManual')" :span="2">
+            {{ sourceUpdateHint(certDetail) }}
+          </el-descriptions-item>
           <el-descriptions-item :label="$t('ssl.certDir')" :span="2">{{ certDetail.filePath || '-' }}</el-descriptions-item>
           <el-descriptions-item label="使用者" :span="2">{{ consumerSummary(certDetail.consumers) }}</el-descriptions-item>
         </el-descriptions>
@@ -575,6 +600,14 @@
           <div class="pem-label mt-12">{{ $t('ssl.privateKey') }} (privkey.pem)</div>
           <el-tag v-if="certDetail.privateKeySet" type="success">{{ $t('setting.secretConfigured') }}</el-tag>
         </div>
+      </template>
+      <template v-if="certDetail && canUpdateManualCertificate(certDetail)" #footer>
+        <el-button type="primary" :disabled="restoringCertificate" @click="openCertificateUpload(certDetail)">
+          {{ $t('ssl.updateManual') }}
+        </el-button>
+        <el-button v-if="certDetail?.backup" type="warning" plain :loading="restoringCertificate" @click="handleRestoreManual">
+          {{ $t('ssl.restoreManual') }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -689,7 +722,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loading } from '@element-plus/icons-vue'
 import {
-  searchCertificate, searchCertificateRenewalPlan, createCertificate, uploadCertificate, deleteCertificate,
+  searchCertificate, searchCertificateRenewalPlan, createCertificate, uploadCertificate, updateManualCertificate, restoreManualCertificate, deleteCertificate,
   batchDeleteCertificates, cleanupExpiredCertificates,
   getCertificateDetail, applyCertificate, renewCertificate, getCertificateLog,
   listAcmeAccount, createAcmeAccount, deleteAcmeAccount,
@@ -745,6 +778,7 @@ const certSubmitting = ref(false)
 const uploadVisible = ref(false)
 const uploadSubmitting = ref(false)
 const detailVisible = ref(false)
+const restoringCertificate = ref(false)
 const certDetail = ref<Certificate | null>(null)
 
 // --- 续签计划 ---
@@ -771,6 +805,20 @@ const defaultCertForm = () => ({
 })
 const certForm = ref(defaultCertForm())
 const uploadForm = ref({ certificate: '', privateKey: '', description: '' })
+type ManualCertificateTarget = Pick<Certificate, 'id' | 'primaryDomain'>
+const updatingCertificate = ref<ManualCertificateTarget>()
+
+const clearCertificateUpload = () => {
+  uploadForm.value = { certificate: '', privateKey: '', description: '' }
+  updatingCertificate.value = undefined
+}
+
+const openCertificateUpload = (certificate?: ManualCertificateTarget) => {
+  detailVisible.value = false
+  clearCertificateUpload()
+  updatingCertificate.value = certificate
+  uploadVisible.value = true
+}
 
 // --- ACME 账户 ---
 const acmeAccounts = ref<AcmeAccount[]>([])
@@ -933,11 +981,21 @@ const handleUploadCert = async () => {
   }
   uploadSubmitting.value = true
   try {
-    await uploadCertificate(uploadForm.value)
-    ElMessage.success('上传成功')
+    if (updatingCertificate.value) {
+      const { certificate, privateKey } = uploadForm.value
+      const res = await updateManualCertificate({ id: updatingCertificate.value.id, certificate, privateKey })
+      if (res.data?.activationError) {
+        ElMessage.warning(t('ssl.updateManualActivationWarning', { error: res.data.activationError }))
+      } else {
+        ElMessage.success(t('ssl.updateManualSuccess'))
+      }
+    } else {
+      await uploadCertificate(uploadForm.value)
+      ElMessage.success('上传成功')
+    }
     uploadVisible.value = false
     loadCerts()
-  } catch { ElMessage.error('上传失败') }
+  } catch { /* The HTTP client shows validation and write errors. */ }
   finally { uploadSubmitting.value = false }
 }
 
@@ -966,6 +1024,32 @@ const handleDetail = async (id: number) => {
     certDetail.value = res.data
     detailVisible.value = true
   } catch { ElMessage.error('获取详情失败') }
+}
+
+const handleRestoreManual = async () => {
+  const current = certDetail.value
+  if (!current?.backup || restoringCertificate.value) return
+  const { savedAt, expireDate } = current.backup
+  const expired = new Date(expireDate).getTime() <= Date.now()
+  try {
+    await ElMessageBox.confirm(
+      t(expired ? 'ssl.restoreManualExpiredConfirm' : 'ssl.restoreManualConfirm', { expires: formatDateTime(expireDate) }),
+      t('ssl.restoreManual'),
+      { type: 'warning', confirmButtonText: t('ssl.restoreManual'), cancelButtonText: t('commons.cancel') },
+    )
+  } catch { return }
+
+  restoringCertificate.value = true
+  try {
+    const res = await restoreManualCertificate({ id: current.id, savedAt })
+    if (res.data?.activationError) {
+      ElMessage.warning(t('ssl.restoreManualActivationWarning', { error: res.data.activationError }))
+    } else {
+      ElMessage.success(t('ssl.restoreManualSuccess'))
+    }
+    await Promise.all([handleDetail(current.id), loadCerts()])
+  } catch { /* The HTTP client displays the restore error. */ }
+  finally { restoringCertificate.value = false }
 }
 
 const handleDeleteCert = async (id: number) => {
@@ -1415,16 +1499,25 @@ const allCertDomains = (cert?: Certificate | null) => {
   return Array.from(new Set(domains))
 }
 
+const isSyncedCertificate = (cert: Certificate) => cert.type === 'synced' || cert.sourceType === 'synced'
+const canUpdateManualCertificate = (cert: Certificate) => cert.type === 'upload' && !isSyncedCertificate(cert)
+
+const sourceUpdateHint = (cert: Certificate) => cert.sourceName
+  ? t('ssl.upstreamUpdateHint', { source: cert.sourceName })
+  : t('ssl.upstreamUpdateHintGeneric')
+
 const sourceLabel = (cert?: Certificate | null) => {
   if (!cert) return '-'
-  if (cert.sourceType === 'synced') return cert.sourceName ? `同步：${cert.sourceName}` : '同步'
+  if (isSyncedCertificate(cert)) {
+    return cert.sourceName ? t('ssl.upstreamProvidedBy', { source: cert.sourceName }) : t('ssl.upstreamProvided')
+  }
   if (cert.sourceType === 'upload' || cert.type === 'upload') return '手动上传'
   if (cert.sourceType === 'acme' || cert.type === 'autoApply') return cert.acmeAccountEmail ? `ACME：${cert.acmeAccountEmail}` : 'ACME'
   return cert.sourceType || cert.type || '-'
 }
 
 const canRenewCertificate = (cert: Certificate) => {
-  return cert.type !== 'upload' && cert.type !== 'synced' && cert.sourceType !== 'synced'
+  return cert.type !== 'upload' && cert.type !== 'synced' && cert.sourceType !== 'upload' && cert.sourceType !== 'synced'
 }
 
 const statusType = (s: string) => {
@@ -1460,6 +1553,7 @@ const renewalPlanStatusType = (status: string) => {
     applying: 'warning',
     sync_paused: 'warning',
     renew_error: 'danger',
+    activation_failed: 'warning',
     sync_error: 'danger',
     renew_due: 'warning',
     expiring_manual: 'warning',
@@ -1476,6 +1570,7 @@ const renewalPlanStatusLabel = (status: string) => {
     applying: 'ssl.statusApplying',
     sync_paused: 'ssl.statusSyncPaused',
     renew_error: 'ssl.statusRenewError',
+    activation_failed: 'ssl.statusActivationFailed',
     sync_error: 'ssl.statusSyncError',
     renew_due: 'ssl.statusRenewDue',
     expiring_manual: 'ssl.statusExpiringManual',
@@ -1538,10 +1633,10 @@ const consumerSummary = (items?: { kind: string; name: string }[]) => {
   return items.map((item) => `${labels[item.kind] || item.kind} ${item.name}`).join('、')
 }
 
-const isExpiring = (d: string) => {
+const certificateExpiryWarningMs = 15 * 24 * 60 * 60 * 1000
+const isExpiring = (d?: string | null) => {
   if (!d) return false
-  const diff = new Date(d).getTime() - Date.now()
-  return diff < 30 * 24 * 60 * 60 * 1000 // 30 天内
+  return new Date(d).getTime() - Date.now() <= certificateExpiryWarningMs
 }
 
 onMounted(() => {

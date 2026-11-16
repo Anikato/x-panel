@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -256,7 +255,7 @@ func (s *NginxInstallService) ListVersions() ([]dto.NginxVersionInfo, error) {
 	}
 
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", buildRepo)
-	resp, err := http.Get(apiURL)
+	resp, err := NewPanelHTTPClient(30 * time.Second).Get(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch versions: %v", err)
 	}
@@ -451,7 +450,7 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 	s.setProgress("download", fmt.Sprintf("正在获取 Nginx %s 版本信息...", version), 5)
 
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", buildRepo, tag)
-	resp, err := http.Get(apiURL)
+	resp, err := NewPanelHTTPClient(30 * time.Second).Get(apiURL)
 	if err != nil {
 		s.setProgress("error", fmt.Sprintf("连接 GitHub 失败: %v", err), 0)
 		return
@@ -591,7 +590,7 @@ func (s *NginxInstallService) doInstall(version, installDir string) {
 
 // downloadToFile 下载 URL 到本地文件
 func downloadToFile(url, destPath string) error {
-	resp, err := http.Get(url)
+	resp, err := NewPanelHTTPClient(10 * time.Minute).Get(url)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %v", err)
 	}

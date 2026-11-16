@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"xpanel/app/model"
 	"xpanel/global"
@@ -135,5 +136,29 @@ func TestShouldRetryCertificateActivation(t *testing.T) {
 		Message: certificateActivationFailedPrefix + "x",
 	}) {
 		t.Fatal("error status is not an activation retry")
+	}
+}
+
+func TestAutoRenewRechecksActivationOutsideIssuanceWindow(t *testing.T) {
+	installCertificateDatabase(t)
+	installFakeNginx(t, true)
+	cert := createAppliedCertificate(t)
+	signedAt := time.Now().Add(-time.Hour)
+	expiry := signedAt.Add(90 * 24 * time.Hour)
+	if err := global.DB.Model(&cert).Updates(map[string]interface{}{
+		"auto_renew": true, "expire_date": expiry,
+		"last_auto_renewed_at": signedAt,
+		"message":              certificateActivationFailedPrefix + "previous fingerprint mismatch",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	AutoRenewCerts()
+	var result model.Certificate
+	if err := global.DB.First(&result, cert.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "applied" || result.Message != "" || !result.ExpireDate.Equal(expiry) ||
+		result.LastAutoRenewedAt == nil || !result.LastAutoRenewedAt.Equal(signedAt) {
+		t.Fatal("expected the activation warning to clear without a new issuance or renewal date change")
 	}
 }

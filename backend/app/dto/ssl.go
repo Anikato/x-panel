@@ -72,6 +72,26 @@ type CertificateUpload struct {
 	Description string `json:"description"`
 }
 
+type ManualCertificateUpdate struct {
+	ID          uint   `json:"id" binding:"required"`
+	Certificate string `json:"certificate" binding:"required"`
+	PrivateKey  string `json:"privateKey" binding:"required"`
+}
+
+type ManualCertificateRestore struct {
+	ID      uint      `json:"id" binding:"required"`
+	SavedAt time.Time `json:"savedAt" binding:"required"`
+}
+
+type ManualCertificateBackupInfo struct {
+	SavedAt    time.Time `json:"savedAt"`
+	ExpireDate time.Time `json:"expireDate"`
+}
+
+type ManualCertificateUpdateResult struct {
+	ActivationError string `json:"activationError,omitempty"`
+}
+
 type CertificateBatchDeleteReq struct {
 	IDs []uint `json:"ids" binding:"required,min=1,max=500,dive,gt=0"`
 }
@@ -141,10 +161,11 @@ type CertificateConsumer struct {
 
 type CertificateDetail struct {
 	CertificateInfo
-	Pem           string `json:"pem"`
-	PrivateKey    string `json:"-"`
-	PrivateKeySet bool   `json:"privateKeySet"`
-	FilePath      string `json:"filePath"`
+	Backup        *ManualCertificateBackupInfo `json:"backup,omitempty"`
+	Pem           string                       `json:"pem"`
+	PrivateKey    string                       `json:"-"`
+	PrivateKeySet bool                         `json:"privateKeySet"`
+	FilePath      string                       `json:"filePath"`
 }
 
 type SearchCertReq struct {

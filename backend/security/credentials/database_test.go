@@ -22,6 +22,8 @@ func TestRegistryContainsApprovedCredentialFields(t *testing.T) {
 		"backup_accounts.access_key",
 		"backup_accounts.credential",
 		"cert_sources.token",
+		"certificates.backup_private_key",
+		"certificates.pending_private_key",
 		"certificates.private_key",
 		"cronjobs.encrypt_password",
 		"database_instances.password",

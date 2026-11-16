@@ -50,7 +50,9 @@ func Start() {
 	}
 
 	initDatabaseAndMigrations()
+	service.StartPanelAccessAudit(global.DB)
 	service.MarkInterruptedCertificateApplications()
+	service.RecoverInterruptedManualCertificateUpdates()
 	service.ApplyStoredFirewallForwards()
 	service.LoadSessionsFromDB()
 
@@ -58,8 +60,6 @@ func Start() {
 	// Failure is non-fatal: log a safe warning and continue panel startup.
 	runNezhaAgentStartupSync()
 
-	// 4.5 恢复面板进程代理环境
-	service.SyncProxyOnStartup()
 	service.CleanBackupTempDir(24 * time.Hour)
 
 	// 5. i18n 国际化

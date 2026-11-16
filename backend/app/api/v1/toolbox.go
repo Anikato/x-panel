@@ -3,6 +3,7 @@ package v1
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"xpanel/app/api/v1/helper"
 	"xpanel/app/dto"
@@ -444,7 +445,7 @@ func (a *ToolboxAPI) GetIPDBInfo(c *gin.Context) {
 }
 
 func (a *ToolboxAPI) DownloadIPDB(c *gin.Context) {
-	if err := iplocation.GetService().DownloadDB(); err != nil {
+	if err := iplocation.GetService().DownloadDB(c.Request.Context(), service.NewPanelHTTPClient(5*time.Minute)); err != nil {
 		helper.HandleError(c, err)
 		return
 	}

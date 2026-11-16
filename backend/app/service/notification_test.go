@@ -156,3 +156,15 @@ func TestNotifySSLRenewFailed(t *testing.T) {
 		t.Fatalf("item=%+v", items[0])
 	}
 }
+
+func TestNotifyCertificateActivationDoesNotReportIssuanceFailure(t *testing.T) {
+	installNotificationDB(t)
+	notifySSLRenewFailed("a.example.com", &certificateActivationError{err: errors.New("fingerprint mismatch")})
+	items, err := NewINotificationService().Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Type != "warning" || items[0].Title != "证书「a.example.com」已签发，服务加载待确认" {
+		t.Fatalf("unexpected activation notification: %+v", items)
+	}
+}

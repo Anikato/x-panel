@@ -82,6 +82,34 @@ func (a *SSLAPI) UploadCertificate(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *SSLAPI) UpdateManualCertificate(c *gin.Context) {
+	var req dto.ManualCertificateUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	result, err := service.NewICertificateService().UpdateManual(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+func (a *SSLAPI) RestoreManualCertificate(c *gin.Context) {
+	var req dto.ManualCertificateRestore
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	result, err := service.NewICertificateService().RestoreManual(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
 func (a *SSLAPI) DeleteCertificate(c *gin.Context) {
 	var req dto.OperateByID
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

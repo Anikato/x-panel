@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"strings"
 
+	"xpanel/app/model"
 	"xpanel/app/repo"
+	"xpanel/app/service"
 	"xpanel/global"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +23,10 @@ const (
 // 如果配置了安全入口，用户必须先访问 /{entrance} 获取 cookie 后才能访问面板。
 // 健康检查和证书服务不检查入口。数据库尚未打开时放行。
 func SecurityEntrance() gin.HandlerFunc {
+	return securityEntrance(service.RecordPanelAccess)
+}
+
+func securityEntrance(record func(string, model.PanelAccessKind)) gin.HandlerFunc {
 	settingRepo := repo.NewISettingRepo()
 
 	return func(c *gin.Context) {
@@ -32,12 +38,14 @@ func SecurityEntrance() gin.HandlerFunc {
 
 		entrance, err := settingRepo.GetValueByKey("SecurityEntrance")
 		if err != nil || entrance == "" {
+			recordPanelPage(c, record)
 			c.Next()
 			return
 		}
 
 		entrancePath := "/" + entrance
 		if path == entrancePath || path == entrancePath+"/" {
+			record(c.ClientIP(), model.PanelAccessEntranceMatched)
 			secure := c.Request.TLS != nil
 			c.SetSameSite(http.SameSiteLaxMode)
 			c.SetCookie(entranceCookieName, entrance, entranceCookieAge, "/", "", secure, true)
@@ -48,16 +56,20 @@ func SecurityEntrance() gin.HandlerFunc {
 
 		cookie, err := c.Cookie(entranceCookieName)
 		if err == nil && secretEqual(cookie, entrance) {
+			recordPanelPage(c, record)
 			c.Next()
 			return
 		}
 
-		// 没有有效 cookie，返回 404
-		if global.LOG != nil {
-			global.LOG.Debugf("Security entrance blocked: %s (no valid cookie)", path)
-		}
+		record(c.ClientIP(), model.PanelAccessEntranceBlocked)
 		c.String(http.StatusNotFound, "404 page not found")
 		c.Abort()
+	}
+}
+
+func recordPanelPage(c *gin.Context, record func(string, model.PanelAccessKind)) {
+	if c.Request.Method == http.MethodGet && (c.Request.URL.Path == "/" || c.Request.URL.Path == "/login") {
+		record(c.ClientIP(), model.PanelAccessPageOpened)
 	}
 }
 
