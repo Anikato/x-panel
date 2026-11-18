@@ -182,7 +182,7 @@
         </el-form-item>
         <el-form-item :label="t('database.backupFile')">
           <div class="restore-file-row">
-            <el-input v-model="restoreForm.file" :placeholder="t('database.restoreFileHint')" />
+            <el-input v-model="restoreForm.file" @input="restoreForm.backupRecordID = undefined" :placeholder="t('database.restoreFileHint')" />
             <el-upload
               :auto-upload="false"
               :show-file-list="false"
@@ -198,6 +198,7 @@
         <el-form-item :label="t('database.backupRecord')">
           <el-select
             v-model="restoreForm.backupRecordID"
+            @change="(id: unknown) => { if (id) restoreForm.file = '' }"
             clearable
             filterable
             :placeholder="t('database.backupRecordHint')"
@@ -598,7 +599,10 @@ const submitRestore = async () => {
     return false
   }
   try {
-    await ElMessageBox.confirm(t('database.restoreConfirm', { name: restoreForm.dbName }), t('commons.tip'), { type: 'warning' })
+    await ElMessageBox.confirm(t('database.restoreConfirmSource', {
+      name: restoreForm.dbName,
+      source: backupRecords.value.find((record) => record.id === restoreForm.backupRecordID)?.fileName || restoreForm.file.trim(),
+    }), t('commons.tip'), { type: 'warning' })
   } catch { return false }
   restoring.value = true
   try {

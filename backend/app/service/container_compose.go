@@ -1,15 +1,18 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"xpanel/app/dto"
 	"xpanel/app/model"
@@ -22,6 +25,8 @@ import (
 type IComposeService interface {
 	ListComposeProjects() ([]dto.ComposeInfo, error)
 	CreateCompose(req dto.ComposeCreate) error
+	StartCreateCompose(req dto.ComposeCreate) (*FileTaskStatus, error)
+	StartOperateCompose(req dto.ComposeOperate) (*FileTaskStatus, error)
 	OperateCompose(req dto.ComposeOperate) error
 	GetComposeContent(id uint) (string, error)
 	UpdateComposeContent(id uint, content string) error
@@ -49,23 +54,80 @@ func defaultComposeRoot() string {
 }
 
 func defaultComposeRun(name, path string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	output := &composeLog{limit: 8 << 10}
+	err := runComposeCommand(ctx, name, path, output, args...)
+	return output.String(), err
+}
+
+func runComposeCommand(ctx context.Context, name, path string, output *composeLog, args ...string) error {
 	cmdArgs := append([]string{"compose", "-p", name, "-f", path}, args...)
-	cmd := exec.Command("docker", cmdArgs...)
+	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
 	cmd.Dir = filepath.Dir(path)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), fmt.Errorf("%s", truncateComposeOutput(string(output)))
+	cmd.Stdout, cmd.Stderr = output, output
+	cmd.WaitDelay = 3 * time.Second
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("docker compose %s: %w", args[0], ctx.Err())
+		}
+		return fmt.Errorf("docker compose %s: %w: %s", args[0], err, truncateComposeOutput(output.String()))
 	}
-	return string(output), nil
+	return nil
 }
 
 func defaultComposeList() ([]composeLSItem, error) {
-	cmd := exec.Command("docker", "compose", "ls", "--format", "json")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("docker compose ls failed: %s", truncateComposeOutput(string(output)))
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	output := &composeLog{limit: 8 << 20}
+	cmd := exec.CommandContext(ctx, "docker", "compose", "ls", "--all", "--format", "json")
+	cmd.Stdout = output
+	diagnostic := &composeLog{limit: 4096}
+	cmd.Stderr = diagnostic
+	cmd.WaitDelay = 3 * time.Second
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("docker compose ls failed: %w: %s", err, diagnostic.String())
 	}
-	return parseComposeLS(string(output))
+	if output.truncated {
+		return nil, errors.New("docker compose project list exceeds output limit")
+	}
+	return parseComposeLS(output.String())
+}
+
+type composeLog struct {
+	tail      []byte
+	limit     int
+	truncated bool
+	notify    func()
+}
+
+var _ io.Writer = (*composeLog)(nil)
+
+func (log *composeLog) Write(p []byte) (int, error) {
+	length := len(p)
+	if length >= log.limit {
+		log.truncated = log.truncated || length > log.limit || len(log.tail) > 0
+		log.tail = append(log.tail[:0], p[length-log.limit:]...)
+	} else {
+		excess := len(log.tail) + length - log.limit
+		if excess > 0 {
+			log.truncated = true
+			copy(log.tail, log.tail[excess:])
+			log.tail = log.tail[:len(log.tail)-excess]
+		}
+		log.tail = append(log.tail, p...)
+	}
+	if log.notify != nil {
+		log.notify()
+	}
+	return length, nil
+}
+
+func (log *composeLog) String() string {
+	if log.truncated {
+		return "[earlier output truncated]\n" + string(log.tail)
+	}
+	return string(log.tail)
 }
 
 func truncateComposeOutput(s string) string {
@@ -115,7 +177,9 @@ func (s *ComposeService) ListComposeProjects() ([]dto.ComposeInfo, error) {
 	}
 
 	live, err := s.list()
+	defaultStatus := "stopped"
 	if err != nil {
+		defaultStatus = "unknown"
 		if len(registered) == 0 {
 			return nil, err
 		}
@@ -137,7 +201,7 @@ func (s *ComposeService) ListComposeProjects() ([]dto.ComposeInfo, error) {
 			Name:   row.Name,
 			Path:   row.Path,
 			Source: row.Source,
-			Status: "stopped",
+			Status: defaultStatus,
 		}
 		if !row.CreatedAt.IsZero() {
 			info.Created = row.CreatedAt.Format("2006-01-02 15:04:05")
@@ -171,6 +235,11 @@ func (s *ComposeService) CreateCompose(req dto.ComposeCreate) error {
 		}
 		return fmt.Errorf("compose content or path is required")
 	}
+	unlock, err := lockCompose(req.Name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := s.requireNameFree(req.Name); err != nil {
 		return err
 	}
@@ -197,12 +266,6 @@ func (s *ComposeService) CreateCompose(req dto.ComposeCreate) error {
 		if err := s.repo.Create(item); err != nil {
 			return err
 		}
-		// Lock around first up; if busy, keep the row so the user can retry.
-		unlock, err := lockCompose(req.Name)
-		if err != nil {
-			return err
-		}
-		defer unlock()
 		if _, err := s.run(req.Name, path, "up", "-d"); err != nil {
 			return err
 		}
@@ -228,17 +291,7 @@ func (s *ComposeService) resolveProject(req dto.ComposeOperate) (*model.ComposeP
 
 func (s *ComposeService) OperateCompose(req dto.ComposeOperate) error {
 	if req.Operation == "attach" {
-		if err := validateComposeName(req.Name); err != nil {
-			return err
-		}
-		clean, err := validateComposePath(req.Path)
-		if err != nil {
-			return err
-		}
-		if err := s.requireNameFree(req.Name); err != nil {
-			return err
-		}
-		return s.repo.Create(&model.ComposeProject{Name: req.Name, Path: clean, Source: "attached"})
+		return s.CreateCompose(dto.ComposeCreate{Name: req.Name, Path: req.Path})
 	}
 
 	project, err := s.resolveProject(req)

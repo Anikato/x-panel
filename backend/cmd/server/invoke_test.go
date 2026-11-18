@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -235,5 +236,53 @@ func TestRunInvokeWithExtraArgsReturnsUsageError(t *testing.T) {
 	err := runInvokeWith([]string{"--json"}, strings.NewReader(`{"capability":"sites.snapshot"}`), os.Stdout, nil)
 	if err == nil {
 		t.Fatal("extra args accepted")
+	}
+}
+
+func TestInvokeManagedAppearanceApplyAndClearPreservePersonalSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "appearance.db")
+	seed, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.AutoMigrate(&model.Setting{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Create(&model.Setting{Key: "AppearanceConfig", Value: "personal"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	db, err := openInvokeDatabaseWithMode((&url.URL{Scheme: "file", Path: path}).String(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := `{"schemaVersion":1,"themeId":"harbor","mode":"dark","accent":"#112233"}`
+	read := func(key string) string {
+		t.Helper()
+		var row model.Setting
+		if err := db.Where("key = ?", key).First(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		return row.Value
+	}
+	for _, trial := range []struct {
+		payload string
+		ok      bool
+		want    string
+	}{
+		{`{"profile":` + profile + `}`, true, profile},
+		{`{"profile":` + profile + `}`, true, profile},
+		{`{"profile":{"schemaVersion":1,"themeId":"harbor","mode":"dark","accent":"url(example)"}}`, false, profile},
+		{`{"clear":true}`, true, ""},
+	} {
+		result := dispatchInvoke(invokeRequest{Capability: appearanceApplyCapability, Payload: json.RawMessage(trial.payload)}, db)
+		if result.OK != trial.ok {
+			t.Fatalf("response = %+v", result)
+		}
+		if got := read(appearanceSettingKey); got != trial.want {
+			t.Fatalf("managed appearance = %q, want %q", got, trial.want)
+		}
+		if got := read("AppearanceConfig"); got != "personal" {
+			t.Fatalf("personal appearance modified: %q", got)
+		}
 	}
 }

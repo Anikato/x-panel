@@ -39,14 +39,14 @@
         <div class="task-section-title">
           <span>{{ t('header.fileTasks') }}</span>
           <el-button v-if="fileTaskStore.finishedTasks.length" link type="primary" @click="fileTaskStore.clearFinished()">
-            {{ t('commons.delete') }}
+            {{ t('header.hideFinishedTasks') }}
           </el-button>
         </div>
         <div v-if="fileTaskStore.tasks.length === 0" class="task-empty">{{ t('header.noFileTasks') }}</div>
         <div v-for="task in fileTaskStore.tasks" :key="task.id" class="task-row xp-inset">
           <div class="task-name">{{ task.name }}</div>
           <el-progress
-            v-if="task.status === 'running' && task.bytesTotal > 0"
+            v-if="task.status === 'running' && (task.bytesTotal > 0 || task.type === 'compose')"
             :percentage="task.progress"
             :stroke-width="4"
             :show-text="false"
@@ -60,6 +60,7 @@
           />
           <div class="task-meta">
             <span v-if="task.status === 'failed'" class="is-error">{{ task.message }}</span>
+            <span v-else-if="task.status === 'interrupted'" class="is-warning">{{ task.message }}</span>
             <span v-else-if="task.status === 'cancelled'">已取消</span>
             <template v-else-if="task.status === 'running' && task.bytesTotal > 0">
               <span>{{ task.progress }}% · {{ formatBytes(task.bytesDone) }} / {{ formatBytes(task.bytesTotal) }}</span>
@@ -69,13 +70,20 @@
               </span>
             </template>
             <template v-else-if="task.status === 'running'">
-              <span>处理中</span>
+              <span>{{ task.type === 'compose' ? t('container.composePhase.' + (task.currentFile || 'preparing')) : '处理中' }}</span>
               <span v-if="task.bytesDone > 0"> · {{ formatBytes(task.bytesDone) }}</span>
               <span v-if="task.speed > 0"> · {{ formatBytes(task.speed) }}/s</span>
             </template>
             <span v-else>{{ t('header.taskDone') }}</span>
           </div>
-          <div v-if="task.status === 'running' && task.currentFile" class="task-current">{{ task.currentFile }}</div>
+          <div v-if="task.type !== 'compose' && task.status === 'running' && task.currentFile" class="task-current">{{ task.currentFile }}</div>
+          <time v-if="task.type === 'compose'" class="task-meta" :datetime="new Date(task.startTime * 1000).toISOString()">
+            {{ new Date(task.startTime * 1000).toLocaleString() }}
+          </time>
+          <details v-if="task.type === 'compose' && task.log" class="task-current">
+            <summary>{{ t('container.composeTaskLog') }}</summary>
+            <pre class="task-compose-log">{{ task.log }}</pre>
+          </details>
         </div>
       </section>
     </div>
@@ -173,5 +181,16 @@ defineExpose({ activeCount })
 
 .is-error {
   color: var(--xp-danger);
+}
+.is-warning {
+  color: var(--xp-warning);
+}
+
+.task-compose-log {
+  max-height: 12rem;
+  overflow: auto;
+  font-family: var(--xp-font-mono, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 </style>

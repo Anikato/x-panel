@@ -2,6 +2,8 @@ module xpanel
 
 go 1.26.0
 
+toolchain go1.27.4
+
 require (
 	github.com/creack/pty v1.1.24
 	github.com/docker/docker v28.5.2+incompatible

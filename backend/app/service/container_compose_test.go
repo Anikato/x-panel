@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -918,4 +920,36 @@ type composeRunCall struct {
 	name string
 	path string
 	args []string
+}
+
+func TestComposeLogKeepsOnlyTheLatestOutput(t *testing.T) {
+	output := &composeLog{limit: 8}
+	for _, part := range []string{"abcde", "fgh", "ijkl", "01234567890", "end"} {
+		if n, err := output.Write([]byte(part)); err != nil || n != len(part) {
+			t.Fatalf("write(%q) = %d, %v", part, n, err)
+		}
+	}
+	if got, want := output.String(), "[earlier output truncated]\n67890end"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestComposeCommandStopsWaitingAtDeadline(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	if err := os.WriteFile(docker, []byte("#!/bin/sh\necho pulling\nexec sleep 5\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	output := &composeLog{limit: 256}
+	started := time.Now()
+	err := runComposeCommand(ctx, "fixture", filepath.Join(dir, "compose.yaml"), output, "up")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected a deadline error, got %v", err)
+	}
+	if time.Since(started) >= 4*time.Second {
+		t.Fatal("Docker CLI command exceeded the bounded wait")
+	}
 }

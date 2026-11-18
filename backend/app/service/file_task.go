@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"xpanel/app/dto"
@@ -19,6 +19,7 @@ type FileTaskStatus struct {
 	Type      string `json:"type"`              // move, compress, decompress
 	Status    string `json:"status"`            // running, success, failed
 	Message   string `json:"message,omitempty"` // 错误信息
+	Log       string `json:"log,omitempty"`
 	StartTime int64  `json:"startTime"`
 	EndTime   int64  `json:"endTime,omitempty"`
 	// 进度信息
@@ -54,19 +55,25 @@ func newProgressTracker(task *FileTaskStatus) *ProgressTracker {
 // SetTotal 更新任务总字节数，适用于下载开始后才能拿到 Content-Length 的场景。
 func (pt *ProgressTracker) SetTotal(total int64) {
 	if total > 0 {
-		atomic.StoreInt64(&pt.task.BytesTotal, total)
+		fileTasksMu.Lock()
+		pt.task.BytesTotal = total
+		fileTasksMu.Unlock()
 	}
 }
 
 // SetCurrentFile 更新当前处理文件名。
 func (pt *ProgressTracker) SetCurrentFile(name string) {
+	fileTasksMu.Lock()
+	defer fileTasksMu.Unlock()
 	pt.task.CurrentFile = name
 }
 
 // AddBytes 原子累加已完成字节，并按500ms采样更新速度
 func (pt *ProgressTracker) AddBytes(n int64) {
-	done := atomic.AddInt64(&pt.task.BytesDone, n)
-	total := atomic.LoadInt64(&pt.task.BytesTotal)
+	fileTasksMu.Lock()
+	defer fileTasksMu.Unlock()
+	pt.task.BytesDone += n
+	done, total := pt.task.BytesDone, pt.task.BytesTotal
 	if total > 0 {
 		pct := int(done * 100 / total)
 		if pct > 99 {
@@ -120,6 +127,12 @@ func newFileTask(taskType, name string) *FileTaskStatus {
 func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotification) {
 	fileTasksMu.Lock()
 	delete(fileTaskCancels, task.ID)
+	notification := finishFileTask(task, err, notify)
+	fileTasksMu.Unlock()
+	CreateNotification(notification)
+}
+
+func finishFileTask(task *FileTaskStatus, err error, notify FileTaskNotification) dto.NotificationCreate {
 	task.EndTime = time.Now().Unix()
 	notificationType := "success"
 	notificationTitle := notify.SuccessTitle
@@ -154,8 +167,6 @@ func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotificati
 			}
 		}
 	}
-	fileTasksMu.Unlock()
-
 	if notify.Source == "" {
 		notify.Source = "file"
 	}
@@ -173,22 +184,30 @@ func completeFileTask(task *FileTaskStatus, err error, notify FileTaskNotificati
 			event = notify.Source + ".task.failed"
 		}
 	}
-	CreateNotification(dto.NotificationCreate{
+	return dto.NotificationCreate{
 		Type:      notificationType,
 		Event:     event,
 		Title:     notificationTitle,
 		Content:   notificationContent,
 		Source:    notify.Source,
 		TargetURL: notify.TargetURL,
-	})
+	}
 }
 
 // GetFileTask 获取单个任务状态
-func GetFileTask(id string) *FileTaskStatus {
+func GetFileTask(ctx context.Context, id string) (*FileTaskStatus, error) {
+	if strings.HasPrefix(id, composeTaskPrefix) {
+		return findComposeTask(ctx, id)
+	}
+	return getMemoryFileTask(id), nil
+}
+
+func getMemoryFileTask(id string) *FileTaskStatus {
 	fileTasksMu.RLock()
 	defer fileTasksMu.RUnlock()
 	if t, ok := fileTasks[id]; ok {
-		return t
+		snapshot := *t
+		return &snapshot
 	}
 	return nil
 }
@@ -207,6 +226,19 @@ func RegisterFileTaskCancel(id string, cancel context.CancelFunc) {
 
 // CancelFileTask 取消支持取消的运行中任务。
 func CancelFileTask(id string) error {
+	if strings.HasPrefix(id, composeTaskPrefix) {
+		task, err := findComposeTask(context.Background(), id)
+		if err != nil {
+			return err
+		}
+		if task == nil {
+			return errors.New("task not found")
+		}
+		if task.Status != "running" {
+			return errors.New("task is not running")
+		}
+		return errors.New("task cannot be cancelled")
+	}
 	fileTasksMu.Lock()
 	task, ok := fileTasks[id]
 	if !ok {
@@ -230,20 +262,26 @@ func CancelFileTask(id string) error {
 }
 
 // ListFileTasks 获取所有任务列表（按开始时间倒序）
-func ListFileTasks() []*FileTaskStatus {
+func ListFileTasks(ctx context.Context) ([]*FileTaskStatus, error) {
 	fileTasksMu.RLock()
-	defer fileTasksMu.RUnlock()
 	result := make([]*FileTaskStatus, 0, len(fileTasks))
 	cutoff := time.Now().Unix() - 3600 // 只返回 1 小时内的任务
 	for _, t := range fileTasks {
 		if t.Status == "running" || t.StartTime > cutoff {
-			result = append(result, t)
+			snapshot := *t
+			result = append(result, &snapshot)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool {
+	fileTasksMu.RUnlock()
+
+	result, err := appendComposeTasks(ctx, result)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(result, func(i, j int) bool {
 		return result[i].StartTime > result[j].StartTime
 	})
-	return result
+	return result, nil
 }
 
 // StartFileTask 启动异步文件任务（不带进度）
@@ -265,16 +303,20 @@ func StartFileTaskWithNotification(taskType, name string, notify FileTaskNotific
 
 // StartFileTaskWithProgress 启动带进度追踪的异步文件任务
 func StartFileTaskWithProgress(taskType, name string, totalBytes int64, fn func(*ProgressTracker) error) *FileTaskStatus {
+	return startProgressTask(taskType, name, totalBytes, FileTaskNotification{
+		SuccessContent: "文件后台任务已完成",
+	}, fn)
+}
+
+func startProgressTask(taskType, name string, totalBytes int64, notify FileTaskNotification, fn func(*ProgressTracker) error) *FileTaskStatus {
 	task := newFileTask(taskType, name)
-	task.BytesTotal = totalBytes
 	tracker := newProgressTracker(task)
+	tracker.SetTotal(totalBytes)
+	initial := getMemoryFileTask(task.ID)
 	go func() {
-		err := fn(tracker)
-		completeFileTask(task, err, FileTaskNotification{
-			SuccessContent: "文件后台任务已完成",
-		})
+		completeFileTask(task, fn(tracker), notify)
 	}()
-	return task
+	return initial
 }
 
 // CalcDirBytes 递归统计目录总字节数（导出供 API 层使用）

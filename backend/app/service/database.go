@@ -16,6 +16,7 @@ import (
 
 type IDatabaseService interface {
 	CreateServer(req dto.DatabaseServerCreate) error
+	RegisterServer(req dto.DatabaseServerCreate) (uint, error)
 	UpdateServer(req dto.DatabaseServerUpdate) error
 	DeleteServer(id uint) error
 	SearchServer(req dto.DatabaseServerSearch) (int64, []dto.DatabaseServerInfo, error)
@@ -50,6 +51,11 @@ type DatabaseService struct {
 }
 
 func (s *DatabaseService) CreateServer(req dto.DatabaseServerCreate) error {
+	_, err := s.RegisterServer(req)
+	return err
+}
+
+func (s *DatabaseService) RegisterServer(req dto.DatabaseServerCreate) (uint, error) {
 	server := &model.DatabaseServer{
 		Name:     req.Name,
 		Type:     req.Type,
@@ -62,7 +68,10 @@ func (s *DatabaseService) CreateServer(req dto.DatabaseServerCreate) error {
 	if server.Address == "" {
 		server.Address = "127.0.0.1"
 	}
-	return s.repo.CreateServer(server)
+	if err := s.repo.CreateServer(server); err != nil {
+		return 0, err
+	}
+	return server.ID, nil
 }
 
 func (s *DatabaseService) UpdateServer(req dto.DatabaseServerUpdate) error {
@@ -332,6 +341,8 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 		if err != nil {
 			return err
 		}
+	default:
+		return fmt.Errorf("unsupported database type %q", server.Type)
 	}
 
 	existingInstances, err := s.repo.ListInstancesByServerID(serverID)
@@ -341,7 +352,9 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 	existingMap := make(map[string]model.DatabaseInstance, len(existingInstances))
 	for _, inst := range existingInstances {
 		if prev, dup := existingMap[inst.Name]; dup {
-			_ = s.repo.DeleteInstance(prev.ID)
+			if err := s.repo.DeleteInstance(prev.ID); err != nil {
+				return err
+			}
 		}
 		existingMap[inst.Name] = inst
 	}
@@ -362,26 +375,32 @@ func (s *DatabaseService) SyncInstances(serverID uint) error {
 					fields["username"] = info.Owner
 				}
 			}
-			_ = s.repo.UpdateInstance(existing.ID, fields)
+			if err := s.repo.UpdateInstance(existing.ID, fields); err != nil {
+				return err
+			}
 		} else {
 			username := info.Username
 			if username == "" {
 				username = info.Owner
 			}
-			_ = s.repo.CreateInstance(&model.DatabaseInstance{
+			if err := s.repo.CreateInstance(&model.DatabaseInstance{
 				ServerID:   serverID,
 				Name:       info.Name,
 				Charset:    info.Charset,
 				Owner:      info.Owner,
 				Username:   username,
 				Permission: info.Permission,
-			})
+			}); err != nil {
+				return err
+			}
 		}
 	}
 
 	for name, inst := range existingMap {
 		if _, found := remoteSet[name]; !found {
-			_ = s.repo.DeleteInstance(inst.ID)
+			if err := s.repo.DeleteInstance(inst.ID); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -552,10 +571,13 @@ func (s *DatabaseService) BackupInstanceAsync(id uint) (*FileTaskStatus, error) 
 }
 
 func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error {
+	if req.File != "" && req.BackupRecordID != 0 {
+		return buserr.WithDetail(constant.ErrInvalidParams, "choose one backup source", nil)
+	}
 	inFile := req.File
 	cleanup := func() {}
 	if req.BackupRecordID > 0 {
-		prepared, release, err := NewIBackupService().PrepareRecordFile(req.BackupRecordID)
+		prepared, release, err := NewIBackupService().PrepareRecordFile(req.BackupRecordID, "database")
 		if err != nil {
 			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 		}
@@ -565,6 +587,12 @@ func (s *DatabaseService) RestoreInstance(req dto.DatabaseInstanceRestore) error
 	defer cleanup()
 	if inFile == "" {
 		return buserr.WithDetail(constant.ErrInternalServer, "backup file is required", fmt.Errorf("backup file is required"))
+	}
+
+	if req.BackupRecordID == 0 {
+		if err := verifyBackupRecordFile(inFile, &model.BackupRecord{}); err != nil {
+			return buserr.WithDetail(constant.ErrInvalidParams, err.Error(), err)
+		}
 	}
 
 	instance, err := s.repo.GetInstance(req.ID)

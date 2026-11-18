@@ -7,6 +7,7 @@ export interface FileTask {
   type: string
   status: string
   message?: string
+  log?: string
   startTime: number
   endTime?: number
   progress: number

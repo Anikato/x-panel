@@ -43,6 +43,7 @@ import {
   snapshotWallpaperDraftTargets,
 } from '@/theme/wallpaper-store.ts'
 import { beginFontDraft, cancelFontDraft, flushFontDraft } from '@/theme/font-store.ts'
+import { applyManagedAppearance, parseManagedAppearance, type ManagedAppearance } from '@/theme/managed'
 import { useGlobalStore } from './global'
 
 function currentEnv() {
@@ -66,19 +67,23 @@ function mirrorRuntime(resolved: ResolvedAppearance) {
 export const useAppearanceStore = defineStore('appearance', {
   state: () => ({
     preference: readLocalPreference() as AppearancePreference,
+    managed: null as ManagedAppearance | null,
     previewing: false,
     persistError: '',
     lastSource: readStoredV1() ? 'local-v1' : 'default',
     session: null as PreviewSession | null,
   }),
   getters: {
+    effectivePreference(): AppearancePreference {
+      return applyManagedAppearance(this.preference, this.previewing ? null : this.managed)
+    },
     resolved(): ResolvedAppearance {
-      return resolveAppearance(this.preference, currentEnv())
+      return resolveAppearance(this.effectivePreference, currentEnv())
     },
   },
   actions: {
     applyCurrent() {
-      const resolved = resolveAppearance(this.preference, currentEnv())
+      const resolved = resolveAppearance(this.effectivePreference, currentEnv())
       applyResolvedAppearance(resolved)
       mirrorRuntime(resolved)
     },
@@ -244,6 +249,7 @@ export const useAppearanceStore = defineStore('appearance', {
       try {
         const res = await getSettingInfo()
         const raw = res.data?.appearanceConfig || res.data?.AppearanceConfig
+        this.managed = parseManagedAppearance(res.data?.managedAppearanceConfig)
         this.hydrateFromBackend(raw)
       } catch {
         this.applyCurrent()

@@ -53,6 +53,14 @@ Dashboard 不传入任意升级脚本，而是让选中节点执行固定入口�
 
 当前不会持续自动轮询所有节点的 X-Panel 版本。管理员在 Dashboard 中使用“刷新版本”后，Agent 执行 `xpanel --version` 并上报结果。
 
+## X-Panel 统一外观
+
+Dashboard 的「X-Panel 管理 → 外观」可以保存共享方案、预览并向选中的节点下发。Dashboard 通过兼容 Agent 调用固定的 `xpanel invoke`，使用 `appearance.apply` 写入或清除节点的 `ManagedAppearanceConfig`。节点面板在打开或重新登录时读取该设置，原有 `AppearanceConfig` 和浏览器个人设置仍保留。统一设置控制内置主题、深浅模式、配色、字体、密度、圆角和侧栏宽度。解除统一设置后，原来保留的个人设置重新生效。
+
+保存共享方案与应用到节点是两个独立动作。每次下发显示逐节点结果。离线节点恢复在线后可在对应批次中单独重试，旧版节点会返回需要更新的状态。当前使用声明式外观字段，不分发本地上传的字体、壁纸或自定义主题包。节点需要支持该能力的 X-Panel 版本，使用已有的兼容 Agent。
+
+「系统设置 → 外观」调整的是 Dashboard 自身。此处沿用 X-Panel 的内置主题和外观字段，保存到当前浏览器。
+
 ## 登录会话
 
 Dashboard 的默认登录有效期为 720 小时。会话保存在服务端，并校验浏览器 User-Agent：
@@ -111,3 +119,11 @@ Agent 源码和 X-Panel 源码可以分别开发，但节点只从 `https://xpan
 - Dashboard 网站/证书快照：`Nezha-Server/nezha/cmd/dashboard/controller/xpanel_inventory.go`、`Nezha-Server/admin-frontend/src/routes/xpanel-sites.tsx`
 - Dashboard 新节点默认策略与角色：`Nezha-Server/nezha/service/rpc/auth.go`
 - Agent 握手元数据（`xpanel_name`、`node_role`）：`Nezha-Server/agent/model/auth.go`
+
+### 批量外观与运维摘要验证
+
+外观下发回执包含批次编号，Dashboard 按节点保留所用方案、状态、时间和尝试次数。重试只重新排队所选节点，且同一节点存在更新的下发批次时，旧批次不会再次应用。Dashboard 重启后，排队中的任务继续执行，重启时仍在运行的任务显示未确认。
+
+首页的待处理区按当前账号可见的节点汇总站点证书、备份和健康异常、升级和外观下发。刷新失败时保留最后成功采集的数据，并显示最近尝试时间。
+
+本地构建包含管理前端的 Dashboard、Agent 和 X-Panel，放入同一目录，分别命名为 `dashboard`、`agent` 和 `xpanel`。运行 `bash scripts/test-ops-e2e.sh <二进制目录>`，可用临时容器和数据库验证下发、离线状态、重启后历史及单节点重试。升级回查使用测试替身。环境需要 Docker、Python 3 与预先可用的 `node:24-bookworm-slim` 镜像。

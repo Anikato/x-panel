@@ -124,7 +124,7 @@ export const pollFileTask = async (
     const res: any = await getFileTaskStatus(taskID)
     const task = res.data
     if (task.status === 'success') return task
-    if (task.status === 'failed') throw new Error(task.message || '操作失败')
+    if (task.status === 'failed' || task.status === 'interrupted') throw new Error(task.message || '操作失败')
     await new Promise((r) => setTimeout(r, interval))
   }
   throw new Error('操作超时')

@@ -130,14 +130,19 @@ import type { ComposeItem } from '@/api/interface'
 import {
   listCompose,
   createCompose,
+  createComposeTask,
+  operateComposeTask,
   operateCompose,
   getComposeContent,
   updateComposeContent,
   deleteCompose,
 } from '@/api/modules/container'
+import { pollFileTask } from '@/api/modules/file'
+import { useFileTaskStore } from '@/store/modules/fileTask'
 import { isValidComposeName, composeCreateMode } from './compose-form.ts'
 
 const { t } = useI18n()
+const fileTaskStore = useFileTaskStore()
 
 const loading = ref(false)
 const items = ref<ComposeItem[]>([])
@@ -201,9 +206,23 @@ const runBusy = async (name: string, op: string, fn: () => Promise<void>) => {
   }
 }
 
+const followComposeTask = async (id: string) => {
+  void fileTaskStore.fetchTasks()
+  ElMessage.info(t('container.composeTaskStarted'))
+  try {
+    await pollFileTask(id)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('container.composeTaskFailed'))
+    throw error
+  } finally {
+    void fileTaskStore.fetchTasks()
+  }
+}
+
 const operate = (row: ComposeItem, operation: string) => {
   return runBusy(row.name, operation, async () => {
-    await operateCompose({ id: row.id, operation })
+    const res = await operateComposeTask({ id: row.id, operation })
+    await followComposeTask(res.data.id)
   })
 }
 
@@ -235,8 +254,9 @@ const submitCreate = async () => {
     return
   }
   await runBusy(name, 'create', async () => {
-    await createCompose({ name, content: createForm.content })
+    const res = await createComposeTask({ name, content: createForm.content })
     createDrawer.value = false
+    await followComposeTask(res.data.id)
   })
 }
 

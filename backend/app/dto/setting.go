@@ -2,31 +2,32 @@ package dto
 
 // SettingInfo 面板设置信息
 type SettingInfo struct {
-	UserName             string `json:"userName"`
-	Language             string `json:"language"`
-	SessionTimeout       string `json:"sessionTimeout"`
-	PanelName            string `json:"panelName"`
-	Theme                string `json:"theme"`
-	SecurityEntrance     string `json:"-"`
-	SecurityEntranceSet  bool   `json:"securityEntranceSet"`
-	MFAStatus            string `json:"mfaStatus"`
-	UpgradeURL           string `json:"upgradeUrl"`
-	GitHubToken          string `json:"-"`
-	GitHubTokenSet       bool   `json:"githubTokenSet"`
-	ServerPort           string `json:"serverPort"`
-	AgentToken           string `json:"-"`
-	AgentTokenSet        bool   `json:"agentTokenSet"`
-	AutoUpgrade          string `json:"autoUpgrade"`
-	AppearanceConfig     string `json:"appearanceConfig"`
-	ProxyEnable          string `json:"proxyEnable"`
-	ProxyType            string `json:"proxyType"`
-	ProxyAddress         string `json:"-"`
-	ProxyAddressSet      bool   `json:"proxyAddressSet"`
-	ProxyNoProxy         string `json:"proxyNoProxy"`
-	ProxyDocker          bool   `json:"proxyDocker"`
-	ProxyScope           string `json:"proxyScope"`
-	DockerRestartPending bool   `json:"dockerRestartPending"`
-	LegacySystemProxy    bool   `json:"legacySystemProxy"`
+	UserName                string `json:"userName"`
+	Language                string `json:"language"`
+	SessionTimeout          string `json:"sessionTimeout"`
+	PanelName               string `json:"panelName"`
+	Theme                   string `json:"theme"`
+	SecurityEntrance        string `json:"-"`
+	SecurityEntranceSet     bool   `json:"securityEntranceSet"`
+	MFAStatus               string `json:"mfaStatus"`
+	UpgradeURL              string `json:"upgradeUrl"`
+	GitHubToken             string `json:"-"`
+	GitHubTokenSet          bool   `json:"githubTokenSet"`
+	ServerPort              string `json:"serverPort"`
+	AgentToken              string `json:"-"`
+	AgentTokenSet           bool   `json:"agentTokenSet"`
+	AutoUpgrade             string `json:"autoUpgrade"`
+	AppearanceConfig        string `json:"appearanceConfig"`
+	ManagedAppearanceConfig string `json:"managedAppearanceConfig,omitempty"`
+	ProxyEnable             string `json:"proxyEnable"`
+	ProxyType               string `json:"proxyType"`
+	ProxyAddress            string `json:"-"`
+	ProxyAddressSet         bool   `json:"proxyAddressSet"`
+	ProxyNoProxy            string `json:"proxyNoProxy"`
+	ProxyDocker             bool   `json:"proxyDocker"`
+	ProxyScope              string `json:"proxyScope"`
+	DockerRestartPending    bool   `json:"dockerRestartPending"`
+	LegacySystemProxy       bool   `json:"legacySystemProxy"`
 }
 
 // ProxyTest 代理连通性测试请求

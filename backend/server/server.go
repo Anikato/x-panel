@@ -52,6 +52,9 @@ func Start() {
 	initDatabaseAndMigrations()
 	service.StartPanelAccessAudit(global.DB)
 	service.MarkInterruptedCertificateApplications()
+	if err := service.RecoverInterruptedComposeTasks(); err != nil {
+		global.LOG.Warnf("recover Compose task history: %v", err)
+	}
 	service.RecoverInterruptedManualCertificateUpdates()
 	service.ApplyStoredFirewallForwards()
 	service.LoadSessionsFromDB()

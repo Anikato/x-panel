@@ -298,7 +298,11 @@ func (a *FileAPI) GetFileTaskStatus(c *gin.Context) {
 		helper.ErrorWithDetail(c, http.StatusBadRequest, "task id is required")
 		return
 	}
-	task := service.GetFileTask(taskID)
+	task, err := service.GetFileTask(c.Request.Context(), taskID)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
 	if task == nil {
 		helper.ErrorWithDetail(c, http.StatusNotFound, "task not found")
 		return
@@ -308,7 +312,11 @@ func (a *FileAPI) GetFileTaskStatus(c *gin.Context) {
 
 // ListFileTasks 获取所有文件操作任务列表
 func (a *FileAPI) ListFileTasks(c *gin.Context) {
-	tasks := service.ListFileTasks()
+	tasks, err := service.ListFileTasks(c.Request.Context())
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
 	helper.SuccessWithData(c, tasks)
 }
 

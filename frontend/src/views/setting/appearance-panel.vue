@@ -4,6 +4,7 @@
       <div>
         <div class="appearance-status">{{ statusLabel }}</div>
         <div class="appearance-hint">{{ t('setting.appearanceDraftHint') }}</div>
+        <div v-if="appearance.managed" class="appearance-hint">{{ t('setting.managedAppearanceHint') }}</div>
         <div v-if="hasUnapplied" class="appearance-dirty">{{ t('setting.appearanceUnapplied') }}</div>
         <div v-if="resolved.themeMissing" class="appearance-dirty">{{ t('setting.themePackMissing') }}</div>
       </div>

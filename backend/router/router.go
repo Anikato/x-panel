@@ -32,6 +32,7 @@ func Setup(mode string) *gin.Engine {
 
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
+
 	r.Use(middleware.SecurityEntrance())
 
 	api := v1.ApiGroupApp
@@ -355,6 +356,8 @@ func Setup(mode string) *gin.Engine {
 		privateGroup.GET("/containers/compose", api.ListCompose)
 		privateGroup.POST("/containers/compose", api.CreateCompose)
 		privateGroup.POST("/containers/compose/operate", api.OperateCompose)
+		privateGroup.POST("/containers/compose/create-task", api.CreateComposeTask)
+		privateGroup.POST("/containers/compose/operate-task", api.OperateComposeTask)
 		privateGroup.GET("/containers/compose/content", api.GetComposeContent)
 		privateGroup.POST("/containers/compose/content", api.UpdateComposeContent)
 		privateGroup.POST("/containers/compose/del", api.DeleteCompose)

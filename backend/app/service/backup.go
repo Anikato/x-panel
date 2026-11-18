@@ -33,7 +33,7 @@ type IBackupService interface {
 	Backup(req dto.BackupCreate) error
 	SearchRecords(req dto.BackupRecordSearch) (int64, []dto.BackupRecordInfo, error)
 	DeleteRecord(id uint) error
-	PrepareRecordFile(id uint) (string, func(), error)
+	PrepareRecordFile(id uint, expectedType string) (string, func(), error)
 	CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error
 	CreateRecordFromOutput(backupType, name string, accountID uint, cronjobID uint, output *BackupOutput, status, message string) error
 	CleanSuccessfulRecords(cronjobID uint, retainCopies uint) error
@@ -847,11 +847,15 @@ func (s *BackupService) DeleteRecord(id uint) error {
 }
 
 func (s *BackupService) CreateRecordForFile(backupType, name string, accountID uint, cronjobID uint, filePath string, size int64, status string, message string) error {
-	return s.CreateRecordFromOutput(backupType, name, accountID, cronjobID, &BackupOutput{
-		Path: filePath,
-		Size: size,
-		Log:  message,
-	}, status, message)
+	output := &BackupOutput{Path: filePath, Size: size, Log: message}
+	if accountID == 0 && status == constant.StatusSuccess && filePath != "" {
+		hash, err := checksum.FileSHA256(filePath)
+		if err != nil {
+			return fmt.Errorf("hash local backup: %w", err)
+		}
+		output.SHA256 = hash
+	}
+	return s.CreateRecordFromOutput(backupType, name, accountID, cronjobID, output, status, message)
 }
 
 func (s *BackupService) CreateRecordFromOutput(backupType, name string, accountID uint, cronjobID uint, output *BackupOutput, status, message string) error {
@@ -906,7 +910,7 @@ func (s *BackupService) CleanSuccessfulRecords(cronjobID uint, retainCopies uint
 	return nil
 }
 
-func (s *BackupService) PrepareRecordFile(id uint) (string, func(), error) {
+func (s *BackupService) PrepareRecordFile(id uint, expectedType string) (string, func(), error) {
 	record, err := s.repo.GetRecord(id)
 	if err != nil {
 		return "", nil, buserr.New(constant.ErrRecordNotFound)
@@ -914,11 +918,17 @@ func (s *BackupService) PrepareRecordFile(id uint) (string, func(), error) {
 	if record.Status != constant.StatusSuccess {
 		return "", nil, fmt.Errorf("backup record is not successful")
 	}
+	if expectedType != "" && record.Type != expectedType {
+		return "", nil, fmt.Errorf("backup type %q cannot be used for %s restore", record.Type, expectedType)
+	}
 	relPath := recordPath(record)
 	if relPath == "" {
 		return "", nil, fmt.Errorf("backup record file is empty")
 	}
 	if record.AccountID == 0 {
+		if err := verifyBackupRecordFile(relPath, record); err != nil {
+			return "", nil, err
+		}
 		return relPath, func() {}, nil
 	}
 	account, err := s.repo.GetAccount(record.AccountID)
@@ -939,7 +949,34 @@ func (s *BackupService) PrepareRecordFile(id uint) (string, func(), error) {
 		_ = os.Remove(tmpPath)
 		return "", nil, err
 	}
+	if err := verifyBackupRecordFile(tmpPath, record); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", nil, err
+	}
 	return tmpPath, func() { _ = os.Remove(tmpPath) }, nil
+}
+
+func verifyBackupRecordFile(path string, record *model.BackupRecord) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("read backup file: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return fmt.Errorf("backup must be a non-empty regular file")
+	}
+	if record.Size > 0 && info.Size() != record.Size {
+		return fmt.Errorf("backup size does not match the record")
+	}
+	if record.SHA256 != "" {
+		hash, err := checksum.FileSHA256(path)
+		if err != nil {
+			return fmt.Errorf("verify backup SHA-256: %w", err)
+		}
+		if !strings.EqualFold(hash, record.SHA256) {
+			return fmt.Errorf("backup SHA-256 does not match the record")
+		}
+	}
+	return nil
 }
 
 func (s *BackupService) deleteRecordFile(record *model.BackupRecord) error {

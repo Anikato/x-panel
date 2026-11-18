@@ -56,6 +56,9 @@ watch(() => appearanceStore.preference, () => {
 
 onMounted(async () => {
   appearanceStore.applyCurrent()
+  if (globalStore.isLogin) {
+    void appearanceStore.loadFromBackend()
+  }
   globalStore.loadPanelNameFromBackend()
 
   colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)')

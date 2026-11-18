@@ -618,7 +618,7 @@ func copyDirStreaming(src, dst string, tracker *ProgressTracker) error {
 	}
 	for _, entry := range entries {
 		if tracker != nil {
-			tracker.task.CurrentFile = entry.Name()
+			tracker.SetCurrentFile(entry.Name())
 		}
 		if err := copyPathStreaming(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), tracker); err != nil {
 			return err

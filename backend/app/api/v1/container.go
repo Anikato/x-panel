@@ -250,6 +250,34 @@ func (a *ContainerAPI) OperateCompose(c *gin.Context) {
 	helper.SuccessWithOutData(c)
 }
 
+func (a *ContainerAPI) CreateComposeTask(c *gin.Context) {
+	var req dto.ComposeCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	task, err := composeService.StartCreateCompose(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, task)
+}
+
+func (a *ContainerAPI) OperateComposeTask(c *gin.Context) {
+	var req dto.ComposeOperate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		helper.ErrorWithDetail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	task, err := composeService.StartOperateCompose(req)
+	if err != nil {
+		helper.HandleError(c, err)
+		return
+	}
+	helper.SuccessWithData(c, task)
+}
+
 func (a *ContainerAPI) GetComposeContent(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Query("id"), 10, 64)
 	if err != nil || id == 0 {

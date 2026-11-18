@@ -52,3 +52,9 @@ export const loadDockerMirrors = () => http.get('/containers/docker/mirrors')
 export const updateDockerMirrors = (data: { mirrors: string[] }) => http.post('/containers/docker/mirrors', data)
 export const controlDockerService = (data: { action: 'start' | 'stop' | 'restart' }) =>
   http.post('/containers/docker/service', data)
+
+
+export const createComposeTask = (data: { name: string; content: string }) =>
+  http.post('/containers/compose/create-task', data)
+export const operateComposeTask = (data: { id: number; operation: string }) =>
+  http.post('/containers/compose/operate-task', data)

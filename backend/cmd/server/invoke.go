@@ -46,6 +46,8 @@ func dispatchInvoke(req invokeRequest, db *gorm.DB) invokeResponse {
 
 func dispatchInvokeWithHealthCollector(req invokeRequest, db *gorm.DB, collectHealth func(*service.HealthSnapshotData)) invokeResponse {
 	switch req.Capability {
+	case appearanceApplyCapability:
+		return invokeApplyAppearance(req, db)
 	case "sites.snapshot":
 		if !isEmptyInvokePayload(req.Payload) {
 			return invokeResponse{Capability: req.Capability, Error: "invalid_request"}
@@ -100,18 +102,23 @@ func encodeInvokeResponse(w io.Writer, resp invokeResponse) error {
 
 func openInvokeDatabase(databasePath string) (*gorm.DB, error) {
 	databaseURL := (&url.URL{Scheme: "file", Path: databasePath}).String()
-	db, err := gorm.Open(sqlite.Open(databaseURL+"?mode=ro"), &gorm.Config{
+	return openInvokeDatabaseWithMode(databaseURL, false)
+}
+
+func openInvokeDatabaseWithMode(databaseURL string, writable bool) (*gorm.DB, error) {
+	mode := "ro"
+	if writable {
+		mode = "rw"
+	} else {
+		mode += "&_pragma=query_only%281%29"
+	}
+	db, err := gorm.Open(sqlite.Open(databaseURL+"?mode="+mode+"&_pragma=busy_timeout%283000%29"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, classifyInvokeDBError(err)
 	}
-	if err := db.Exec("PRAGMA query_only = ON").Error; err != nil {
-		return nil, classifyInvokeDBError(err)
-	}
-	if err := db.Exec("PRAGMA busy_timeout = 3000").Error; err != nil {
-		return nil, classifyInvokeDBError(err)
-	}
+
 	return db, nil
 }
 
@@ -158,7 +165,13 @@ func runInvoke(args []string) {
 		os.Exit(1)
 	}
 	initViper.Init()
-	db, err := openInvokeDatabase(global.CONF.System.DbPath)
+	req, err := decodeInvokeRequest(io.LimitReader(os.Stdin, 64<<10))
+	if err != nil {
+		_ = encodeInvokeResponse(os.Stdout, invokeResponse{Error: "invalid_request"})
+		os.Exit(1)
+	}
+	databaseURL := (&url.URL{Scheme: "file", Path: global.CONF.System.DbPath}).String()
+	db, err := openInvokeDatabaseWithMode(databaseURL, req.Capability == appearanceApplyCapability)
 	if err != nil {
 		_ = encodeInvokeResponse(os.Stdout, invokeResponse{Error: invokeDBErrorCode(err)})
 		fmt.Fprintln(os.Stderr, err)
@@ -167,8 +180,8 @@ func runInvoke(args []string) {
 	if sqlDB, dbErr := db.DB(); dbErr == nil {
 		defer sqlDB.Close()
 	}
-	if err := runInvokeWith(args, os.Stdin, os.Stdout, db); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	resp := dispatchInvoke(req, db)
+	if err := encodeInvokeResponse(os.Stdout, resp); err != nil || !resp.OK {
 		os.Exit(1)
 	}
 }

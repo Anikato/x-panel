@@ -84,6 +84,7 @@ export interface LoginSetting {
 // ======================== Setting ========================
 
 export interface SettingInfo {
+  managedAppearanceConfig?: string
   panelName: string
   sessionTimeout: string
   securityEntranceSet: boolean

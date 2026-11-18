@@ -25,9 +25,9 @@ grep -Eq -- '--sort=name' "$workflow"
 grep -Eq 'gzip -n' "$workflow"
 grep -Eq 'targetCommitish' "$workflow"
 grep -Eq 'target_commit.*GITHUB_SHA|GITHUB_SHA.*target_commit' "$workflow"
-go_pin_count="$( { grep -En "go-version: '1\.26\.0'" "$workflow" || true; } | wc -l | tr -d ' ')"
+go_pin_count="$( { grep -En "go-version: '1\.27\.4'" "$workflow" || true; } | wc -l | tr -d ' ')"
 test "$go_pin_count" -eq 2
-grep -Eq "node-version: '24\.12\.0'" "$workflow"
+grep -Eq "node-version: '26\.13\.1'" "$workflow"
 grep -Eq -- '--json isDraft' "$workflow"
 grep -Eq 'Agent release must be published|Agent release is a draft' "$workflow"
 if grep -Eq 'vars\.UPDATE_BASE_URL' "$workflow"; then
