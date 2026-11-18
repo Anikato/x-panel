@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -25,7 +26,7 @@ func NewMysqlClient(address string, port uint, username, password string) (*Mysq
 		return client, nil
 	}
 	tcpErr := err
-	if !isLocalMysqlAddress(address) {
+	if port != 3306 || !isLocalMysqlAddress(address) {
 		return nil, tcpErr
 	}
 	for _, socketPath := range mysqlSocketCandidates() {
@@ -200,13 +201,7 @@ func (c *MysqlClient) DeleteUser(username string, permissions ...string) error {
 }
 
 func (c *MysqlClient) Backup(database, outFile string) error {
-	args := append(c.commandConnectionArgs(), "--single-transaction", database, fmt.Sprintf("--result-file=%s", outFile))
-	cmd := exec.Command("mysqldump", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s: %s", err, string(output))
-	}
-	return nil
+	return c.runClient("mysqldump", nil, "--single-transaction", "--result-file="+outFile, "--", database)
 }
 
 func (c *MysqlClient) Restore(database, inFile string) error {
@@ -222,30 +217,45 @@ func (c *MysqlClient) Restore(database, inFile string) error {
 	}
 	defer f.Close()
 
-	args := append(c.commandConnectionArgs(), database)
-	cmd := exec.Command("mysql", args...)
-	cmd.Stdin = f
-	if c.Password != "" {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", c.Password))
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s: %s", err, string(output))
-	}
-	return nil
+	return c.runClient("mysql", f, "--", database)
 }
 
-func (c *MysqlClient) commandConnectionArgs() []string {
-	args := []string{fmt.Sprintf("-u%s", c.Username)}
-	if c.SocketPath != "" {
-		args = append(args, "--protocol=SOCKET", fmt.Sprintf("--socket=%s", c.SocketPath))
-	} else {
-		args = append(args, fmt.Sprintf("-h%s", c.Address), fmt.Sprintf("-P%d", c.Port))
-	}
+func (c *MysqlClient) runClient(program string, stdin io.Reader, options ...string) error {
+	var args []string
 	if c.Password != "" {
-		args = append(args, fmt.Sprintf("-p%s", c.Password))
+		if strings.ContainsRune(c.Password, '\x00') {
+			return fmt.Errorf("MySQL password cannot contain NUL")
+		}
+		file, err := os.CreateTemp("", "xpanel-mysql-*.cnf")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(file.Name())
+		escape := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\n", "\\n", "\r", "\\r", "\t", "\\t", "\b", "\\b")
+		_, err = fmt.Fprintf(file, "[client]\npassword=\"%s\"\n", escape.Replace(c.Password))
+		closeErr := file.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		// MySQL requires option-file arguments to come before connection options.
+		args = append(args, "--defaults-extra-file="+file.Name())
 	}
-	return args
+	args = append(args, "-u"+c.Username)
+	if c.SocketPath != "" {
+		args = append(args, "--protocol=SOCKET", "--socket="+c.SocketPath)
+	} else {
+		args = append(args, "--protocol=TCP", "-h"+c.Address, fmt.Sprintf("-P%d", c.Port))
+	}
+	command := exec.Command(program, append(args, options...)...)
+	command.Stdin = stdin
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %w: %s", program, err, output)
+	}
+	return nil
 }
 
 func (c *MysqlClient) loadDatabaseUser(database string) (string, string) {

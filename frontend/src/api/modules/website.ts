@@ -7,7 +7,7 @@ export const searchWebsite = (params: { page: number; pageSize: number; info?: s
 }
 
 export const createWebsite = (params: { primaryDomain: string; alias?: string; domains?: string; type: string; remark?: string; siteDir?: string; proxyPass?: string; configMode?: string; accessLogPath?: string; errorLogPath?: string; httpPort?: number; httpsPort?: number }) => {
-  return http.post('/websites', params)
+  return http.post<{ id: number; status: string; activationError?: string }>('/websites', params)
 }
 
 export const inspectExternalNginxSite = (path: string) => {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"xpanel/app/dto"
 	"xpanel/global"
@@ -124,41 +125,27 @@ func (s *SSHManageService) UpdateSSHConfig(key, value string) error {
 		return fmt.Errorf("key %s is not allowed to update", key)
 	}
 
-	content, err := os.ReadFile(sshdConfigPath)
-	if err != nil {
-		return err
+	if strings.ContainsAny(value, "\r\n") {
+		return fmt.Errorf("SSH directive must be a single line")
 	}
+	return editSSHDConfig(sshdConfigPath, func(content string) string {
+		lines := strings.Split(content, "\n")
+		found := false
+		pattern := regexp.MustCompile(`^#?\s*` + regexp.QuoteMeta(key) + `\s+`)
 
-	lines := strings.Split(string(content), "\n")
-	found := false
-	pattern := regexp.MustCompile(`^#?\s*` + regexp.QuoteMeta(key) + `\s+`)
-
-	for i, line := range lines {
-		if pattern.MatchString(line) {
-			lines[i] = key + " " + value
-			found = true
-			break
+		for i, line := range lines {
+			if pattern.MatchString(line) {
+				lines[i] = key + " " + value
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		lines = append(lines, key+" "+value)
-	}
+		if !found {
+			lines = append(lines, key+" "+value)
+		}
 
-	if err := os.WriteFile(sshdConfigPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
-		return err
-	}
-
-	if _, err := cmd.ExecWithOutput("sshd", "-t"); err != nil {
-		os.WriteFile(sshdConfigPath, content, 0644)
-		return fmt.Errorf("sshd config test failed: %v", err)
-	}
-
-	if err := reloadSSHService(); err != nil {
-		global.LOG.Warnf("SSH reload after config update failed: %v", err)
-	}
-
-	global.LOG.Infof("SSH config updated: %s = %s", key, value)
-	return nil
+		return strings.Join(lines, "\n")
+	})
 }
 
 func (s *SSHManageService) LoadSSHLog(req dto.SSHLogSearch) (int64, []dto.SSHLogEntry, error) {
@@ -245,25 +232,67 @@ func (s *SSHManageService) GetSSHDConfig() (string, error) {
 }
 
 func (s *SSHManageService) SaveSSHDConfig(content string) error {
-	backup, err := os.ReadFile(sshdConfigPath)
+	return editSSHDConfig(sshdConfigPath, func(string) string { return content })
+}
+
+var sshConfigMu sync.Mutex
+
+func editSSHDConfig(configPath string, edit func(string) string) error {
+	sshConfigMu.Lock()
+	defer sshConfigMu.Unlock()
+
+	path, err := filepath.EvalSymlinks(configPath)
 	if err != nil {
-		return fmt.Errorf("read current config for backup: %v", err)
+		return err
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp(filepath.Dir(path), ".xpanel-sshd-")
+	if err != nil {
+		return err
+	}
+	keepBackup := false
+	defer func() {
+		if !keepBackup {
+			_ = os.RemoveAll(stage)
+		}
+	}()
+	candidate := filepath.Join(stage, "candidate")
+	// Keep the original mode, owner, ACLs and host security labels when replacing the file.
+	if output, err := cmd.ExecWithOutput("cp", "--preserve=all", "--", path, candidate); err != nil {
+		return fmt.Errorf("stage sshd config: %w: %s", err, strings.TrimSpace(output))
+	}
+	if err := os.WriteFile(candidate, []byte(edit(string(original))), 0600); err != nil {
+		return err
+	}
+	if output, err := cmd.ExecWithOutput("sshd", "-t", "-f", candidate); err != nil {
+		return fmt.Errorf("sshd config test failed: %w: %s", err, strings.TrimSpace(output))
 	}
 
-	if err := os.WriteFile(sshdConfigPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("write config: %v", err)
+	serviceName := detectSSHService()
+	if serviceName == "" {
+		return fmt.Errorf("SSH service not found")
 	}
 
-	if _, err := cmd.ExecWithOutput("sshd", "-t"); err != nil {
-		os.WriteFile(sshdConfigPath, backup, 0644)
-		return fmt.Errorf("sshd config test failed, changes rolled back: %v", err)
+	backup := filepath.Join(stage, "original")
+	if err := os.Link(path, backup); err != nil {
+		return err
 	}
-
-	if err := reloadSSHService(); err != nil {
-		global.LOG.Warnf("SSH reload after config save failed: %v", err)
+	if err := os.Rename(candidate, path); err != nil {
+		return err
 	}
-
-	global.LOG.Info("sshd_config saved via raw editor")
+	if applyErr := restartSSHService(serviceName); applyErr != nil {
+		if err := os.Rename(backup, path); err != nil {
+			keepBackup = true
+			return fmt.Errorf("SSH restart failed: %v; could not restore config from %s: %w", applyErr, backup, err)
+		}
+		if err := restartSSHService(serviceName); err != nil {
+			return fmt.Errorf("SSH restart failed: %v; original config restored but recovery restart failed: %w", applyErr, err)
+		}
+		return fmt.Errorf("SSH restart failed; original config restored and service restarted: %w", applyErr)
+	}
 	return nil
 }
 
@@ -409,19 +438,18 @@ func parseAuthorizedKeyLine(line string) dto.AuthorizedKey {
 func detectSSHService() string {
 	// Debian/Ubuntu 用 ssh，RHEL/CentOS 用 sshd
 	for _, name := range []string{"ssh", "sshd"} {
-		output, _ := cmd.ExecWithOutput("systemctl", "status", name)
-		if output != "" && !strings.Contains(output, "could not be found") {
+		output, err := cmd.ExecWithOutput("systemctl", "show", "--property=LoadState", "--value", name)
+		if err == nil && strings.TrimSpace(output) == "loaded" {
 			return name
 		}
 	}
 	return ""
 }
 
-func reloadSSHService() error {
-	serviceName := detectSSHService()
-	if serviceName == "" {
-		return fmt.Errorf("SSH service not found")
+func restartSSHService(serviceName string) error {
+	output, err := cmd.ExecWithOutput("systemctl", "restart", serviceName)
+	if err != nil {
+		return fmt.Errorf("restart %s: %w: %s", serviceName, err, strings.TrimSpace(output))
 	}
-	_, err := cmd.ExecWithOutput("systemctl", "restart", serviceName)
-	return err
+	return nil
 }

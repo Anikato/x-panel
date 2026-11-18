@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/tls"
 	"fmt"
+	"html"
 	"net"
 	"net/http"
 	"os"
@@ -24,7 +25,7 @@ import (
 )
 
 type IWebsiteService interface {
-	Create(req dto.WebsiteCreate) error
+	Create(req dto.WebsiteCreate) (*dto.WebsiteCreateResult, error)
 	InspectExternalNginxSite(path string) (*dto.ExternalNginxSitePreview, error)
 	CreateExternalNginxSite(req dto.ExternalNginxSiteCreateReq) (*model.Website, error)
 	ScanActiveNginxSites() ([]dto.NginxSiteScanItem, error)
@@ -86,10 +87,10 @@ func NewIWebsiteService() IWebsiteService {
 	}
 }
 
-func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
+func (s *WebsiteService) Create(req dto.WebsiteCreate) (*dto.WebsiteCreateResult, error) {
 	exist, _ := s.websiteRepo.Get(repo.WithByPrimaryDomain(req.PrimaryDomain))
 	if exist.ID > 0 {
-		return buserr.New(constant.ErrWebsiteDomainExist)
+		return nil, buserr.New(constant.ErrWebsiteDomainExist)
 	}
 
 	alias := strings.TrimSpace(req.Alias)
@@ -99,7 +100,7 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 	// 检查 alias 唯一性
 	existAlias, _ := s.websiteRepo.Get(repo.WithByAlias(alias))
 	if existAlias.ID > 0 {
-		return buserr.WithDetail(constant.ErrRecordExist, "alias already exists: "+alias, nil)
+		return nil, buserr.WithDetail(constant.ErrRecordExist, "alias already exists: "+alias, nil)
 	}
 
 	site := model.Website{
@@ -137,45 +138,35 @@ func (s *WebsiteService) Create(req dto.WebsiteCreate) error {
 		site.SiteDir = fmt.Sprintf("/var/www/%s", alias)
 	}
 
-	if err := s.websiteRepo.Create(&site); err != nil {
-		return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-	}
-
-	if site.ConfigMode != "source" && site.Type == "static" && site.SiteDir != "" {
-		policy := websitecontent.DefaultPolicy()
-		if err := websitecontent.EnsureDirectory(site.SiteDir, policy); err != nil {
-			return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
+	if err := s.websiteRepo.CreatePrepared(&site, func() error {
+		if site.ConfigMode == "source" || site.Type != "static" {
+			return nil
 		}
-		indexPath := filepath.Join(site.SiteDir, "index.html")
-		if _, err := os.Stat(indexPath); os.IsNotExist(err) {
-			defaultHTML := fmt.Sprintf("<!DOCTYPE html>\n<html>\n<head><title>%s</title></head>\n<body>\n<h1>Welcome to %s</h1>\n<p>Site is working.</p>\n</body>\n</html>", site.PrimaryDomain, site.PrimaryDomain)
-			if _, err := websitecontent.CreateFileIfMissing(indexPath, []byte(defaultHTML), policy); err != nil {
-				return buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-			}
-		}
+		return prepareWebsiteDirectory(site)
+	}); err != nil {
+		return nil, buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
-
-	global.LOG.Infof("Website created: %s (%s)", site.PrimaryDomain, site.Type)
-
-	// Auto-enable if nginx is installed
+	result := &dto.WebsiteCreateResult{ID: site.ID, Status: site.Status}
 	if site.ConfigMode != "source" && global.CONF.Nginx.IsInstalled() {
-		if err := s.autoEnable(&site); err != nil {
+		if err := s.Enable(site.ID); err != nil {
+			result.ActivationError = err.Error()
 			global.LOG.Warnf("Auto-enable website %s failed: %v", site.PrimaryDomain, err)
+		} else {
+			result.Status = "running"
 		}
 	}
-
-	return nil
+	return result, nil
 }
 
-func (s *WebsiteService) autoEnable(site *model.Website) error {
-	if err := EnsureNginxInclude(); err != nil {
-		global.LOG.Warnf("Ensure nginx include failed: %v", err)
-	}
-	if err := s.applyConfig(*site); err != nil {
+func prepareWebsiteDirectory(site model.Website) error {
+	policy := websitecontent.DefaultPolicy()
+	if err := websitecontent.EnsureDirectory(site.SiteDir, policy); err != nil {
 		return err
 	}
-	site.Status = "running"
-	return s.websiteRepo.Save(site)
+	domain := html.EscapeString(site.PrimaryDomain)
+	defaultHTML := fmt.Sprintf("<!DOCTYPE html>\n<html>\n<head><title>%s</title></head>\n<body>\n<h1>Welcome to %s</h1>\n<p>Site is working.</p>\n</body>\n</html>", domain, domain)
+	_, err := websitecontent.CreateFileIfMissing(filepath.Join(site.SiteDir, "index.html"), []byte(defaultHTML), policy)
+	return err
 }
 
 func (s *WebsiteService) Update(req dto.WebsiteUpdate) error {
@@ -456,7 +447,7 @@ func (s *WebsiteService) Enable(id uint) error {
 
 	// 确保 nginx.conf 包含 conf.d
 	if err := EnsureNginxInclude(); err != nil {
-		global.LOG.Warnf("Ensure nginx include failed: %v", err)
+		return fmt.Errorf("prepare nginx site include: %w", err)
 	}
 
 	snaps, err := snapshotFiles(websiteRuntimePaths(site, true))

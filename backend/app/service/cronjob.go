@@ -506,56 +506,53 @@ func (s *CronjobService) execDatabaseBackup(job *model.Cronjob) (string, string,
 	if job.DBName == "" {
 		return "database name is empty", constant.StatusFailed, ""
 	}
-	servers, _ := dbRepo.ListServers(repo.WithServerType(job.DBType))
+	if !isAllDatabases(job.DBName) {
+		id, err := dbRepo.UniqueInstanceID(job.DBName, job.DBType)
+		if err != nil {
+			return err.Error(), constant.StatusFailed, ""
+		}
+		return s.backupOneDatabase(job, backupService, id, job.DBName)
+	}
+	servers, err := dbRepo.ListServers(repo.WithServerType(job.DBType))
+	if err != nil {
+		return err.Error(), constant.StatusFailed, ""
+	}
 	if len(servers) == 0 {
 		return fmt.Sprintf("no %s server found", job.DBType), constant.StatusFailed, ""
 	}
-	if isAllDatabases(job.DBName) {
-		successCount := 0
-		failedCount := 0
-		var lastFile string
-		var messages []string
-		for _, server := range servers {
-			instances, _ := dbRepo.ListInstancesByServerID(server.ID)
-			for _, inst := range instances {
-				msg, status, file := s.backupOneDatabase(job, backupService, inst.ID, inst.Name)
-				messages = append(messages, fmt.Sprintf("%s: %s", inst.Name, msg))
-				if status == constant.StatusSuccess {
-					successCount++
-					lastFile = file
-				} else {
-					failedCount++
-				}
-			}
-		}
-		if successCount == 0 {
-			if len(messages) == 0 {
-				return "no database instances found", constant.StatusFailed, ""
-			}
-			return strings.Join(messages, "\n"), constant.StatusFailed, ""
-		}
-		summary := fmt.Sprintf("backup %d database(s), failed %d database(s)\n%s", successCount, failedCount, strings.Join(messages, "\n"))
-		if failedCount > 0 {
-			return summary, constant.StatusFailed, lastFile
-		}
-		return summary, constant.StatusSuccess, lastFile
-	}
-	var matches []model.DatabaseInstance
+	successCount := 0
+	failedCount := 0
+	var lastFile string
+	var messages []string
 	for _, server := range servers {
-		instances, _ := dbRepo.ListInstancesByServerID(server.ID)
+		instances, err := dbRepo.ListInstancesByServerID(server.ID)
+		if err != nil {
+			failedCount++
+			messages = append(messages, fmt.Sprintf("server %d: %v", server.ID, err))
+			continue
+		}
 		for _, inst := range instances {
-			if inst.Name == job.DBName {
-				matches = append(matches, inst)
+			msg, status, file := s.backupOneDatabase(job, backupService, inst.ID, inst.Name)
+			messages = append(messages, fmt.Sprintf("%s: %s", inst.Name, msg))
+			if status == constant.StatusSuccess {
+				successCount++
+				lastFile = file
+			} else {
+				failedCount++
 			}
 		}
 	}
-	if len(matches) == 1 {
-		return s.backupOneDatabase(job, backupService, matches[0].ID, matches[0].Name)
+	if successCount == 0 {
+		if len(messages) == 0 {
+			return "no database instances found", constant.StatusFailed, ""
+		}
+		return strings.Join(messages, "\n"), constant.StatusFailed, ""
 	}
-	if len(matches) > 1 {
-		return fmt.Sprintf("database instance [%s] is ambiguous, please select a specific instance", job.DBName), constant.StatusFailed, ""
+	summary := fmt.Sprintf("backup %d database(s), failed %d database(s)\n%s", successCount, failedCount, strings.Join(messages, "\n"))
+	if failedCount > 0 {
+		return summary, constant.StatusFailed, lastFile
 	}
-	return fmt.Sprintf("database instance [%s] not found", job.DBName), constant.StatusFailed, ""
+	return summary, constant.StatusSuccess, lastFile
 }
 
 func (s *CronjobService) backupOneDatabase(job *model.Cronjob, backupService IBackupService, instanceID uint, dbName string) (string, string, string) {

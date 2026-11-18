@@ -67,11 +67,12 @@ type BackupRecordInfo struct {
 }
 
 type BackupCreate struct {
-	Type      string `json:"type" binding:"required"` // website / database / directory
-	Name      string `json:"name" binding:"required"`
-	AccountID uint   `json:"accountID" binding:"required"`
-	DBType    string `json:"dbType"`
-	SourceDir string `json:"sourceDir"`
+	Type         string `json:"type" binding:"required"` // website / database / directory
+	Name         string `json:"name" binding:"required_without=DBInstanceID"`
+	DBInstanceID uint   `json:"dbInstanceID"`
+	AccountID    uint   `json:"accountID" binding:"required"`
+	DBType       string `json:"dbType"`
+	SourceDir    string `json:"sourceDir"`
 }
 
 type BackupStorageReq struct {

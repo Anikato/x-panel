@@ -1,5 +1,5 @@
 import http from '../http'
-import type { SearchReq, DatabaseServerForm, DatabaseInstanceForm } from '../interface'
+import type { SearchReq, DatabaseServerForm, DatabaseInstanceForm, DatabaseServer, DatabaseInstance } from '../interface'
 
 export const createDatabaseServer = (data: DatabaseServerForm) => http.post('/databases/servers', data)
 export const updateDatabaseServer = (data: DatabaseServerForm) => http.post('/databases/servers/update', data)
@@ -12,6 +12,33 @@ export const createDatabaseInstance = (data: DatabaseInstanceForm) => http.post(
 export const deleteDatabaseInstance = (data: { id: number }) => http.post('/databases/instances/del', data)
 export const searchDatabaseInstance = (data: SearchReq & { serverID: number }) =>
   http.post('/databases/instances/search', data)
+
+export type DatabaseOption = Pick<DatabaseInstance, 'id' | 'name'> & { serverName: string; serverAddress: string }
+
+async function allDatabasePages<T>(fetchPage: (page: number, pageSize: number) => Promise<{ data: { items: T[] | null; total: number } }>) {
+  const rows: T[] = []
+  for (let page = 1; ; page++) {
+    const { data } = await fetchPage(page, 100)
+    rows.push(...(data.items || []))
+    if (!data.items?.length || rows.length >= data.total) return rows
+  }
+}
+
+export async function listDatabaseOptions(type: string): Promise<DatabaseOption[]> {
+  const servers = await allDatabasePages<DatabaseServer>((page, pageSize) => searchDatabaseServer({ page, pageSize, type }))
+  const groups = await Promise.all(servers.map(async server => {
+    const instances = await allDatabasePages<DatabaseInstance>((page, pageSize) => searchDatabaseInstance({ page, pageSize, serverID: server.id }))
+    return instances.map(({ id, name }) => ({
+      id, name, serverName: server.name, serverAddress: server.address + ':' + server.port,
+    }))
+  }))
+  return groups.flat()
+}
+
+export function formatDatabaseOption(item: DatabaseOption) {
+  return item.name + ' (' + item.serverName + ' / ' + item.serverAddress + ')'
+}
+
 export const syncDatabaseInstances = (data: { id: number }) => http.post('/databases/instances/sync', data)
 export const changeInstancePassword = (data: { id: number; password: string }) =>
   http.post('/databases/instances/password', data)

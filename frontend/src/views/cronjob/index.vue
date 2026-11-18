@@ -270,13 +270,13 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import type { BackupAccount, ComposeItem, Cronjob, CronjobRecord, DatabaseInstance, DatabaseServer } from '@/api/interface'
+import type { BackupAccount, ComposeItem, Cronjob, CronjobRecord } from '@/api/interface'
 import {
   searchCronjob, createCronjob, updateCronjob, deleteCronjob,
   updateCronjobStatus, handleOnceCronjob, searchCronjobRecords
 } from '@/api/modules/cronjob'
 import { listBackupAccounts } from '@/api/modules/backup'
-import { searchDatabaseServer, searchDatabaseInstance } from '@/api/modules/database'
+import { formatDatabaseOption, listDatabaseOptions, type DatabaseOption } from '@/api/modules/database'
 import { listCompose } from '@/api/modules/container'
 
 const { t } = useI18n()
@@ -285,7 +285,6 @@ const typeTagMap: Record<string, string> = {
   shell: '', curl: 'warning', website: 'success', database: 'danger', directory: 'info', compose: 'warning',
 }
 const backupAccounts = ref<BackupAccount[]>([])
-type DatabaseOption = DatabaseInstance & { serverName: string; serverAddress: string }
 const databaseOptions = ref<DatabaseOption[]>([])
 const databaseLoading = ref(false)
 const composeProjects = ref<ComposeItem[]>([])
@@ -541,17 +540,7 @@ const loadDatabaseOptions = async () => {
   if (form.type !== 'database') return
   databaseLoading.value = true
   try {
-    const serverRes = await searchDatabaseServer({ page: 1, pageSize: 100, type: form.dbType })
-    const servers = (serverRes.data.items || []) as DatabaseServer[]
-    const result = await Promise.all(servers.map(async (server) => {
-      const instRes = await searchDatabaseInstance({ page: 1, pageSize: 100, serverID: server.id })
-      return ((instRes.data.items || []) as DatabaseInstance[]).map(item => ({
-        ...item,
-        serverName: server.name,
-        serverAddress: `${server.address}:${server.port}`,
-      }))
-    }))
-    databaseOptions.value = result.flat()
+    databaseOptions.value = await listDatabaseOptions(form.dbType)
     if (form.dbInstanceID > 0) {
       const selected = databaseOptions.value.find(item => item.id === form.dbInstanceID)
       if (selected) form.dbName = selected.name
@@ -581,10 +570,6 @@ const handleDBInstanceChange = (id: number) => {
   }
   const selected = databaseOptions.value.find(item => item.id === id)
   form.dbName = selected?.name || ''
-}
-
-const formatDatabaseOption = (item: DatabaseOption) => {
-  return `${item.name} (${item.serverName} / ${item.serverAddress})`
 }
 
 const isAllDatabaseName = (name: string) => {

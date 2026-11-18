@@ -19,7 +19,6 @@ import (
 	archiveUtil "xpanel/utils/backup"
 	"xpanel/utils/checksum"
 	cs "xpanel/utils/cloud_storage"
-	dbUtil "xpanel/utils/database"
 )
 
 type IBackupService interface {
@@ -337,11 +336,35 @@ func stripStorageBasePath(key, basePath string) string {
 }
 
 func (s *BackupService) Backup(req dto.BackupCreate) error {
+	if req.Type == "database" {
+		id := req.DBInstanceID
+		if id == 0 {
+			var err error
+			id, err = s.dbRepo.UniqueInstanceID(req.Name, req.DBType)
+			if err != nil {
+				return err
+			}
+		}
+		instance, _, err := s.dbRepo.GetInstanceWithServer(id, req.DBType)
+		if err != nil {
+			return err
+		}
+		if req.Name != "" && req.Name != instance.Name {
+			return fmt.Errorf("selected database instance does not match the requested name")
+		}
+		req.DBInstanceID, req.Name = id, instance.Name
+	} else if req.DBInstanceID != 0 {
+		return fmt.Errorf("database instance ID is only valid for database backups")
+	}
 	go func() {
-		output, err := s.PerformBackupWithOptions(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID, BackupJobOptions{
-			DeleteLocal: true,
-			SourcePath:  req.SourceDir,
-		})
+		opts := BackupJobOptions{DeleteLocal: true, SourcePath: req.SourceDir}
+		var output *BackupOutput
+		var err error
+		if req.Type == "database" {
+			output, err = s.PerformDatabaseInstanceBackupWithOptions(req.DBInstanceID, req.AccountID, opts)
+		} else {
+			output, err = s.PerformBackupWithOptions(req.Type, req.Name, req.DBType, req.SourceDir, req.AccountID, opts)
+		}
 		record := &model.BackupRecord{
 			Type: req.Type, Name: req.Name, AccountID: req.AccountID,
 		}
@@ -377,8 +400,15 @@ func (s *BackupService) PerformBackupWithInfo(backupType, name, dbType, sourceDi
 }
 
 func (s *BackupService) PerformBackupWithOptions(backupType, name, dbType, sourceDir string, accountID uint, opts BackupJobOptions) (*BackupOutput, error) {
+	if backupType == "database" {
+		id, err := s.dbRepo.UniqueInstanceID(name, dbType)
+		if err != nil {
+			return &BackupOutput{Log: err.Error()}, err
+		}
+		return s.PerformDatabaseInstanceBackupWithOptions(id, accountID, opts)
+	}
 	log := &backupLog{}
-	output, err := s.performBackupWithOptions(backupType, name, dbType, sourceDir, accountID, opts, log)
+	output, err := s.performBackupWithOptions(backupType, name, sourceDir, accountID, opts, log)
 	if output == nil {
 		output = &BackupOutput{}
 	}
@@ -390,7 +420,7 @@ func (s *BackupService) PerformBackupWithOptions(backupType, name, dbType, sourc
 	return output, err
 }
 
-func (s *BackupService) performBackupWithOptions(backupType, name, dbType, sourceDir string, accountID uint, opts BackupJobOptions, log *backupLog) (*BackupOutput, error) {
+func (s *BackupService) performBackupWithOptions(backupType, name, sourceDir string, accountID uint, opts BackupJobOptions, log *backupLog) (*BackupOutput, error) {
 	account, err := s.repo.GetAccount(accountID)
 	if err != nil {
 		return nil, buserr.New(constant.ErrRecordNotFound)
@@ -414,9 +444,6 @@ func (s *BackupService) performBackupWithOptions(backupType, name, dbType, sourc
 	case "website":
 		log.step("pack website directory, excludes=%q format=%s", compactSpace(opts.ExclusionRules), defaultCompress(opts.CompressFormat))
 		localFile, targetPath, err = s.backupWebsite(name, outDir, timestamp, opts)
-	case "database":
-		log.step("dump database %s type=%s", name, dbType)
-		localFile, targetPath, err = s.backupDatabase(name, dbType, outDir, timestamp)
 	case "directory":
 		log.step("pack directory %s, excludes=%q format=%s", sourceDir, compactSpace(opts.ExclusionRules), defaultCompress(opts.CompressFormat))
 		localFile, targetPath, err = s.backupDirectory(sourceDir, name, outDir, timestamp, opts)
@@ -695,98 +722,27 @@ func isBackupTempArchive(name string) bool {
 		strings.HasSuffix(name, ".tar.xz.enc")
 }
 
-func (s *BackupService) backupDatabase(name, dbType, tmpDir, timestamp string) (string, string, error) {
-	servers, _ := s.dbRepo.ListServers(repo.WithServerType(dbType))
-	if len(servers) == 0 {
-		return "", "", fmt.Errorf("no %s server found", dbType)
-	}
-
-	// Find which server actually has this database instance
-	var targetServer *model.DatabaseServer
-	for i := range servers {
-		instances, _ := s.dbRepo.ListInstancesByServerID(servers[i].ID)
-		for _, inst := range instances {
-			if inst.Name == name {
-				targetServer = &servers[i]
-				break
-			}
-		}
-		if targetServer != nil {
-			break
-		}
-	}
-	if targetServer == nil {
-		targetServer = &servers[0]
-	}
-
-	fileName := fmt.Sprintf("db_%s_%s_%s.sql", name, dbType, timestamp)
-	if dbType == "postgresql" {
-		fileName = fmt.Sprintf("db_%s_%s_%s.dump", name, dbType, timestamp)
-	}
-	localFile := filepath.Join(tmpDir, fileName)
-
-	switch dbType {
-	case "mysql":
-		client, err := dbUtil.NewMysqlClient(targetServer.Address, targetServer.Port, targetServer.Username, targetServer.Password)
-		if err != nil {
-			return "", "", err
-		}
-		defer client.Close()
-		if err := client.Backup(name, localFile); err != nil {
-			return "", "", err
-		}
-	case "postgresql":
-		client, err := dbUtil.NewPostgresClient(targetServer.Address, targetServer.Port, targetServer.Username, targetServer.Password)
-		if err != nil {
-			return "", "", err
-		}
-		defer client.Close()
-		if err := client.Backup(name, localFile); err != nil {
-			return "", "", err
-		}
-	}
-	return localFile, filepath.Join("database", name, fileName), nil
-}
-
 func (s *BackupService) backupDatabaseInstance(instanceID uint, tmpDir, timestamp string) (string, string, error) {
-	instance, err := s.dbRepo.GetInstance(instanceID)
+	instance, server, err := s.dbRepo.GetInstanceWithServer(instanceID, "")
 	if err != nil {
-		return "", "", buserr.New(constant.ErrRecordNotFound)
-	}
-	server, err := s.dbRepo.GetServer(instance.ServerID)
-	if err != nil {
-		return "", "", buserr.New(constant.ErrRecordNotFound)
+		return "", "", err
 	}
 
-	fileName := fmt.Sprintf("db_%s_%s_%s.sql", instance.Name, server.Type, timestamp)
-	if server.Type == "postgresql" {
-		fileName = fmt.Sprintf("db_%s_%s_%s.dump", instance.Name, server.Type, timestamp)
+	localFile, err := reserveDatabaseBackup(tmpDir, instance, server.Type, timestamp)
+	if err != nil {
+		return "", "", err
 	}
-	localFile := filepath.Join(tmpDir, fileName)
+	fileName := filepath.Base(localFile)
 
-	switch server.Type {
-	case "mysql":
-		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
-		if err != nil {
-			return "", "", err
-		}
-		defer client.Close()
-		if err := client.Backup(instance.Name, localFile); err != nil {
-			return "", "", err
-		}
-	case "postgresql":
-		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
-		if err != nil {
-			return "", "", err
-		}
-		defer client.Close()
-		if err := client.Backup(instance.Name, localFile); err != nil {
-			return "", "", err
-		}
-	default:
-		return "", "", fmt.Errorf("unsupported database type: %s", server.Type)
+	if err := dumpDatabase(server, instance.Name, localFile); err != nil {
+		_ = os.Remove(localFile)
+		return "", "", err
 	}
-	return localFile, filepath.Join("database", instance.Name, fileName), nil
+	folder := instance.Name
+	if !filepath.IsLocal(folder) || filepath.Base(folder) != folder || folder == "." {
+		folder = fmt.Sprint(instance.ID)
+	}
+	return localFile, filepath.Join("database", folder, fileName), nil
 }
 
 func (s *BackupService) backupDirectory(sourceDir, name, tmpDir, timestamp string, opts BackupJobOptions) (string, string, error) {

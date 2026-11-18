@@ -33,11 +33,12 @@ func (a *WebsiteAPI) CreateWebsite(c *gin.Context) {
 		helper.HandleError(c, err)
 		return
 	}
-	if err := websiteService.Create(req); err != nil {
+	result, err := websiteService.Create(req)
+	if err != nil {
 		helper.HandleError(c, err)
 		return
 	}
-	helper.SuccessWithOutData(c)
+	helper.SuccessWithData(c, result)
 }
 
 func (a *WebsiteAPI) InspectExternalNginxSite(c *gin.Context) {

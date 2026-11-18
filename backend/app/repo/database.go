@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"fmt"
 	"xpanel/app/model"
 	"xpanel/global"
 
@@ -19,6 +20,7 @@ type IDatabaseRepo interface {
 	UpdateInstance(id uint, fields map[string]interface{}) error
 	DeleteInstance(id uint) error
 	GetInstance(id uint) (*model.DatabaseInstance, error)
+	UniqueInstanceID(name, serverType string) (uint, error)
 	GetInstanceWithServer(id uint, serverType string) (*model.DatabaseInstance, *model.DatabaseServer, error)
 	PageInstance(page, pageSize int, opts ...DBOption) (int64, []model.DatabaseInstance, error)
 	ListInstancesByServerID(serverID uint) ([]model.DatabaseInstance, error)
@@ -133,6 +135,28 @@ func (r *DatabaseRepo) GetInstance(id uint) (*model.DatabaseInstance, error) {
 		return nil, err
 	}
 	return &i, nil
+}
+
+// UniqueInstanceID resolves older backup requests that only identify a database by name.
+func (r *DatabaseRepo) UniqueInstanceID(name, serverType string) (uint, error) {
+	var ids []uint
+	query := global.DB.Model(&model.DatabaseInstance{}).
+		Joins("JOIN database_servers ON database_servers.id = database_instances.server_id").
+		Where("database_instances.name = ?", name)
+	if serverType != "" {
+		query = query.Where("database_servers.type = ?", serverType)
+	}
+	if err := query.Limit(2).Pluck("database_instances.id", &ids).Error; err != nil {
+		return 0, err
+	}
+	switch len(ids) {
+	case 0:
+		return 0, fmt.Errorf("database instance [%s] not found", name)
+	case 1:
+		return ids[0], nil
+	default:
+		return 0, fmt.Errorf("database instance [%s] is ambiguous, please select a specific instance", name)
+	}
 }
 
 func (r *DatabaseRepo) GetInstanceWithServer(id uint, serverType string) (*model.DatabaseInstance, *model.DatabaseServer, error) {

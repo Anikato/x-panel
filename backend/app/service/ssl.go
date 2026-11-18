@@ -788,7 +788,7 @@ func (s *CertificateService) prepareHTTP01Website(cert model.Certificate) error 
 		certRepo:    s.certRepo,
 	}
 	if site.Status != "running" {
-		if err := websiteSvc.autoEnable(&site); err != nil {
+		if err := websiteSvc.Enable(site.ID); err != nil {
 			return err
 		}
 		return nil

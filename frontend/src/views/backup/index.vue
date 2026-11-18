@@ -244,8 +244,8 @@
             </el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item :label="t('commons.name')" prop="name">
-          <el-input v-model="backupForm.name" :placeholder="backupForm.type === 'website' ? 'example.com' : backupForm.type === 'database' ? 'my_database' : '/data/myapp'" />
+        <el-form-item v-if="backupForm.type !== 'database'" :label="t('commons.name')" prop="name">
+          <el-input v-model="backupForm.name" :placeholder="backupForm.type === 'website' ? 'example.com' : '/data/myapp'" />
         </el-form-item>
         <el-form-item :label="t('backup.account')" prop="accountID">
           <el-select v-model="backupForm.accountID" style="width:100%">
@@ -256,6 +256,11 @@
           <el-select v-model="backupForm.dbType" style="width:100%">
             <el-option label="MySQL" value="mysql" />
             <el-option label="PostgreSQL" value="postgresql" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="backupForm.type === 'database'" :label="t('cronjob.dbInstance')" prop="dbInstanceID">
+          <el-select v-model="backupForm.dbInstanceID" filterable :loading="databaseLoading" :placeholder="t('cronjob.dbInstancePlaceholder')">
+            <el-option v-for="item in databaseOptions" :key="item.id" :label="formatDatabaseOption(item)" :value="item.id" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="backupForm.type === 'directory'" :label="t('backup.sourceDir')">
@@ -293,6 +298,7 @@ import {
   uploadStorageObject, downloadStorageObject,
 } from '@/api/modules/backup'
 import type { BackupStorageObject } from '@/api/modules/backup'
+import { formatDatabaseOption, listDatabaseOptions, type DatabaseOption } from '@/api/modules/database'
 import { listRemoteMounts } from '@/api/modules/disk'
 
 const { t } = useI18n()
@@ -386,8 +392,25 @@ const recordPager = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const backupDialog = ref(false)
 const backupFormRef = ref<FormInstance>()
-const backupForm = reactive({ type: 'website', name: '', accountID: 0 as number, dbType: 'mysql', sourceDir: '' })
-const backupRules: FormRules = { type: [{ required: true }], name: [{ required: true, trigger: 'blur' }], accountID: [{ required: true, message: () => t('backup.selectAccount') }] }
+const backupForm = reactive({ type: 'website', name: '', accountID: 0 as number, dbType: 'mysql', dbInstanceID: undefined as number | undefined, sourceDir: '' })
+const databaseOptions = ref<DatabaseOption[]>([])
+const databaseLoading = ref(false)
+watch(() => [backupDialog.value, backupForm.type, backupForm.dbType], async (_, __, onCleanup) => {
+  backupForm.dbInstanceID = undefined
+  databaseOptions.value = []
+  databaseLoading.value = false
+  if (!backupDialog.value || backupForm.type !== 'database') return
+  let active = true
+  onCleanup(() => { active = false })
+  databaseLoading.value = true
+  try {
+    const options = await listDatabaseOptions(backupForm.dbType)
+    if (active) databaseOptions.value = options
+  } catch { /* API errors are displayed by the request interceptor. */ }
+  finally { if (active) databaseLoading.value = false }
+})
+
+const backupRules: FormRules = { dbInstanceID: [{ required: true, trigger: 'change', message: () => t('cronjob.dbInstancePlaceholder') }], type: [{ required: true }], name: [{ required: true, trigger: 'blur' }], accountID: [{ required: true, message: () => t('backup.selectAccount') }] }
 
 const loadAccounts = async () => {
   accountLoading.value = true
@@ -489,7 +512,12 @@ const submitBackup = async () => {
   await backupFormRef.value.validate()
   submitting.value = true
   try {
-    await createBackup(backupForm)
+    const selected = databaseOptions.value.find(item => item.id === backupForm.dbInstanceID)
+    if (backupForm.type === 'database' && !selected) {
+      ElMessage.warning(t('cronjob.dbInstancePlaceholder'))
+      return
+    }
+    await createBackup({ ...backupForm, name: selected?.name ?? backupForm.name })
     ElMessage.success(t('backup.started'))
     backupDialog.value = false
   } finally { submitting.value = false }

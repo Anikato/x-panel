@@ -399,6 +399,7 @@ export interface BackupForm {
   type: string
   name: string
   accountID: number
+  dbInstanceID?: number
   dbType: string
   sourceDir: string
 }

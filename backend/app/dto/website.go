@@ -27,6 +27,12 @@ type WebsiteCreate struct {
 	ErrorLogPath  string `json:"errorLogPath"`
 }
 
+type WebsiteCreateResult struct {
+	ID              uint   `json:"id"`
+	Status          string `json:"status"`
+	ActivationError string `json:"activationError,omitempty"`
+}
+
 // --- 更新 ---
 
 type WebsiteUpdate struct {

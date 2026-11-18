@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"xpanel/app/dto"
@@ -512,31 +513,52 @@ func (s *DatabaseService) BackupInstance(id uint) (string, error) {
 		return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
 	}
 	timestamp := time.Now().Format("20060102150405")
-	var outFile string
-
-	switch server.Type {
-	case "mysql":
-		outFile = fmt.Sprintf("%s/%s_%s.sql", backupDir, instance.Name, timestamp)
-		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
-		if err != nil {
-			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-		}
-		defer client.Close()
-		if err := client.Backup(instance.Name, outFile); err != nil {
-			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-		}
-	case "postgresql":
-		outFile = fmt.Sprintf("%s/%s_%s.dump", backupDir, instance.Name, timestamp)
-		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
-		if err != nil {
-			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-		}
-		defer client.Close()
-		if err := client.Backup(instance.Name, outFile); err != nil {
-			return "", buserr.WithDetail(constant.ErrInternalServer, err.Error(), err)
-		}
+	outFile, err := reserveDatabaseBackup(backupDir, instance, server.Type, timestamp)
+	if err != nil {
+		return "", err
+	}
+	if err := dumpDatabase(server, instance.Name, outFile); err != nil {
+		_ = os.Remove(outFile)
+		return "", err
 	}
 	return outFile, nil
+}
+
+func reserveDatabaseBackup(dir string, instance *model.DatabaseInstance, dbType, timestamp string) (string, error) {
+	ext := ".sql"
+	if dbType == "postgresql" {
+		ext = ".dump"
+	}
+	file, err := os.CreateTemp(dir, fmt.Sprintf("db_%d_%s_%s_*%s", instance.ID, filepath.Base(instance.Name), timestamp, ext))
+	if err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
+}
+
+func dumpDatabase(server *model.DatabaseServer, name, path string) error {
+	switch server.Type {
+	case "mysql":
+		client, err := dbUtil.NewMysqlClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		return client.Backup(name, path)
+	case "postgresql":
+		client, err := dbUtil.NewPostgresClient(server.Address, server.Port, server.Username, server.Password)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		return client.Backup(name, path)
+	default:
+		return fmt.Errorf("unsupported database type: %s", server.Type)
+	}
 }
 
 func (s *DatabaseService) BackupInstanceAsync(id uint) (*FileTaskStatus, error) {

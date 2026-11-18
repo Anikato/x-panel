@@ -12,6 +12,7 @@ type IWebsiteRepo interface {
 	Get(opts ...DBOption) (model.Website, error)
 	Count(opts ...DBOption) (int64, error)
 	Create(item *model.Website) error
+	CreatePrepared(item *model.Website, prepare func() error) error
 	Save(item *model.Website) error
 	Delete(opts ...DBOption) error
 }
@@ -71,11 +72,26 @@ func (r *WebsiteRepo) Get(opts ...DBOption) (model.Website, error) {
 }
 
 func (r *WebsiteRepo) Create(item *model.Website) error {
+	return insertWebsite(getDB(), item)
+}
+
+// Reserve the domain and alias before preparing content. Both reservations
+// roll back if the directory or index cannot be prepared.
+func (r *WebsiteRepo) CreatePrepared(item *model.Website, prepare func() error) error {
+	return getDB().Transaction(func(tx *gorm.DB) error {
+		if err := insertWebsite(tx, item); err != nil {
+			return err
+		}
+		return prepare()
+	})
+}
+
+func insertWebsite(db *gorm.DB, item *model.Website) error {
 	stored := *item
 	if err := protectWebsite(&stored); err != nil {
 		return err
 	}
-	if err := getDB().Create(&stored).Error; err != nil {
+	if err := db.Create(&stored).Error; err != nil {
 		return err
 	}
 	*item = stored

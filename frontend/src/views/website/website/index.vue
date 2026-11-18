@@ -572,8 +572,14 @@ const handleCreate = async () => {
   if (createForm.value.configMode === 'source' && !createForm.value.siteDir) { ElMessage.warning('请输入网站目录'); return }
   createLoading.value = true
   try {
-    await createWebsite(createForm.value)
-    ElMessage.success(t('commons.success'))
+    const { data } = await createWebsite(createForm.value)
+    if (data?.activationError) {
+      ElMessage.warning('网站已保存，但启用失败。修复后可在列表中点击启用。' + data.activationError)
+    } else if (data?.status === 'stopped') {
+      ElMessage.warning('网站已保存，安装并配置 Nginx 后可在列表中启用。')
+    } else {
+      ElMessage.success(t('commons.success'))
+    }
     createDialogVisible.value = false
     loadWebsites()
   } catch {}
